@@ -141,8 +141,9 @@ var I18n = (() => {
     themeGroupDynamic: zh ? "动态壁纸" : "Animated",
     themeCustom: zh ? "自定义主题" : "Custom theme",
     themeGroupGiant: zh ? "巨物风" : "Giant",
-    // ---- 0.25.0 统一主题切换按钮（阅读器工具栏 + 主窗口左上角，两处同源）----
-    themeButtonTip: zh ? "PaperPilot 主题（界面 + 阅读页）" : "PaperPilot themes (UI + reading)",
+    // ---- 0.25.1 主题切换按钮：界面主题（主窗口）/ PDF 阅读主题（阅读器）两个按钮分开 ----
+    themeUiButtonTip: zh ? "PaperPilot 界面主题" : "PaperPilot UI theme",
+    themePdfButtonTip: zh ? "PaperPilot PDF 阅读主题" : "PaperPilot PDF reading theme",
     themeOpenSettings: zh
       ? "外观主题设置…（自定义配色 / 壁纸）"
       : "Appearance theme settings… (custom colors / wallpaper)",

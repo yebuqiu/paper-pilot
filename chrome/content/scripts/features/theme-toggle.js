@@ -1,14 +1,16 @@
-/* PaperPilot 统一主题切换按钮（0.25.0）
+/* PaperPilot 主题切换按钮（0.25.1：界面主题 / PDF 阅读主题 两个按钮分开）
  *
- * 一个主题入口、两处落点，两处读同一份 pref、行为完全同步：
- *   ① PDF 阅读器工具栏 —— 走 Zotero 官方扩展位，不做任何 DOM 手术：
+ * 两个按钮各司其职、各自只写自己那一份 pref：
+ *   ① **主窗口左上角 = 界面主题**（uiTheme）
+ *      收藏夹工具栏 #zotero-collections-toolbar 里插一个 toolbarbutton.zotero-tb-button，
+ *      与相邻的「新建分类」「分类搜索」同排同规格；弹层是原生 menupopup。
+ *   ② **PDF 阅读器工具栏 = PDF 阅读主题**（pdfTheme）
+ *      走 Zotero 官方扩展位，不做任何 DOM 手术：
  *      Zotero.Reader.registerEventListener("renderToolbar", handler, pluginID)（Z7+ 官方 API）。
  *      handler 里**同步**调用 event.append(node)，节点落进
  *      `.toolbar .end > .custom-sections > .section`（reader.js 的 CustomSections 组件
  *      专为插件预留的槽位，紧邻原生「阅读器外观」按钮）。React 每次重渲染工具栏都会
  *      重新派发该事件并 replaceChildren，所以按钮必须每次重建、不能做「已存在就跳过」。
- *   ② 主窗口左上角 —— 收藏夹工具栏 #zotero-collections-toolbar 里插一个
- *      toolbarbutton.zotero-tb-button，与相邻的「新建分类」「分类搜索」同排同规格。
  *
  * 规范对齐（两处都照宿主自己的控件规范写，不发明新样式）：
  *   · 阅读器：class="toolbar-button" —— 28×28 / 圆角 5px / color:var(--fill-secondary)，
@@ -17,22 +19,25 @@
  *   · 主窗口：#zotero-collections-toolbar toolbarbutton{width:28px;height:28px}，
  *     :hover/:active/:disabled/[open] 同样由 zotero.css 原生提供。
  *   · 弹层底色/文字一律走宿主主题变量（--material-* / --fill-* / --color-*），
- *     界面主题一换，弹层随之变色（不与主窗口主题割裂）。
+ *     界面主题一换，弹层随之变色（不与所在界面割裂）。
+ *   · 图标区分语义：界面主题 = 明暗对比圆环（icons/theme.svg，context-fill 单色）；
+ *     阅读页主题 = 半明半暗的页面（内联 SVG + currentColor），一眼分得清。
  *
- * 状态：唯一事实来源是 pref（uiTheme / pdfTheme）。本模块只管「按钮 + 弹层」，
- * 真正的应用与持久化仍归 UiTheme.setTheme() / PdfTheme.setTheme()：它们各自写 pref，
- * 再由 main.js 的 pref observer 全网广播。于是天然满足：
- *   · 实时生效——不需要刷新页面或重开文档（PdfTheme.refresh() 遍历所有已打开 reader）；
+ * 状态：唯一事实来源是 pref。本模块只管「按钮 + 弹层」，真正的应用与持久化仍归
+ * UiTheme.setTheme() / PdfTheme.setTheme()：它们各自写 pref，再由 main.js 的 pref
+ * observer 全网广播。于是天然满足：
+ *   · 实时生效——不需要刷新页面或重开文档（PdfTheme.refresh() 遍历所有已打开 reader；
+ *     UiTheme.apply() 连已打开的阅读器界面一起刷新）；
  *   · 持久化——重启后 UiTheme.register() / PdfTheme.register() 从 pref 恢复；
- *   · 两处同步——同一个模块、同一份 pref，任一处切换后 refresh() 同步标题与展开中的弹层。
+ *   · 两处互不干扰——一个按钮只列一类主题，点它不会顺手改掉另一类。
  *
  * 生命周期：register(pluginID) / unregister()。
  */
 /* global Zotero, Services, Prefs, I18n, UiTheme, PdfTheme, Menus */
 
 var ThemeToggle = {
-  MAIN_BTN_ID: "paperpilot-theme-toolbar-button",
-  READER_BTN_ID: "paperpilot-theme-reader-button",
+  MAIN_BTN_ID: "paperpilot-theme-toolbar-button",   // 主窗口左上角 · 界面主题
+  READER_BTN_ID: "paperpilot-theme-reader-button",  // 阅读器工具栏 · PDF 阅读主题
   POPUP_ID: "paperpilot-theme-popup",
   STYLE_ID: "paperpilot-theme-style",
   PREF_ENABLED: "themeButtonEnabled",
@@ -65,9 +70,14 @@ var ThemeToggle = {
     return (typeof PdfTheme !== "undefined" && PdfTheme) || null;
   },
 
-  /** 两个主题模块都在才启用按钮；缺一个就置 disabled（可点不可用比隐更好排查） */
-  _ready() {
-    return !!(this._ui() && this._pdf());
+  /** 主窗口按钮只在界面主题模块可用时生效 */
+  _uiReady() {
+    return !!this._ui();
+  },
+
+  /** 阅读器按钮只在阅读主题模块可用时生效 */
+  _pdfReady() {
+    return !!this._pdf();
   },
 
   _track(doc, node) {
@@ -79,10 +89,6 @@ var ThemeToggle = {
     return doc.createElementNS(this.XHTML, tag);
   },
 
-  _svgEl(doc, tag) {
-    return doc.createElementNS(this.SVG, tag);
-  },
-
   _xul(doc, tag) {
     return doc.createXULElement
       ? doc.createXULElement(tag)
@@ -91,11 +97,16 @@ var ThemeToggle = {
 
   /* ==================== 按钮图标 ==================== */
 
-  /** 阅读器按钮图标：内联 SVG + currentColor。颜色完全继承 .toolbar-button 的
-   *  color:var(--fill-secondary)，hover/active 与相邻原生按钮逐帧一致。
-   *  （与 icons/theme.svg 同一造型：外环 + 实心右半——「明暗对比」隐喻；
-   *    XUL 侧用 context-fill 的文件版，HTML 侧用 currentColor 的内联版。） */
-  _readerIcon(doc) {
+  /** 界面主题图标（主窗口）：明暗对比圆环。
+   *  走 XUL 惯例的 list-style-image + context-fill 单色文件，
+   *  颜色继承 toolbarbutton 的 color:var(--fill-secondary)。 */
+
+  /** 阅读页主题图标（阅读器）：半明半暗的「页面」。内联 SVG + currentColor，
+   *  颜色完全继承 .toolbar-button 的 color:var(--fill-secondary)，
+   *  hover/active 与相邻原生按钮逐帧一致。
+   *  刻意与界面主题的圆环图标不同：它俩正相邻在阅读器工具栏里，
+   *  邻近的还有原生「阅读器外观」按钮，造型不区分会分不清谁是谁。 */
+  _pdfIcon(doc) {
     const NS = this.SVG;
     const svg = doc.createElementNS(NS, "svg");
     svg.setAttribute("width", "16");
@@ -103,15 +114,21 @@ var ThemeToggle = {
     svg.setAttribute("viewBox", "0 0 16 16");
     svg.setAttribute("aria-hidden", "true");
     svg.style.pointerEvents = "none";
-    const ring = doc.createElementNS(NS, "path");
-    ring.setAttribute("fill", "currentColor");
-    ring.setAttribute("fill-rule", "evenodd");
-    ring.setAttribute("clip-rule", "evenodd");
-    ring.setAttribute("d", "M8 0.75a7.25 7.25 0 1 1 0 14.5A7.25 7.25 0 0 1 8 0.75Zm0 1.6a5.65 5.65 0 1 0 0 11.3 5.65 5.65 0 0 0 0-11.3Z");
+    // 页面外框
+    const frame = doc.createElementNS(NS, "rect");
+    frame.setAttribute("x", "2.75");
+    frame.setAttribute("y", "1.75");
+    frame.setAttribute("width", "10.5");
+    frame.setAttribute("height", "12.5");
+    frame.setAttribute("rx", "1.6");
+    frame.setAttribute("fill", "none");
+    frame.setAttribute("stroke", "currentColor");
+    frame.setAttribute("stroke-width", "1.5");
+    // 右半边实心 = 「这个页面的底色」
     const half = doc.createElementNS(NS, "path");
     half.setAttribute("fill", "currentColor");
-    half.setAttribute("d", "M8 2.35a5.65 5.65 0 0 1 0 11.3Z");
-    svg.appendChild(ring);
+    half.setAttribute("d", "M8 3.25h3.15a.6.6 0 0 1 .6.6v8.3a.6.6 0 0 1-.6.6H8V3.25Z");
+    svg.appendChild(frame);
     svg.appendChild(half);
     return svg;
   },
@@ -134,11 +151,14 @@ var ThemeToggle = {
     return t ? t.name : "";
   },
 
-  /** 按钮提示：一眼看到两套主题的当前值（两处按钮共用同一文案） */
-  _tip() {
-    return I18n.t("themeButtonTip") + " · " +
-      I18n.t("menuUiTheme") + "：" + this.uiThemeName() + " · " +
-      I18n.t("menuPdfTheme") + "：" + this.pdfThemeName();
+  /** 主窗口按钮提示：只说界面主题 */
+  _uiTip() {
+    return I18n.t("themeUiButtonTip") + " · " + this.uiThemeName();
+  },
+
+  /** 阅读器按钮提示：只说阅读页主题 */
+  _pdfTip() {
+    return I18n.t("themePdfButtonTip") + " · " + this.pdfThemeName();
   },
 
   /** 界面主题分组：[{label, items:[{id,name,icon}]}] */
@@ -169,7 +189,7 @@ var ThemeToggle = {
     return groups;
   },
 
-  /** 阅读器侧「阅读页主题」分组 */
+  /** 阅读页主题列表 */
   _pdfItems() {
     const pdf = this._pdf();
     if (!pdf) return [];
@@ -217,14 +237,14 @@ var ThemeToggle = {
   _readerButton(doc) {
     const btn = this._el(doc, "button");
     btn.id = this.READER_BTN_ID;
-    btn.setAttribute("class", "toolbar-button pp-theme-toggle");
+    btn.setAttribute("class", "toolbar-button pp-theme-pdf-toggle");
     btn.setAttribute("type", "button");
     btn.setAttribute("tabindex", "-1");
-    btn.title = this._tip();
-    // 固定 28×28、不参与收缩：窄屏下不会被 .center 挤扁（要求 4）
+    btn.title = this._pdfTip();
+    // 固定 28×28、不参与收缩：窄屏下不会被 .center 挤扁
     btn.style.flex = "none";
-    btn.appendChild(this._readerIcon(doc));
-    if (!this._ready()) btn.disabled = true;
+    btn.appendChild(this._pdfIcon(doc));
+    if (!this._pdfReady()) btn.disabled = true;
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();
       if (btn.disabled) return;
@@ -262,15 +282,13 @@ var ThemeToggle = {
     style.id = this.STYLE_ID;
     style.textContent =
       "#" + this.POPUP_ID + "{position:fixed;z-index:80;box-sizing:border-box;" +
-      "min-width:180px;max-width:min(92vw,280px);max-height:min(70vh,440px);overflow-y:auto;" +
+      "min-width:170px;max-width:min(92vw,280px);max-height:min(70vh,440px);overflow-y:auto;" +
       "padding:6px;border-radius:6px;background:var(--material-toolbar);" +
       "border:1px solid var(--color-border);color:var(--fill-primary);font-size:12px;" +
       "-moz-window-dragging:no-drag;" +
       "box-shadow:0 0 3px 0 rgba(0,0,0,.55),0 8px 40px 0 rgba(0,0,0,.25);}\n" +
       "#" + this.POPUP_ID + " .pp-tp-h{padding:4px 8px 2px;color:var(--fill-secondary);" +
       "font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}\n" +
-      "#" + this.POPUP_ID + " .pp-tp-sec+.pp-tp-sec{margin-top:2px;padding-top:4px;" +
-      "border-top:1px solid var(--fill-quinary);}\n" +
       "#" + this.POPUP_ID + " .pp-tp-item{display:flex;align-items:center;gap:6px;width:100%;" +
       "padding:4px 8px;border:0;border-radius:5px;background:transparent;color:inherit;" +
       "font:inherit;text-align:start;cursor:pointer;white-space:nowrap;}\n" +
@@ -284,60 +302,41 @@ var ThemeToggle = {
     this._track(doc, style);
   },
 
+  /** 阅读器弹层内容：**只有** PDF 阅读主题（界面主题归主窗口那个按钮） */
   _renderReaderPopup(doc, pop) {
     const keepScroll = pop.scrollTop || 0; // 连续试色时别把用户滚到的位置弹回去
     while (pop.firstChild) pop.removeChild(pop.firstChild);
-    const addSection = (title, groups, current, onPick) => {
-      const sec = this._el(doc, "div");
-      sec.setAttribute("class", "pp-tp-sec");
-      if (title) {
-        const h = this._el(doc, "div");
-        h.setAttribute("class", "pp-tp-h");
-        h.textContent = title;
-        sec.appendChild(h);
-      }
-      for (const g of groups) {
-        if (g.label) {
-          const h = this._el(doc, "div");
-          h.setAttribute("class", "pp-tp-h");
-          h.textContent = g.label;
-          sec.appendChild(h);
-        }
-        for (const it of g.items) {
-          const item = this._el(doc, "button");
-          item.setAttribute("class", "pp-tp-item" + (it.id === current ? " on" : ""));
-          item.setAttribute("type", "button");
-          item.setAttribute("role", "menuitemradio");
-          item.setAttribute("aria-checked", it.id === current ? "true" : "false");
-          if (!this._ready()) item.disabled = true;
-          const ico = this._el(doc, "span");
-          ico.setAttribute("class", "pp-tp-ico");
-          ico.textContent = it.icon || "";
-          const txt = this._el(doc, "span");
-          txt.setAttribute("class", "pp-tp-txt");
-          txt.textContent = it.name;
-          item.appendChild(ico);
-          item.appendChild(txt);
-          item.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            onPick(it.id);
-            // pref 变化 → main.js observer → setTheme 已应用并持久化；
-            // 这里只刷新弹层选中态（保持打开，方便连续试色）
-            this._renderReaderPopup(doc, pop);
-          });
-          sec.appendChild(item);
-        }
-      }
-      pop.appendChild(sec);
-    };
+    const cur = this._pdf() ? this._pdf().current().id : "";
 
-    addSection(I18n.t("menuUiTheme"),
-      this._uiGroups(), String(Prefs.get("uiTheme", "") || ""), (id) => this._applyUi(id));
+    const head = this._el(doc, "div");
+    head.setAttribute("class", "pp-tp-h");
+    head.textContent = I18n.t("menuPdfTheme");
+    pop.appendChild(head);
 
-    const pdfGroups = [{ label: "", items: this._pdfItems() }];
-    const pdfCur = this._pdf() ? this._pdf().current().id : "";
-    addSection(I18n.t("menuPdfTheme"), pdfGroups, pdfCur, (id) => this._applyPdf(id));
-
+    for (const it of this._pdfItems()) {
+      const item = this._el(doc, "button");
+      item.setAttribute("class", "pp-tp-item" + (it.id === cur ? " on" : ""));
+      item.setAttribute("type", "button");
+      item.setAttribute("role", "menuitemradio");
+      item.setAttribute("aria-checked", it.id === cur ? "true" : "false");
+      if (!this._pdfReady()) item.disabled = true;
+      const ico = this._el(doc, "span");
+      ico.setAttribute("class", "pp-tp-ico");
+      ico.textContent = it.icon || "";
+      const txt = this._el(doc, "span");
+      txt.setAttribute("class", "pp-tp-txt");
+      txt.textContent = it.name;
+      item.appendChild(ico);
+      item.appendChild(txt);
+      item.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this._applyPdf(it.id);
+        // pref 变化 → main.js observer → PdfTheme.refresh() 已应用到全部已打开 reader；
+        // 这里只刷新弹层选中态（保持打开，方便连续试色）
+        this._renderReaderPopup(doc, pop);
+      });
+      pop.appendChild(item);
+    }
     try { pop.scrollTop = keepScroll; } catch (e) { /* ignore */ }
   },
 
@@ -397,7 +396,7 @@ var ThemeToggle = {
     }, true);
   },
 
-  /* ==================== 主窗口：左上角 toolbarbutton ==================== */
+  /* ==================== 主窗口：左上角 toolbarbutton（界面主题） ==================== */
 
   _mainWindows() {
     const out = [];
@@ -421,8 +420,8 @@ var ThemeToggle = {
     // 已注入且仍在文档里 → 只刷新状态（窗口 reload 后节点会消失，需重插）
     const exists = doc.getElementById(this.MAIN_BTN_ID);
     if (exists && exists.parentNode) {
-      exists.setAttribute("tooltiptext", this._tip());
-      if (!this._ready()) exists.setAttribute("disabled", "true");
+      exists.setAttribute("tooltiptext", this._uiTip());
+      if (!this._uiReady()) exists.setAttribute("disabled", "true");
       return;
     }
     const btn = this._mainButton(doc);
@@ -441,13 +440,13 @@ var ThemeToggle = {
     btn.id = this.MAIN_BTN_ID;
     btn.setAttribute("class", "zotero-tb-button");
     btn.setAttribute("tabindex", "-1");
-    btn.setAttribute("tooltiptext", this._tip());
+    btn.setAttribute("tooltiptext", this._uiTip());
     // 图标走 XUL 惯例：list-style-image + context-fill 单色图标，
     // 颜色继承 toolbarbutton 的 color:var(--fill-secondary)
     btn.style.listStyleImage = 'url("chrome://paperpilot/content/icons/theme.svg")';
     btn.style.MozContextProperties = "fill"; // eslint-disable-line
     btn.style.fill = "currentColor";
-    if (!this._ready()) btn.setAttribute("disabled", "true");
+    if (!this._uiReady()) btn.setAttribute("disabled", "true");
 
     const popup = this._xul(doc, "menupopup");
     popup.id = "paperpilot-theme-main-popup";
@@ -467,25 +466,21 @@ var ThemeToggle = {
     return btn;
   },
 
-  /** 主窗口弹层：原生 menupopup + radio，与「视图 → 外观主题」菜单同构同交互 */
+  /** 主窗口弹层：原生 menupopup + radio，与「视图 → 外观主题」菜单同构同交互。
+   *  内容 **只有** 界面主题（PDF 阅读主题归阅读器那个按钮），末尾留一个设置入口。 */
   _fillMainMenu(doc, popup) {
     while (popup.firstChild) popup.removeChild(popup.firstChild);
-    const ready = this._ready();
-
-    // ---- 界面主题 ----
-    const uiMenu = this._xul(doc, "menu");
-    uiMenu.setAttribute("label", I18n.t("menuUiTheme"));
-    const uiPopup = this._xul(doc, "menupopup");
-    uiMenu.appendChild(uiPopup);
+    const ready = this._uiReady();
     const curUi = String(Prefs.get("uiTheme", "") || "");
+
     for (const g of this._uiGroups()) {
-      let inner = uiPopup;
+      let inner = popup;
       if (g.label) {
         const sub = this._xul(doc, "menu");
         sub.setAttribute("label", g.label);
         const subPopup = this._xul(doc, "menupopup");
         sub.appendChild(subPopup);
-        uiPopup.appendChild(sub);
+        popup.appendChild(sub);
         inner = subPopup;
       }
       for (const it of g.items) {
@@ -498,24 +493,6 @@ var ThemeToggle = {
         inner.appendChild(mi);
       }
     }
-    popup.appendChild(uiMenu);
-
-    // ---- PDF 阅读主题 ----
-    const pdfMenu = this._xul(doc, "menu");
-    pdfMenu.setAttribute("label", I18n.t("menuPdfTheme"));
-    const pdfPopup = this._xul(doc, "menupopup");
-    pdfMenu.appendChild(pdfPopup);
-    const curPdf = this._pdf() ? this._pdf().current().id : "";
-    for (const it of this._pdfItems()) {
-      const mi = this._xul(doc, "menuitem");
-      mi.setAttribute("label", it.icon + " " + it.name);
-      mi.setAttribute("type", "radio");
-      mi.setAttribute("checked", it.id === curPdf ? "true" : "false");
-      mi.setAttribute("disabled", ready ? "false" : "true");
-      mi.addEventListener("command", () => this._applyPdf(it.id));
-      pdfPopup.appendChild(mi);
-    }
-    popup.appendChild(pdfMenu);
 
     // ---- 入口：打开完整外观主题设置（自定义配色 / 壁纸） ----
     popup.appendChild(this._xul(doc, "menuseparator"));
@@ -531,18 +508,18 @@ var ThemeToggle = {
 
   /* ==================== 状态同步 ==================== */
 
-  /** 主题改变后调用：同步两处按钮提示与正在展示的弹层选中态 */
+  /** 主题改变后调用：同步两处按钮的提示文字（各说各的，互不串味） */
   refresh() {
-    const tip = this._tip();
+    const uiTip = this._uiTip();
     for (const win of this._mainWindows()) {
       try {
         const btn = win.document.getElementById(this.MAIN_BTN_ID);
-        if (btn) btn.setAttribute("tooltiptext", tip);
+        if (btn) btn.setAttribute("tooltiptext", uiTip);
       } catch (e) { /* ignore */ }
     }
     try {
       const btn = this._readerBtn;
-      if (btn && btn.isConnected) btn.title = tip;
+      if (btn && btn.isConnected) btn.title = this._pdfTip();
     } catch (e) { /* ignore */ }
   },
 
@@ -597,7 +574,7 @@ var ThemeToggle = {
     this._pluginID = pluginID || "paperpilot@dev.local";
     if (!Prefs.get(this.PREF_ENABLED, true)) return;
 
-    // ① 阅读器工具栏：官方扩展位
+    // ① 阅读器工具栏（PDF 阅读主题）：官方扩展位
     if (Zotero.Reader && typeof Zotero.Reader.registerEventListener === "function") {
       this._readerHandler = (event) => this._onRenderToolbar(event);
       try {
@@ -609,7 +586,7 @@ var ThemeToggle = {
       }
     }
 
-    // ② 主窗口左上角：现在已开的窗口 + 之后新开的窗口
+    // ② 主窗口左上角（界面主题）：现在已开的窗口 + 之后新开的窗口
     this._injectMainWindows();
     try {
       this._obsObserver = {

@@ -109,7 +109,7 @@ Zotero.PaperPilot = {
       "features/mcp.js",
       "features/ui-theme.js",
       "features/pdf-theme.js",
-      // 0.25.0 统一主题切换按钮（阅读器工具栏 + 主窗口左上角；依赖上面两个主题模块）
+      // 0.25.1 主题切换按钮：界面主题（主窗口左上角）+ PDF 阅读主题（阅读器工具栏），二者分开
       "features/theme-toggle.js",
       "columns/rank-column.js",
       "columns/citation-column.js",
@@ -197,7 +197,7 @@ Zotero.PaperPilot = {
     // 0.16.0 主题系统：设置面板脚本经此访问主题库与切换接口
     this.uiTheme = UiTheme;
     this.pdfTheme = PdfTheme;
-    // 0.25.0 统一主题切换按钮（阅读器工具栏 + 主窗口左上角）
+    // 0.25.1 主题切换按钮：界面主题（主窗口）+ PDF 阅读主题（阅读器）
     this.themeToggle = ThemeToggle;
     // 0.21.0 多篇 PDF 并排对比（菜单/功能中心经此调起；窗口脚本经 window.arguments 拿引用）
     this.pdfCompare = PdfCompare;
@@ -349,7 +349,7 @@ Zotero.PaperPilot = {
     } catch (e) {
       await this._diag("pdf theme FAILED: " + (e && (e.stack || e.message) || e));
     }
-    // 0.25.0 统一主题切换按钮：阅读器走官方 renderToolbar 扩展位，主窗口左上角插 button
+    // 0.25.1 主题按钮：界面主题走主窗口左上角，PDF 阅读主题走阅读器官方 renderToolbar 扩展位
     try {
       ThemeToggle.register(id);
       await this._diag("theme toggle registered");

@@ -98,9 +98,10 @@ pref("extensions.zotero.paperpilot.uiWallpaperOpacity", 70);
 // 自定义 PDF 叠色：颜色 + 不透明度（5-60，百分整数；Mozilla pref 无浮点）
 pref("extensions.zotero.paperpilot.pdfThemeCustomColor", "#578f32");
 pref("extensions.zotero.paperpilot.pdfThemeCustomOpacity", 30);
-// 0.25.0 新增：统一主题切换按钮（阅读器工具栏官方扩展位 + 主窗口左上角收藏夹工具栏）。
-// 两处按钮读同一份 uiTheme / pdfTheme，任一处切换即时生效并持久化；
-// 置 false 可完全隐藏两处入口（主题仍可在 视图 → 外观主题 菜单里切换）
+// 0.25.0 新增：主题切换按钮（0.25.1 起拆成两个入口——界面主题在主窗口左上角、
+// PDF 阅读主题在阅读器工具栏）。两个按钮各读各的 pref（uiTheme / pdfTheme），
+// 任一处切换即时生效并持久化；置 false 可完全隐藏两个入口
+// （主题仍可在 视图 → 外观主题 菜单里切换）
 pref("extensions.zotero.paperpilot.themeButtonEnabled", true);
 // 0.21.0 新增：多篇 PDF 并排对比
 // 同时打开的 PDF 上限（2-6，默认 4：2×2 网格在常规屏幕上每页仍可读）

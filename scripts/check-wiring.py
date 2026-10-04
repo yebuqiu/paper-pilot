@@ -496,12 +496,15 @@ for _fn in sorted(os.listdir(TEST_DIR)):
     ok("PORT = server.address().port;" in _src,
        "14.%d %s 回读实际端口" % (_n * 2, _fn))
 
-# ---------- 15. 统一主题切换按钮（0.25.0） ----------
-# 起因：阅读器工具栏按钮有三种典型静默失败——① 用了自造 DOM 注入而不是官方
-# renderToolbar 扩展位（原生 React 重渲染会把节点冲掉）；② append 被异步调用
-# （CustomSections 的 append 在事件同步返回后即失效，会抛 "Append must be called
-# directly and synchronously"）；③ 阅读器那套变量名写成了主窗口的 --fill-quaternary
-# （reader.css 用的是 --fill-quarternary，少一个 r）→ hover 底色全失效且不报错。
+# ---------- 15. 主题切换按钮：界面主题 / PDF 阅读主题 两个按钮分开（0.25.1） ----------
+# 起因：这两块各有一批典型静默失败——
+#   ① 用了自造 DOM 注入而不是官方 renderToolbar 扩展位（原生 React 重渲染会把节点冲掉）；
+#   ② append 被异步调用（CustomSections 的 append 在事件同步返回后即失效，会抛
+#      "Append must be called directly and synchronously"）；
+#   ③ 阅读器那套变量名写成了主窗口的 --fill-quaternary（reader.css 用的是
+#      --fill-quarternary，少一个 r）→ hover 底色全失效且不报错；
+#   ④ 「按钮分开」的要求很容易被下一个改动悄悄并回去（一个弹层里又塞两套主题），
+#      所以把「谁只列谁」也做成断言。
 THEME_TOGGLE_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "theme-toggle.js")
 UI_THEME_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "ui-theme.js")
 PDF_THEME_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "pdf-theme.js")
@@ -510,6 +513,8 @@ uitheme_js = io.open(UI_THEME_JS, encoding="utf-8").read()
 pdftheme_js = io.open(PDF_THEME_JS, encoding="utf-8").read()
 mainjs = io.open(MAIN_JS, encoding="utf-8").read()
 prefsdef = io.open(PREFS_DEFAULTS, encoding="utf-8").read()
+utils_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "core", "utils.js"),
+                   encoding="utf-8").read()
 
 ok('"features/theme-toggle.js"' in mainjs, "15.1 main.js 装配清单含 theme-toggle.js")
 ok("this.themeToggle = ThemeToggle;" in mainjs, "15.2 main.js 把 ThemeToggle 挂到 Zotero.PaperPilot")
@@ -527,7 +532,7 @@ _render_fn = toggle_js.split("_onRenderToolbar(event)")[1].split("_readerButton(
 ok("getElementById" not in _render_fn,
    "15.11 工具栏重渲染必须重建按钮（不能「已存在就跳过」）")
 # 规范对齐：class 用宿主原生按钮类，不发明样式
-ok('setAttribute("class", "toolbar-button pp-theme-toggle")' in toggle_js,
+ok('setAttribute("class", "toolbar-button pp-theme-pdf-toggle")' in toggle_js,
    "15.12 阅读器按钮用原生 .toolbar-button（hover/active/disabled 全免费）")
 ok('btn.style.listStyleImage = \'url("chrome://paperpilot/content/icons/theme.svg")\'' in toggle_js,
    "15.13 主窗口按钮用 context-fill 单色图标")
@@ -545,9 +550,29 @@ ok("--fill-quarternary: " in uitheme_js, "15.20 ui-theme 阅读器变量用原�
 ok(re.search(r"_readerCSS\(theme\)", uitheme_js) is not None, "15.21 ui-theme 有阅读器变量组 _readerCSS")
 ok("applyToReaderDoc(doc)" in uitheme_js, "15.22 阅读器文档可单独注入（新开 reader 也能吃到主题）")
 ok("this.refreshReaders();" in uitheme_js, "15.23 apply() 同步刷新已打开的阅读器界面")
+# ---- 15.24~15.32：两块主题必须分开、各管各的 pref ----
+# 取块时锚点**必须带方法签名里的 ` {`**：函数名在文件里会先作为调用点出现一次
+# （`_mainButton` 里的 addEventListener、`_toggleReaderPopup` 里的自调用），
+# 只按名字切会切到调用点、拿到空块 → 断言静默变成"永远不命中"。
+_reader_render = toggle_js.split("_renderReaderPopup(doc, pop) {")[1].split("_placePopup(doc, pop, btn)")[0]
+_main_menu = toggle_js.split("_fillMainMenu(doc, popup) {")[1].split("/* ==================== 状态同步")[0]
+ok("_pdfItems()" in _reader_render, "15.24 阅读器弹层列 PDF 阅读主题")
+ok("_uiGroups()" not in _reader_render,
+   "15.25 阅读器弹层**不**列界面主题（按钮已分开，不能又并回去）")
+ok("_applyUi(" not in _reader_render, "15.26 阅读器弹层不会写 uiTheme")
+ok("_uiGroups()" in _main_menu, "15.27 主窗口弹层列界面主题")
+ok("_pdfItems()" not in _main_menu,
+   "15.28 主窗口弹层**不**列 PDF 阅读主题（同上）")
+ok("_applyPdf(" not in _main_menu, "15.29 主窗口弹层不会写 pdfTheme")
+ok("_uiTip()" in toggle_js and "_pdfTip()" in toggle_js,
+   "15.30 两处按钮提示各自只说自己那套主题")
+ok('themeUiButtonTip' in utils_js and 'themePdfButtonTip' in utils_js,
+   "15.31 文案表有两条按钮提示键（旧 themeButtonTip 已退役）")
+ok("themeButtonTip" not in toggle_js and "themeButtonTip:" not in utils_js,
+   "15.32 旧的合并文案键已清干净")
 # 旧的自造工具栏注入必须已经拆掉，否则会出现两个按钮
-ok("_addToolbarButton" not in pdftheme_js, "15.24 pdf-theme 已移除旧的自造工具栏按钮（避免双按钮）")
-ok("paperpilot-pdf-theme-toggle" not in pdftheme_js, "15.25 pdf-theme 不再持有旧按钮 id")
+ok("_addToolbarButton" not in pdftheme_js, "15.33 pdf-theme 已移除旧的自造工具栏按钮（避免双按钮）")
+ok("paperpilot-pdf-theme-toggle" not in pdftheme_js, "15.34 pdf-theme 不再持有旧按钮 id")
 
 # ---------- 16. arXiv 核心（0.25.0）：生成物 × 装配 × Discovery 迁移 ----------
 # 起因：插件侧的 arXiv 查询构建/Atom 解析/去重由 scripts/build-arxiv-core.py 从
