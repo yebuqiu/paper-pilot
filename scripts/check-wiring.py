@@ -492,9 +492,16 @@ for _fn in sorted(os.listdir(TEST_DIR)):
         continue
     _n += 1
     ok("server.listen(0, '127.0.0.1'" in _src,
-       "14.%d %s 端口由系统分配（listen(0)）" % (_n * 2 - 1, _fn))
+       "14.%d %s 端口由系统分配（listen(0)）" % (_n * 3 - 2, _fn))
     ok("PORT = server.address().port;" in _src,
-       "14.%d %s 回读实际端口" % (_n * 2, _fn))
+       "14.%d %s 回读实际端口" % (_n * 3 - 1, _fn))
+    # ★ 请求助手必须关掉 keep-alive：
+    #   Node 19+ 客户端默认 keep-alive，而 Node 服务端 keepAliveTimeout 默认 5s——
+    #   复用一条「正被服务端关闭」的空闲 socket 会拿到 ECONNRESET。
+    #   表现是**偶发**的「异常中断」，让门禁假红（server-ops 实测 4/6 失败，HEAD 同样复现）。
+    #   agent:false = 每个请求新连接，彻底避开该竞态。这是测试基建，不改产品行为。
+    ok("agent: false" in _src,
+       "14.%d %s 请求助手关闭 keep-alive（防 ECONNRESET 假红）" % (_n * 3, _fn))
 
 # ---------- 15. 主题切换按钮：界面主题 / PDF 阅读主题 两个按钮分开（0.25.1） ----------
 # 起因：这两块各有一批典型静默失败——
@@ -731,6 +738,117 @@ ok("blLayoutAuto" in utils_js and "blNoteDone" in utils_js, "17.29 双栏窗口�
 # 17.30 门禁：窗口渲染测试进 preflight
 _pf2 = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
 ok("bilingual-view.test.js" in _pf2, "17.30 preflight 含双栏对照窗口渲染测试")
+
+# ---------- 18. AI 计费计量与成本看板（服务端 1.5.0） ----------
+PRICING_LIB = os.path.join(ROOT, "server", "lib", "pricing.js")
+pricing_src = io.open(PRICING_LIB, encoding="utf-8").read()
+BACKUP_LIB = os.path.join(ROOT, "server", "lib", "backup.js")
+backup_src = io.open(BACKUP_LIB, encoding="utf-8").read()
+
+# --- pricing.js：纯函数与口径 ---
+for fn in ["normalize", "priceFor", "setModel", "removeModel", "usageOf", "costOf", "microText"]:
+    ok(re.search(r"function %s\b" % fn, pricing_src) is not None, "18.1 pricing.js 定义 %s()" % fn)
+ok("MICRO_PER_YUAN = 1e6" in pricing_src, "18.2 成本单位是微元（1e-6 元），避免小额被四舍五入抹平")
+ok("MICRO_PER_CENT = 1e4" in pricing_src, "18.3 微元与分的换算常量存在")
+# ★ 前缀匹配会让贵模型按便宜模型的价结算 —— 必须只做精确（含大小写不敏感）匹配
+ok("刻意**不做前缀" in pricing_src or "不做前缀" in pricing_src,
+   "18.4 ★ 明确不做前缀/模糊匹配（glm-5.3 不得吃掉 glm-5.3-flash 的价）")
+ok("function usageOf" in pricing_src and "prompt_tokens" in pricing_src and "input_tokens" in pricing_src,
+   "18.5 usage 解析兼容两种命名")
+ok("if (!inTok && !outTok && !totalTok) return null" in pricing_src,
+   "18.6 ★ 无有效 token 时返回 null（计量盲区），不冒充 0 成本")
+
+# --- 服务端接入 ---
+ok("require('./lib/pricing')" in srv, "18.7 服务端引入 pricing 模块")
+ok("new JsonStore(path.join(DATA_DIR, 'pricing.json')" in srv, "18.8 pricing.json 独立存储")
+ok("pricingStore.data = pricing.normalize(pricingStore.data)" in srv, "18.9 启动即归一化单价表")
+
+# --- 网关计量 ---
+ok("stream_options = Object.assign({}, upstreamBody.stream_options, { include_usage: true })" in srv,
+   "18.10 流式自动注入 stream_options.include_usage（否则流式完全无法计费）")
+ok("c.streamUsage !== false" in srv, "18.11 通道级可关掉注入（兼容不认该参数的上游）")
+ok("const scanSse = (text) =>" in srv, "18.12 流式逐行扫描 usage")
+ok("meterTail = meterTail.slice(-4096)" in srv, "18.13 ★ 流式扫描缓冲有界（不随响应体量增长）")
+ok("const billModel = respModel || requestedModel;" in srv,
+   "18.14 ★ 按「响应里的真实模型」计价（auto 会被上游解析成真名）")
+ok("countUsage(user, { model: billModel, usage: respUsage, costMicro: cost ? cost.micro : 0 })" in srv,
+   "18.15 计量信息落库（次数 + token + 成本）")
+ok("if (!ok) return;   // 上游 4xx" in srv, "18.16 上游 4xx 不计次（保持 1.4.x 旧口径）")
+ok("plainSize > PLAIN_METER_MAX" in srv, "18.17 非流式响应体过大时放弃解析（保护内存）")
+
+# --- 用量结构：旧字段不能被破坏 ---
+ok("u.daily[d] = (Number(u.daily[d]) || 0) + 1;" in srv, "18.18 ★ daily 仍是 number（旧读取点零改动）")
+ok("u.missingUsage += 1;" in srv, "18.19 ★ 无 usage 单独计入 missingUsage，不污染成本")
+ok("u.byModel[key] = m;" in srv, "18.20 按模型累计")
+ok("function usageTotalsIn" in srv and "function usageSeriesDays" in srv, "18.21 窗口合计/序列辅助函数")
+ok("function costViewOf" in srv, "18.22 成本视图（微元 + 格式化文案）")
+ok("cost: costViewOf(user)," in srv, "18.23 /api/auth/me 下发 cost（客户端可展示）")
+ok("function usageSummary" in srv and "function pricingAdminOut" in srv, "18.24 看板与单价表视图函数")
+
+# --- 看板必须暴露「未配价」而不是假装省钱 ---
+ok("unconfigured: usedModels.filter((x) => !x.configured)" in srv,
+   "18.25 ★ 单价表视图列出「被调用过但未配价」的模型")
+ok("suspectUnpriced: t.costMicro === 0 && (t.inTok + t.outTok) > 0" in srv,
+   "18.26 ★ 窗口内有调用却 0 成本 → 标疑未配价")
+
+# --- 管理端点 ---
+ok("url === '/api/admin/pricing' && method === 'GET'" in srv, "18.27 GET /api/admin/pricing 存在")
+ok("url === '/api/admin/pricing' && method === 'PUT'" in srv, "18.28 PUT /api/admin/pricing 存在")
+ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /api/admin/usage-summary 存在")
+ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
+
+# --- health ---
+ok("version: '1.5.0'" in srv, "18.31 服务端版本号 1.5.0")
+ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
+ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
+
+# --- 审计（两处都要有） ---
+ok("'pricing.update'" in audit_src, "18.34 audit.js 动作表含 pricing.update")
+ok("'pricing.update'" in ps, "18.35 launcher 的 Get-AuditText 也含 pricing.update")
+
+# --- 快照 / 回滚 ---
+ok("'pricing.json'" in backup_src, "18.36 单价表纳入数据快照（可回滚）")
+ok("pricingStore.reload();" in srv, "18.37 reloadStores 一并重载单价表（回滚后内存同步）")
+
+# --- Web 管理页 ---
+for k in ["tab-cost", "pane-cost", "cost-total", "cost-price-body", "mp-model", "cost-days",
+          "cost-unpriced", "cost-model-body", "cost-user-body", "cost-day-body"]:
+    ok(k in html, "18.38 admin.html 含 %s" % k)
+ok("loadCostTab" in html and "loadPricing" in html and "saveModelPrice" in html,
+   "18.39 管理页成本页函数齐备")
+ok("'/api/admin/usage-summary?days='" in html, "18.40 管理页调用成本看板接口")
+ok("'/api/admin/pricing'" in html, "18.41 管理页调用单价表接口")
+ok("if (feedback) msg('cost-msg', feedback, true);" in html,
+   "18.42 ★ 反馈写在渲染之后（否则会被本轮刷新重置掉）")
+
+# ★★ 18.43 管理页内联脚本不得有重名函数
+#    同作用域下重复声明会**静默**用后者覆盖前者（本次新增成本页时 savePrice/delPrice
+#    就与既有价格表函数撞名），前端无任何报错，只表现为某个功能「点了没反应/改错地方」。
+_admin_js = re.findall(r"<script>(.*?)</script>", html, re.S)
+if _admin_js:
+    _names = re.findall(r"^function\s+(\w+)", _admin_js[-1], re.M)
+    _dups = sorted(set([n for n in _names if _names.count(n) > 1]))
+    ok(not _dups, "18.43 ★ admin.html 内联脚本无重名函数" + ("" if not _dups else "（重名：%s）" % ",".join(_dups)))
+    # 18.44 onclick 引用的函数必须都已定义（否则是「点了没反应」的头号成因）
+    _called = set(re.findall(r'onclick="(\w+)\(', html)) | set(re.findall(r"onclick=\"(\w+)\(", _admin_js[-1]))
+    _missing = sorted([c for c in _called if c not in _names and c not in
+                       ("location", "alert", "confirm")])
+    ok(not _missing, "18.44 ★ admin.html 的 onclick 引用都已定义" + ("" if not _missing else "（缺：%s）" % ",".join(_missing)))
+else:
+    ok(False, "18.43 admin.html 应有内联脚本")
+
+# ★★ 18.43b DOM id 不得重复
+#    `$('x')` 只取第一个匹配。重复 id 会让 getElementById 永远命中旧元素，
+#    表现为「新表单填了没反应 / 保存的是别的表单的值」——前端零报错。
+#    本次新增成本页时 cost 页的 cp-note 与优惠券页撞 id，直接让后台 E2E 超时。
+_ids = re.findall(r'\bid="([^"]+)"', html)
+_dupid = sorted(set([k for k in _ids if _ids.count(k) > 1]))
+ok(not _dupid, "18.43b ★ admin.html 无重复 DOM id" + ("" if not _dupid else "（重复：%s）" % ",".join(_dupid)))
+
+# --- 门禁接入 ---
+_pf3 = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
+ok("test/pricing.test.js" in _pf3, "18.45 preflight 含 AI 计费单价测试")
+ok("test/metering.test.js" in _pf3, "18.46 preflight 含网关计量测试")
 
 # ---------- 输出 ----------
 print("=" * 60)

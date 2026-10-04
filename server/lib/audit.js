@@ -59,6 +59,7 @@ const ACTIONS = {
   'channel.active': '切换活动通道',
   'channel.published': '修改上线模型清单',
   'channel.high-tier': '修改高级模型清单',
+  'pricing.update': '修改 AI 模型单价',
 };
 
 const SECRET_KEY = /(api.?key|token|password|passwd|secret|authorization|salt|hash|credential)/i;

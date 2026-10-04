@@ -43,7 +43,8 @@ function req(method, p, body, token) {
     const headers = {};
     if (payload) { headers['Content-Type'] = 'application/json'; headers['Content-Length'] = payload.length; }
     if (token) headers['Authorization'] = 'Bearer ' + token;
-    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: p, headers }, (res) => {
+    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: p, headers,
+      agent: false }, (res) => {
       const cs = [];
       res.on('data', (c) => cs.push(c));
       res.on('end', () => {

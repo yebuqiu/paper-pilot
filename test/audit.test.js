@@ -42,7 +42,8 @@ function req(method, p, body, token) {
     const headers = {};
     if (payload) { headers['Content-Type'] = 'application/json'; headers['Content-Length'] = payload.length; }
     if (token) headers['Authorization'] = 'Bearer ' + token;
-    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: p, headers }, (res) => {
+    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: p, headers,
+      agent: false }, (res) => {
       const cs = [];
       res.on('data', (c) => cs.push(c));
       res.on('end', () => {
@@ -235,7 +236,7 @@ const readAuditFile = () => {
 
     /* ---- health ---- */
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.4.9', 'B23 服务端版本');
+    eq(h.version, '1.5.0', 'B23 服务端版本');
     ok(typeof h.auditBytes === 'number' && h.auditBytes > 0, 'B24 health 暴露审计日志体积', h.auditBytes);
   } catch (e) {
     fails.push('异常中断：' + ((e && e.stack) || e));

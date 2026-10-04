@@ -22,7 +22,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const FILES = ['users.json', 'membership.json', 'channels.json'];
+const FILES = ['users.json', 'membership.json', 'channels.json', 'pricing.json'];
 const DEFAULT_THROTTLE_MS = 5 * 60e3;
 const DEFAULT_KEEP_RECENT = 30;
 const DEFAULT_DAILY_DAYS = 14;

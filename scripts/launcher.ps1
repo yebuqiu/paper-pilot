@@ -337,6 +337,7 @@ function Get-AuditText([string]$a) {
     'channel.delete' = '删除模型通道'; 'channel.active' = '切换活动通道'
     'channel.published' = '修改上线模型清单'
     'channel.high-tier' = '修改高级模型清单'
+    'pricing.update' = '修改 AI 模型单价'
   }
   if ($map.ContainsKey($a)) { return $map[$a] }
   return $a

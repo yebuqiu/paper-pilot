@@ -10,8 +10,12 @@
  *   POST /v1/chat/completions Bearer → 转发活动通道上游（SSE 流式透传，auto→通道模型）
  *   GET  /register           公开自助注册页（public/register.html）
  *
- * 会员域（服务端 1.4.9，插件 0.24.8；Free / Pro 两档 + 价格表 + 永久会员 + 对账核销 + 优惠券
- *          + 套餐 AI 能力（高级模型白名单 / 新用户全模型试用））：
+ * 会员域（服务端 1.5.0，插件 0.25.x；Free / Pro 两档 + 价格表 + 永久会员 + 对账核销 + 优惠券
+ *          + 套餐 AI 能力（高级模型白名单 / 新用户全模型试用）
+ *          + **AI 计费计量（网关按 token 记成本，为按量计费铺路）**）：
+ * AI 计量（1.5.0）：每次成功转发都解析上游 usage（流式自动带 include_usage），
+ *   按「响应里的真实模型」计价并累计到 user.usage（token / 成本微元 / 按模型）。
+ *   上游没返 usage → 计入 missingUsage（未知成本，不是 0），后台看板显著提示。
  * 登录设备（1.4.7）：令牌带 sid/设备/来源 IP 与最近活动；用户可自查并踢出设备，
  *   GET  /api/plans                 公开 → {plans, priceOptions, priceItems, upcoming, cycles, pay}
  *   GET  /api/membership            Bearer → {membership(等级/到期/剩余天数/额度/历史), user(含用量趋势)}
@@ -32,6 +36,9 @@
  *   GET  /api/admin/membership      订单 + 激活码 + 套餐/价格表/收款配置一览
  *   PUT  /api/admin/membership      改套餐额度 / 收款信息（局部更新；仍兼容旧的 priceOptions 写法）
  *   GET  /api/admin/prices          价格表全量（含未生效/已过期/已停用）+ 计费周期预设
+ *   GET  /api/admin/pricing         （1.5.0）AI 模型单价表 + 实际用过但未配价的模型
+ *   PUT  /api/admin/pricing         （1.5.0）改单价 {set:{模型:{inPer1k,outPer1k}},remove:[...],fallback:{}}
+ *   GET  /api/admin/usage-summary   （1.5.0）成本看板 ?days=30（总量/按天/按模型/人均/Top 账号）
  *   POST /api/admin/prices          新增价格条目 {plan, cycle, months, price, label,
  *                                   effectiveFrom, effectiveTo, enabled, note}
  *   PUT  /api/admin/prices/:id      改价格条目（局部更新，用于改价 / 定时生效 / 启停）
@@ -80,6 +87,8 @@
  *
  * 启动：node account-server.js [--port=8000]（或环境变量 PP_PORT）
  * 用量：官方网关每成功转发一次 chat/completions，当日计数 +1；超 dailyLimit 返回 429。
+ *      1.5.0 起同一入口还记录 token 与成本（见 user.usage.inTok/outTok/costMicro/byModel）。
+ *      数据：server/data/pricing.json（模型单价，元/千 token）。
  */
 'use strict';
 
@@ -100,6 +109,7 @@ const sessions = require('./lib/sessions');
 const audit = require('./lib/audit');
 const reconcile = require('./lib/reconcile');
 const mail = require('./lib/mail');
+const pricing = require('./lib/pricing');
 
 /* ---------------- 配置 ---------------- */
 
@@ -157,6 +167,9 @@ const GATEWAY_MAX = 20;                  // 网关全局限速（每 IP 每分�
 const VERIFY_TTL_MS = 24 * 3600e3;       // 邮箱验证链接有效期
 const RESET_TTL_MS = 30 * 60e3;          // 密码重置链接有效期
 const GATEWAY_TIMEOUT_MS = 120e3;        // 网关转发上限（流式应答可能较长）
+// 1.5.0 计量：非流式响应超过此体积就放弃解析 usage（只影响计量，转发照旧）。
+// 科研问答的正常响应远小于此；超限说明响应异常，不值得为计量吞进内存。
+const PLAIN_METER_MAX = 4 * 1024 * 1024;
 
 /* ---------------- 存储 ---------------- */
 
@@ -170,6 +183,11 @@ membershipStore.data = membership.normalize(membershipStore.data);
 membershipStore.save();
 // 1.4.2 订单积压告警状态（重启不丢，避免重复轰炸）
 const alertStore = new JsonStore(path.join(DATA_DIR, 'alerts.json'), {});
+// 1.5.0 AI 计费单价表（模型 → 元/千 token）。默认空表 = 一切按「未配置单价」计，
+// 后台看板会显著提示哪些模型还没配价——**不猜价**，缺价就是缺数据。
+const pricingStore = new JsonStore(path.join(DATA_DIR, 'pricing.json'), pricing.newDoc());
+pricingStore.data = pricing.normalize(pricingStore.data);
+pricingStore.save();
 
 /* ---------------- 工具 ---------------- */
 
@@ -191,11 +209,19 @@ function today() {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
-/* ---------------- 用量（近 30 天按日趋势，1.4.3） ----------------
+/* ---------------- 用量与 AI 成本（近 30 天按日趋势，1.4.3 / 1.5.0 计量） ----------------
  * 旧结构只有 { date, count }（当日计数，跨天即清零），用户看不到趋势、
- * 也无法判断"这个月用了多少"。这里**在不破坏旧字段的前提下**增加
+ * 也无法判断"这个月用了多少"。1.4.3 在不破坏旧字段的前提下增加
  * usage.daily = { 'YYYY-MM-DD': count }，只留最近 30 天。
  * 旧数据（只有 date/count）由 usageDays() 现场兼容，无需迁移。
+ *
+ * 1.5.0 AI 计费计量：**次数口径不变**（daily 仍是 number，所有旧读取点零改动），
+ * 另加三条并行的按日序列 + 一条全时段累计：
+ *   usage.inTok[d] / usage.outTok[d]   输入 / 输出 token 按日
+ *   usage.costMicro[d]                 当日成本（微元 = 1e-6 元）
+ *   usage.byModel[model]               { n, inTok, outTok, costMicro, lastAt }
+ *   usage.missingUsage                 ★ 上游未返回 usage 的次数（计量盲区，单独计数）
+ * 全部现场补默认值，老账号零迁移。
  */
 
 /** 本地时区的 YYYY-MM-DD（与 today() 同口径，避免 UTC 偏移导致跨天错位） */
@@ -205,33 +231,87 @@ function isoDay(ms) {
 }
 
 const USAGE_KEEP_DAYS = 30;
+const USAGE_DAY_MAPS = ['daily', 'inTok', 'outTok', 'costMicro'];
 
 /** 丢弃 keepDays 之前的按日记录（字符串比较即可，YYYY-MM-DD 天然有序） */
-function pruneUsageDaily(daily, refDay, keepDays) {
-  if (!daily || typeof daily !== 'object') return daily;
+function pruneDayMap(map, refDay, keepDays) {
+  if (!map || typeof map !== 'object') return map;
   const n = Number(keepDays) > 0 ? Number(keepDays) : USAGE_KEEP_DAYS;
   const refMs = Date.parse((refDay || today()) + 'T00:00:00');
-  if (Number.isNaN(refMs)) return daily;
+  if (Number.isNaN(refMs)) return map;
   const cutoff = isoDay(refMs - (n - 1) * 86400e3);
-  for (const k of Object.keys(daily)) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || k < cutoff) delete daily[k];
+  for (const k of Object.keys(map)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(k) || k < cutoff) delete map[k];
   }
-  return daily;
+  return map;
+}
+
+/** 兼容旧名（1.4.3 起就在用） */
+function pruneUsageDaily(daily, refDay, keepDays) {
+  return pruneDayMap(daily, refDay, keepDays);
+}
+
+/** 确保 usage 的新结构存在（幂等；老账号现场补，不迁移、不落盘） */
+function ensureUsage(user) {
+  if (!user.usage || typeof user.usage !== 'object') user.usage = {};
+  const u = user.usage;
+  for (const k of USAGE_DAY_MAPS) {
+    if (!u[k] || typeof u[k] !== 'object' || Array.isArray(u[k])) u[k] = {};
+  }
+  if (!u.byModel || typeof u.byModel !== 'object' || Array.isArray(u.byModel)) u.byModel = {};
+  u.missingUsage = Number(u.missingUsage) || 0;
+  return u;
 }
 
 /**
  * 记一次用量。dayKey 可注入（单测用），默认今天。
  * 同时维护 { date, count }（旧契约）与 { daily }（新趋势）。
+ * 1.5.0 起改为 recordUsage 的**无计量信息**调用（保持旧调用点行为不变）。
  */
 function bumpUsage(user, dayKey) {
-  const d = dayKey || today();
-  if (!user.usage || typeof user.usage !== 'object') user.usage = {};
-  if (!user.usage.daily || typeof user.usage.daily !== 'object') user.usage.daily = {};
-  if (user.usage.date !== d) { user.usage.date = d; user.usage.count = 0; }
-  user.usage.count = (Number(user.usage.count) || 0) + 1;
-  user.usage.daily[d] = (Number(user.usage.daily[d]) || 0) + 1;
-  pruneUsageDaily(user.usage.daily, d);
-  return user.usage;
+  return recordUsage(user, { dayKey });
+}
+
+/**
+ * 记一次网关调用（1.5.0）。
+ * usage === null / undefined ⇒ **上游没给用量**，只记次数并把 missingUsage +1。
+ * 这是计量盲区：绝不能当成 0 token / 0 成本，否则免费额度会被无声掏空。
+ * @param {{model?:string, usage?:{inTok,outTok}|null, costMicro?:number, dayKey?:string}} info
+ */
+function recordUsage(user, info) {
+  const o = info || {};
+  const d = o.dayKey || today();
+  const u = ensureUsage(user);
+  // —— 次数（与 1.4.x 完全一致，旧读取点不受影响）——
+  if (u.date !== d) { u.date = d; u.count = 0; }
+  u.count = (Number(u.count) || 0) + 1;
+  u.daily[d] = (Number(u.daily[d]) || 0) + 1;
+  pruneDayMap(u.daily, d);
+  // —— token / 成本（1.5.0）——
+  if (o.usage && (o.usage.inTok || o.usage.outTok || o.usage.totalTok)) {
+    u.inTok[d] = (Number(u.inTok[d]) || 0) + (Number(o.usage.inTok) || 0);
+    u.outTok[d] = (Number(u.outTok[d]) || 0) + (Number(o.usage.outTok) || 0);
+    u.costMicro[d] = (Number(u.costMicro[d]) || 0) + (Number(o.costMicro) || 0);
+    pruneDayMap(u.inTok, d);
+    pruneDayMap(u.outTok, d);
+    pruneDayMap(u.costMicro, d);
+    const key = String(o.model || '').trim().slice(0, 120);
+    // byModel 键来自上游响应的 model 字段。正常通道不会产生大量模型名，
+    // 但防御性地设个上限：异常/恶意上游返回随机 model 时不会把用户对象撑爆。
+    const canAdd = key && (u.byModel[key] || Object.keys(u.byModel).length < 200);
+    if (canAdd) {
+      const m = u.byModel[key] || { n: 0, inTok: 0, outTok: 0, costMicro: 0 };
+      m.n = (Number(m.n) || 0) + 1;
+      m.inTok = (Number(m.inTok) || 0) + (Number(o.usage.inTok) || 0);
+      m.outTok = (Number(m.outTok) || 0) + (Number(o.usage.outTok) || 0);
+      m.costMicro = (Number(m.costMicro) || 0) + (Number(o.costMicro) || 0);
+      m.lastAt = new Date().toISOString();
+      u.byModel[key] = m;
+    }
+  } else {
+    u.missingUsage += 1;
+  }
+  return u;
 }
 
 /**
@@ -253,6 +333,37 @@ function usageDays(user, days, endDay) {
     out.push({ date: key, count: c });
   }
   return out;
+}
+
+/** 通用：取某张按日映射（inTok/outTok/costMicro）最近 n 天的值，缺日补 0 */
+function usageSeriesDays(user, days, mapKey, endDay) {
+  const n = Math.max(1, Math.min(90, Number(days) || USAGE_KEEP_DAYS));
+  const u = (user && user.usage) || {};
+  const map = (u[mapKey] && typeof u[mapKey] === 'object') ? u[mapKey] : {};
+  const end = endDay || today();
+  const endMs = Date.parse(end + 'T00:00:00');
+  const base = Number.isNaN(endMs) ? Date.now() : endMs;
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const key = isoDay(base - i * 86400e3);
+    out.push({ date: key, value: Number(map[key]) || 0 });
+  }
+  return out;
+}
+
+/** 某账号最近 n 天的合计（次数 / token / 成本 / 计量盲区） */
+function usageTotalsIn(user, days, endDay) {
+  const n = Math.max(1, Math.min(90, Number(days) || USAGE_KEEP_DAYS));
+  const u = (user && user.usage) || {};
+  const sum = (key) => usageSeriesDays(user, n, key, endDay).reduce((s, d) => s + d.value, 0);
+  return {
+    days: n,
+    n: sum('daily'),
+    inTok: sum('inTok'),
+    outTok: sum('outTok'),
+    costMicro: sum('costMicro'),
+    missingUsage: Number(u.missingUsage) || 0,
+  };
 }
 
 function hashPassword(password, salt) {
@@ -385,6 +496,27 @@ function dailyUsedOf(user) {
   return user.usage && user.usage.date === today() ? Number(user.usage.count) || 0 : 0;
 }
 
+/**
+ * 账号的成本视图（1.5.0）。金额一律同时给「微元」与已格式化文案，
+ * 前端不做换算也不做舍入——避免前后端口径不一致。
+ */
+function costViewOf(user) {
+  const t = usageTotalsIn(user, 1);
+  const d7 = usageTotalsIn(user, 7);
+  const d30 = usageTotalsIn(user, USAGE_KEEP_DAYS);
+  const one = (x) => ({
+    inTok: x.inTok, outTok: x.outTok, totalTok: x.inTok + x.outTok,
+    costMicro: x.costMicro, text: pricing.microText(x.costMicro),
+    tokensText: pricing.tokText(x.inTok + x.outTok),
+  });
+  return {
+    today: one(t), last7: one(d7), last30: one(d30),
+    // ★ 上游未返回 usage 的次数：成本是「未知」而不是 0，必须让界面说清楚
+    missingUsage: Number((user.usage && user.usage.missingUsage) || 0),
+    currency: pricingStore.data.currency || 'CNY',
+  };
+}
+
 /** 客户端可见的用户对象（docs 契约字段 + 0.23.0 会员视图） */
 function userForClient(user) {
   const out = {
@@ -402,6 +534,8 @@ function userForClient(user) {
       last7: usageDays(user, 7).reduce((s, d) => s + d.count, 0),
       days: usageDays(user, USAGE_KEEP_DAYS),
     },
+    // 1.5.0 AI 计量：今日 / 近 7 天 / 近 30 天 token 与成本（为按量计费铺路）
+    cost: costViewOf(user),
   };
     if (user.expiresAt) out.expiresAt = user.expiresAt; // 套餐有效期（可缺省）
     // 1.4.9 套餐 AI 能力（供插件端展示与升级引导；lockedModels 让面板能灰显）
@@ -535,8 +669,12 @@ function rateThrottled(key, max, windowMs) {
   return false;
 }
 
-function countUsage(user) {
-  bumpUsage(user);
+/**
+ * 网关成功转发后落一次用量（1.5.0 起带 token 与成本）。
+ * info = { model, usage, costMicro, dayKey }；不传即只记次数（旧行为）。
+ */
+function countUsage(user, info) {
+  recordUsage(user, info);
   usersStore.save();
 }
 
@@ -564,6 +702,8 @@ function channelOut(c) {
     baseUrl: c.baseUrl, apiKeyMasked: maskKey(c.apiKey),
     model: c.model || 'auto', models: Array.isArray(c.models) ? c.models : [],
     extraBody: c.extraBody || {}, timeoutMs: c.timeoutMs || 12000,
+    // 1.5.0 计量开关：流式请求是否要求上游返回 usage（默认开；个别上游不认会 400）
+    streamUsage: c.streamUsage !== false,
   };
 }
 
@@ -601,6 +741,10 @@ function upsertChannel(input, existingId) {
     extraBody: validExtra(input.extraBody) || (existing && existing.extraBody) || {},
     timeoutMs: Number(input.timeoutMs) || (existing && existing.timeoutMs) || 12000,
   };
+  // streamUsage：局部更新（未传则保持原值/默认开），只允许显式 false 关闭
+  clean.streamUsage = input.streamUsage === undefined
+    ? (existing ? existing.streamUsage !== false : true)
+    : input.streamUsage !== false;
   if (idx >= 0) channels[idx] = clean; else channels.push(clean);
   if (!channelsStore.data.active) channelsStore.data.active = clean.id;
   channelsStore.save();
@@ -877,6 +1021,13 @@ function gatewayChat(req, res, user) {
     for (const [k, v] of Object.entries(c.extraBody || {})) {
       if (!(k in upstreamBody)) upstreamBody[k] = v;
     }
+    // 1.5.0 计量：流式必须让上游在最后一片带上 usage，否则流式调用**完全无法计费**
+    // （绝大多数 OpenAI 兼容上游默认不返回）。通道可设 streamUsage:false 关掉
+    // ——少数上游不认 stream_options 会直接 400，那种通道需要后退。
+    const wantStreamUsage = !!body.stream && c.streamUsage !== false;
+    if (wantStreamUsage) {
+      upstreamBody.stream_options = Object.assign({}, upstreamBody.stream_options, { include_usage: true });
+    }
     const payload = Buffer.from(JSON.stringify(upstreamBody), 'utf8');
 
     let u;
@@ -892,6 +1043,39 @@ function gatewayChat(req, res, user) {
     if (c.apiKey) headers['Authorization'] = 'Bearer ' + c.apiKey;
 
     const timeout = Math.min(Number(c.timeoutMs) > 0 ? Number(c.timeoutMs) * 5 : GATEWAY_TIMEOUT_MS, GATEWAY_TIMEOUT_MS);
+    const isStream = !!body.stream;
+    const requestedModel = String(upstreamBody.model || '');
+    let meterTail = '';          // 流式：未成行的 SSE 尾巴（有界，不随响应增长）
+    let respModel = '';          // 响应里的真实模型名（auto 会被上游解析成真名）
+    let respUsage = null;        // 从上游 usage 解析出的 token 数；null = 计量盲区
+    let plainChunks = [];        // 非流式：响应体（用于解析 usage）
+    let plainSize = 0;
+    let plainAbandoned = false;  // 响应体过大 → 放弃解析（只影响计量，不影响转发）
+
+    /** 从任意 JSON 对象提取 model / usage（非流式 body 与流式分片共用） */
+    const absorb = (j) => {
+      if (!j || typeof j !== 'object') return;
+      if (j.model) respModel = String(j.model);
+      if (j.usage) {
+        const uu = pricing.usageOf(j.usage);
+        if (uu) respUsage = uu;
+      }
+    };
+    /** 逐行扫描 SSE：只保留未成行的尾巴，内存不随响应体量增长 */
+    const scanSse = (text) => {
+      meterTail += text;
+      let idx;
+      while ((idx = meterTail.indexOf('\n')) >= 0) {
+        const line = meterTail.slice(0, idx).trim();
+        meterTail = meterTail.slice(idx + 1);
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === '[DONE]') continue;
+        try { absorb(JSON.parse(data)); } catch (e) { /* 跨行分片或非 JSON：忽略 */ }
+      }
+      if (meterTail.length > 1e6) meterTail = meterTail.slice(-4096);   // 防御异常超长行
+    };
+
     const upReq = mod.request(u, { method: 'POST', headers, timeout }, (upRes) => {
       const passHeaders = {};
       for (const [k, v] of Object.entries(upRes.headers)) {
@@ -900,12 +1084,42 @@ function gatewayChat(req, res, user) {
       }
       passHeaders['Cache-Control'] = 'no-store';
       res.writeHead(upRes.statusCode, passHeaders);
-      upRes.pipe(res);
-      if (upRes.statusCode < 400) {
-        upRes.on('end', () => {
-          try { countUsage(user); } catch (e) { log('usage count failed:', e.message); }
-        });
-      }
+      const ok = upRes.statusCode < 400;
+
+      upRes.on('data', (chunk) => {
+        if (!res.writableEnded) {
+          // 手动转发（原先 pipe 无法旁路解析）；保留基本背压处理
+          if (!res.write(chunk)) { upRes.pause(); res.once('drain', () => upRes.resume()); }
+        }
+        if (!ok) return;
+        if (isStream) scanSse(chunk.toString('utf8'));
+        else if (!plainAbandoned) {
+          plainChunks.push(chunk);
+          plainSize += chunk.length;
+          if (plainSize > PLAIN_METER_MAX) { plainChunks = []; plainAbandoned = true; }
+        }
+      });
+      upRes.on('end', () => {
+        if (!res.writableEnded) { try { res.end(); } catch (e) { /* ignore */ } }
+        if (!ok) return;   // 上游 4xx/5xx：不计次（旧行为）。上游是否已产生成本无从得知，保持原口径。
+        try {
+          if (!isStream && !plainAbandoned) {
+            try { absorb(JSON.parse(Buffer.concat(plainChunks).toString('utf8'))); }
+            catch (e) { /* 非 JSON 响应：usage 记为缺失 */ }
+          }
+          // ★ 计价用「响应里的真实模型」：auto 会被上游映射成真名，
+          //   按请求里的 "auto" 计价会让成本统计彻底失真。
+          const billModel = respModel || requestedModel;
+          const cost = respUsage ? pricing.costOf(pricingStore.data, billModel, respUsage) : null;
+          countUsage(user, { model: billModel, usage: respUsage, costMicro: cost ? cost.micro : 0 });
+          if (!respUsage) {
+            log('metering: 上游未返回 usage →', billModel, '（计入 missingUsage，成本未知）');
+          } else if (!cost.known) {
+            log('metering: 模型未配置单价 →', billModel,
+              '（' + (respUsage.inTok + respUsage.outTok) + ' token 按兜底 0 计，请在后台补价）');
+          }
+        } catch (e) { log('usage count failed:', e.message); }
+      });
     });
     upReq.on('timeout', () => {
       upReq.destroy(new Error('上游连接超时'));
@@ -996,6 +1210,9 @@ function reloadStores() {
   channelsStore.reload();
   membershipStore.reload();
   membershipStore.data = membership.normalize(membershipStore.data);
+  // 1.5.0：单价表也参与快照回滚，回滚后必须一并重载，否则内存里还是旧价
+  pricingStore.reload();
+  pricingStore.data = pricing.normalize(pricingStore.data);
   return {
     before,
     after: { users: usersStore.data.users.length, orders: membershipStore.data.orders.length },
@@ -1154,6 +1371,156 @@ function quoteOrder(doc, o) {
   };
 }
 
+/* ---------------- AI 计费看板（1.5.0） ---------------- */
+
+/** 取 URL 查询参数（req.url 形如 /api/admin/usage-summary?days=7） */
+function queryOf(req) {
+  const q = String(req.url || '').split('?')[1] || '';
+  const out = {};
+  for (const kv of q.split('&')) {
+    if (!kv) continue;
+    const i = kv.indexOf('=');
+    const k = decodeURIComponent(i < 0 ? kv : kv.slice(0, i));
+    out[k] = decodeURIComponent(i < 0 ? '' : kv.slice(i + 1));
+  }
+  return out;
+}
+
+/**
+ * 单价表后台视图。
+ * ★ 关键设计：把「实际被调用过的模型」与「已配单价的模型」对账，列出**没配单价的模型**。
+ *   否则看板会显示成本 ≈ 0，让人误以为「很省」——实际是「没数据」。
+ *   这是按量计费最容易骗自己的地方，所以 unconfigured 必须显著暴露。
+ */
+function pricingAdminOut() {
+  const doc = pricingStore.data;
+  const configured = pricing.modelList(doc);
+  const used = new Map();
+  for (const u of usersStore.data.users) {
+    const bm = (u.usage && u.usage.byModel) || {};
+    for (const [model, m] of Object.entries(bm)) {
+      const key = String(model);
+      const cur = used.get(key) || { model: key, n: 0, inTok: 0, outTok: 0, costMicro: 0, lastAt: '' };
+      cur.n += Number(m.n) || 0;
+      cur.inTok += Number(m.inTok) || 0;
+      cur.outTok += Number(m.outTok) || 0;
+      cur.costMicro += Number(m.costMicro) || 0;
+      if (m.lastAt && m.lastAt > cur.lastAt) cur.lastAt = m.lastAt;
+      used.set(key, cur);
+    }
+  }
+  const usedModels = Array.from(used.values()).map((x) => {
+    const p = pricing.priceFor(doc, x.model);
+    return Object.assign({}, x, {
+      configured: p.known,
+      inPer1k: p.inPer1k,
+      outPer1k: p.outPer1k,
+      tokensText: pricing.tokText(x.inTok + x.outTok),
+      costText: pricing.microText(x.costMicro),
+    });
+  }).sort((a, b) => (b.costMicro - a.costMicro) || (b.n - a.n));
+  return {
+    currency: doc.currency || 'CNY',
+    unit: '元 / 千 token',
+    models: configured,
+    fallback: doc.fallback,
+    usedModels,
+    unconfigured: usedModels.filter((x) => !x.configured).map((x) => x.model),
+  };
+}
+
+/**
+ * 成本看板（近 n 天）。
+ * byModel 是**全时段累计**（取自 user.usage.byModel，不按窗口截断），
+ * 字段名刻意用 byModelAllTime 以免与窗口口径混淆。
+ */
+function usageSummary(days) {
+  const n = Math.max(1, Math.min(90, Number(days) || USAGE_KEEP_DAYS));
+  const byDay = [];
+  const dayIndex = new Map();
+  const nowMs = Date.now();
+  for (let i = n - 1; i >= 0; i--) {
+    const key = isoDay(nowMs - i * 86400e3);
+    const row = { date: key, n: 0, inTok: 0, outTok: 0, costMicro: 0 };
+    byDay.push(row);
+    dayIndex.set(key, row);
+  }
+  const totals = { n: 0, inTok: 0, outTok: 0, costMicro: 0, missingUsage: 0, activeUsers: 0 };
+  const byModel = new Map();
+  const perUser = [];
+
+  for (const u of usersStore.data.users) {
+    const us = (u.usage && typeof u.usage === 'object') ? u.usage : {};
+    // —— 按天累计（直接读按日映射；旧账号只有 {date,count} 时兜底）——
+    for (const key of dayIndex.keys()) {
+      const row = dayIndex.get(key);
+      row.n += Number((us.daily || {})[key]) || 0;
+      row.inTok += Number((us.inTok || {})[key]) || 0;
+      row.outTok += Number((us.outTok || {})[key]) || 0;
+      row.costMicro += Number((us.costMicro || {})[key]) || 0;
+    }
+    if (!us.daily || !Object.keys(us.daily).length) {
+      const row = us.date ? dayIndex.get(us.date) : null;
+      if (row) row.n += Number(us.count) || 0;
+    }
+    // —— 账号合计 ——
+    const t = usageTotalsIn(u, n);
+    if (!t.n && !t.inTok && !t.costMicro) continue;
+    totals.n += t.n;
+    totals.inTok += t.inTok;
+    totals.outTok += t.outTok;
+    totals.costMicro += t.costMicro;
+    totals.missingUsage += t.missingUsage;
+    totals.activeUsers += 1;
+    perUser.push({
+      id: u.id, email: u.email, plan: planEffective(u),
+      n: t.n, inTok: t.inTok, outTok: t.outTok, costMicro: t.costMicro,
+      costText: pricing.microText(t.costMicro),
+      tokensText: pricing.tokText(t.inTok + t.outTok),
+      missingUsage: t.missingUsage,
+      // 说明：窗口内有调用但成本为 0 → 极可能是没配单价，不是真的免费
+      suspectUnpriced: t.costMicro === 0 && (t.inTok + t.outTok) > 0,
+    });
+    // —— 按模型（全时段累计）——
+    const bm = (us.byModel && typeof us.byModel === 'object') ? us.byModel : {};
+    for (const [model, m] of Object.entries(bm)) {
+      const key = String(model);
+      const cur = byModel.get(key) || { model: key, n: 0, inTok: 0, outTok: 0, costMicro: 0 };
+      cur.n += Number(m.n) || 0;
+      cur.inTok += Number(m.inTok) || 0;
+      cur.outTok += Number(m.outTok) || 0;
+      cur.costMicro += Number(m.costMicro) || 0;
+      byModel.set(key, cur);
+    }
+  }
+
+  perUser.sort((a, b) => (b.costMicro - a.costMicro) || (b.n - a.n));
+  const models = Array.from(byModel.values()).map((x) => Object.assign({}, x, {
+    configured: pricing.hasModel(pricingStore.data, x.model),
+    costText: pricing.microText(x.costMicro),
+    tokensText: pricing.tokText(x.inTok + x.outTok),
+  })).sort((a, b) => (b.costMicro - a.costMicro) || (b.n - a.n));
+
+  return {
+    days: n,
+    currency: pricingStore.data.currency || 'CNY',
+    totals: Object.assign({}, totals, {
+      costText: pricing.microText(totals.costMicro),
+      tokensText: pricing.tokText(totals.inTok + totals.outTok),
+      // 人均成本（按有调用的账号算）——定价时的核心输入
+      perUserMicro: totals.activeUsers ? Math.round(totals.costMicro / totals.activeUsers) : 0,
+      perUserText: totals.activeUsers ? pricing.microText(totals.costMicro / totals.activeUsers) : '¥0',
+    }),
+    byDay: byDay.map((r) => Object.assign({}, r, {
+      costText: pricing.microText(r.costMicro),
+      tokensText: pricing.tokText(r.inTok + r.outTok),
+    })),
+    byModelAllTime: models,
+    topUsers: perUser.slice(0, 20),
+    unconfigured: models.filter((x) => !x.configured).map((x) => x.model),
+  };
+}
+
 /* ---------------- 管理域（用户） ---------------- */
 
 /**
@@ -1191,6 +1558,8 @@ function userAdminOut(u) {
     sessionsActive: sessions.countActive(usersStore.data, u.id),
     sessionsOverLimit: sessions.countActive(usersStore.data, u.id) > sessions.maxDevices(),
     usageDaily: usageDays(u, USAGE_KEEP_DAYS),
+    // 1.5.0 AI 成本（后台用户列表 → 成本列 / Top 消耗用户）
+    cost: costViewOf(u),
     status: u.status === 'pending' ? 'pending' : 'active',
     createdAt: u.createdAt || null, lastLoginAt: u.lastLoginAt || null,
     // 1.4.2 风控状态：后台用户列表据此显示「已锁定 / 近失败 N 次」
@@ -1305,7 +1674,7 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'GET' && url === '/api/health') {
       return json(res, 200, {
-        ok: true, service: 'paperpilot-account-server', version: '1.4.9',
+        ok: true, service: 'paperpilot-account-server', version: '1.5.0',
         uptime: Math.round(process.uptime()), now: new Date().toISOString(),
         mail: mail.configured() ? 'on' : 'off',
         users: usersStore.data.users.length,
@@ -1313,6 +1682,9 @@ const server = http.createServer(async (req, res) => {
         active: channelsStore.data.active || null,
         publishedModels: publishedModels().length, // 0 = 全部上线
         highTierModels: highTierModels().length,   // 1.4.9 需付费档的模型数（0 = 无分级）
+        // 1.5.0 AI 计量：配了单价的模型数 + 计量盲区累计（上游未返回 usage 的次数）
+        pricedModels: pricing.modelList(pricingStore.data).length,
+        meteringGaps: usersStore.data.users.reduce((s, u) => s + (Number((u.usage || {}).missingUsage) || 0), 0),
         // 0.23.0 会员域
         plans: Object.keys(membershipStore.data.plans || {}),
         orders: membershipStore.data.orders.length,
@@ -2023,6 +2395,53 @@ const server = http.createServer(async (req, res) => {
           plans: membership.plansForClient(doc) });
       }
 
+      /* --- 1.5.0 AI 计费：单价表 + 成本看板 (仅本机直连) --- */
+
+      /** 单价表全量（含「实际用过但未配价」的模型，供补价） */
+      if (url === '/api/admin/pricing' && method === 'GET') {
+        return json(res, 200, { ok: true, pricing: pricingAdminOut() });
+      }
+
+      /** 单价表写入（局部）：{ set:{模型:{inPer1k,outPer1k,note}}, remove:[模型], fallback:{inPer1k,outPer1k} } */
+      if (url === '/api/admin/pricing' && method === 'PUT') {
+        let input;
+        try { input = await readBody(req); } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+        const doc = pricingStore.data;
+        const changed = [];
+        if (Array.isArray(input.remove)) {
+          for (const m of input.remove) {
+            const r = pricing.removeModel(doc, m);
+            if (!r.error) changed.push({ op: 'remove', model: r.model });
+          }
+        }
+        if (input.set && typeof input.set === 'object' && !Array.isArray(input.set)) {
+          for (const [m, v] of Object.entries(input.set)) {
+            const r = pricing.setModel(doc, m, v);
+            if (r.error) return json(res, 400, { ok: false, error: m + '：' + r.error });
+            changed.push({ op: 'set', model: r.model, inPer1k: r.entry.inPer1k, outPer1k: r.entry.outPer1k });
+          }
+        }
+        if (input.fallback && typeof input.fallback === 'object') {
+          doc.fallback = {
+            inPer1k: pricing.normPrice(input.fallback.inPer1k, 0),
+            outPer1k: pricing.normPrice(input.fallback.outPer1k, 0),
+          };
+          changed.push({ op: 'fallback', inPer1k: doc.fallback.inPer1k, outPer1k: doc.fallback.outPer1k });
+        }
+        if (!changed.length) return json(res, 400, { ok: false, error: '没有可应用的改动（需提供 set / remove / fallback）' });
+        pricing.normalize(doc);
+        pricingStore.save();
+        log('pricing updated:', JSON.stringify(changed));
+        auditLog(req, 'pricing.update', { after: changed });
+        return json(res, 200, { ok: true, changed, pricing: pricingAdminOut() });
+      }
+
+      /** 成本看板：总量 / 按天 / 按模型（全时段）/ Top 消耗账号 / 未配价模型 */
+      if (url === '/api/admin/usage-summary' && method === 'GET') {
+        const q = queryOf(req);
+        return json(res, 200, { ok: true, summary: usageSummary(q.days) });
+      }
+
       /** 改套餐配置 / 收款信息（局部更新，未提交的字段保持原值） */
       if (url === '/api/admin/membership' && method === 'PUT') {
         let input;
@@ -2495,4 +2914,7 @@ module.exports = {
   startBackgroundJobs, stopBackgroundJobs, runAlertCheck, alertStatus,
   backlogNow, deviceAlertNow, reloadStores, snapshot,
   usageDays, bumpUsage, isoDay, pruneUsageDaily, USAGE_KEEP_DAYS, today,
+  // 1.5.0 AI 计量
+  recordUsage, usageTotalsIn, usageSeriesDays, costViewOf, usageSummary, pricingAdminOut,
+  pricingStore,
 };

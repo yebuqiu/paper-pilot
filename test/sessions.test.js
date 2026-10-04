@@ -54,7 +54,8 @@ function req(method, p, body, token, extraHeaders) {
     const headers = Object.assign({}, extraHeaders || {});
     if (payload) { headers['Content-Type'] = 'application/json'; headers['Content-Length'] = payload.length; }
     if (token) headers.Authorization = 'Bearer ' + token;
-    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: p, headers }, (res) => {
+    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: p, headers,
+      agent: false }, (res) => {
       const cs = [];
       res.on('data', (c) => cs.push(c));
       res.on('end', () => {
@@ -249,7 +250,7 @@ const DEV_B = { 'X-PP-Device': 'bbbb1111-2222-3333-4444-555566667777', 'X-PP-Pla
   ok(!!tA && !!tB && !!tC, 'F1 三台设备各自登录成功');
 
   const h0 = await req('GET', '/api/health');
-  eq(h0.json.version, '1.4.9', 'F2 服务端版本 1.4.9');
+  eq(h0.json.version, '1.5.0', 'F2 服务端版本 1.5.0');
   eq(h0.json.sessionsActive, 3, 'F3 health 报告 3 个活跃会话');
   eq(h0.json.devicesOverLimit, 1, 'F4 health 报告 1 个账号设备超限');
 

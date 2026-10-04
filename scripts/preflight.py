@@ -108,6 +108,8 @@ NODE_SUITES = [
     ("优惠券/折扣码", "test/coupon.test.js"),
     ("登录设备与会话", "test/sessions.test.js"),
     ("套餐 AI 能力", "test/ai-tier.test.js"),
+    ("AI 计费单价", "test/pricing.test.js"),
+    ("网关计量", "test/metering.test.js"),
     ("arXiv 核心(插件侧)", "test/arxiv-core.test.js"),
     ("双栏对照窗口", "test/bilingual-view.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),

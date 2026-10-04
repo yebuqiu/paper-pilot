@@ -12,8 +12,8 @@ PaperPilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstra
 
 | 组成 | 说明 | 版本锚点 |
 |---|---|---|
-| **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.24.8`） |
-| **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.4.9`） |
+| **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.25.2`） |
+| **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.5.0`） |
 
 - 插件 ID：`paperpilot@dev.local`；兼容 `strict_min_version: "6.999"` → `strict_max_version: "99.*"`。
 - 授权：**Apache-2.0**（见 [LICENSE](LICENSE) / [NOTICE](NOTICE)）。插件本体永久免费开源。
@@ -58,7 +58,7 @@ PaperPilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstra
 
 ```bash
 # 一键门禁（推荐，发版前必跑）：全 JS 语法 + arXiv 生成物同步 + 全部 Node 测试套件
-#                              + 接线扫描 + 后台 E2E（当前共 19 步）
+#                              + 接线扫描 + 后台 E2E（当前共 22 步）
 python scripts/preflight.py
 
 # 快速模式（跳过浏览器 E2E，约 95s，适合改代码时的内循环）
@@ -86,6 +86,11 @@ python scripts/build-arxiv-core.py --check
 
 `preflight.py` 支持用环境变量 `PP_NODE` 指定 node 可执行文件（默认取 PATH，再退回本机 managed 版本）。
 
+> ⚠️ **新增测试套件时，HTTP 请求助手必须带 `agent: false`**：Node 19+ 客户端默认 keep-alive，
+> 而服务端 `keepAliveTimeout` 默认 5s —— 复用一条正被服务端关闭的空闲 socket 会拿到 `ECONNRESET`，
+> 表现为**偶发**「异常中断」让门禁假红（`server-ops` 曾 4/6 失败）。`check-wiring.py` §14 有守卫。
+> 排障偶发失败时，用 `git archive HEAD | tar -x -C <tmp>` 建干净副本与工作区**交替**跑同一用例。
+
 > ⚠️ **后台 E2E 会静默跳过**：`test/admin-e2e.test.js` 依赖 `playwright-core`（装在
 > `C:\Users\Administrator\.workbuddy\binaries\node\workspace`）。preflight 不设 `NODE_PATH`，
 > 所以那里通常看到「跳过（未安装 playwright-core）」并以 0 退出——**这不是通过**。
@@ -98,8 +103,8 @@ python scripts/build-arxiv-core.py --check
 ### 3.2 打包插件
 
 ```bash
-python scripts/build-xpi.py 0.24.8
-# 产物：dist/paper-pilot-0.24.8.xpi（zip，源码目录内容置于根，含包内清单与版本自检）
+python scripts/build-xpi.py 0.25.2
+# 产物：dist/paper-pilot-0.25.2.xpi（zip，源码目录内容置于根，含包内清单与版本自检）
 ```
 
 - 打包内容 = 顶层文件（`bootstrap.js` / `LICENSE` / `NOTICE` / `prefs.js` / `README.md` / `manifest.json`）+ 遍历 `chrome/` + `locale/`。
@@ -184,11 +189,13 @@ paper-pilot/
 │
 ├── server/                   账号后台（独立于 xpi，零依赖）
 │   ├── account-server.js     ★ 入口：路由 + HTTP + 限速 + 网关
-│   ├── lib/                  领域模块：membership / coupon / reconcile / sessions /
-│   │                         audit / backup / alerts / lockout / mail / presets / store
+│   ├── lib/                  领域模块：membership / coupon / pricing / reconcile /
+│   │                         sessions / audit / backup / alerts / lockout / mail /
+│   │                         presets / store
 │   ├── public/               管理页与自助页 HTML：admin.html / register / reset / verify / forgot
 │   └── data/                 ★ 运行时数据（gitignore）：users.json / membership.json /
-│                             channels.json / audit.log / guard.log / server-console.log / pp.env
+│                             channels.json / pricing.json / audit.log / guard.log /
+│                             server-console.log / pp.env
 │
 ├── scripts/                  工具（不进 xpi）
 │   ├── build-xpi.py          打包 + 包内自检
@@ -203,7 +210,7 @@ paper-pilot/
 ├── test/                     测试（不进 xpi）
 │   ├── account-persistence / membership / price / usage / membership-panel /
 │   │   server-ops / audit / reconcile / coupon / sessions / ai-tier /
-│   │   arxiv-core / smoke-load
+│   │   pricing / metering / arxiv-core / smoke-load
 │   │                         .test.js（Node 单测；arxiv-core 守生成物等价性）
 │   ├── legacy-rootcause.probe.js   历史根因探针（接受 git-ref 参数）
 │   └── admin-e2e.test.js     后台浏览器 E2E（无浏览器/NODE_PATH 时自动跳过）
@@ -313,6 +320,7 @@ paper-pilot/
 - **禁止 `git add -A` / `git add .`**：一律**显式列出路径**。本工作区可能多会话并发，混合 diff 的归属要在提交信息里说明。
 - **提交信息格式**：以版本/批次为前缀，例如
   - 插件：`0.24.8(服务端 1.4.9): 套餐 AI 能力分级 —— 官方模型白名单 + 新用户全模型试用`
+  - 纯服务端：`服务端 1.5.0: AI 计费计量 —— 网关按 token 记成本 + 单价表 + 成本看板`
   - 纯服务端：`服务端 1.4.7: 登录设备与会话管理`
 - **版本号口径**：只改服务端/脚本就别挂一个不会发布的插件版本号（服务端版本看 `/api/health` 的 `version`）；插件没动就不动 `manifest.json` 和 xpi。
 - GitHub Releases **自 v0.14.5 后不再创建**；GitHub 镜像走 `sync-github.py`。

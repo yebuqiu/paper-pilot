@@ -58,7 +58,8 @@ function req(method, p, body, token, extraHeaders) {
     const headers = Object.assign({}, extraHeaders || {});
     if (payload) { headers['Content-Type'] = 'application/json'; headers['Content-Length'] = payload.length; }
     if (token) headers.Authorization = 'Bearer ' + token;
-    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: p, headers }, (res) => {
+    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: p, headers,
+      agent: false }, (res) => {
       const cs = [];
       res.on('data', (c) => cs.push(c));
       res.on('end', () => {
@@ -338,7 +339,7 @@ async function chat(token, model) {
 
     // health
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.4.9', 'H5 服务端版本 1.4.9');
+    eq(h.version, '1.5.0', 'H5 服务端版本 1.5.0');
     eq(h.highTierModels, 3, 'H6 health 给出高级模型数量（auto 也配了 → 3 条配置）');
     eq(h.publishedModels, ALL_PUBLISHED.length, 'H7 上线清单数量不受影响');
 

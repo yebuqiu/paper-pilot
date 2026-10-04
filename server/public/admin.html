@@ -108,6 +108,7 @@
     <button id="tab-channels" class="on" onclick="switchTab('channels')">模型通道</button>
     <button id="tab-users" onclick="switchTab('users')">账号管理</button>
     <button id="tab-membership" onclick="switchTab('membership')">会员管理</button>
+    <button id="tab-cost" onclick="switchTab('cost')">成本与用量</button>
     <button id="tab-coupon" onclick="switchTab('coupon')">优惠券</button>
     <button id="tab-audit" onclick="switchTab('audit')">审计日志</button>
   </div>
@@ -385,6 +386,92 @@
     </div>
   </section>
 
+  <!-- ============ 成本与用量（服务端 1.5.0） ============ -->
+  <section id="pane-cost" style="display:none">
+    <div class="card">
+      <div class="toolbar"><h2 style="margin:0">AI 成本总览</h2>
+        <div>
+          <select id="cost-days" onchange="loadCost()">
+            <option value="7">近 7 天</option>
+            <option value="30" selected>近 30 天</option>
+            <option value="90">近 90 天</option>
+          </select>
+          <button class="btn" onclick="loadCostTab()">刷新</button>
+        </div></div>
+      <div class="statusline">
+        <div class="item"><span class="k">窗口成本</span><span class="v" id="cost-total">—</span></div>
+        <div class="item"><span class="k">今日成本</span><span class="v" id="cost-today">—</span></div>
+        <div class="item"><span class="k">窗口调用</span><span class="v" id="cost-calls">—</span></div>
+        <div class="item"><span class="k">窗口 token</span><span class="v" id="cost-tokens">—</span></div>
+        <div class="item"><span class="k">人均成本</span><span class="v" id="cost-peruser">—</span></div>
+        <div class="item"><span class="k">计量盲区</span><span class="v" id="cost-gap">—</span></div>
+      </div>
+      <p class="hint" style="margin:10px 0 0" id="cost-note"></p>
+      <div class="msg" id="cost-msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>模型单价表</h2>
+      <p class="hint" style="margin:0 0 10px">
+        单位 <b>元 / 千 token</b>。单次成本 = 输入 token × 输入单价 + 输出 token × 输出单价，按进价折算成
+        <b>微元</b>（1e-6 元）整数累计，所以再小的请求也不会被四舍五入抹平。
+        <b>没配单价的模型一律按 0 计</b>——那样统计只会「看起来很省」，所以下面会把缺价的模型单独揪出来。
+      </p>
+      <div class="msg err" id="cost-unpriced" style="display:none"></div>
+      <table>
+        <thead><tr>
+          <th style="width:240px">模型</th><th style="width:150px">输入 元/千token</th>
+          <th style="width:150px">输出 元/千token</th><th>备注</th><th style="width:130px">操作</th>
+        </tr></thead>
+        <tbody id="cost-price-body"></tbody>
+      </table>
+      <div class="empty" id="cost-price-empty" style="display:none">还没有配任何单价</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap">
+        <input id="mp-model" placeholder="模型名（如 glm-5.3-flash）" style="width:220px">
+        <input id="mp-in" type="number" step="0.000001" min="0" placeholder="输入单价" style="width:130px">
+        <input id="mp-out" type="number" step="0.000001" min="0" placeholder="输出单价" style="width:130px">
+        <input id="mp-note" placeholder="备注（选填）" style="width:160px">
+        <button class="btn primary" onclick="saveModelPrice()">保存单价</button>
+        <button class="btn" onclick="clearPriceForm()">清空</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap">
+        <span class="hint">未配价模型的兜底单价（默认 0，即不计成本）：</span>
+        <input id="mp-fb-in" type="number" step="0.000001" min="0" placeholder="输入" style="width:110px">
+        <input id="mp-fb-out" type="number" step="0.000001" min="0" placeholder="输出" style="width:110px">
+        <button class="btn" onclick="saveFallbackPrice()">保存兜底</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>按模型累计（全时段）</h2>
+      <table>
+        <thead><tr><th>模型</th><th style="width:90px">次数</th><th style="width:120px">token</th>
+          <th style="width:110px">成本</th><th style="width:110px">单价</th></tr></thead>
+        <tbody id="cost-model-body"></tbody>
+      </table>
+      <div class="empty" id="cost-model-empty" style="display:none">暂无调用记录</div>
+    </div>
+
+    <div class="card">
+      <h2>Top 消耗账号（窗口内）</h2>
+      <table>
+        <thead><tr><th>账号</th><th style="width:80px">套餐</th><th style="width:80px">次数</th>
+          <th style="width:110px">token</th><th style="width:120px">成本</th><th style="width:80px">盲区</th></tr></thead>
+        <tbody id="cost-user-body"></tbody>
+      </table>
+      <div class="empty" id="cost-user-empty" style="display:none">窗口内暂无调用</div>
+    </div>
+
+    <div class="card">
+      <h2>按天趋势</h2>
+      <table>
+        <thead><tr><th style="width:130px">日期</th><th style="width:90px">次数</th>
+          <th style="width:120px">token</th><th style="width:110px">成本</th><th>占比</th></tr></thead>
+        <tbody id="cost-day-body"></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="pane-audit" style="display:none">
     <div class="card">
       <div class="toolbar"><h2 style="margin:0">管理操作审计</h2>
@@ -649,7 +736,7 @@ function api(method, path, body) {
   });
 }
 
-var TABS = ['channels', 'users', 'membership', 'coupon', 'audit'];
+var TABS = ['channels', 'users', 'membership', 'cost', 'coupon', 'audit'];
 function switchTab(t) {
   TABS.forEach(function (k) {
     var b = $('tab-' + k), p = $('pane-' + k);
@@ -659,12 +746,13 @@ function switchTab(t) {
   if (location.hash !== '#' + t) location.hash = t;
   if (t === 'users') loadUsers();
   if (t === 'membership') loadMembership();
+  if (t === 'cost') loadCostTab();
   if (t === 'coupon') loadCoupons();
   if (t === 'audit') loadAudit();
 }
 window.addEventListener('hashchange', function () {
   var h = location.hash.replace('#', '');
-  if (h === 'users' || h === 'channels' || h === 'membership' || h === 'audit') switchTab(h);
+  if (TABS.indexOf(h) >= 0) switchTab(h);
 });
 
 /* ---------------- 审计日志（服务端 1.4.4） ---------------- */
@@ -2086,6 +2174,198 @@ function grantMembership() {
   });
 }
 
+/* ---------------- 成本与用量（服务端 1.5.0） ----------------
+ * 反馈纪律：所有「✓ 已…」都作为参数交给刷新函数、在**渲染结束之后**写，
+ * 否则会被本轮 render 重置消息区 —— 这是本项目踩过的坑（见 memory）。
+ */
+var costPrices = {};       // 模型 → { inPer1k, outPer1k, note }
+
+function microText(micro) {
+  var y = (Number(micro) || 0) / 1e6;
+  if (!(y > 0)) return '¥0';
+  if (y >= 1) return '¥' + y.toFixed(2);
+  if (y >= 0.01) return '¥' + y.toFixed(3);
+  return '¥' + y.toFixed(4);
+}
+function tokText(n) {
+  n = Number(n) || 0;
+  return n >= 10000 ? (Math.round(n / 1000) / 10) + ' 万' : String(n);
+}
+
+/** 未配价模型的醒目提示 + 一键带入（点模型名填进下方的模型输入框） */
+function renderUnpriced(list) {
+  var el = $('cost-unpriced');
+  el.textContent = '';
+  if (!list || !list.length) { el.style.display = 'none'; return; }
+  el.style.display = '';
+  var lead = document.createElement('span');
+  lead.textContent = '★ 有 ' + list.length + ' 个模型被实际调用过但还没配单价（成本按 0 计，统计会失真）：';
+  el.appendChild(lead);
+  list.forEach(function (m) {
+    var b = document.createElement('button');
+    b.className = 'btn sm';
+    b.style.marginLeft = '6px';
+    b.textContent = m;
+    b.onclick = function () { $('mp-model').value = m; $('mp-model').focus(); };
+    el.appendChild(b);
+  });
+}
+
+function loadCost(feedback) {
+  var days = $('cost-days').value;
+  api('GET', '/api/admin/usage-summary?days=' + encodeURIComponent(days)).then(function (r) {
+    if (!r.ok) { $('cost-note').textContent = r.error || '读取失败'; return; }
+    var s = r.summary || {}, t = s.totals || {}, byDay = s.byDay || [];
+    $('cost-total').textContent = t.costText || '—';
+    $('cost-today').textContent = byDay.length ? byDay[byDay.length - 1].costText : '—';
+    $('cost-calls').textContent = String(t.n || 0);
+    $('cost-tokens').textContent = t.tokensText || '0';
+    $('cost-peruser').textContent = (t.perUserText || '¥0') + '（' + (t.activeUsers || 0) + ' 个账号）';
+    $('cost-gap').textContent = String(t.missingUsage || 0) + ' 次';
+    $('cost-note').textContent = '窗口 ' + (s.days || days) + ' 天 · 成本 = 上游 token × 单价表；'
+      + '未配单价的模型按 0 计。'
+      + (t.missingUsage ? ' ★ 另有 ' + t.missingUsage + ' 次上游未返回用量 —— 这部分成本是「未知」而不是 0。' : '');
+
+    var mb = $('cost-model-body'); mb.textContent = '';
+    (s.byModelAllTime || []).forEach(function (m) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td class="mono">' + esc(m.model)
+        + (m.configured ? '' : ' <span class="badge red">未配价</span>') + '</td>'
+        + '<td>' + (m.n || 0) + '</td>'
+        + '<td>' + tokText(m.inTok + m.outTok) + '</td>'
+        + '<td>' + esc(m.costText || '¥0') + '</td>'
+        + '<td>' + (m.configured ? '<span class="badge green">已配置</span>'
+          : '<span class="badge red">缺</span>') + '</td>';
+      mb.appendChild(tr);
+    });
+    $('cost-model-empty').style.display = (s.byModelAllTime || []).length ? 'none' : '';
+
+    var ub = $('cost-user-body'); ub.textContent = '';
+    (s.topUsers || []).forEach(function (u) {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td class="mono">' + esc(u.email) + '</td>'
+        + '<td>' + esc(u.plan || '—') + '</td>'
+        + '<td>' + (u.n || 0) + '</td>'
+        + '<td>' + tokText(u.inTok + u.outTok) + '</td>'
+        + '<td>' + esc(u.costText || '¥0')
+        + (u.suspectUnpriced ? ' <span class="badge red">疑未配价</span>' : '') + '</td>'
+        + '<td>' + (u.missingUsage || 0) + '</td>';
+      ub.appendChild(tr);
+    });
+    $('cost-user-empty').style.display = (s.topUsers || []).length ? 'none' : '';
+
+    var maxCost = 1;
+    byDay.forEach(function (d) { if (d.costMicro > maxCost) maxCost = d.costMicro; });
+    var db = $('cost-day-body'); db.textContent = '';
+    byDay.slice().reverse().forEach(function (d) {
+      var pct = Math.max(1, Math.round((d.costMicro / maxCost) * 100));
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td class="mono">' + esc(d.date) + '</td>'
+        + '<td>' + (d.n || 0) + '</td>'
+        + '<td>' + tokText(d.inTok + d.outTok) + '</td>'
+        + '<td>' + esc(d.costText || '¥0') + '</td>'
+        + '<td><div style="background:var(--brand);height:8px;border-radius:4px;width:' + pct + '%"></div></td>';
+      db.appendChild(tr);
+    });
+
+    if (feedback) msg('cost-msg', feedback, true);
+  });
+}
+
+function loadPricing(feedback) {
+  api('GET', '/api/admin/pricing').then(function (r) {
+    if (!r.ok) { msg('cost-msg', '✗ ' + (r.error || '读取单价表失败'), false); return; }
+    var p = r.pricing || {};
+    costPrices = {};
+    var tb = $('cost-price-body'); tb.textContent = '';
+    (p.models || []).forEach(function (m) {
+      costPrices[m.model] = m;
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td class="mono">' + esc(m.model) + '</td>'
+        + '<td class="mono">' + m.inPer1k + '</td>'
+        + '<td class="mono">' + m.outPer1k + '</td>'
+        + '<td>' + esc(m.note || '—') + '</td>';
+      var td = document.createElement('td');
+      var bEdit = document.createElement('button');
+      bEdit.className = 'btn sm'; bEdit.textContent = '编辑';
+      bEdit.onclick = function () { editPrice(m.model); };
+      var bDel = document.createElement('button');
+      bDel.className = 'btn sm danger'; bDel.textContent = '删除';
+      bDel.style.marginLeft = '6px';
+      bDel.onclick = function () { delModelPrice(m.model); };
+      td.appendChild(bEdit); td.appendChild(bDel);
+      tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    $('cost-price-empty').style.display = (p.models || []).length ? 'none' : '';
+    $('mp-fb-in').value = p.fallback ? p.fallback.inPer1k : 0;
+    $('mp-fb-out').value = p.fallback ? p.fallback.outPer1k : 0;
+    renderUnpriced(p.unconfigured || []);
+    if (feedback) msg('cost-msg', feedback, true);
+  });
+}
+
+/** 载入「成本与用量」页（先单价表再看板；看板刷新会覆盖消息区，故反馈交给它最后写） */
+function loadCostTab() {
+  loadPricing();
+  loadCost();
+}
+
+function clearPriceForm() {
+  $('mp-model').value = ''; $('mp-in').value = ''; $('mp-out').value = ''; $('mp-note').value = '';
+}
+
+function editPrice(model) {
+  var p = costPrices[model];
+  if (!p) return;
+  $('mp-model').value = model;
+  $('mp-in').value = p.inPer1k;
+  $('mp-out').value = p.outPer1k;
+  $('mp-note').value = p.note || '';
+  $('mp-model').focus();
+}
+
+function saveModelPrice() {
+  var model = $('mp-model').value.trim();
+  if (!model) return msg('cost-msg', '✗ 请先填模型名', false);
+  var inRaw = $('mp-in').value, outRaw = $('mp-out').value;
+  if (inRaw === '' && outRaw === '') return msg('cost-msg', '✗ 至少填一个单价（0 表示免费）', false);
+  var entry = {};
+  if (inRaw !== '') entry.inPer1k = Number(inRaw);
+  if (outRaw !== '') entry.outPer1k = Number(outRaw);
+  var note = $('mp-note').value.trim();
+  if (note) entry.note = note;
+  var body = { set: {} };
+  body.set[model] = entry;
+  api('PUT', '/api/admin/pricing', body).then(function (r) {
+    if (!r.ok) return msg('cost-msg', '✗ ' + (r.error || '保存失败'), false);
+    clearPriceForm();
+    // 反馈写在刷新之后（loadPricing 最后才写 msg，否则会被重置冲掉）
+    loadPricing('✓ 已保存单价：' + model);
+    loadCost();
+  });
+}
+
+function delModelPrice(model) {
+  if (!confirm('确定删除「' + model + '」的单价？删除后该模型按 0 计成本。')) return;
+  api('PUT', '/api/admin/pricing', { remove: [model] }).then(function (r) {
+    if (!r.ok) return msg('cost-msg', '✗ ' + (r.error || '删除失败'), false);
+    loadPricing('✓ 已删除单价：' + model);
+    loadCost();
+  });
+}
+
+function saveFallbackPrice() {
+  var fi = Number($('mp-fb-in').value), fo = Number($('mp-fb-out').value);
+  if (!isFinite(fi) || !isFinite(fo) || fi < 0 || fo < 0) {
+    return msg('cost-msg', '✗ 兜底单价不能为空或负数', false);
+  }
+  api('PUT', '/api/admin/pricing', { fallback: { inPer1k: fi, outPer1k: fo } }).then(function (r) {
+    if (!r.ok) return msg('cost-msg', '✗ ' + (r.error || '保存失败'), false);
+    loadPricing('✓ 已保存兜底单价');
+  });
+}
+
 /* ---------------- 通用 ---------------- */
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -2108,7 +2388,7 @@ api('GET', '/api/admin/providers').then(function (r) {
 });
 loadChannels();
 toggleInitMonths();
-  if (['#users', '#membership', '#coupon', '#audit'].indexOf(location.hash) >= 0) switchTab(location.hash.slice(1));
+  if (TABS.indexOf(location.hash.slice(1)) >= 0) switchTab(location.hash.slice(1));
 </script>
 </body>
 </html>

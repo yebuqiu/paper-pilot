@@ -47,7 +47,8 @@ function req(method, p, body, token) {
     const headers = {};
     if (payload) { headers['Content-Type'] = 'application/json'; headers['Content-Length'] = payload.length; }
     if (token) headers['Authorization'] = 'Bearer ' + token;
-    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: p, headers }, (res) => {
+    const r = http.request({ host: '127.0.0.1', port: PORT, method, path: p, headers,
+      agent: false }, (res) => {
       const cs = [];
       res.on('data', (c) => cs.push(c));
       res.on('end', () => {
@@ -344,7 +345,7 @@ function rewindOrder(orderId, minutes) {
 
     /* ================= D. 既有能力不回归 ================= */
     r = await req('GET', '/api/health');
-    eq(r.json.version, '1.4.9', 'D1 服务端版本');
+    eq(r.json.version, '1.5.0', 'D1 服务端版本');
     ok(/Free/.test((r.json.plans || []).join(',')), 'D2 套餐仍在');
     r = await req('GET', '/api/admin/prices');
     ok(r.json.items.length >= 5, 'D3 价格表仍可用（含 A24 新增的两条）', r.json.items.length);
