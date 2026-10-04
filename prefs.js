@@ -59,6 +59,9 @@ pref("extensions.zotero.paperpilot.readerPopupDailyCount", "");
 // 0.11.0 新增：阅读状态 / 全文对照翻译 / 笔记模板 / 附件命名 / Unpaywall / Anki
 pref("extensions.zotero.paperpilot.readingStateAutoUnread", true);
 pref("extensions.zotero.paperpilot.bilingualChunkChars", 1200);
+// 0.25.2 新增：全文对照翻译·双栏对照窗口（正文字号 px 11–28；布局 auto|two|single）
+pref("extensions.zotero.paperpilot.bilingualViewFontSize", 15);
+pref("extensions.zotero.paperpilot.bilingualViewLayout", "auto");
 pref("extensions.zotero.paperpilot.noteTemplatesCustom", "");
 pref("extensions.zotero.paperpilot.attachNamePattern", "{author} - {year} - {title}");
 pref("extensions.zotero.paperpilot.unpaywallEmail", "");

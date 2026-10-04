@@ -22,6 +22,10 @@
  *     界面主题一换，弹层随之变色（不与所在界面割裂）。
  *   · 图标区分语义：界面主题 = 明暗对比圆环（icons/theme.svg，context-fill 单色）；
  *     阅读页主题 = 半明半暗的页面（内联 SVG + currentColor），一眼分得清。
+ *   · 「自定义主题」是**跳板**不是主题：没配过色板（uiThemeCustom 为空）时点它，
+ *     UiTheme 会渲染出一套全白、且**不带任何壁纸**的主题——用户视角就是
+ *     「点了没反应 / 背景反而没了」。故未配置时改为打开设置面板（标签补 "…"），
+ *     已配置时才直接一键套用。
  *
  * 状态：唯一事实来源是 pref。本模块只管「按钮 + 弹层」，真正的应用与持久化仍归
  * UiTheme.setTheme() / PdfTheme.setTheme()：它们各自写 pref，再由 main.js 的 pref
@@ -210,6 +214,19 @@ var ThemeToggle = {
     const pdf = this._pdf();
     if (!pdf) return;
     try { pdf.setTheme(id); } catch (e) { this._err(e); }
+  },
+
+  /** 自定义色板是否已配置：uiThemeCustom 是一段 JSON；空串 = 用户从没配过色。 */
+  _customReady() {
+    try { return String(Prefs.get("uiThemeCustom", "") || "").trim().charAt(0) === "{"; }
+    catch (e) { return false; }
+  },
+
+  /** 打开 PaperPilot 设置面板（外观主题分区：自定义配色 / 壁纸都在那里） */
+  _openThemeSettings() {
+    try {
+      if (typeof Menus !== "undefined" && Menus.openSettings) Menus.openSettings();
+    } catch (e) { this._err(e); }
   },
 
   _err(e) {
@@ -484,12 +501,19 @@ var ThemeToggle = {
         inner = subPopup;
       }
       for (const it of g.items) {
+        // 「自定义主题」在菜单里只当**跳板**用：没配过色板时直接 setTheme("custom") 会得到
+        // 一套全白、且**没有任何壁纸**的主题（用户视角就是「点了没反应 / 背景反而没了」）。
+        // 所以未配置时改为打开设置面板，并给标签补 "…"（原生约定：点了会开对话框）。
+        const jump = it.id === "custom" && !this._customReady();
         const mi = this._xul(doc, "menuitem");
-        mi.setAttribute("label", (it.icon ? it.icon + " " : "") + it.name);
+        mi.setAttribute("label", (it.icon ? it.icon + " " : "") + it.name + (jump ? "\u2026" : ""));
         mi.setAttribute("type", "radio");
         mi.setAttribute("checked", it.id === curUi ? "true" : "false");
         mi.setAttribute("disabled", ready ? "false" : "true");
-        mi.addEventListener("command", () => this._applyUi(it.id));
+        mi.addEventListener("command", () => {
+          if (jump) this._openThemeSettings();
+          else this._applyUi(it.id);
+        });
         inner.appendChild(mi);
       }
     }
@@ -498,11 +522,7 @@ var ThemeToggle = {
     popup.appendChild(this._xul(doc, "menuseparator"));
     const open = this._xul(doc, "menuitem");
     open.setAttribute("label", I18n.t("themeOpenSettings"));
-    open.addEventListener("command", () => {
-      try {
-        if (typeof Menus !== "undefined" && Menus.openSettings) Menus.openSettings();
-      } catch (e) { this._err(e); }
-    });
+    open.addEventListener("command", () => this._openThemeSettings());
     popup.appendChild(open);
   },
 

@@ -573,6 +573,13 @@ ok("themeButtonTip" not in toggle_js and "themeButtonTip:" not in utils_js,
 # 旧的自造工具栏注入必须已经拆掉，否则会出现两个按钮
 ok("_addToolbarButton" not in pdftheme_js, "15.33 pdf-theme 已移除旧的自造工具栏按钮（避免双按钮）")
 ok("paperpilot-pdf-theme-toggle" not in pdftheme_js, "15.34 pdf-theme 不再持有旧按钮 id")
+# ---- 15.35~15.36：「自定义主题」必须是跳板，不能直接套用空色板 ----
+# 起因：uiThemeCustom 为空时 setTheme("custom") 会渲染出「全白 + 无壁纸」的主题，
+# 用户点完的观感就是「没反应 / 背景反而没了」（0.25.1 用户实测）。
+ok("_customReady()" in toggle_js and "uiThemeCustom" in toggle_js,
+   "15.35 菜单判断自定义色板是否已配置")
+ok("if (jump) this._openThemeSettings();" in toggle_js,
+   "15.36 未配置色板时「自定义主题」改为打开设置面板（不套用空主题）")
 
 # ---------- 16. arXiv 核心（0.25.0）：生成物 × 装配 × Discovery 迁移 ----------
 # 起因：插件侧的 arXiv 查询构建/Atom 解析/去重由 scripts/build-arxiv-core.py 从
@@ -642,6 +649,88 @@ ok("arxiv-core.test.js" in _pf, "16.109 preflight 含插件侧 arXiv 核心测�
 _smoke = io.open(os.path.join(ROOT, "test", "smoke-load.test.js"), encoding="utf-8").read()
 ok("arxiv)" in _smoke or "|arxiv)" in _smoke, "16.110 全模块冒烟的文件正则含 arxiv/（新模块才会被覆盖）")
 ok("ArxivAtom.parseAtom" in _smoke, "16.111 冒烟改用 ArxivAtom.parseAtom（Discovery 不再自带解析）")
+
+# ---------- 17. 全文对照翻译 · 双栏对照窗口（0.25.2） ----------
+# 起因：这个窗口几乎踩满了「点了没反应」的高发区——
+#   ① 窗口脚本里的 $("pp-xxx") 拿到 null（xhtml 里没这个 id）→ 静默什么都不做；
+#   ② 把「段落成对 + 单一滚动容器」改成两个各自滚动的容器 → 左右对齐随内容高度漂走，
+#      而且不报错（表现为「同步失效」，最难被人发现）；
+#   ③ 窗口脚本直接调 AIClient/AIChat → 窗口作用域里根本没这两个全局，翻译永远不动；
+#   ④ 单实例复用通道写歪（getEnumerator 名 vs xhtml windowtype）→ 每次点都开新窗；
+#   ⑤ 新 pref 键没在 prefs.js 给默认值 → Prefs.get 拿到 undefined。
+# 所以把「骨架 + 接线 + 语义」在这里静态钉死。
+BL_XHTML = os.path.join(ROOT, "chrome", "content", "bilingual.xhtml")
+BL_VIEW_JS = os.path.join(ROOT, "chrome", "content", "bilingual-view.js")
+BL_MOD_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "bilingual-translate.js")
+PPREFS_XHTML = os.path.join(ROOT, "chrome", "content", "prefs.xhtml")
+
+ok(os.path.exists(BL_XHTML), "17.1 双栏对照窗口 bilingual.xhtml 存在")
+ok(os.path.exists(BL_VIEW_JS), "17.2 窗口脚本 bilingual-view.js 存在")
+bl_xhtml = io.open(BL_XHTML, encoding="utf-8").read() if os.path.exists(BL_XHTML) else ""
+bl_js = io.open(BL_VIEW_JS, encoding="utf-8").read() if os.path.exists(BL_VIEW_JS) else ""
+bl_mod = io.open(BL_MOD_JS, encoding="utf-8").read()
+menus_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "menus.js"), encoding="utf-8").read()
+wb_js = io.open(os.path.join(ROOT, "chrome", "content", "workbench.js"), encoding="utf-8").read()
+hub_js = io.open(os.path.join(ROOT, "chrome", "content", "hub.js"), encoding="utf-8").read()
+pprefs_xhtml = io.open(PPREFS_XHTML, encoding="utf-8").read()
+
+ok('windowtype="paperpilot:bilingual"' in bl_xhtml, "17.3 窗口 windowtype=paperpilot:bilingual")
+ok("chrome://paperpilot/content/bilingual-view.js" in bl_xhtml, "17.4 窗口挂了窗口脚本")
+ok('WINDOW_TYPE: "paperpilot:bilingual"' in bl_mod, "17.5 模块 WINDOW_TYPE 与 windowtype 一致")
+ok("getEnumerator(this.WINDOW_TYPE)" in bl_mod, "17.6 单实例复用按同一常量枚举（名字不会写歪）")
+
+# 17.7 窗口脚本引用的元素 id 必须都在 xhtml 里（§7 同款守卫）
+bl_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', bl_xhtml))
+bl_refs = set(re.findall(r'\$\(\s*"([A-Za-z0-9_-]+)"\s*\)', bl_js))
+bl_refs |= set(re.findall(r'(?:setText|setLabel|getElementById)\(\s*"([A-Za-z0-9_-]+)"', bl_js))
+bl_missing = sorted(i for i in bl_refs if i not in bl_ids)
+ok(not bl_missing, "17.7 窗口脚本引用的元素 id 都存在于 bilingual.xhtml → 缺失: %s" % (bl_missing or "无"))
+
+# 17.8~17.10 翻译链路必须回传（窗口作用域没有 AIClient/AIChat）
+bl_code = re.sub(r"/\*[\s\S]*?\*/", "", bl_js)
+bl_code = re.sub(r"(?m)//.*$", "", bl_code)
+ok(not re.search(r"AIClient\s*\.|\bAIChat\b|Zotero\.HTTP|fetch\s*\(", bl_code),
+   "17.8 窗口脚本不直连 AI/网络（去掉注释后无 AIClient/AIChat/Zotero.HTTP/fetch）")
+ok("A.translateChunk(" in bl_js and "A.getFullText(" in bl_js and "A.makeNote(" in bl_js,
+   "17.9 取全文/翻译/写笔记都走注入回调")
+ok("translateChunk:" in bl_mod and "getFullText:" in bl_mod and "makeNote:" in bl_mod,
+   "17.10 模块侧注入了 translateChunk/getFullText/makeNote")
+
+# 17.11~17.16 布局语义：两栏等宽 + 单栏回退 + 单一滚动容器（行级同步的结构保证）
+ok("grid-template-columns: 1fr 1fr" in bl_js, "17.11 两栏等宽（1fr 1fr）")
+ok("grid-template-columns: 1fr;" in bl_js, "17.12 单栏回退为一列")
+ok('setAttribute("data-cols"' in bl_js, "17.13 栏数经 data-cols 切换")
+ok("MIN_TWO_COL_PX" in bl_js and 'addEventListener("resize"' in bl_js,
+   "17.14 窄屏自动切单栏（宽度阈值 + resize 监听）")
+ok("pp-bl-scroll" in bl_xhtml and "overflow-y:auto" in bl_xhtml,
+   "17.15 单一滚动容器负责滚动（两栏不各自滚动）")
+ok(len(re.findall(r"scrollTop\s*=", bl_js)) == 1,
+   "17.16 只有一处 scrollTop 赋值（没有两栏互相追的同步逻辑）")
+
+# 17.17~17.22 入口接线：三处指向双栏窗口，且原「双语笔记」出口保留
+ok("openViewerForSelected" in menus_js, "17.17 右键菜单接了双栏对照窗口")
+ok("BilingualTranslate.runForSelected()" in menus_js, "17.18 右键菜单仍保留原「AI 双语笔记」出口")
+ok("openViewerForSelected" in wb_js, "17.19 工作台「全文对照翻译」chip 指向双栏窗口")
+ok("openViewerForSelected" in hub_js, "17.20 功能中心卡片指向双栏窗口")
+ok("runForSelected()" in bl_mod, "17.21 原笔记流程仍在（未删）")
+ok("_noteMd(" in bl_mod, "17.22 笔记正文由共用函数生成（窗口导出与笔记出口零漂移）")
+
+# 17.23~17.25 pref 默认值 + 设置面板可配
+ok("bilingualViewFontSize" in prefsdef, "17.23 prefs.js 有 bilingualViewFontSize 默认值")
+ok("bilingualViewLayout" in prefsdef, "17.24 prefs.js 有 bilingualViewLayout 默认值")
+ok("bilingualViewFontSize" in pprefs_xhtml, "17.25 设置面板可配双栏窗口字号")
+
+# 17.26~17.27 主题作用域
+ok("paperpilot:bilingual" in uitheme_js, "17.26 双栏窗口纳入 ui-theme 主题作用域")
+ok('wtype === "paperpilot:bilingual"' in uitheme_js, "17.27 ui-theme 的窗口判定含双栏窗口")
+
+# 17.28~17.29 文案键
+ok("menuBilingualView" in utils_js, "17.28 文案表有 menuBilingualView")
+ok("blLayoutAuto" in utils_js and "blNoteDone" in utils_js, "17.29 双栏窗口文案键已入表")
+
+# 17.30 门禁：窗口渲染测试进 preflight
+_pf2 = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
+ok("bilingual-view.test.js" in _pf2, "17.30 preflight 含双栏对照窗口渲染测试")
 
 # ---------- 输出 ----------
 print("=" * 60)

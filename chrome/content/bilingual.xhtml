@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE window>
+<!-- PaperPilot 全文对照翻译 · 双栏对照窗口（0.25.2）
+
+     布局：左栏原文 / 右栏译文，两栏等宽（grid 1fr 1fr）随窗口自适应宽度；
+     长段落滚动时保持行级同步 —— 「段落成对」网格让左右两栏处在同一行，
+     滚动由**单一容器**负责，行级对齐是结构保证的（不靠监听 scrollTop 互相追，
+     因此没有回环抖动、也没有积累误差）。窄屏自动切单栏（原文/译文上下交替）。
+
+     本文件只搭骨架：所有交互与渲染在 bilingual-view.js，翻译与写笔记经
+     window.arguments 回传到插件作用域执行（窗口脚本访问不到 bootstrap 作用域）。 -->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="PaperPilot 全文对照翻译"
+        windowtype="paperpilot:bilingual"
+        width="1180" height="860"
+        persist="screenX screenY width height sizemode">
+  <script src="chrome://paperpilot/content/bilingual-view.js"/>
+
+  <vbox flex="1" style="min-height:0;">
+    <!-- 工具栏 -->
+    <hbox id="pp-bl-toolbar" align="center"
+          style="gap:8px;padding:6px 8px;flex-wrap:wrap;
+                 border-bottom:1px solid var(--material-border,#ccc);
+                 background:var(--material-toolbar,#f6f6f6);">
+      <html:span id="pp-bl-title"
+                 style="flex:1;min-width:120px;font-size:12.5px;font-weight:700;
+                        color:var(--fill-primary,#222);overflow:hidden;
+                        text-overflow:ellipsis;white-space:nowrap;"></html:span>
+
+      <html:span style="width:1px;height:16px;background:var(--material-border,#ccc);"></html:span>
+
+      <html:span id="pp-bl-layout-label"
+                 style="font-size:12px;color:var(--fill-secondary,#555);white-space:nowrap;"></html:span>
+      <menulist id="pp-bl-layout" native="true" style="font-size:12px;">
+        <menupopup>
+          <menuitem value="auto" id="pp-bl-layout-auto"/>
+          <menuitem value="two" id="pp-bl-layout-two"/>
+          <menuitem value="single" id="pp-bl-layout-single"/>
+        </menupopup>
+      </menulist>
+
+      <html:span style="width:1px;height:16px;background:var(--material-border,#ccc);"></html:span>
+
+      <html:span id="pp-bl-font-label"
+                 style="font-size:12px;color:var(--fill-secondary,#555);white-space:nowrap;"></html:span>
+      <html:button id="pp-bl-font-dec" style="font-size:12px;padding:1px 9px;">A−</html:button>
+      <html:span id="pp-bl-font-val"
+                 style="font-size:12px;color:var(--fill-secondary,#666);min-width:38px;
+                        text-align:center;white-space:nowrap;"></html:span>
+      <html:button id="pp-bl-font-inc" style="font-size:12px;padding:1px 9px;">A+</html:button>
+
+      <html:span style="width:1px;height:16px;background:var(--material-border,#ccc);"></html:span>
+
+      <html:button id="pp-bl-copy" style="font-size:12px;padding:1px 9px;"></html:button>
+      <html:button id="pp-bl-note" style="font-size:12px;padding:1px 9px;"></html:button>
+      <html:button id="pp-bl-close" style="font-size:12px;padding:1px 9px;margin-left:auto;">✕</html:button>
+
+      <html:span id="pp-bl-count"
+                 style="font-size:12px;color:var(--fill-secondary,#666);min-width:52px;
+                        text-align:right;white-space:nowrap;"></html:span>
+    </hbox>
+
+    <!-- 进度条（3px，随段落推进） -->
+    <html:div id="pp-bl-progress"
+              style="flex:0 0 auto;height:3px;background:transparent;overflow:hidden;">
+      <html:div id="pp-bl-progress-bar"
+                style="height:100%;width:0;background:var(--color-accent,#2563eb);
+                       transition:width .2s ease;"></html:div>
+    </html:div>
+
+    <!-- 滚动舞台：单一滚动容器 + 段落成对网格 -->
+    <html:div id="pp-bl-scroll"
+              style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+                     scrollbar-width:thin;background:var(--material-background,#fafafa);">
+      <html:div id="pp-bl-grid" data-cols="two">
+        <html:div id="pp-bl-head-src" class="pp-bl-head"></html:div>
+        <html:div id="pp-bl-head-dst" class="pp-bl-head"></html:div>
+      </html:div>
+    </html:div>
+
+    <!-- 状态条 -->
+    <hbox align="center"
+          style="flex:0 0 auto;gap:8px;padding:3px 8px;
+                 border-top:1px solid var(--material-border,#ccc);
+                 background:var(--material-toolbar,#f6f6f6);">
+      <html:span id="pp-bl-status"
+                 style="flex:1;min-width:0;font-size:11.5px;
+                        color:var(--fill-secondary,#666);overflow:hidden;
+                        text-overflow:ellipsis;white-space:nowrap;"></html:span>
+    </hbox>
+  </vbox>
+</window>

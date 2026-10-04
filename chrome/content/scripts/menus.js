@@ -154,6 +154,9 @@ var Menus = {
         () => SmartCleanup.run());
       // ---- 0.11.0 新增 ----
       popup.appendChild(this._xul(doc, "menuseparator"));
+      // 0.25.2：主入口改为左右双栏对照窗口；原「AI 双语笔记」保留（出口不变）
+      this._menuItem(doc, popup, "paperpilot-itemmenu-bilingual-view", "menuBilingualView",
+        () => BilingualTranslate.openViewerForSelected());
       this._menuItem(doc, popup, "paperpilot-itemmenu-bilingual", "menuBilingual",
         () => BilingualTranslate.runForSelected());
       this._menuItem(doc, popup, "paperpilot-itemmenu-review", "menuReview",

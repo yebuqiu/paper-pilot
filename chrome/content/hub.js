@@ -20,7 +20,7 @@
           { t: zh ? "AI 总结（生成笔记）" : "Summarize", d: zh ? "300-500 字总结研究问题、方法、结果与结论" : "300-500 word summary note", run: () => PP.menus.aiTaskForSelected((it) => PP.aiChat.summarize(it), "noteSummaryTitle") },
           { t: zh ? "AI 翻译标题与摘要" : "Translate title/abstract", d: zh ? "学术语气翻译，术语保留英文括号标注" : "Academic translation note", run: () => PP.menus.aiTaskForSelected((it) => PP.aiChat.translateTitleAbstract(it), "noteTranslateTitle") },
           { t: zh ? "AI 深度解读" : "Deep interpret", d: zh ? "五段式结构化解读：问题/方法/实验/创新/局限" : "Structured interpretation note", run: () => PP.menus.aiTaskForSelected((it) => PP.aiChat.interpret(it), "noteTitle") },
-          { t: zh ? "全文对照翻译" : "Bilingual translation", d: zh ? "逐段原文+译文对照的双语笔记（一次一篇）" : "Paragraph-by-paragraph bilingual note", run: () => PP.bilingual.runForSelected() },
+          { t: zh ? "全文对照翻译" : "Bilingual translation", d: zh ? "左右双栏对照窗口（左原文/右译文，窄屏自动单栏；一次一篇，窗口内可一键导出双语笔记）" : "Side-by-side bilingual window (source left / translation right; export a note from within)", run: () => PP.bilingual.openViewerForSelected() },
           { t: zh ? "AI 思维导图" : "Mind map", d: zh ? "生成层级大纲笔记，可导出 markmap .md" : "Outline note + .md export", run: () => PP.mindmap.runForSelected() },
           { t: zh ? "AI 问答侧栏" : "Chat sidebar", d: zh ? "选中条目后在右侧栏「AI 问答」直接提问" : "Auto: ask in the sidebar", info: true },
           { t: zh ? "划词浮窗" : "Selection popup", d: zh ? "阅读器内划词即翻译/解读/追问（设置中可配置）" : "Auto: translate/explain/ask in reader", info: true },

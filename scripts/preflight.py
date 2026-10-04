@@ -109,6 +109,7 @@ NODE_SUITES = [
     ("登录设备与会话", "test/sessions.test.js"),
     ("套餐 AI 能力", "test/ai-tier.test.js"),
     ("arXiv 核心(插件侧)", "test/arxiv-core.test.js"),
+    ("双栏对照窗口", "test/bilingual-view.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),
     ("全模块加载冒烟", "test/smoke-load.test.js"),
 ]

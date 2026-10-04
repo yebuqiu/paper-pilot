@@ -653,7 +653,8 @@
     document.querySelectorAll(".pp-wb-act").forEach((b) =>
       b.addEventListener("click", () => quickAction(b.getAttribute("data-act"))));
     $("pp-wb-chip-bilingual").addEventListener("click", () => {
-      try { PP.bilingual.runForSelected(); } catch (e) { /* ignore */ }
+      // 0.25.2：改为打开左右双栏对照窗口（原「生成双语笔记」入口仍在右键菜单与窗口内）
+      try { PP.bilingual.openViewerForSelected(); } catch (e) { /* ignore */ }
     });
     $("pp-wb-chip-mindmap").addEventListener("click", () => {
       try { PP.mindmap.runForSelected(); } catch (e) { /* ignore */ }
