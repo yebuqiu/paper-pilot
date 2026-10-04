@@ -7,19 +7,28 @@
  *   1) 兴趣画像：扫描库内条目 → 标题(×3)/标签(×3)/期刊(×2)/摘要(×1) 的词元频次
  *      加权；剔除「出现在过多条目里」的泛词；取 Top-N 作为画像词元；
  *      另从 extra/url/archiveID 里抽出 arXiv 分类（cs.CL 这类）作为偏好
- *   2) 拉取：arXiv Atom API 按分类（或按画像词元）拉最近提交，max_results 可配
+ *   2) 拉取：走 ArxivFetch（分页 + 重试 + 限速），按分类（或按画像词元）取最近提交
  *   3) 打分：条目 标题词元命中 ×3 + 摘要命中 ×1，按画像权重累加；分类命中加成；
  *      新近度小加成（越新越高，7 天衰减）
  *   4) 去重：按 arXiv id / DOI / 归一化标题排除**已在库**的；按 id 排除用户已忽略的
  *   5) 缓存：按天写入 pref（discoveryResults），对话框直接读缓存，绝不每次开窗都请求
  *
- * 依赖纪律：全部网络只在「用户点刷新」或「每日定时（开关默认关）」时发生；
- * 解析用自写 Atom 正则解析器（arXiv 输出格式稳定），可在 Node 里离线单测。
+ * 依赖纪律：全部网络只在「用户点刷新」或「每日定时（开关默认关）」时发生。
+ *
+ * ── 0.25.0 重构 ──────────────────────────────────────────────
+ * 本模块**不再自带** arXiv 查询构建与 Atom 解析：那两件事（外加去重、限速、分页、重试）
+ * 已抽成独立工具包 `tools/arxiv/`，再由 `scripts/build-arxiv-core.py` 生成到
+ * `chrome/content/scripts/arxiv/`（纯函数核心，插件作用域可用）。
+ *
+ * 这样做是为了根治一个老问题：同一套解析逻辑在「CLI 工具」与「插件」里各写一份，
+ * 然后慢慢漂移——表现是「命令行里解析对、插件里解析错」，且两边测试都是绿的。
+ * 现在单一真源在 tools 侧，改逻辑改源文件 → 重跑生成器；`preflight.py` 会拦住忘记生成。
+ *
+ * 本模块保留的是**真正属于「发现」的东西**：兴趣画像、打分排序、库内去重、按天缓存。
  */
-/* global Zotero, Services, Prefs, I18n */
+/* global Zotero, Services, Prefs, I18n, ArxivFetch, ArxivCategories, ArxivErrors */
 
 var Discovery = {
-  ARXIV_API: "https://export.arxiv.org/api/query",
 
   /* ---------------- 分词与画像（纯函数，可离线单测） ---------------- */
 
@@ -150,74 +159,47 @@ var Discovery = {
     return { terms, categories, scanned: docs.length };
   },
 
-  /* ---------------- arXiv Atom 解析（纯函数） ---------------- */
-
-  _decode(s) {
-    return String(s == null ? "" : s)
-      .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-      .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCodePoint(parseInt(h, 16)))
-      .replace(/&#(\d+);/g, (m, d) => String.fromCodePoint(Number(d)))
-      .replace(/&amp;/g, "&");
+  /* ---------------- 条目形状适配（0.25.0） ----------------
+   *
+   * 解析已移交给生成出来的 ArxivAtom（单一真源 tools/arxiv/src/atom.js）。
+   * 它产出的字段名与 UI 期望的略有差异：核心用 absUrl/pdfUrl，而 discovery-ui.js 读
+   * link/pdfLink。这里做一次显式别名映射，而不是去改窗口脚本——
+   * 窗口脚本跑在独立作用域、改动面越大回归风险越高，且 link/pdfLink 在旧缓存里已落盘，
+   * 改了字段名会让「升级后首次打开」读旧缓存时字段缺失。
+   */
+  _normalize(e) {
+    const abs = e.absUrl || e.idUrl || "";
+    const pdf = e.pdfUrl || "";
+    return {
+      arxivId: e.arxivId,
+      version: e.version,
+      versionTag: e.versionTag,
+      title: e.title,
+      summary: e.summary,
+      authors: e.authors || [],
+      authorsDetailed: e.authorsDetailed || [],
+      published: e.published,
+      updated: e.updated,
+      updatedDay: e.updatedDay || "",
+      categories: e.categories || [],
+      primaryCategory: e.primaryCategory || e.archive || "",
+      archive: e.archive || "",
+      doi: e.doi || "",
+      journalRef: e.journalRef || "",
+      comment: e.comment || "",
+      link: abs,
+      pdfLink: pdf,
+      absUrl: abs,
+      pdfUrl: pdf,
+    };
   },
 
-  _clean(s) {
-    return this._decode(String(s || "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
-  },
-
-  _tag(block, name) {
-    const m = block.match(new RegExp("<" + name + "[^>]*>([\\s\\S]*?)</" + name + ">", "i"));
-    return m ? m[1] : "";
-  },
-
-  /** arXiv Atom XML → 结构化条目数组（纯函数） */
-  parseAtom(xml) {
-    const out = [];
-    const src = String(xml || "");
-    const blocks = src.split(/<entry[\s>]/i).slice(1);
-    for (const raw of blocks) {
-      const b = raw.split(/<\/entry>/i)[0];
-      const idUrl = this._clean(this._tag(b, "id"));
-      const idm = idUrl.match(/(\d{4}\.\d{4,5})(v\d+)?/);
-      const authors = [];
-      for (const m of b.match(/<author>[\s\S]*?<\/author>/gi) || []) {
-        const n = this._clean(this._tag(m, "name"));
-        if (n) authors.push(n);
-      }
-      const cats = [];
-      for (const m of b.match(/<category[^>]*term="([^"]+)"/gi) || []) {
-        const t = (m.match(/term="([^"]+)"/) || [])[1];
-        if (t) cats.push(t);
-      }
-      const primary = (b.match(/<arxiv:primary_category[^>]*term="([^"]+)"/i) || [])[1] || cats[0] || "";
-      const links = {};
-      for (const m of b.match(/<link[^>]*\/>/gi) || []) {
-        const href = (m.match(/href="([^"]+)"/) || [])[1] || "";
-        const rel = (m.match(/rel="([^"]+)"/) || [])[1] || "";
-        const type = (m.match(/type="([^"]+)"/) || [])[1] || "";
-        const title = (m.match(/title="([^"]+)"/) || [])[1] || "";
-        if (type === "application/pdf" || title === "pdf") links.pdf = href;
-        if (rel === "alternate") links.abs = href;
-      }
-      const entry = {
-        arxivId: idm ? idm[1] : "",
-        version: idm && idm[2] ? idm[2] : "",
-        title: this._clean(this._tag(b, "title")),
-        summary: this._clean(this._tag(b, "summary")),
-        authors,
-        published: this._clean(this._tag(b, "published")),
-        updated: this._clean(this._tag(b, "updated")),
-        categories: [...new Set(cats)],
-        primary,
-        link: links.abs || idUrl,
-        pdfLink: links.pdf || (idm ? "https://arxiv.org/pdf/" + idm[1] : ""),
-        doi: this._clean(this._tag(b, "arxiv:doi")),
-        journalRef: this._clean(this._tag(b, "arxiv:journal_ref")),
-        comment: this._clean(this._tag(b, "arxiv:comment")),
-      };
-      if (entry.arxivId && entry.title) out.push(entry);
-    }
-    return out;
+  /** 把 ArxivErrors 的中文说明转成给用户看的一句话（带建议时一起给）。 */
+  _errText(e, zh) {
+    if (!e) return zh ? "未知错误" : "unknown error";
+    let s = (e.message || String(e));
+    if (e.hint) s += (zh ? "（建议：" : " (hint: ") + e.hint + ")";
+    return s;
   },
 
   /* ---------------- 打分与去重（纯函数） ---------------- */
@@ -304,32 +286,42 @@ var Discovery = {
     return scored.slice(0, o.max || 30);
   },
 
-  /* ---------------- 网络与存储 ---------------- */
+  /* ---------------- 检索条件构建与拉取 ---------------- */
 
-  /** 构建 arXiv 查询串：优先分类，无分类则用画像词元 */
-  buildQuery(profile, opts) {
-    const o = opts || {};
-    const cats = (o.categories || []).filter(Boolean).slice(0, 4);
-    if (cats.length) {
-      return cats.map((c) => "cat:" + c).join("+OR+");
-    }
-    const terms = (profile.terms || []).slice(0, 6).map((t) => t.term.replace(/["\\]/g, ""));
-    if (!terms.length) return "";
-    return terms.map((t) => 'all:"' + t + '"').join("+OR+");
+  /**
+   * 把「画像 + 用户设置的分类」翻成检索条件。
+   *
+   * ★ 多分类必须用 `categoryMode: "OR"`（并集）。默认的 AND 表示「同时属于这些分类的
+   * 交叉列表论文」——用户填 `cs.AI, cs.CL, cs.LG` 的意图显然是「这几个领域里的新东西」，
+   * 用 AND 会把结果集从「任意其一」缩到「三者皆属」，直接偏离预期（0.24.0 的旧实现
+   * 就是手写 `+OR+`，重构时若照搬默认值会静默改变推荐结果集）。
+   *
+   * @returns {object|null} 交给 ArxivFetch.search 的 spec；无法构建时返回 null
+   */
+  _spec(profile, cats) {
+    const list = (cats || []).filter(Boolean).slice(0, 4);
+    if (list.length) return { categories: list, categoryMode: "OR" };
+    const terms = (profile && profile.terms ? profile.terms : [])
+      .slice(0, 6)
+      .map((t) => String(t.term || "").replace(/["\\]/g, ""))
+      .filter(Boolean);
+    if (!terms.length) return null;
+    // 画像词元之间是 OR：命中任意一个兴趣词都算相关（要求全命中会几乎无结果）
+    return { keywords: terms, boolean: "OR" };
   },
 
-  async fetchFeed(query, maxResults) {
-    const url = this.ARXIV_API + "?search_query=" + query +
-      "&start=0&max_results=" + Math.max(1, Math.min(200, maxResults || 100)) +
-      "&sortBy=submittedDate&sortOrder=descending";
-    // 应用层超时（与 S2Client 同理：挂起的 XHR 会占满连接池，导致后续请求永不发出）
-    const resp = await Promise.race([
-      Zotero.HTTP.request("GET", url, { responseType: "text", timeout: 30000 }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error("arXiv 请求超时（30s）")), 31000)),
-    ]);
-    return String(resp.responseText || resp.response || "");
+  /** 分类拼写核对（只提醒、不中止）：cs.cl / cs.NLP 这类是新手最常见的失败原因。 */
+  _categoryNote(cats, zh) {
+    if (!cats || !cats.length) return "";
+    let r;
+    try { r = ArxivCategories.checkAll(cats); } catch (e) { return ""; }
+    const bad = (r.unknown || []).concat(r.malformed || []);
+    if (!bad.length) return "";
+    const hints = (r.suggestions || []).slice(0, 3)
+      .map((s) => s.input + "→" + s.suggestions.slice(0, 2).map((x) => x.code).join("/"));
+    return (zh ? "分类可能写错了（arXiv 区分大小写）：" : "Possibly invalid categories (case-sensitive): ")
+      + bad.join(", ") + (hints.length ? (zh ? "；可能是：" : "; did you mean: ") + hints.join("、") : "");
   },
-
   /** 读取/写入缓存 */
   loadCache() {
     try {
@@ -377,7 +369,6 @@ var Discovery = {
    * @returns {{ok:boolean, reason?:string, count?:number, ...}}
    */
   async run(opts) {
-    const o = opts || {};
     const zh = I18n.isZh;
     const cats = this.categoriesPref();
     let items;
@@ -385,23 +376,30 @@ var Discovery = {
     catch (e) { return { ok: false, reason: (zh ? "读取库失败：" : "Library read failed: ") + (e && e.message || e) }; }
 
     const profile = this.buildProfile(items, { topTerms: Number(Prefs.get("discoveryProfileTerms", 40)) });
-    const query = this.buildQuery(profile, { categories: cats });
-    if (!query) {
+    const spec = this._spec(profile, cats);
+    if (!spec) {
       return { ok: false, reason: zh
         ? "库中可分析的文献太少，且未指定 arXiv 分类。请先在设置里填写分类（如 cs.CL, cs.AI），或先往库里导入一些文献。"
         : "Not enough analyzable items and no arXiv categories set." };
     }
-    let xml;
+    const catNote = this._categoryNote(cats, zh);
+    // 条数上限走既有 pref（默认 100）；每页 100 拉、最多 5 页 ——
+    // 既满足「多看一些」，也不会把用户按在刷新按钮上等太久（3 秒/次是 arXiv 的硬约束）。
+    const limit = Math.max(1, Math.min(500, Number(Prefs.get("discoveryMaxPerFeed", 100)) || 100));
+    const pageSize = Math.max(1, Math.min(100, limit));
+    let res;
     try {
-      xml = await this.fetchFeed(query, Number(Prefs.get("discoveryMaxPerFeed", 100)));
+      res = await ArxivFetch.search(spec, {
+        limit: limit,
+        pageSize: pageSize,
+        maxPages: Math.max(1, Math.ceil(limit / pageSize)),
+      });
     } catch (e) {
-      return { ok: false, reason: (zh ? "arXiv 拉取失败：" : "arXiv fetch failed: ") + (e && e.message || e) };
+      return { ok: false, reason: (zh ? "arXiv 拉取失败：" : "arXiv fetch failed: ") + this._errText(e, zh) };
     }
-    const entries = this.parseAtom(xml);
+    const entries = (res.entries || []).map((e) => this._normalize(e));
     if (!entries.length) {
-      return { ok: false, reason: zh
-        ? "arXiv 没有返回条目（分类代码可能写错了，例如应为 cs.CL 而非 cs.cl）。"
-        : "arXiv returned no entries (check category codes, e.g. cs.CL)." };
+      return { ok: false, reason: [zh ? "arXiv 没有返回条目。" : "arXiv returned no entries.", catNote].filter(Boolean).join(" ") };
     }
     const known = this.knownIndex(items);
     const ranked = this.rank(entries, profile, {
@@ -414,19 +412,23 @@ var Discovery = {
     // 必须显式说明并给出可执行建议，而不是静静给出一张看起来正常的无用清单
     // （实测：中医/抽动障碍主题的库 + 默认 cs.AI/cs.CL/cs.LG → 30 条推荐全 9.1 分、零词元命中）
     const withTermHits = ranked.filter((e) => (e.termHits || 0) > 0).length;
-    let note = "";
+    let note = catNote;
     if (ranked.length && withTermHits === 0) {
-      note = zh
+      note = [note, zh
         ? "本批推荐没有任何一条与你的库内兴趣词真实重合（只命中了分类）。很可能所选 arXiv 分类与你的研究领域不匹配——"
           + "请把分类改成领域对应的（例如神经科学用 q-bio.NC、医学信息学用 q-bio.QM），或清空分类框改用库内兴趣词检索。"
         : "None of these recommendations match your library's interest terms (category boost only). "
-          + "The chosen categories likely don't match your field — change them, or clear the field to search by interest terms.";
+          + "The chosen categories likely don't match your field — change them, or clear the field to search by interest terms."
+      ].filter(Boolean).join(" ");
     }
     const data = {
       generatedAt: new Date().toISOString(),
       scope: cats.length ? (zh ? "分类：" : "Categories: ") + cats.join(", ") : (zh ? "按库内兴趣词" : "By interest terms"),
-      query,
+      query: res.query,
       fetched: entries.length,
+      pages: res.pages,
+      totalResults: res.totalResults,
+      duplicatesRemoved: res.duplicatesRemoved,
       termMatched: withTermHits,
       note,
       profile: { terms: profile.terms.slice(0, 20), categories: profile.categories },
@@ -434,7 +436,8 @@ var Discovery = {
     };
     this.saveCache(data);
     Prefs.set("discoveryLastRun", this._today());
-    return { ok: true, count: ranked.length, fetched: entries.length, data };
+    return { ok: true, count: ranked.length, fetched: entries.length, pages: res.pages,
+      duplicatesRemoved: res.duplicatesRemoved, totalResults: res.totalResults, data };
   },
 
   /** 全库常规条目（用于画像与去重） */
@@ -461,7 +464,8 @@ var Discovery = {
     set("title", entry.title);
     set("abstractNote", entry.summary);
     if (entry.published) set("date", String(entry.published).slice(0, 10));
-    set("url", entry.link);
+    // 兼容两种输入：核心 entry（absUrl/pdfUrl）与 UI 归一化后的 entry（link/pdfLink）
+    set("url", entry.absUrl || entry.link || "");
     set("repository", "arXiv");
     if (entry.doi) set("DOI", entry.doi);
     if (entry.journalRef) set("publicationTitle", entry.journalRef);

@@ -1,0 +1,450 @@
+{
+  "requested": 1,
+  "totalResults": 1,
+  "fetched": 1,
+  "pages": 1,
+  "duplicatesRemoved": 0,
+  "missing": [],
+  "entries": [
+    {
+      "arxivId": "1706.03762",
+      "baseId": "1706.03762",
+      "version": 7,
+      "versionTag": "v7",
+      "idUrl": "http://arxiv.org/abs/1706.03762v7",
+      "title": "Attention Is All You Need",
+      "summary": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experiments on two machine translation tasks show these models to be superior in quality while being more parallelizable and requiring significantly less time to train. Our model achieves 28.4 BLEU on the WMT 2014 English-to-German translation task, improving over the existing best results, including ensembles by over 2 BLEU. On the WMT 2014 English-to-French translation task, our model establishes a new single-model state-of-the-art BLEU score of 41.8 after training for 3.5 days on eight GPUs, a small fraction of the training costs of the best models from the literature. We show that the Transformer generalizes well to other tasks by applying it successfully to English constituency parsing both with large and limited training data.",
+      "summaryRaw": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experiments on two machine translation tasks show these models to be superior in quality while being more parallelizable and requiring significantly less time to train. Our model achieves 28.4 BLEU on the WMT 2014 English-to-German translation task, improving over the existing best results, including ensembles by over 2 BLEU. On the WMT 2014 English-to-French translation task, our model establishes a new single-model state-of-the-art BLEU score of 41.8 after training for 3.5 days on eight GPUs, a small fraction of the training costs of the best models from the literature. We show that the Transformer generalizes well to other tasks by applying it successfully to English constituency parsing both with large and limited training data.",
+      "summaryParagraphs": [
+        "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experiments on two machine translation tasks show these models to be superior in quality while being more parallelizable and requiring significantly less time to train. Our model achieves 28.4 BLEU on the WMT 2014 English-to-German translation task, improving over the existing best results, including ensembles by over 2 BLEU. On the WMT 2014 English-to-French translation task, our model establishes a new single-model state-of-the-art BLEU score of 41.8 after training for 3.5 days on eight GPUs, a small fraction of the training costs of the best models from the literature. We show that the Transformer generalizes well to other tasks by applying it successfully to English constituency parsing both with large and limited training data."
+      ],
+      "authors": [
+        "Ashish Vaswani",
+        "Noam Shazeer",
+        "Niki Parmar",
+        "Jakob Uszkoreit",
+        "Llion Jones",
+        "Aidan N. Gomez",
+        "Lukasz Kaiser",
+        "Illia Polosukhin"
+      ],
+      "authorsDetailed": [
+        {
+          "name": "Ashish Vaswani",
+          "affiliations": []
+        },
+        {
+          "name": "Noam Shazeer",
+          "affiliations": []
+        },
+        {
+          "name": "Niki Parmar",
+          "affiliations": []
+        },
+        {
+          "name": "Jakob Uszkoreit",
+          "affiliations": []
+        },
+        {
+          "name": "Llion Jones",
+          "affiliations": []
+        },
+        {
+          "name": "Aidan N. Gomez",
+          "affiliations": []
+        },
+        {
+          "name": "Lukasz Kaiser",
+          "affiliations": []
+        },
+        {
+          "name": "Illia Polosukhin",
+          "affiliations": []
+        }
+      ],
+      "authorText": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, Illia Polosukhin",
+      "published": "2017-06-12T17:57:34Z",
+      "updated": "2023-08-02T00:41:18Z",
+      "publishedDay": "2017-06-12",
+      "updatedDay": "2023-08-02",
+      "categories": [
+        "cs.CL",
+        "cs.LG"
+      ],
+      "primaryCategory": "cs.CL",
+      "archive": "cs",
+      "doi": "",
+      "journalRef": "",
+      "comment": "15 pages, 5 figures",
+      "license": "",
+      "absUrl": "https://arxiv.org/abs/1706.03762v7",
+      "pdfUrl": "https://arxiv.org/pdf/1706.03762v7",
+      "links": {
+        "abs": "https://arxiv.org/abs/1706.03762v7",
+        "pdf": "https://arxiv.org/pdf/1706.03762v7",
+        "doi": "",
+        "other": []
+      }
+    }
+  ],
+  "batches": [
+    {
+      "ids": [
+        "1706.03762"
+      ],
+      "fromCache": false,
+      "count": 1
+    }
+  ],
+  "generatedAt": "2026-10-03T18:53:07.963Z",
+  "elapsedMs": 358,
+  "analysis": {
+    "total": 1,
+    "entries": [
+      {
+        "arxivId": "1706.03762",
+        "baseId": "1706.03762",
+        "version": 7,
+        "versionTag": "v7",
+        "idUrl": "http://arxiv.org/abs/1706.03762v7",
+        "title": "Attention Is All You Need",
+        "summary": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experiments on two machine translation tasks show these models to be superior in quality while being more parallelizable and requiring significantly less time to train. Our model achieves 28.4 BLEU on the WMT 2014 English-to-German translation task, improving over the existing best results, including ensembles by over 2 BLEU. On the WMT 2014 English-to-French translation task, our model establishes a new single-model state-of-the-art BLEU score of 41.8 after training for 3.5 days on eight GPUs, a small fraction of the training costs of the best models from the literature. We show that the Transformer generalizes well to other tasks by applying it successfully to English constituency parsing both with large and limited training data.",
+        "summaryRaw": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experiments on two machine translation tasks show these models to be superior in quality while being more parallelizable and requiring significantly less time to train. Our model achieves 28.4 BLEU on the WMT 2014 English-to-German translation task, improving over the existing best results, including ensembles by over 2 BLEU. On the WMT 2014 English-to-French translation task, our model establishes a new single-model state-of-the-art BLEU score of 41.8 after training for 3.5 days on eight GPUs, a small fraction of the training costs of the best models from the literature. We show that the Transformer generalizes well to other tasks by applying it successfully to English constituency parsing both with large and limited training data.",
+        "summaryParagraphs": [
+          "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks in an encoder-decoder configuration. The best performing models also connect the encoder and decoder through an attention mechanism. We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely. Experiments on two machine translation tasks show these models to be superior in quality while being more parallelizable and requiring significantly less time to train. Our model achieves 28.4 BLEU on the WMT 2014 English-to-German translation task, improving over the existing best results, including ensembles by over 2 BLEU. On the WMT 2014 English-to-French translation task, our model establishes a new single-model state-of-the-art BLEU score of 41.8 after training for 3.5 days on eight GPUs, a small fraction of the training costs of the best models from the literature. We show that the Transformer generalizes well to other tasks by applying it successfully to English constituency parsing both with large and limited training data."
+        ],
+        "authors": [
+          "Ashish Vaswani",
+          "Noam Shazeer",
+          "Niki Parmar",
+          "Jakob Uszkoreit",
+          "Llion Jones",
+          "Aidan N. Gomez",
+          "Lukasz Kaiser",
+          "Illia Polosukhin"
+        ],
+        "authorsDetailed": [
+          {
+            "name": "Ashish Vaswani",
+            "affiliations": []
+          },
+          {
+            "name": "Noam Shazeer",
+            "affiliations": []
+          },
+          {
+            "name": "Niki Parmar",
+            "affiliations": []
+          },
+          {
+            "name": "Jakob Uszkoreit",
+            "affiliations": []
+          },
+          {
+            "name": "Llion Jones",
+            "affiliations": []
+          },
+          {
+            "name": "Aidan N. Gomez",
+            "affiliations": []
+          },
+          {
+            "name": "Lukasz Kaiser",
+            "affiliations": []
+          },
+          {
+            "name": "Illia Polosukhin",
+            "affiliations": []
+          }
+        ],
+        "authorText": "Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, Illia Polosukhin",
+        "published": "2017-06-12T17:57:34Z",
+        "updated": "2023-08-02T00:41:18Z",
+        "publishedDay": "2017-06-12",
+        "updatedDay": "2023-08-02",
+        "categories": [
+          "cs.CL",
+          "cs.LG"
+        ],
+        "primaryCategory": "cs.CL",
+        "archive": "cs",
+        "doi": "",
+        "journalRef": "",
+        "comment": "15 pages, 5 figures",
+        "license": "",
+        "absUrl": "https://arxiv.org/abs/1706.03762v7",
+        "pdfUrl": "https://arxiv.org/pdf/1706.03762v7",
+        "links": {
+          "abs": "https://arxiv.org/abs/1706.03762v7",
+          "pdf": "https://arxiv.org/pdf/1706.03762v7",
+          "doi": "",
+          "other": []
+        }
+      }
+    ],
+    "structured": [
+      {
+        "arxivId": "1706.03762",
+        "structured": false,
+        "sections": [],
+        "preamble": ""
+      }
+    ],
+    "structuredCount": 0,
+    "categories": {
+      "total": 1,
+      "distinctCategories": 2,
+      "byCategory": [
+        {
+          "name": "cs.CL",
+          "count": 1,
+          "share": 1
+        },
+        {
+          "name": "cs.LG",
+          "count": 1,
+          "share": 1
+        }
+      ],
+      "byPrimary": [
+        {
+          "name": "cs.CL",
+          "count": 1,
+          "share": 1
+        }
+      ],
+      "byArchive": [
+        {
+          "name": "cs",
+          "count": 1,
+          "share": 1
+        }
+      ],
+      "coOccurrence": [
+        {
+          "pair": "cs.CL + cs.LG",
+          "count": 1
+        }
+      ]
+    },
+    "histogram": [
+      {
+        "bucket": "2017-06",
+        "count": 1
+      }
+    ],
+    "keywords": [
+      {
+        "term": "attention",
+        "tf": 3,
+        "df": 1,
+        "idf": 0.693,
+        "score": 2.079
+      },
+      {
+        "term": "need",
+        "tf": 2,
+        "df": 1,
+        "idf": 0.693,
+        "score": 1.386
+      },
+      {
+        "term": "you",
+        "tf": 2,
+        "df": 1,
+        "idf": 0.693,
+        "score": 1.386
+      },
+      {
+        "term": "achieves",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "applying",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "architecture",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "best",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "bleu",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "complex",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "configuration",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "connect",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "constituency",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "convolutional",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "convolutions",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "costs",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "days",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "decoder",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "dispensing",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "dominant",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "eight",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "encoder",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "encoder-decoder",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "english",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "english-to-french",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "english-to-german",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "ensembles",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "entirely",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "establishes",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "existing",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      },
+      {
+        "term": "experiments",
+        "tf": 1,
+        "df": 1,
+        "idf": 0.693,
+        "score": 0.693
+      }
+    ]
+  },
+  "command": "get"
+}

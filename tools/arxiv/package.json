@@ -1,0 +1,25 @@
+{
+  "name": "paperpilot-arxiv",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PaperPilot arXiv 工具包：检索、元数据抓取、信息提取、增量更新与双通道输出（零第三方依赖）",
+  "main": "src/index.js",
+  "bin": {
+    "arxiv": "bin/arxiv.js"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=14"
+  },
+  "scripts": {
+    "test": "node test/run-all.js",
+    "check": "node test/run-all.js --include-network"
+  },
+  "keywords": [
+    "arxiv",
+    "paperpilot",
+    "literature",
+    "metadata"
+  ],
+  "license": "Apache-2.0"
+}

@@ -140,6 +140,12 @@ var I18n = (() => {
     themeGroupScenery: zh ? "风景" : "Scenery",
     themeGroupDynamic: zh ? "动态壁纸" : "Animated",
     themeCustom: zh ? "自定义主题" : "Custom theme",
+    themeGroupGiant: zh ? "巨物风" : "Giant",
+    // ---- 0.25.0 统一主题切换按钮（阅读器工具栏 + 主窗口左上角，两处同源）----
+    themeButtonTip: zh ? "PaperPilot 主题（界面 + 阅读页）" : "PaperPilot themes (UI + reading)",
+    themeOpenSettings: zh
+      ? "外观主题设置…（自定义配色 / 壁纸）"
+      : "Appearance theme settings… (custom colors / wallpaper)",
     // ---- 0.21.0 多篇 PDF 并排对比 ----
     menuPdfCompare: zh ? "多篇 PDF 并排对比…" : "Compare PDFs Side by Side…",
     compareWindowTitle: zh ? "PaperPilot 多篇 PDF 对比" : "PaperPilot PDF Comparison",

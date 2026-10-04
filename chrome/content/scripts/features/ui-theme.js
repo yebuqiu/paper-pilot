@@ -19,6 +19,9 @@
 
 var UiTheme = {
   STYLE_ID: "paperpilot-ui-theme-style",
+  // 0.25.0：阅读器界面（reader.html）自己的注入点。阅读器是独立文档（iframe），
+  // 主窗口的 #main-window 规则够不到，必须单独往 reader 文档 :root 上打一遍变量。
+  READER_STYLE_ID: "paperpilot-ui-theme-reader",
   WALLPAPER_ID: "paperpilot-ui-wallpaper",
   PREF_KEY: "uiTheme",           // "" = 原生；"custom"；主题库 id
   PREF_CUSTOM: "uiThemeCustom",  // 自定义主题色板 JSON
@@ -898,12 +901,12 @@ var UiTheme = {
     ];
   },
 
-  _css(theme, wp) {
-    if (!theme) return "";
+  /** 主窗口/对话框/功能中心通用变量组（--material-* / --fill-* / --color-* / --accent-*）。
+   *  0.25.0 从 _css() 里抽出：阅读器界面要用同一套「色板角色 → 变量」映射，
+   *  只是变量名要按 reader.css 的原生拼写来（见 _readerCSS）。 */
+  _varDecls(theme, wp) {
     const c = theme.colors;
-    let select = c.select || "";
-    if (select.length === 7) select += "26";
-    const decls = [
+    return [
       "--material-background: " + this._wpSurface(c.background, wp),
       "--material-sidepane: " + this._wpSurface(c.side, wp),
       "--material-toolbar: " + this._wpBar(c.toolbar, wp),
@@ -933,6 +936,122 @@ var UiTheme = {
       "--lwt-selected-tab-background-color: " + this._wpSurface(c.background, wp),
       "--tabpanel-background-color: " + this._wpSurface(c.background, wp),
     ];
+  },
+
+  /** 阅读器界面（reader.html）的变量组。
+   *  ⚠️ 这里刻意不复用 _varDecls()：reader.css 用的是**原生拼写**
+   *  `--fill-quarternary`（少一个 r，Zotero 自己的拼写），而主窗口那套是
+   *  `--fill-quaternary`；写错一个字母，reader 的所有 hover 底色就全失效。
+   *  只覆盖颜色，不碰布局；`color-scheme` 一并同步，让滚动条/表单控件跟着明暗走。 */
+  _readerCSS(theme) {
+    const c = theme.colors;
+    const dark = !!theme.dark;
+    const mix = (a, b, t) => this._mix(a, b, t);
+    const decls = [
+      // 结构底色
+      "--color-background: " + c.background,
+      "--color-background50: " + this._rgba(c.background, 0.5),
+      "--color-background70: " + this._rgba(c.background, 0.7),
+      "--color-sidepane: " + c.side,
+      "--color-toolbar: " + c.toolbar,
+      "--color-tabbar: " + c.tab,
+      "--color-menu: " + c.menu,
+      "--color-button: " + c.surface,
+      "--color-control: " + c.surface,
+      "--color-border: " + c.line,
+      "--color-border50: " + this._rgba(c.line, 0.5),
+      "--color-panedivider: " + c.line,
+      "--color-quinary-on-background: " + mix(c.ink, c.background, 0.05),
+      "--color-quarternary-on-background: " + mix(c.ink, c.background, 0.10),
+      "--color-quarternary-on-sidepane: " + mix(c.ink, c.side, 0.10),
+      // 文字 / 填充层
+      "--fill-primary: " + c.ink,
+      "--fill-secondary: " + c.ink2,
+      "--fill-tertiary: " + c.ink3,
+      "--fill-quarternary: " + mix(c.ink, c.background, 0.10),
+      "--fill-quinary: " + mix(c.ink, c.background, 0.05),
+      "--fill-senary: " + this._rgba(c.ink, 0.02),
+      // 强调色（reader 只用 accent-blue 一支）
+      "--accent-blue: " + c.accent,
+      "--accent-blue10: " + this._rgba(c.accent, 0.10),
+      "--accent-blue30: " + this._rgba(c.accent, 0.30),
+      "--accent-blue50: " + this._rgba(c.accent, 0.50),
+      "--accent-red: " + (dark ? "#f85149" : "#cf222e"),
+      "--accent-green: " + (dark ? "#3fb950" : "#1a7f37"),
+      "--accent-yellow: " + (dark ? "#d29922" : "#9a6700"),
+      // material 层（reader.css 里多半只是 var() 别名，这里直接给值更稳）
+      "--material-background: " + c.background,
+      "--material-background50: " + this._rgba(c.background, 0.5),
+      "--material-background70: " + this._rgba(c.background, 0.7),
+      "--material-sidepane: " + c.side,
+      "--material-toolbar: " + c.toolbar,
+      "--material-tabbar: " + c.tab,
+      "--material-menu: " + c.menu,
+      "--material-button: " + c.surface,
+      "--material-control: " + c.surface,
+      "--material-border: 1px solid " + c.line,
+      "--material-panedivider: 1px solid " + c.line,
+      "--material-border-quinary: 1px solid " + this._rgba(c.ink, 0.05),
+      "color-scheme: " + (dark ? "dark" : "light"),
+    ];
+    return ":root {\n  " + decls.map((d) => d + " !important;").join("\n  ") + "\n}\n";
+  },
+
+  /** 把界面主题注入单个阅读器文档（reader.html）。
+   *  reader.css 把变量声明在 :root 上；我们在**同一个元素**上用 !important 覆盖，
+   *  必胜它的 `:root[data-color-scheme=...]`（important 压制 non-important，
+   *  与特异性无关），也就避开了「子元素自身声明胜过父级继承」那条层叠铁律。 */
+  applyToReaderDoc(doc) {
+    if (!doc || !doc.documentElement) return;
+    try {
+      const theme = this.current();
+      let style = doc.getElementById(this.READER_STYLE_ID);
+      if (!theme) {
+        if (style) style.remove();
+        return;
+      }
+      if (!style) {
+        style = doc.createElementNS("http://www.w3.org/1999/xhtml", "style");
+        style.id = this.READER_STYLE_ID;
+        (doc.head || doc.documentElement).appendChild(style);
+      }
+      const css = this._readerCSS(theme);
+      if (style.textContent !== css) style.textContent = css;
+    } catch (e) {
+      try { Zotero.logError(e); } catch (_) { /* ignore */ }
+    }
+  },
+
+  /** 已打开的阅读器文档列表（与 PdfTheme.refresh 同一双路径枚举） */
+  _readerDocs() {
+    const out = [];
+    const push = (win) => {
+      if (win && win.document && out.indexOf(win.document) < 0) out.push(win.document);
+    };
+    try {
+      for (const r of (Zotero.Reader && Zotero.Reader._readers) || []) push(r && r._iframeWindow);
+    } catch (e) { /* ignore */ }
+    try {
+      for (const win of Zotero.getMainWindows()) {
+        if (!win.ZoteroPane) continue;
+        for (const bro of win.document.querySelectorAll("browser.reader")) push(bro.contentWindow);
+      }
+    } catch (e) { /* ignore */ }
+    return out;
+  },
+
+  /** 界面主题变化时，让所有已打开的阅读器界面同步换肤（实时生效，无需重开文档） */
+  refreshReaders() {
+    for (const doc of this._readerDocs()) this.applyToReaderDoc(doc);
+  },
+
+  _css(theme, wp) {
+    if (!theme) return "";
+    const c = theme.colors;
+    // 选中行底色（条目树/分类树）：7 位 hex 补成 8 位带透明度
+    let select = c.select || "";
+    if (select.length === 7) select += "26";
+    const decls = this._varDecls(theme, wp);
     // 设置面板变量组随主题派生
     // ⚠️ 必须直接命中 .pp-root 元素自身：CSS 自定义属性按声明元素层叠，
     // .pp-root 在 prefs.css 里的自身声明永远胜过从父级继承的值（哪怕父级带
@@ -1177,9 +1296,10 @@ var UiTheme = {
     return out;
   },
 
-  /** 主入口：立即对全部窗口应用/清除当前主题 */
+  /** 主入口：立即对全部窗口应用/清除当前主题（含已打开的阅读器界面） */
   apply() {
     for (const win of this._allWindows()) this._applyToWindow(win);
+    this.refreshReaders();
   },
 
   /** 一键切换主题：配色+壁纸+推荐可见度 打包生效，pref 持久化（重启自动恢复） */
@@ -1273,6 +1393,13 @@ var UiTheme = {
         const s = win.document && win.document.getElementById(this.STYLE_ID);
         if (s) s.remove();
         this._applyWallpaper(win, null);
+      } catch (e) { /* ignore */ }
+    }
+    // 阅读器文档的注入也一并清掉
+    for (const doc of this._readerDocs()) {
+      try {
+        const s = doc.getElementById(this.READER_STYLE_ID);
+        if (s) s.remove();
       } catch (e) { /* ignore */ }
     }
   },

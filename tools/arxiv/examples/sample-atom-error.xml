@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/EXAMPLE/error</id>
+  <title>arXiv Query: search_query=cat:cs.cl</title>
+  <updated>2026-10-03T18:40:00Z</updated>
+  <opensearch:totalResults>0</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <opensearch:itemsPerPage>0</opensearch:itemsPerPage>
+  <entry>
+    <id>http://arxiv.org/api/errors#incorrect_category_format</id>
+    <title>Error</title>
+    <summary>incorrect category format: cs.cl</summary>
+  </entry>
+</feed>

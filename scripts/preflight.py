@@ -72,6 +72,9 @@ def collect_js():
         os.path.join(ROOT, "chrome", "**", "*.js"),
         os.path.join(ROOT, "server", "**", "*.js"),
         os.path.join(ROOT, "test", "**", "*.js"),
+        # 0.25.0：tools/（arXiv 工具包）也要过语法 —— 它是插件侧核心的**单一真源**，
+        # 生成物在 chrome/ 下已被覆盖，但源文件本身错了会让「生成出一份坏代码」。
+        os.path.join(ROOT, "tools", "**", "*.js"),
     ]
     out = set()
     for p in pats:
@@ -105,6 +108,7 @@ NODE_SUITES = [
     ("优惠券/折扣码", "test/coupon.test.js"),
     ("登录设备与会话", "test/sessions.test.js"),
     ("套餐 AI 能力", "test/ai-tier.test.js"),
+    ("arXiv 核心(插件侧)", "test/arxiv-core.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),
     ("全模块加载冒烟", "test/smoke-load.test.js"),
 ]
@@ -146,10 +150,19 @@ def main(argv):
     ok, summary, detail = step_syntax()
     record("语法检查", ok, summary, detail)
 
+    # 1b) arXiv 核心生成物同步（改了 tools/arxiv/src 却忘了重新生成 → 这里拦住）
+    #     必须排在插件侧测试之前：生成物不同步时那套测试测的是旧产物，结论无意义。
+    code, out = run([PY, "scripts/build-arxiv-core.py", "--check"], timeout=120)
+    record("arXiv 生成物", code == 0, pick_summary(out), None if code == 0 else out)
+
     # 2) 各测试套件（即便语法步失败也照跑，能给出更具体的报错）
     for label, rel in NODE_SUITES:
         code, out = run([NODE, rel], timeout=600)
         record(label, code == 0, pick_summary(out), None if code == 0 else out)
+
+    # 2b) arXiv 工具包（tools/arxiv/，CLI + 库；离线用例约 20s，与插件共用同一份核心）
+    code, out = run([NODE, "tools/arxiv/test/run-all.js"], timeout=600)
+    record("arXiv 工具包", code == 0, pick_summary(out), None if code == 0 else out)
 
     # 3) 接线一致性静态扫描
     code, out = run([PY, "scripts/check-wiring.py"], timeout=300)

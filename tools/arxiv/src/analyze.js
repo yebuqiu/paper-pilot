@@ -1,0 +1,555 @@
+"use strict";
+
+/**
+ * 信息提取：关键词高亮、结构化摘要、分类标签统计、主题聚类。
+ *
+ * 全部为**纯函数**（输入条目数组 → 输出统计/标注），不碰网络与磁盘，因此可在 Node 里直接单测。
+ * 主题聚类刻意用 TF-IDF + k-means（余弦距离）而不是引入向量模型：零依赖、可离线、
+ * 结果可解释（每个簇给出 top terms），对「几十到几百条检索结果」这个量级完全够用。
+ */
+
+const { cleanText } = require("./atom");
+const { bucketKey } = require("./dates");
+
+/* ------------------------------ 分词 ------------------------------ */
+
+const STOPWORDS = new Set(("a an the and or but if then than that this these those there their them they its it " +
+  "in on to of off out up down over under again further once here when where why how all any both each few more most other some such " +
+  "as at by for from with without within into onto over under between among during after before above below across through upon per via " +
+  "is are was were be been being am do does did done have has had having " +
+  "will would shall should can could may might must not no nor so such also too very just only even still yet " +
+  "more most much many some any all both each other another one two three first second third new same different " +
+  "what which who whom whose when where why how whether while " +
+  "about results result show shows shown showed found find finds finding propose proposed proposes present presents presented " +
+  "provide provides using used use uses based however therefore thus furthermore moreover although due given including include includes " +
+  "we our us they their it its paper this these study studies approach method methods model models " +
+  "can be this works work well also may can data set sets state of the art " +
+  "研究 分析 方法 结果 目的 结论 探讨 本文 我们 进行 通过 以及 具有 显著 表明 提示 相关 不同 高于 低于").split(/\s+/).filter(Boolean));
+
+/**
+ * 中英混排分词：ASCII 词（长度 ≥2，保留连字符与点号） + 中文二元切分。
+ * 返回去重后的词元数组（去停用词）。
+ */
+function tokenize(text) {
+  const s = String(text == null ? "" : text).toLowerCase();
+  const out = [];
+  const seen = new Set();
+  const push = (t) => {
+    if (!t || t.length < 2 || STOPWORDS.has(t) || seen.has(t)) return;
+    seen.add(t);
+    out.push(t);
+  };
+  for (const m of s.match(/[a-z][a-z0-9\-_.]{1,}/g) || []) push(m.replace(/[.\-_]+$/, ""));
+  for (const m of s.match(/[\u4e00-\u9fa5]{2,}/g) || []) {
+    if (m.length <= 4) push(m);
+    for (let i = 0; i + 2 <= m.length; i++) push(m.slice(i, i + 2));
+  }
+  return out;
+}
+
+/** 词频表。titleWeight 用于把标题词元加权（默认 1）。 */
+function termFrequencies(text, weight) {
+  const w = weight == null ? 1 : weight;
+  const tf = new Map();
+  for (const t of tokenize(text)) tf.set(t, (tf.get(t) || 0) + w);
+  return tf;
+}
+
+/* --------------------------- 关键词高亮 --------------------------- */
+
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * 关键词高亮。
+ *
+ * ★ 必须是**单遍正则替换**。早期实现按词逐个 `replace`，于是在 "attention mechanism" 已被
+ * 标成 `**attention mechanism**` 之后，"attention" 那一遍又钻进标记内部再标一次，产出
+ * `****attention** mechanism**` 这种坏标记。正确做法：把所有词合成一条 alternation
+ * （长词在前，保证优先匹配），一次替换完成。
+ *
+ * @param {string} text
+ * @param {string[]} terms
+ * @param {{mark?:string, caseSensitive?:boolean, wholeWord?:boolean, maxMarks?:number}} [opts]
+ * @returns {{text:string, marks:number, hits:Array<{term:string,count:number}>}}
+ */
+function highlight(text, terms, opts) {
+  const o = opts || {};
+  const src = String(text == null ? "" : text);
+  const list = (Array.isArray(terms) ? terms : [terms]).map((t) => cleanText(t)).filter(Boolean);
+  if (!src || !list.length) return { text: src, marks: 0, hits: [] };
+
+  const mark = o.mark == null ? "**" : String(o.mark);
+  const maxMarks = o.maxMarks == null ? Infinity : Math.max(0, Number(o.maxMarks));
+  // 长词优先，避免 "attention" 先吃掉 "attention mechanism" 的前缀
+  const uniq = Array.from(new Set(list)).sort((a, b) => b.length - a.length);
+
+  const patterns = uniq.map((term) => {
+    const asciiOnly = /^[A-Za-z0-9\-_. ]+$/.test(term);
+    const body = escapeRegExp(term);
+    const bound = (o.wholeWord !== false && asciiOnly) ? "\\b" : "";
+    return { term, pattern: bound + body + bound };
+  });
+
+  // 每个词一个捕获组 → 用「第几个组命中」反查是哪个词
+  const combined = new RegExp(patterns.map((p) => "(" + p.pattern + ")").join("|"), o.caseSensitive ? "g" : "gi");
+  const counts = new Array(patterns.length).fill(0);
+  let marks = 0;
+
+  const out = src.replace(combined, function () {
+    const groups = arguments;
+    let idx = -1;
+    for (let i = 1; i <= patterns.length; i++) {
+      if (groups[i] !== undefined) { idx = i - 1; break; }
+    }
+    if (idx < 0) return groups[0];
+    counts[idx]++;
+    if (marks >= maxMarks) return groups[0];
+    marks++;
+    return mark + groups[0] + mark;
+  });
+
+  const hits = [];
+  for (let i = 0; i < patterns.length; i++) if (counts[i]) hits.push({ term: patterns[i].term, count: counts[i] });
+  hits.sort((a, b) => b.count - a.count);
+  return { text: out, marks, hits };
+}
+
+/**
+ * 批量高亮：对条目的标题与摘要分别高亮。
+ * @param {Array<object>} entries
+ * @param {string[]} terms
+ * @param {object} [opts]
+ */
+function highlightEntries(entries, terms, opts) {
+  return (entries || []).map((e) => {
+    const t = highlight(e.title, terms, opts);
+    const s = highlight(e.summary, terms, opts);
+    return Object.assign({}, e, {
+      titleHighlighted: t.text,
+      summaryHighlighted: s.text,
+      highlightMarks: t.marks + s.marks,
+      highlightHits: t.hits.concat(s.hits),
+    });
+  });
+}
+
+/* ------------------------- 结构化摘要 ------------------------- */
+
+/** 章节标签表：key 统一，中英标签都能识别。 */
+const SECTION_LABELS = [
+  { key: "background", names: ["background", "introduction", "motivation", "context", "problem statement", "background and motivation", "背景", "引言", "动机", "研究背景"] },
+  { key: "objective", names: ["objective", "objectives", "aim", "aims", "goal", "goals", "purpose", "目的", "目标", "研究目的"] },
+  { key: "methods", names: ["method", "methods", "methodology", "materials and methods", "material and methods", "approach", "approaches", "experimental setup", "experiments", "experimental design", "方法", "方法学", "材料与方法", "研究方法", "实验设置"] },
+  { key: "results", names: ["result", "results", "finding", "findings", "experimental results", "evaluation", "results and discussion", "结果", "研究结果", "发现", "评估"] },
+  { key: "conclusions", names: ["conclusion", "conclusions", "discussion", "conclusion and future work", "conclusions and future work", "结论", "讨论", "结论与展望"] },
+  { key: "contributions", names: ["contribution", "contributions", "our contributions", "main contributions", "贡献", "主要贡献"] },
+  { key: "limitations", names: ["limitation", "limitations", "threats to validity", "局限", "局限性", "不足"] },
+];
+
+const LABEL_LOOKUP = (() => {
+  const m = new Map();
+  for (const s of SECTION_LABELS) for (const n of s.names) m.set(n, s.key);
+  return m;
+})();
+
+const LABEL_ALT = SECTION_LABELS.reduce((acc, s) => acc.concat(s.names), [])
+  .sort((a, b) => b.length - a.length)
+  .map((n) => escapeRegExp(n))
+  .join("|");
+
+/**
+ * 结构化摘要拆分。
+ *
+ * 只在**确实检出 ≥2 个不同标签**时才认为「结构化」——否则单篇里偶然出现的
+ * "Results:" 会被误当成整篇的结构，拆出一堆碎片，比不拆更糟。
+ *
+ * @param {string|string[]} input 摘要文本，或 summaryParagraphs 数组
+ * @returns {{structured:boolean, sections:Array<{key:string,label:string,text:string}>, text:string}}
+ */
+function splitStructuredAbstract(input) {
+  const text = Array.isArray(input) ? input.join("\n") : String(input == null ? "" : input);
+  const flat = cleanText(text.replace(/\n+/g, " "));
+  // ★ 分隔符必须同时覆盖中英文标点：只写 `[.;]` 时，「…常见。方法：…」里的全角句号
+  // 不匹配，中文章节名会被整体漏掉（实测）。
+  const re = new RegExp("(?:^|[\\n.;。；！!？?]\\s*|\\*\\*)\\s*(" + LABEL_ALT + ")\\s*[:：.\\-—]\\s*", "gi");
+  const marks = [];
+  let m;
+  while ((m = re.exec(flat)) !== null) {
+    const raw = m[1].toLowerCase().trim();
+    const key = LABEL_LOOKUP.get(raw);
+    if (key) marks.push({ key, label: m[1], start: m.index + m[0].indexOf(m[1]), bodyStart: re.lastIndex });
+    if (re.lastIndex <= m.index) re.lastIndex = m.index + 1; // 防御：零宽匹配时推进
+  }
+
+  const distinct = new Set(marks.map((x) => x.key));
+  if (marks.length < 2 || distinct.size < 2) {
+    return { structured: false, sections: [], text: flat };
+  }
+
+  const sections = [];
+  for (let i = 0; i < marks.length; i++) {
+    const to = i + 1 < marks.length ? marks[i + 1].start : flat.length;
+    const body = cleanText(flat.slice(marks[i].bodyStart, to));
+    if (!body && i < marks.length - 1) continue;
+    sections.push({ key: marks[i].key, label: cleanText(marks[i].label), text: body });
+  }
+  const head = cleanText(flat.slice(0, marks[0].start));
+  return { structured: sections.length >= 2, sections, text: flat, preamble: head };
+}
+
+/* ------------------------- 分类统计 ------------------------- */
+
+/**
+ * 分类标签统计：全量标签分布 + 主分类分布 + 大类 + 共现对。
+ * @param {Array<object>} entries
+ * @param {{topCoOccurrence?:number}} [opts]
+ */
+function categoryStats(entries, opts) {
+  const o = opts || {};
+  const list = entries || [];
+  const byCategory = new Map();
+  const byPrimary = new Map();
+  const byArchive = new Map();
+  const pairs = new Map();
+
+  for (const e of list) {
+    const cats = e.categories && e.categories.length ? e.categories : (e.primaryCategory ? [e.primaryCategory] : []);
+    for (const c of cats) byCategory.set(c, (byCategory.get(c) || 0) + 1);
+    const p = e.primaryCategory || cats[0] || "";
+    if (p) {
+      byPrimary.set(p, (byPrimary.get(p) || 0) + 1);
+      const arch = p.split(".")[0];
+      byArchive.set(arch, (byArchive.get(arch) || 0) + 1);
+    }
+    // 共现：只统计「同一篇的多分类」两两组合（主分类与全部标签都在同一个集合里）
+    const uniq = Array.from(new Set(cats)).sort();
+    for (let i = 0; i < uniq.length; i++) {
+      for (let j = i + 1; j < uniq.length; j++) {
+        const k = uniq[i] + " + " + uniq[j];
+        pairs.set(k, (pairs.get(k) || 0) + 1);
+      }
+    }
+  }
+
+  const total = list.length || 1;
+  const toRows = (map) => Array.from(map.entries())
+    .map(([name, count]) => ({ name, count, share: Math.round((count / total) * 1000) / 1000 }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+  const coOccurrence = Array.from(pairs.entries())
+    .map(([pair, count]) => ({ pair, count }))
+    .sort((a, b) => b.count - a.count || a.pair.localeCompare(b.pair))
+    .slice(0, o.topCoOccurrence == null ? 15 : o.topCoOccurrence);
+
+  return {
+    total: list.length,
+    distinctCategories: byCategory.size,
+    byCategory: toRows(byCategory),
+    byPrimary: toRows(byPrimary),
+    byArchive: toRows(byArchive),
+    coOccurrence,
+  };
+}
+
+/* ------------------------- 时间分布 ------------------------- */
+
+/**
+ * 时间直方图（默认按月，基于 published 或 updated）。
+ * @param {Array<object>} entries
+ * @param {{bucket?:'day'|'month'|'year', field?:'published'|'updated'}} [opts]
+ */
+function dateHistogram(entries, opts) {
+  const o = opts || {};
+  const field = o.field === "updated" ? "updated" : "published";
+  const bucket = o.bucket || "month";
+  const map = new Map();
+  for (const e of entries || []) {
+    const v = e[field] || e.published || e.updated || "";
+    if (!v) continue;
+    const k = bucketKey(v, bucket);
+    if (!k) continue;
+    map.set(k, (map.get(k) || 0) + 1);
+  }
+  return Array.from(map.entries())
+    .map(([bucketKey_, count]) => ({ bucket: bucketKey_, count }))
+    .sort((a, b) => a.bucket.localeCompare(b.bucket));
+}
+
+/* ------------------------- 关键词抽取 ------------------------- */
+
+/**
+ * TF-IDF 关键词抽取（标题权重 2，摘要权重 1）。
+ * @param {Array<object>} entries
+ * @param {{topN?:number, minDf?:number}} [opts]
+ */
+function extractKeywords(entries, opts) {
+  const o = opts || {};
+  const topN = o.topN == null ? 30 : o.topN;
+  const list = entries || [];
+  const df = new Map();
+  const tfTotal = new Map();
+  const docs = [];
+
+  for (const e of list) {
+    const bag = new Map();
+    for (const [t, v] of termFrequencies(e.title, 2)) bag.set(t, (bag.get(t) || 0) + v);
+    for (const [t, v] of termFrequencies(e.summary, 1)) bag.set(t, (bag.get(t) || 0) + v);
+    docs.push(bag);
+    for (const t of bag.keys()) df.set(t, (df.get(t) || 0) + 1);
+    for (const [t, v] of bag) tfTotal.set(t, (tfTotal.get(t) || 0) + v);
+  }
+
+  const n = docs.length || 1;
+  const minDf = o.minDf == null ? 1 : Math.max(1, o.minDf);
+  const rows = [];
+  for (const [term, tf] of tfTotal) {
+    const d = df.get(term) || 0;
+    if (d < minDf) continue;
+    const idf = Math.log(1 + n / d);
+    rows.push({ term, tf: Math.round(tf * 100) / 100, df: d, idf: Math.round(idf * 1000) / 1000, score: Math.round(tf * idf * 1000) / 1000 });
+  }
+  rows.sort((a, b) => b.score - a.score || b.df - a.df || a.term.localeCompare(b.term));
+  return rows.slice(0, topN);
+}
+
+/* ------------------------- 主题聚类 ------------------------- */
+
+/** 确定性伪随机（mulberry32）：保证同一输入 + 同 seed 得到完全一致的分簇，便于测试与复现。 */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function cosineSparse(a, b) {
+  // 向量已 L2 归一化 → 点积即余弦
+  const [small, big] = a.size <= b.size ? [a, b] : [b, a];
+  let dot = 0;
+  for (const [k, v] of small) { const w = big.get(k); if (w) dot += v * w; }
+  return dot;
+}
+
+function l2normalize(vec) {
+  let sum = 0;
+  for (const v of vec.values()) sum += v * v;
+  const norm = Math.sqrt(sum);
+  if (!norm) return vec;
+  const out = new Map();
+  for (const [k, v] of vec) out.set(k, v / norm);
+  return out;
+}
+
+/**
+ * k-means（余弦距离）主题聚类。
+ * @param {Array<object>} entries
+ * @param {{k?:number, maxTerms?:number, seed?:number, minDf?:number, maxVocab?:number, iterations?:number}} [opts]
+ * @returns {{k:number, iterations:number, clusters:Array<{id:number,size:number,topTerms:string[],entryIds:string[],titles:string[]}>, unclustered:number}}
+ */
+function clusterTopics(entries, opts) {
+  const o = opts || {};
+  const list = entries || [];
+  const seed = o.seed == null ? 42 : o.seed;
+
+  if (list.length < 2) {
+    return { k: list.length, iterations: 0, clusters: list.map((e, i) => ({ id: i, size: 1, topTerms: [], entryIds: [e.arxivId || String(i)], titles: [e.title] })), unclustered: 0 };
+  }
+
+  // 1) 文档向量（TF-IDF）
+  const docsTf = list.map((e) => {
+    const bag = new Map();
+    for (const [t, v] of termFrequencies(e.title, 2)) bag.set(t, (bag.get(t) || 0) + v);
+    for (const [t, v] of termFrequencies(e.summary, 1)) bag.set(t, (bag.get(t) || 0) + v);
+    return bag;
+  });
+  const df = new Map();
+  for (const bag of docsTf) for (const t of bag.keys()) df.set(t, (df.get(t) || 0) + 1);
+  const n = docsTf.length;
+
+  // 2) 词表裁剪：按 tf*idf 取前 maxVocab 个词，控制维度与计算量
+  const maxVocab = o.maxVocab == null ? 400 : o.maxVocab;
+  const minDf = o.minDf == null ? 1 : o.minDf;
+  const vocabScore = [];
+  const tfTotal = new Map();
+  for (const bag of docsTf) for (const [t, v] of bag) tfTotal.set(t, (tfTotal.get(t) || 0) + v);
+  for (const [t, tf] of tfTotal) {
+    const d = df.get(t) || 0;
+    if (d < minDf) continue;
+    vocabScore.push([t, tf * Math.log(1 + n / d)]);
+  }
+  vocabScore.sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+  const vocab = new Set(vocabScore.slice(0, maxVocab).map((x) => x[0]));
+
+  const vectors = docsTf.map((bag) => {
+    const v = new Map();
+    for (const [t, tf] of bag) {
+      if (!vocab.has(t)) continue;
+      v.set(t, tf * Math.log(1 + n / (df.get(t) || 1)));
+    }
+    return l2normalize(v);
+  });
+
+  // 3) k 选择：默认 √(n/2)，夹在 [2,8]
+  let k = o.k == null || o.k === 0 ? Math.round(Math.sqrt(n / 2)) : Number(o.k);
+  k = Math.max(1, Math.min(Math.min(k, 12), n));
+
+  if (k <= 1) {
+    const terms = topTermsOf(vectors.map((v, i) => ({ v, i })), o.maxTerms);
+    return { k: 1, iterations: 0, clusters: [{ id: 0, size: n, topTerms: terms, entryIds: list.map((e, i) => e.arxivId || String(i)), titles: list.map((e) => e.title) }], unclustered: 0 };
+  }
+
+  // 4) k-means++ 初始化（确定性）
+  const rand = mulberry32(seed);
+  const firstIdx = Math.floor(rand() * n);
+  const chosen = new Set([firstIdx]);
+  const centroids = [new Map(vectors[firstIdx])];
+  while (centroids.length < k) {
+    const dists = vectors.map((v) => {
+      let best = 1;
+      for (const c of centroids) best = Math.min(best, 1 - cosineSparse(v, c));
+      return Math.max(best, 0);
+    });
+    const total = dists.reduce((a, b) => a + b, 0);
+    let pick = 0;
+    if (total <= 0) {
+      // 全部重合：退化到顺序补齐
+      pick = centroids.length % n;
+    } else {
+      let r = rand() * total;
+      for (let i = 0; i < n; i++) { r -= dists[i]; if (r <= 0) { pick = i; break; } }
+    }
+    if (chosen.has(pick)) pick = (pick + 1) % n;
+    chosen.add(pick);
+    centroids.push(new Map(vectors[pick]));
+  }
+
+  // 5) 迭代
+  const iterations = o.iterations == null ? 40 : o.iterations;
+  let assign = new Array(n).fill(-1);
+  let used = 0;
+  for (let it = 0; it < iterations; it++) {
+    let changed = false;
+    for (let i = 0; i < n; i++) {
+      let best = 0, bestSim = -Infinity;
+      for (let c = 0; c < k; c++) {
+        const sim = cosineSparse(vectors[i], centroids[c]);
+        if (sim > bestSim) { bestSim = sim; best = c; }
+      }
+      if (assign[i] !== best) { assign[i] = best; changed = true; }
+    }
+    const sums = Array.from({ length: k }, () => new Map());
+    const counts = new Array(k).fill(0);
+    for (let i = 0; i < n; i++) {
+      counts[assign[i]]++;
+      for (const [t, v] of vectors[i]) sums[assign[i]].set(t, (sums[assign[i]].get(t) || 0) + v);
+    }
+    for (let c = 0; c < k; c++) {
+      if (!counts[c]) {
+        // 空簇：抢一个离自己质心最远的样本，保证 k 个簇都有内容
+        let far = 0, farSim = Infinity;
+        for (let i = 0; i < n; i++) {
+          const sim = cosineSparse(vectors[i], centroids[assign[i]]);
+          if (sim < farSim) { farSim = sim; far = i; }
+        }
+        centroids[c] = new Map(vectors[far]);
+        continue;
+      }
+      const mean = new Map();
+      for (const [t, v] of sums[c]) mean.set(t, v / counts[c]);
+      centroids[c] = l2normalize(mean);
+    }
+    used = it + 1;
+    if (!changed) break;
+  }
+
+  // 6) 汇总：簇内成员 + 质心 top terms
+  const groups = Array.from({ length: k }, (_, c) => ({ c, members: [] }));
+  for (let i = 0; i < n; i++) groups[assign[i]].members.push(i);
+
+  const clusters = groups
+    .filter((g) => g.members.length)
+    .map((g, idx) => {
+      const centroidTerms = Array.from(centroids[g.c].entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, o.maxTerms == null ? 6 : o.maxTerms)
+        .map((x) => x[0]);
+      return {
+        id: idx,
+        size: g.members.length,
+        topTerms: centroidTerms,
+        entryIds: g.members.map((i) => list[i].arxivId || String(i)),
+        titles: g.members.map((i) => list[i].title),
+      };
+    })
+    .sort((a, b) => b.size - a.size || a.topTerms.join(",").localeCompare(b.topTerms.join(",")))
+    .map((c, i) => Object.assign(c, { id: i }));
+
+  return { k: clusters.length, iterations: used, clusters, unclustered: 0 };
+}
+
+function topTermsOf(pairs, maxTerms) {
+  const sum = new Map();
+  for (const { v } of pairs) for (const [t, val] of v) sum.set(t, (sum.get(t) || 0) + val);
+  return Array.from(sum.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxTerms == null ? 6 : maxTerms).map((x) => x[0]);
+}
+
+/* ------------------------- 汇总入口 ------------------------- */
+
+/**
+ * 对一批条目做全套信息提取。
+ * @param {Array<object>} entries
+ * @param {{highlightTerms?:string[], highlight?:boolean, structured?:boolean, cluster?:boolean|number,
+ *          stats?:boolean, keywords?:number, histogram?:'day'|'month'|'year'}} [opts]
+ */
+function analyze(entries, opts) {
+  const o = opts || {};
+  const list = entries || [];
+  const out = { total: list.length };
+
+  if (o.highlight && o.highlightTerms && o.highlightTerms.length) {
+    out.entries = highlightEntries(list, o.highlightTerms, o.highlightOpts || {});
+    out.highlightTerms = o.highlightTerms.slice();
+  } else {
+    out.entries = list;
+  }
+
+  if (o.structured) {
+    out.structured = list.map((e) => {
+      const s = splitStructuredAbstract(e.summaryParagraphs && e.summaryParagraphs.length ? e.summaryParagraphs : e.summary);
+      return { arxivId: e.arxivId, structured: s.structured, sections: s.sections, preamble: s.preamble || "" };
+    });
+    out.structuredCount = out.structured.filter((x) => x.structured).length;
+  }
+
+  if (o.stats !== false) out.categories = categoryStats(list);
+  out.histogram = dateHistogram(list, { bucket: o.histogram || "month" });
+  out.keywords = extractKeywords(list, { topN: o.keywords || 30 });
+
+  if (o.cluster) {
+    out.clusters = clusterTopics(list, typeof o.cluster === "number" ? { k: o.cluster } : {});
+  }
+
+  return out;
+}
+
+module.exports = {
+  STOPWORDS,
+  tokenize,
+  termFrequencies,
+  highlight,
+  highlightEntries,
+  splitStructuredAbstract,
+  SECTION_LABELS,
+  categoryStats,
+  dateHistogram,
+  extractKeywords,
+  clusterTopics,
+  mulberry32,
+  cosineSparse,
+  analyze,
+};

@@ -4,17 +4,19 @@
  *    借鉴、代码原创重写）：核心洞察是 Zotero 内置 pdf.js 的 .textLayer 覆盖在
  *    canvas 之上且默认透明，给它叠一层半透明背景色即可实现"护眼底色"而完全
  *    不动 canvas；tab 事件经 Zotero.Notifier 监听、经 reader._iframeWindow 找
- *    viewer.html iframe；阅读器工具栏中部注入眼睛按钮快速切换；#secondary-view
- *    挂 MutationObserver 兼容分屏视图。
+ *    viewer.html iframe；#secondary-view 挂 MutationObserver 兼容分屏视图。
  *  - tefkah/zotero-night（GPL-3.0，思路借鉴）：夜间模式 = canvas 反色
  *    filter: invert(1) hue-rotate(180deg)——白纸黑字反成黑纸白字、色相经
  *    二次旋转保持，是 pdf.js 社区标准做法；viewer 底色同步加深避免白框刺眼。
+ *
+ * 0.25.0 起：**阅读器工具栏的切换入口移到 ThemeToggle**（走官方 renderToolbar
+ * 扩展位、与主窗口左上角按钮同源）。本模块只负责"页面怎么变"（叠色/反色 + 持久化），
+ * 不再自己往工具栏里塞按钮。
  */
 /* global Zotero, Prefs */
 
 var PdfTheme = {
   STYLE_ID: "paperpilot-pdf-theme",
-  BTN_ID: "paperpilot-pdf-theme-toggle",
   PREF_KEY: "pdfTheme",           // default / careeye / sepia / sakura / mint / night / night-warm / custom
   PREF_CUSTOM_COLOR: "pdfThemeCustomColor",
   PREF_CUSTOM_OPACITY: "pdfThemeCustomOpacity", // 0.05-0.6（int，百分数×100）
@@ -139,7 +141,8 @@ var PdfTheme = {
 
   /** 全量刷新：所有主窗口 × 所有 reader tab × 每个 reader 的全部 viewer iframe。
    *  双路径互补：Zotero.Reader._readers（私有但 Z7-10 存在）+ 遍历主窗口
-   *  browser.reader DOM（zotero-pdf-background 的稳妥路径），各自 try/catch。 */
+   *  browser.reader DOM（zotero-pdf-background 的稳妥路径），各自 try/catch。
+   *  工具栏按钮由 ThemeToggle 负责，这里不再碰 reader 的 chrome。 */
   refresh() {
     const seen = [];
     try {
@@ -149,7 +152,6 @@ var PdfTheme = {
           if (reader._initialized && reader._iframeWindow) {
             seen.push(reader._iframeWindow);
             this._applyToReaderWindow(reader._iframeWindow);
-            this._addToolbarButton(reader._iframeWindow);
             this._observeSplitView(reader._iframeWindow);
           }
         } catch (e) { /* 单个 reader 失败不影响其他 */ }
@@ -165,74 +167,11 @@ var PdfTheme = {
           if (!rw || !rw.document || seen.indexOf(rw) >= 0) continue;
           try {
             this._applyToReaderWindow(rw);
-            this._addToolbarButton(rw);
             this._observeSplitView(rw);
           } catch (e) { /* ignore */ }
         }
       }
     } catch (e) { /* ignore */ }
-  },
-
-  /* ---------- 阅读器工具栏按钮（借鉴 zotero-pdf-background 的眼睛按钮交互） ---------- */
-
-  _addToolbarButton(readerWin) {
-    if (!readerWin || !readerWin.document) return;
-    const doc = readerWin.document;
-    if (doc.getElementById(this.BTN_ID)) return;
-    const center = doc.querySelector("#reader-ui .toolbar div.center, .toolbar .center");
-    if (!center) return;
-    try {
-      const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
-      const wrap = doc.createElement("div");
-      wrap.id = this.BTN_ID;
-      wrap.style.cssText = "display:flex;align-items:center;";
-      const btn = doc.createElement("button");
-      btn.className = "toolbar-button";
-      btn.title = zh ? "阅读主题" : "Reading theme";
-      btn.style.cssText = "font-size:14px;line-height:1;";
-      btn.textContent = "🎨";
-      const list = doc.createElement("div");
-      list.style.cssText =
-        "display:none;position:absolute;top:105%;z-index:99;min-width:150px;" +
-        "background:var(--material-toolbar);border:1px solid var(--color-border);" +
-        "border-radius:8px;padding:4px;box-shadow:0 6px 18px rgba(0,0,0,.35);";
-      const rebuild = () => {
-        while (list.firstChild) list.removeChild(list.firstChild);
-        const cur = this.current();
-        for (const t of this.THEMES) {
-          const item = doc.createElement("div");
-          item.style.cssText =
-            "padding:4px 10px;border-radius:5px;cursor:pointer;font-size:12px;" +
-            "color:var(--fill-primary);white-space:nowrap;";
-          if (t.id === cur.id) item.style.fontWeight = "700";
-          item.textContent = (t.id === cur.id ? "✓ " : "") + t.name + (t.dark ? " 🌙" : "");
-          item.addEventListener("mouseenter", () => { item.style.background = "var(--fill-quinary)"; });
-          item.addEventListener("mouseleave", () => { item.style.background = "transparent"; });
-          item.addEventListener("click", (ev) => {
-            ev.stopPropagation();
-            this.setTheme(t.id);
-            list.style.display = "none";
-          });
-          list.appendChild(item);
-        }
-      };
-      rebuild();
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (list.style.display === "none") {
-          rebuild(); // 打开前重建，保证选中态/自定义色最新
-          list.style.display = "block";
-        } else {
-          list.style.display = "none";
-        }
-      });
-      doc.addEventListener("click", () => { list.style.display = "none"; }, { capture: true });
-      wrap.appendChild(btn);
-      wrap.appendChild(list);
-      center.appendChild(wrap);
-    } catch (e) {
-      try { Zotero.logError(e); } catch (_) { /* ignore */ }
-    }
   },
 
   /* ---------- 分屏视图（#secondary-view 追加 iframe 时补应用） ---------- */
@@ -277,7 +216,6 @@ var PdfTheme = {
                 await reader._initPromise;
                 if (reader._iframeWindow) {
                   self._applyToReaderWindow(reader._iframeWindow);
-                  self._addToolbarButton(reader._iframeWindow);
                   self._observeSplitView(reader._iframeWindow);
                 }
               } catch (e) { /* 非 reader tab 或已关闭 */ }
@@ -299,14 +237,13 @@ var PdfTheme = {
       try { observer.disconnect(); } catch (e) { /* ignore */ }
     }
     this._observers = [];
-    // 清除全部注入（style/body class/按钮），viewer 回到原生状态
+    // 清除全部注入（viewer 的 style / body class），页面回到原生状态
+    // （工具栏按钮属 ThemeToggle，不在这里清）
     try {
       const readers = Zotero.Reader ? (Zotero.Reader._readers || []) : [];
       for (const reader of readers) {
         const win = reader._iframeWindow;
         if (!win || !win.document) continue;
-        const btn = win.document.getElementById(this.BTN_ID);
-        if (btn) btn.remove();
         for (const iframe of win.document.querySelectorAll("iframe")) {
           const src = iframe.getAttribute("src") || "";
           if (src.indexOf("viewer.html") < 0) continue;

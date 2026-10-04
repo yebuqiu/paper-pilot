@@ -1,0 +1,346 @@
+"use strict";
+
+/**
+ * arXiv 查询串构建。
+ *
+ * 官方语法要点（完整用法见 tools/arxiv/README.md 第 3 节「检索语法」）：
+ *   - 字段前缀：ti 标题 / au 作者 / abs 摘要 / co 评论 / jr 期刊引用 / cat 分类 / rn 报告号 / id 编号 / all 全字段 / doi
+ *   - 布尔运算符必须**大写**：AND、OR、ANDNOT；用括号分组
+ *   - 短语用双引号：ti:"sparse autoencoder"
+ *   - 日期区间：submittedDate:[202501010000 TO 202501312359]（GMT，闭区间）
+ *   - 字符串匹配、不支持通配符；作者名是纯字符串匹配（"Bengio" 能命中 "Yoshua Bengio"）
+ *
+ * 编码策略：arXiv 只接受 `+` 表示空格，且**括号与方括号不需转义**（实测 `(ti:a+OR+abs:b)` 正常）。
+ * 因此这里手工编码，只转义真正会破坏 URL 结构的字符——直接用 encodeURIComponent 会把
+ * `[` `]` `(` `)` 一并编码，虽然多数情况仍可用，但会与官方示例不一致、也难以比对。
+ */
+
+const { ConfigError } = require("./errors");
+const { rangeClause } = require("./dates");
+
+/** 支持的字段前缀。 */
+const FIELDS = ["ti", "au", "abs", "co", "jr", "cat", "rn", "id", "all", "doi"];
+
+const FIELD_LABELS = {
+  ti: "标题", au: "作者", abs: "摘要", co: "评论", jr: "期刊引用",
+  cat: "分类", rn: "报告号", id: "编号", all: "全字段", doi: "DOI",
+};
+
+/**
+ * URL 编码 arXiv 查询串。
+ * 只编码会破坏 URL 结构的字符，空格 → `+`（arXiv 官方示例即 `+` 分隔），括号/方括号保留原样。
+ * @param {string} q
+ * @returns {string}
+ */
+function encodeQuery(q) {
+  return String(q == null ? "" : q)
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .map((seg) => String(seg)
+      .replace(/%/g, "%25")   // 必须先处理 %，否则会二次编码
+      .replace(/"/g, "%22")
+      .replace(/&/g, "%26")
+      .replace(/#/g, "%23")
+      .replace(/\+/g, "%2B")
+      .replace(/</g, "%3C")
+      .replace(/>/g, "%3E")
+      .replace(/\^/g, "%5E")
+      .replace(/\|/g, "%7C")
+      .replace(/\\/g, "%5C")
+      .replace(/~/g, "%7E")
+      .replace(/`/g, "%60")
+      .replace(/\{/g, "%7B")
+      .replace(/\}/g, "%7D"))
+    .join("+");
+}
+
+/**
+ * 清洗原始查询串（`--query` / `spec.raw`）。
+ *
+ * ⚠️ 与 sanitizeTerm 的区别：**保留引号、括号、方括号与冒号**。
+ * 原始查询串的意义就在于「我完全掌控语法」，任何转义都属于越权——早期版本误用
+ * sanitizeTerm 把 `ti:"sparse autoencoder"` 洗成了 `ti: sparse autoencoder`，
+ * 查询语义被静默改变（从「短语匹配」变成「一个空子句 + 三个孤立词」）。
+ */
+function sanitizeRaw(value) {
+  return String(value == null ? "" : value)
+    .replace(/[\u0000-\u001f\u007f]/g, " ")   // 只清控制字符（含换行/制表）
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** 清洗一个检索词：去掉控制字符与会破坏语法的双引号，压缩空白。 */
+function sanitizeTerm(value) {
+  return String(value == null ? "" : value)
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/"/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function assertField(field) {
+  const f = String(field || "all").toLowerCase();
+  if (FIELDS.indexOf(f) < 0) {
+    throw new ConfigError("未知的检索字段前缀 " + field, {
+      hint: "可用：" + FIELDS.map((x) => x + "(" + FIELD_LABELS[x] + ")").join(", "),
+    });
+  }
+  return f;
+}
+
+/**
+ * 生成单条字段子句。
+ *
+ * 引号规则（这里踩过一次坑，务必看清）：
+ *   - `quote: true`  → 强制加引号（短语精确匹配，对应 `--phrase`）
+ *   - `quote: false` → 强制不加引号
+ *   - 不传          → **自动**：含空格则加引号（`all:diffusion model` 是非法查询，
+ *                     必须写成 `all:"diffusion model"`）；结构化字段（cat/id/doi/rn）不加。
+ *
+ * ⚠️ 早期版本把「不加引号」和「关掉自动加引号」混为一谈，于是多词关键词被拼成
+ * `all:diffusion model` —— arXiv 会把它当成语法错误或错误分词，是典型静默失败。
+ *
+ * @param {string} field ti/au/abs/...
+ * @param {string} value 值
+ * @param {{quote?:boolean}} [opts]
+ */
+function fieldClause(field, value, opts) {
+  const f = assertField(field);
+  const cleaned = sanitizeTerm(value);
+  if (!cleaned) return "";
+  const o = opts || {};
+  const structured = f === "id" || f === "doi" || f === "cat" || f === "rn";
+  let quote;
+  if (o.quote === true) quote = true;
+  else if (o.quote === false) quote = false;
+  // 自动加引号的两种情况：
+  //  ① 含空格 —— `all:diffusion model` 是非法查询；
+  //  ② 含冒号 —— `all:zz:foo` 这种未知前缀会让 arXiv 的语法解析产生歧义，加引号即变成普通词。
+  else quote = structured ? false : (/\s/.test(cleaned) || cleaned.indexOf(":") >= 0);
+  return f + ":" + (quote ? '"' + cleaned + '"' : cleaned);
+}
+
+/**
+ * 链式查询构建器。
+ *
+ * 语义：默认相邻子句用 AND 连接；`.or()` / `.andnot()` 改变**下一条**子句的连接符。
+ */
+class QueryBuilder {
+  constructor() {
+    this._parts = [];
+    this._pendingOp = null;
+  }
+
+  _add(expr) {
+    if (expr == null || expr === "") return this;
+    const op = this._parts.length === 0 ? null : (this._pendingOp || "AND");
+    this._parts.push({ op, expr });
+    this._pendingOp = null;
+    return this;
+  }
+
+  /** 下一条子句用 OR 连接。 */
+  or() { this._pendingOp = "OR"; return this; }
+  /** 下一条子句用 AND 连接（默认行为，显式写出便于阅读）。 */
+  and() { this._pendingOp = "AND"; return this; }
+  /** 下一条子句用 ANDNOT 连接（排除）。 */
+  andnot() { this._pendingOp = "ANDNOT"; return this; }
+  /** not() 的别名，语义 = ANDNOT。 */
+  not() { return this.andnot(); }
+
+  field(field, value, opts) { return this._add(fieldClause(field, value, opts)); }
+  title(v, opts) { return this.field("ti", v, opts); }
+  author(v, opts) { return this.field("au", v, opts); }
+  abstract(v, opts) { return this.field("abs", v, opts); }
+  category(v, opts) { return this.field("cat", v, opts); }
+  comment(v) { return this.field("co", v); }
+  journalRef(v) { return this.field("jr", v); }
+  id(v) { return this.field("id", v); }
+  doi(v) { return this.field("doi", v); }
+  all(v, opts) { return this.field("all", v, opts); }
+
+  /** 关键词（默认 all 字段，可指定 field 前缀，如 --keyword ti:attention）。 */
+  keyword(v, field, opts) { return this.field(field || "all", v, opts); }
+
+  /** 日期区间子句。 */
+  dateRange(field, from, to) {
+    const clause = rangeClause(field || "submittedDate", from, to);
+    return this._add(clause);
+  }
+
+  /** 子分组：`(...)`，用于表达 OR 优先级。 */
+  group(fn) {
+    const inner = new QueryBuilder();
+    fn(inner);
+    if (inner.isEmpty()) return this;
+    return this._add("(" + inner.toString() + ")");
+  }
+
+  /** 直接塞入原始表达式片段（高级用法，不做转义）。 */
+  raw(expr) { return this._add(String(expr || "").trim()); }
+
+  isEmpty() { return this._parts.length === 0; }
+  size() { return this._parts.length; }
+
+  /** 未编码的查询串（人类可读，用于日志与展示）。 */
+  toString() {
+    let s = "";
+    for (const p of this._parts) {
+      if (p.op) s += " " + p.op + " ";
+      s += p.expr;
+    }
+    return s;
+  }
+
+  /** 已编码的查询串（放进 URL 的 search_query）。 */
+  toEncoded() { return encodeQuery(this.toString()); }
+
+  toJSON() { return { query: this.toString(), encoded: this.toEncoded() }; }
+}
+
+/**
+ * 从声明式 spec 构建查询串（CLI 与库调用共用的入口）。
+ *
+ * @param {object} spec
+ * @param {string|string[]} [spec.keywords] 关键词；字符串可带 `field:` 前缀（如 `ti:attention`）
+ * @param {string|string[]} [spec.authors]
+ * @param {string|string[]} [spec.categories] 分类编码，如 cs.LG
+ * @param {string|string[]} [spec.ids] arXiv ID
+ * @param {string} [spec.doi]
+ * @param {string} [spec.journalRef]
+ * @param {string|string[]} [spec.excludeCategories]
+ * @param {string|string[]} [spec.excludeKeywords]
+ * @param {string} [spec.dateFrom] @param {string} [spec.dateTo]
+ * @param {string} [spec.dateField="submittedDate"]
+ * @param {"AND"|"OR"} [spec.boolean="AND"] 关键词/作者之间的关系
+ * @param {"AND"|"OR"} [spec.categoryMode="AND"] 多个分类之间的关系（Discovery 这类「跨分类浏览」用 OR）
+ * @param {boolean} [spec.phrase] 是否把关键词强制当短语
+ * @param {string} [spec.raw] 原始查询串（存在时**优先**，与其它条件 AND 组合）
+ * @returns {{query:string, encoded:string, idList:string, isEmpty:boolean, parts:string[]}}
+ */
+function buildQuery(spec) {
+  const s = spec || {};
+  const useOr = String(s.boolean || "AND").toUpperCase() === "OR";
+  const qb = new QueryBuilder();
+
+  const raw = sanitizeRaw(s.raw);
+  if (raw) qb.raw(raw);
+
+  // ID 走 id_list 参数（arXiv 推荐做法，比 id: 子句更可靠）；带 `id:` 前缀的关键词仍走 search_query
+  const ids = toArray(s.ids).map((x) => sanitizeTerm(x)).filter(Boolean);
+
+  // 核心组 = 关键词 + 作者：受 --or 影响；分类永远 AND（否则「OR 分类」会被其它条件放大成噪声）
+  const core = [];
+  const catClauses = [];
+  for (const item of toArray(s.keywords)) {
+    const itemStr = sanitizeTerm(item);
+    if (!itemStr) continue;
+    let field = "all";
+    let value = itemStr;
+    const m = itemStr.match(/^([a-zA-Z]{2,3}):(.*)$/);
+    if (m && FIELDS.indexOf(m[1].toLowerCase()) >= 0) { field = m[1].toLowerCase(); value = m[2].trim(); }
+    if (!value) continue;
+    core.push({ field, value });
+  }
+  for (const a of toArray(s.authors)) {
+    const v = sanitizeTerm(a);
+    if (v) core.push({ field: "au", value: v });
+  }
+
+  const clauseOpts = () => (s.phrase === true ? { quote: true } : {});
+  if (core.length === 1 || !useOr) {
+    for (const item of core) qb.and().field(item.field, item.value, clauseOpts(item));
+  } else if (core.length > 1) {
+    // 多个关键词做 OR 时必须显式分组，否则会与后续分类条件产生错误优先级
+    qb.and().group((inner) => {
+      core.forEach((item, i) => {
+        if (i > 0) inner.or();
+        inner.field(item.field, item.value, clauseOpts(item));
+      });
+    });
+  }
+
+  for (const c of toArray(s.categories)) {
+    if (sanitizeTerm(c)) catClauses.push(c);
+  }
+  // 多分类：默认 AND（交叉列表论文），`categoryMode: "OR"` 改为并集。
+  // ★ 这个开关是必须的：arXiv 的 `cat:A AND cat:B` 只命中**同时属于两个分类**的论文，
+  // 而「我想看 cs.AI / cs.CL / cs.LG 里有什么新东西」显然是并集语义。
+  // 早期插件版 Discovery 硬编码了 OR；工具包不能悄悄把它变成 AND（会直接改变推荐结果集）。
+  if (catClauses.length === 1 || String(s.categoryMode || "AND").toUpperCase() !== "OR") {
+    for (const c of catClauses) qb.and().field("cat", c, { quote: false });
+  } else if (catClauses.length > 1) {
+    qb.and().group((inner) => {
+      catClauses.forEach((c, i) => {
+        if (i > 0) inner.or();
+        inner.field("cat", c, { quote: false });
+      });
+    });
+  }
+
+  if (s.doi) qb.and().field("doi", s.doi, { quote: false });
+  if (s.journalRef) qb.and().journalRef(s.journalRef);
+
+  if (s.dateFrom || s.dateTo) {
+    qb.and().dateRange(s.dateField || "submittedDate", s.dateFrom, s.dateTo);
+  }
+
+  for (const c of toArray(s.excludeCategories)) {
+    if (sanitizeTerm(c)) qb.andnot().field("cat", c, { quote: false });
+  }
+  for (const k of toArray(s.excludeKeywords)) {
+    if (sanitizeTerm(k)) qb.andnot().keyword(k);
+  }
+
+  return {
+    query: qb.toString(),
+    encoded: qb.toEncoded(),
+    idList: ids.join(","),
+    isEmpty: qb.isEmpty() && !ids.length,
+    parts: qb._parts.map((p) => (p.op ? p.op + " " : "") + p.expr),
+  };
+}
+
+function toArray(v) {
+  if (v == null || v === "") return [];
+  return Array.isArray(v) ? v.filter((x) => x != null && x !== "") : [v];
+}
+
+/**
+ * 组装完整请求 URL。
+ * @param {object} params
+ * @param {string} params.baseUrl
+ * @param {string} [params.searchQuery] 已编码的 search_query
+ * @param {string} [params.idList]
+ * @param {number} [params.start]
+ * @param {number} [params.maxResults]
+ * @param {string} [params.sortBy]
+ * @param {string} [params.sortOrder]
+ */
+function buildUrl(params) {
+  const p = params || {};
+  const base = String(p.baseUrl || "").replace(/\?+$/, "");
+  const qs = [];
+  if (p.searchQuery) qs.push("search_query=" + p.searchQuery);
+  else qs.push("search_query=");
+  if (p.idList) qs.push("id_list=" + encodeURIComponent(p.idList));
+  qs.push("start=" + (Number(p.start) || 0));
+  qs.push("max_results=" + (Number(p.maxResults) || 10));
+  if (p.sortBy) qs.push("sortBy=" + encodeURIComponent(p.sortBy));
+  if (p.sortOrder) qs.push("sortOrder=" + encodeURIComponent(p.sortOrder));
+  return base + "?" + qs.join("&");
+}
+
+module.exports = {
+  FIELDS,
+  FIELD_LABELS,
+  QueryBuilder,
+  buildQuery,
+  buildUrl,
+  encodeQuery,
+  fieldClause,
+  sanitizeTerm,
+  sanitizeRaw,
+  toArray,
+};

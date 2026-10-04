@@ -315,9 +315,12 @@ function put(dir, name, doc) {
     }
     const logPath = path.join(DATA_DIR, 'paperpilot-account.log');
     let logText = '';
+    // 轮询到「日志已落盘**且含落盘/恢复结论**」为止（有界）：只等「非空」不够——
+    // 串行队列是逐行 flush 的，第一行到达时后面的「session saved …」可能还没写完，
+    // 于是 T12.4 偶发红（同机基线 3 连跑实测 1 红 2 绿，与被测代码无关）。
     for (let i = 0; i < 40; i++) {           // 最多等 ~1s，给串行写盘收尾
       try { logText = fs.readFileSync(logPath, 'utf8'); } catch (e) { logText = ''; }
-      if (logText) break;
+      if (/落点/.test(logText) || /session/.test(logText)) break;
       await new Promise((r) => setTimeout(r, 25));
     }
     ok(fs.existsSync(logPath), 'T12.1 诊断日志已落盘');

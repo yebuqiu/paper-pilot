@@ -1,7 +1,7 @@
 /* PaperPilot 主入口：装配各模块
  * 由 bootstrap.js 通过 Services.scriptloader 加载，共享 bootstrap 作用域
  */
-/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, _ppDiag */
+/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, _ppDiag */
 
 Zotero.PaperPilot = {
   id: null,
@@ -92,12 +92,25 @@ Zotero.PaperPilot = {
       // 0.23.0 笔记关系图谱 + 阅读行为统计（阶段 2 第二批）
       "features/note-graph.js",
       "features/reading-stats.js",
+      // 0.25.0 arXiv 核心：由 scripts/build-arxiv-core.py 从 tools/arxiv/src 生成
+      // （纯函数、不含 Zotero 依赖；必须按依赖序排在 discovery.js 之前。
+      //  改了 tools 侧逻辑要重跑生成器，preflight 会拦住忘记生成的情况。）
+      "arxiv/arxiv-errors.js",
+      "arxiv/arxiv-dates.js",
+      "arxiv/arxiv-query.js",
+      "arxiv/arxiv-categories.js",
+      "arxiv/arxiv-atom.js",
+      "arxiv/arxiv-analyze.js",
+      "arxiv/arxiv-rate-limiter.js",
+      "arxiv/arxiv-fetch.js",
       // 0.24.0 阶段 3：元数据规则补齐 / 文献发现（arXiv 日推）/ MCP 对外供给
       "features/meta-rules.js",
       "features/discovery.js",
       "features/mcp.js",
       "features/ui-theme.js",
       "features/pdf-theme.js",
+      // 0.25.0 统一主题切换按钮（阅读器工具栏 + 主窗口左上角；依赖上面两个主题模块）
+      "features/theme-toggle.js",
       "columns/rank-column.js",
       "columns/citation-column.js",
       "panels/ai-chat-pane.js",
@@ -168,11 +181,24 @@ Zotero.PaperPilot = {
     this.metaRules = MetaRules;
     this.discovery = Discovery;
     this.mcp = MCP;
+    // 0.25.0 arXiv 核心（生成物）：窗口脚本与排障经此访问
+    this.arxiv = ArxivFetch;
+    this.arxivCore = {
+      errors: ArxivErrors,
+      dates: ArxivDates,
+      query: ArxivQuery,
+      categories: ArxivCategories,
+      atom: ArxivAtom,
+      analyze: ArxivAnalyze,
+      rateLimiter: ArxivRateLimiter,
+    };
     // 0.13.0 工作台 2.0 需要：Prompt 技能库
     this.prompts = Prompts;
     // 0.16.0 主题系统：设置面板脚本经此访问主题库与切换接口
     this.uiTheme = UiTheme;
     this.pdfTheme = PdfTheme;
+    // 0.25.0 统一主题切换按钮（阅读器工具栏 + 主窗口左上角）
+    this.themeToggle = ThemeToggle;
     // 0.21.0 多篇 PDF 并排对比（菜单/功能中心经此调起；窗口脚本经 window.arguments 拿引用）
     this.pdfCompare = PdfCompare;
 
@@ -323,6 +349,13 @@ Zotero.PaperPilot = {
     } catch (e) {
       await this._diag("pdf theme FAILED: " + (e && (e.stack || e.message) || e));
     }
+    // 0.25.0 统一主题切换按钮：阅读器走官方 renderToolbar 扩展位，主窗口左上角插 button
+    try {
+      ThemeToggle.register(id);
+      await this._diag("theme toggle registered");
+    } catch (e) {
+      await this._diag("theme toggle FAILED: " + (e && (e.stack || e.message) || e));
+    }
 
     // 阅读器划词浮窗
     try {
@@ -378,6 +411,16 @@ Zotero.PaperPilot = {
       await this._diag("discovery daily timer started (enabled=" + Prefs.get("discoveryEnabled", false) + ")");
     } catch (e) {
       await this._diag("discovery FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
+    // 0.25.0 arXiv 核心离线自检（不联网）。
+    // 生成物是「代码生成代码」的产物：一旦转换出错（例如 module.exports = 被换成 return =），
+    // loadSubScript 只会静默降级、界面看不出异常。把解析/构建/去重的本地断言结果写进
+    // boot 日志，实机排查第一眼就能下结论（`arxiv core self-test: ok ...`）。
+    try {
+      await this._diag("arxiv core self-test: " + ArxivFetch.selfTest());
+    } catch (e) {
+      await this._diag("arxiv core self-test FAILED: " + (e && (e.stack || e.message) || e));
     }
 
     // 监听配置变更：分区开关 / 数据路径 即时生效（非关键功能，失败不得拖死 startup）
@@ -469,7 +512,7 @@ Zotero.PaperPilot = {
     // （FF140 实证：addObserver(..., weak=true) 直接抛错拖死 startup）。
     // 改用 Zotero.Prefs.registerObserver——Zotero 自己在主作用域持有单个
     // nsIObserver 再分发，按「完整 pref key」注册（无前缀监听，逐 key 注册）。
-    this._prefObserverSymbols = ["rankDataPath", "rankColumnEnabled", "easyScholarEnabled", "easyScholarKey", "citationColumnEnabled", "rankDataSets", "rankMaxBadges", "rankBadgeStyle", "uiTheme", "uiThemeCustom", "uiWallpaper", "uiWallpaperPath", "uiWallpaperUrl", "uiWallpaperOpacity", "pdfTheme", "pdfThemeCustomColor", "pdfThemeCustomOpacity"].map((key) =>
+    this._prefObserverSymbols = ["rankDataPath", "rankColumnEnabled", "easyScholarEnabled", "easyScholarKey", "citationColumnEnabled", "rankDataSets", "rankMaxBadges", "rankBadgeStyle", "uiTheme", "uiThemeCustom", "uiWallpaper", "uiWallpaperPath", "uiWallpaperUrl", "uiWallpaperOpacity", "pdfTheme", "pdfThemeCustomColor", "pdfThemeCustomOpacity", "themeButtonEnabled"].map((key) =>
       Zotero.Prefs.registerObserver(Prefs.PREFIX + key, () => {
         this._onPrefChanged(key).catch((e) => {
           try { Zotero.logError(e); } catch (_) { /* ignore */ }
@@ -510,11 +553,17 @@ Zotero.PaperPilot = {
       try { Zotero.ItemTreeManager.refreshColumns(); } catch (e) { /* ignore */ }
       try { Zotero.Notifier.trigger("redraw", "item", []); } catch (e) { /* ignore */ }
     } else if (key === "uiTheme" || key === "uiThemeCustom" || key === "uiWallpaper" || key === "uiWallpaperPath" || key === "uiWallpaperUrl" || key === "uiWallpaperOpacity") {
-      // 主题/壁纸即时生效：设置面板/菜单任何一处改动，全部窗口立即换肤
+      // 主题/壁纸即时生效：设置面板/菜单/工具栏按钮任何一处改动，全部窗口立即换肤
       try { UiTheme.apply(); } catch (e) { /* ignore */ }
+      // 两处主题按钮的提示文字同步（界面主题名变了）
+      try { ThemeToggle.refresh(); } catch (e) { /* ignore */ }
     } else if (key === "pdfTheme" || key === "pdfThemeCustomColor" || key === "pdfThemeCustomOpacity") {
-      // PDF 阅读主题即时生效：重刷全部已打开 reader
+      // PDF 阅读主题即时生效：重刷全部已打开 reader（不用重开文档）
       try { PdfTheme.refresh(); } catch (e) { /* ignore */ }
+      try { ThemeToggle.refresh(); } catch (e) { /* ignore */ }
+    } else if (key === "themeButtonEnabled") {
+      // 两处按钮的总开关
+      try { ThemeToggle.syncEnabled(); } catch (e) { /* ignore */ }
     }
   },
 
@@ -526,6 +575,7 @@ Zotero.PaperPilot = {
       this._prefObserverSymbols = null;
     }
     try { Menus.destroy(); } catch (e) { Zotero.logError(e); }
+    try { ThemeToggle.unregister(); } catch (e) { Zotero.logError(e); }
     try { UiTheme.unregister(); } catch (e) { Zotero.logError(e); }
     try { PdfTheme.unregister(); } catch (e) { Zotero.logError(e); }
     try { RuleTag.unregister(); } catch (e) { Zotero.logError(e); }

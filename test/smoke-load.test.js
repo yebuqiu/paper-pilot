@@ -39,7 +39,7 @@ sandbox.Zotero.Prefs = sandbox.Prefs;
 
 vm.createContext(sandbox);
 const main = fs.readFileSync(path.join(ROOT, "chrome/content/scripts/main.js"), "utf8");
-const files = main.match(/"((?:core|ai|features|columns|panels)\/[^"]+\.js)"/g).map((s) => s.replace(/"/g, ""));
+const files = main.match(/"((?:core|ai|features|columns|panels|arxiv)\/[^"]+\.js)"/g).map((s) => s.replace(/"/g, ""));
 
 files.push("menus.js");
 let failed = 0;
@@ -55,7 +55,8 @@ for (const f of files) {
 console.log("加载模块 " + files.length + " 个，失败 " + failed + " 个");
 
 const expect = ["Prefs", "I18n", "MdLite", "Notes", "ItemSel", "TagCurator", "AttachDoctor", "LibSearch",
-  "SmartCleanup", "RuleTag", "Automation", "AutoRead", "TagCurator", "LibSearch", "NoteGraph", "ReadingStats", "AttachDoctor", "AIChat", "AIClient", "Menus", "ReadingState", "UiTheme", "PdfCompare", "MetaRules", "Discovery", "MCP"];
+  "SmartCleanup", "RuleTag", "Automation", "AutoRead", "TagCurator", "LibSearch", "NoteGraph", "ReadingStats", "AttachDoctor", "AIChat", "AIClient", "Menus", "ReadingState", "UiTheme", "PdfCompare", "MetaRules", "Discovery", "MCP",
+  "ArxivErrors", "ArxivDates", "ArxivQuery", "ArxivCategories", "ArxivAtom", "ArxivAnalyze", "ArxivRateLimiter", "ArxivFetch"];
 const missing = expect.filter((k) => !sandbox[k]);
 console.log("关键全局缺失:", missing.length ? missing : "无 ✓");
 
@@ -66,8 +67,12 @@ const t = sandbox.LibSearch.tokenize("机器学习 survey");
 console.log("LibSearch.tokenize 可用:", t.includes("学习") && t.includes("survey") ? "✓" : "✗");
 const mh = sandbox.MetaRules.journalHint("Nat Med", sandbox.MetaRules.journalIndex(""), "expand");
 console.log("MetaRules.journalHint 可用:", mh && mh.to === "Nature Medicine" ? "✓" : "✗ " + JSON.stringify(mh));
-const atom = sandbox.Discovery.parseAtom('<entry><id>http://arxiv.org/abs/2401.00001v1</id><title>T</title><summary>S</summary><author><name>A B</name></author></entry>');
-console.log("Discovery.parseAtom 可用:", atom.length === 1 && atom[0].arxivId === "2401.00001" ? "✓" : "✗");
+// 0.25.0 起解析不再由 Discovery 自带，改为生成出来的 ArxivAtom（单一真源 tools/arxiv/src）
+const atom = sandbox.ArxivAtom.parseAtom('<entry><id>http://arxiv.org/abs/2401.00001v1</id><title>T</title><summary>S</summary><author><name>A B</name></author></entry>');
+console.log("ArxivAtom.parseAtom 可用:", atom.entries.length === 1 && atom.entries[0].arxivId === "2401.00001" ? "✓" : "✗");
+// 生成物自检：在共享作用域里跑一遍（实机 boot 日志用的是同一个函数）
+const selfTest = sandbox.ArxivFetch.selfTest();
+console.log("ArxivFetch.selfTest:", selfTest.indexOf("ok ") === 0 ? "✓ " + selfTest : "✗ " + selfTest);
 console.log("MCP 工具数:", sandbox.MCP.TOOLS.length === 8 ? "✓ 8" : "✗ " + sandbox.MCP.TOOLS.length);
 console.log("I18n 新条目:", sandbox.I18n.t("menuLibAsk"), "|", sandbox.I18n.t("menuDiscovery"), "|", sandbox.I18n.t("menuMetaRules"), "|", sandbox.I18n.t("menuMcp"));
 process.exit(failed || missing.length ? 1 : 0);
