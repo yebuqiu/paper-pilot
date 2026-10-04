@@ -148,7 +148,28 @@ python scripts/sync-github.py            # 本地 HEAD 树 → GitHub refs/heads
 python scripts/sync-github.py --dry-run
 ```
 
-本机 git 协议访问 github.com 被网络阻断，故走 `api.github.com` 重建提交（提交 SHA 与本地不同、无历史）。PAT 从 Windows 凭据管理器读取，不落盘。
+本机 git 协议访问 github.com 被网络阻断，故走 `api.github.com` 重建提交。**提交 SHA 与本地不同**
+（REST 重建），但**提交消息与先后顺序原样保留**，主分支因此有完整历史（当前 62 条）——
+所以「按版本找提交」不要靠对比 SHA，而是**读每个提交里的 `manifest.json` version**
+（`scripts/github-release.py` 就是这么做的）。
+
+PAT 从 Windows 凭据管理器读取，不落盘。
+
+### 3.6 GitHub 侧版本 tag 与 Release
+
+```bash
+python scripts/github-release.py --version 0.26.0   # 发版时（tag + Release + xpi 附件）
+python scripts/github-release.py --backfill         # 历史补发（dist 里有产物但缺 Release 的版本）
+python scripts/github-release.py --backfill --dry-run
+```
+
+GitHub 会把 Release 展示在**仓库首页侧栏**，且附件可直接下载——所以每个版本都要有
+tag + Release + xpi 附件。`sync-github.py` 只镜像**内容**，不会建 tag/Release，两者是两件事。
+
+- tag 指向 **GitHub 侧提交**（用 manifest 版本反查，不靠消息文本匹配）；
+- **幂等**：已有的 Release / tag 一律跳过，可重复执行；
+- 找不到对应提交的版本**如实跳过并报告**（如 `0.21.3`：当年版本号只在打包时改、没提交），
+  不做张冠李戴的 tag。
 
 ---
 
@@ -325,7 +346,8 @@ paper-pilot/
   - 插件+服务端：`0.26.0(服务端 1.6.0): AI 额度余额展示与充值 + 订阅去无限化 + 充值订单`
   - 纯服务端：`服务端 1.4.7: 登录设备与会话管理`
 - **版本号口径**：只改服务端/脚本就别挂一个不会发布的插件版本号（服务端版本看 `/api/health` 的 `version`）；插件没动就不动 `manifest.json` 和 xpi。
-- GitHub Releases **自 v0.14.5 后不再创建**；GitHub 镜像走 `sync-github.py`。
+- GitHub 镜像走 `sync-github.py`（内容）；**版本 tag + Release + xpi 附件走 `github-release.py`**——
+  Release 会展示在仓库首页侧栏且附件可直接下载，所以每个版本都要发（历史版本用 `--backfill` 补齐）。
 - **`dist/*.xpi` 必须入库**（`.gitignore` 用 `!dist/` + `!dist/*.xpi` 反豁免）。
 
 ### 发版五步（+ 第 0 步）
@@ -335,7 +357,8 @@ paper-pilot/
 2. 显式 `git add <paths>` + `git tag v<x.y.z>`；
 3. `git push origin main` + `git push origin v<x.y.z>`；
 4. `curl -L` 取远端 `paperpilot-update.json` 验证 + 下载 xpi 比 sha256 与包内 `manifest.json` 版本；
-5. `python scripts/sync-github.py`（自检 blob 数）。
+5. `python scripts/sync-github.py`（自检 blob 数）；
+6. `python scripts/github-release.py --version <x.y.z>`（GitHub 侧 tag + Release + xpi 附件）。
 
 > ⚠️ **"双推 + curl 验证"只证明服务端就绪**。Zotero 只在自身启动时查更新，发版后要交叉核对**客户端真实版本**：profile 内 xpi 的 sha1 / `paperpilot-boot.log` 末行 / `extensions.json` 的 `version`。
 
