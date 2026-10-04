@@ -338,6 +338,7 @@ function Get-AuditText([string]$a) {
     'channel.published' = '修改上线模型清单'
     'channel.high-tier' = '修改高级模型清单'
     'pricing.update' = '修改 AI 模型单价'
+    'balance.adjust' = '充值/调整余额'
   }
   if ($map.ContainsKey($a)) { return $map[$a] }
   return $a

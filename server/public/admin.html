@@ -218,7 +218,7 @@
         </div></div>
       <table id="user-table">
         <thead><tr>
-          <th>邮箱</th><th>昵称</th><th>等级</th><th>会员到期</th><th>今日用量</th>
+          <th>邮箱</th><th>昵称</th><th>等级</th><th>会员到期</th><th>AI 余额</th><th>今日用量</th>
           <th title="最近 7 天官方模型调用次数合计">近 7 天</th>
           <th title="最近 7 天内有请求的登录设备数（超过阈值标红，仅提示不处罚）">活跃设备</th>
           <th>最近登录</th><th style="width:330px">操作</th>
@@ -443,6 +443,28 @@
     </div>
 
     <div class="card">
+      <h2>余额与赠送配置（1.6.0）</h2>
+      <p class="hint" style="margin:0 0 10px">
+        <b>「余额不足时拦截」不勾 = 观察模式</b>：网关照常按成本扣减并记账（含透支），但余额用尽也放行。
+        真实成本数据没跑够之前，任何拦截阈值都是拍脑袋——先观察、配准单价，再勾选开启按量计费。
+        赠送额度只限基础模型；高级模型只消耗充值余额；充值余额<b>永不过期</b>。
+      </p>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
+          <input id="bl-enforce" type="checkbox"> 余额不足时拦截
+        </label>
+        <span class="hint">注册赠送</span>
+        <input id="bl-grant" type="number" step="0.01" min="0" style="width:90px" title="新注册账号自动发放的额度；0 = 关闭"> 元
+        <span class="hint">赠送有效期</span>
+        <input id="bl-valid" type="number" min="0" style="width:70px" title="防批量注册囤积；0 = 不过期（不建议）"> 天
+        <span class="hint">拦截阈值</span>
+        <input id="bl-min" type="number" step="0.01" min="0" style="width:90px" title="可用余额低于此值时拒绝新的 AI 请求"> 元
+        <button class="btn primary" onclick="saveBalanceCfg()">保存</button>
+      </div>
+      <div class="msg" id="bl-msg"></div>
+    </div>
+
+    <div class="card">
       <h2>按模型累计（全时段）</h2>
       <table>
         <thead><tr><th>模型</th><th style="width:90px">次数</th><th style="width:120px">token</th>
@@ -550,6 +572,18 @@
     <p class="hint" style="margin:0 0 6px">
       此处是<b>覆盖式</b>后台裁决：到期日以填写的为准。要给用户叠加时长的续期请用列表里的「开通/续期」。
     </p>
+    <div class="field" style="margin-bottom:6px"><label>AI 余额</label>
+      <div id="u-bal" class="hint"></div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+      <input id="u-bal-delta" type="number" step="0.01" placeholder="调整额（元，可负）" style="width:130px">
+      <input id="u-bal-reason" placeholder="原因（写进流水与审计）" style="width:180px">
+      <button class="btn" type="button" onclick="adjustBalance()">调整余额</button>
+    </div>
+    <p class="hint" style="margin:0 0 10px">
+      正数 = 充值（进「充值余额」，永不过期）；负数 = 扣减（先扣赠送再扣充值，不透支）。
+      赠送额度只限基础模型，高级模型只消耗充值余额。
+    </p>
+    <div class="msg" id="u-bal-msg"></div>
     <div class="actions">
       <button class="btn" type="button" onclick="closeMask('user-mask')">取消</button>
       <button class="btn primary" type="button" onclick="saveUser()">保存</button>
@@ -1542,6 +1576,9 @@ function loadUsers() {
         '<td>' + esc(u.nickname || '—') + '</td>' +
         '<td><span class="badge' + (u.plan === 'Pro' ? '' : ' gray') + '">' + esc(u.plan) + '</span></td>' +
         '<td>' + fmtExpiry(u) + '</td>' +
+        '<td class="mono">' + (u.balance ? esc(u.balance.text)
+          + (u.balance.paidMicro < 0 ? ' <span class="badge red" title="并发窗口透支：下次请求会被拦">透支</span>' : '')
+          : '—') + '</td>' +
         '<td>' + u.dailyUsed + ' / ' + u.dailyLimit + '</td>' +
         '<td>' + (u.usage7 == null ? '—' : u.usage7) + '</td>' +
         '<td>' + (u.sessionsActive == null ? '—'
@@ -1601,7 +1638,40 @@ function editUser(id) {
     $('eu-nickname').value = u.nickname || '';
     $('eu-plan').value = u.planRaw === 'Pro' ? 'Pro' : 'Free';
     $('eu-expires').value = u.expiresAt ? u.expiresAt.slice(0, 10) : '';
+    $('u-bal-delta').value = '';
+    $('u-bal-reason').value = '';
+    $('u-bal-msg').textContent = '';
+    renderUserBalance();
     $('user-mask').classList.add('show');
+  });
+}
+/** 编辑弹窗里的余额回显（赠送/充值分开展示，透支标红） */
+function renderUserBalance() {
+  var b = editingUser && editingUser.balance;
+  if (!b) { $('u-bal').textContent = '—'; return; }
+  $('u-bal').innerHTML = '总额 <b>' + esc(b.text) + '</b>'
+    + '（赠送 ' + esc(b.grantedText)
+    + (b.grantedExpiresAt ? '，剩 ' + (b.grantedDaysLeft || 0) + ' 天' : '') 
+    + '；充值 ' + esc(b.paidText) + '，永不过期）'
+    + (b.paidMicro < 0 ? ' <span class="badge red">充值余额透支中</span>' : '');
+}
+/** 管理员充值/调余额（1.6.0）：正数充值、负数扣减；每次写流水与审计 */
+function adjustBalance() {
+  if (!editingUser) return;
+  var d = Number($('u-bal-delta').value);
+  if (!isFinite(d) || d === 0) return msg('u-bal-msg', '✗ 请填非零金额（元）', false);
+  api('POST', '/api/admin/users/' + editingUser.id + '/balance', {
+    micro: Math.round(d * 1e6),
+    kind: d > 0 ? 'recharge' : 'adjust',
+    reason: $('u-bal-reason').value.trim() || (d > 0 ? '管理员充值' : '管理员扣减'),
+  }).then(function (r) {
+    if (!r.ok) return msg('u-bal-msg', '✗ ' + (r.error || '调整失败'), false);
+    $('u-bal-delta').value = '';
+    $('u-bal-reason').value = '';
+    editingUser = r.user;          // 回显用新视图（含流水）
+    renderUserBalance();
+    msg('u-bal-msg', '✓ 已调整，当前余额 ' + r.balance.text, true);
+    loadUsers();                   // 列表里的余额列同步刷新
   });
 }
 function saveUser() {
@@ -2308,7 +2378,37 @@ function loadPricing(feedback) {
 /** 载入「成本与用量」页（先单价表再看板；看板刷新会覆盖消息区，故反馈交给它最后写） */
 function loadCostTab() {
   loadPricing();
+  loadBalanceCfg();
   loadCost();
+}
+
+/** 余额与赠送配置回显（1.6.0） */
+function loadBalanceCfg() {
+  api('GET', '/api/admin/pricing').then(function (r) {
+    if (!r.ok) return;
+    var c = (r.pricing && r.pricing.balance) || {};
+    $('bl-enforce').checked = c.enforce === true;
+    $('bl-grant').value = (Number(c.signupGrantMicro) || 0) / 1e6;
+    $('bl-valid').value = Number(c.signupValidDays) || 0;
+    $('bl-min').value = (Number(c.minBalanceMicro) || 0) / 1e6;
+  });
+}
+
+/** 保存余额配置（观察模式 ↔ 拦截模式 的开关就在这里） */
+function saveBalanceCfg() {
+  var body = { balance: {
+    enforce: $('bl-enforce').checked,
+    signupGrantMicro: Math.round((Number($('bl-grant').value) || 0) * 1e6),
+    signupValidDays: Number($('bl-valid').value) || 0,
+    minBalanceMicro: Math.round((Number($('bl-min').value) || 0) * 1e6),
+  } };
+  api('PUT', '/api/admin/pricing', body).then(function (r) {
+    if (!r.ok) return msg('bl-msg', '✗ ' + (r.error || '保存失败'), false);
+    var c = r.pricing.balance;
+    msg('bl-msg', c.enforce
+      ? '✓ 已保存，并已开启拦截（余额不足将拒绝 AI 请求）'
+      : '✓ 已保存（观察模式：只记账不拦截）', true);
+  });
 }
 
 function clearPriceForm() {

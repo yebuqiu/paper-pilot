@@ -286,7 +286,7 @@ const fresh = () => membership.normalize(membership.newDoc());
   ok(!!tok, 'J1 测试账号登录成功');
 
   const h0 = await req('GET', '/api/health');
-  eq(h0.json.version, '1.5.0', 'J2 服务端版本 1.5.0');
+  eq(h0.json.version, '1.6.0', 'J2 服务端版本 1.6.0');
   ok('coupons' in h0.json && 'couponsActive' in h0.json, 'J3 health 暴露优惠券观测字段', h0.json.coupons);
 
   const jc = await req('POST', '/api/admin/coupons', { type: 'percent', percent: 30, maxUses: 2, perUser: 1, note: '上线三折优惠' });

@@ -13,7 +13,7 @@ PaperPilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstra
 | 组成 | 说明 | 版本锚点 |
 |---|---|---|
 | **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.25.2`） |
-| **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.5.0`） |
+| **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.6.0`） |
 
 - 插件 ID：`paperpilot@dev.local`；兼容 `strict_min_version: "6.999"` → `strict_max_version: "99.*"`。
 - 授权：**Apache-2.0**（见 [LICENSE](LICENSE) / [NOTICE](NOTICE)）。插件本体永久免费开源。
@@ -58,7 +58,7 @@ PaperPilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstra
 
 ```bash
 # 一键门禁（推荐，发版前必跑）：全 JS 语法 + arXiv 生成物同步 + 全部 Node 测试套件
-#                              + 接线扫描 + 后台 E2E（当前共 22 步）
+#                              + 接线扫描 + 后台 E2E（当前共 23 步）
 python scripts/preflight.py
 
 # 快速模式（跳过浏览器 E2E，约 95s，适合改代码时的内循环）
@@ -189,7 +189,7 @@ paper-pilot/
 │
 ├── server/                   账号后台（独立于 xpi，零依赖）
 │   ├── account-server.js     ★ 入口：路由 + HTTP + 限速 + 网关
-│   ├── lib/                  领域模块：membership / coupon / pricing / reconcile /
+│   ├── lib/                  领域模块：membership / coupon / pricing / balance / reconcile /
 │   │                         sessions / audit / backup / alerts / lockout / mail /
 │   │                         presets / store
 │   ├── public/               管理页与自助页 HTML：admin.html / register / reset / verify / forgot
@@ -210,7 +210,7 @@ paper-pilot/
 ├── test/                     测试（不进 xpi）
 │   ├── account-persistence / membership / price / usage / membership-panel /
 │   │   server-ops / audit / reconcile / coupon / sessions / ai-tier /
-│   │   pricing / metering / arxiv-core / smoke-load
+│   │   pricing / metering / balance / arxiv-core / smoke-load
 │   │                         .test.js（Node 单测；arxiv-core 守生成物等价性）
 │   ├── legacy-rootcause.probe.js   历史根因探针（接受 git-ref 参数）
 │   └── admin-e2e.test.js     后台浏览器 E2E（无浏览器/NODE_PATH 时自动跳过）
@@ -321,6 +321,7 @@ paper-pilot/
 - **提交信息格式**：以版本/批次为前缀，例如
   - 插件：`0.24.8(服务端 1.4.9): 套餐 AI 能力分级 —— 官方模型白名单 + 新用户全模型试用`
   - 纯服务端：`服务端 1.5.0: AI 计费计量 —— 网关按 token 记成本 + 单价表 + 成本看板`
+  - 纯服务端：`服务端 1.6.0: 余额域 —— 注册赠送 / 充值 / 按成本扣减 / 观察模式`
   - 纯服务端：`服务端 1.4.7: 登录设备与会话管理`
 - **版本号口径**：只改服务端/脚本就别挂一个不会发布的插件版本号（服务端版本看 `/api/health` 的 `version`）；插件没动就不动 `manifest.json` 和 xpi。
 - GitHub Releases **自 v0.14.5 后不再创建**；GitHub 镜像走 `sync-github.py`。

@@ -10,12 +10,17 @@
  *   POST /v1/chat/completions Bearer → 转发活动通道上游（SSE 流式透传，auto→通道模型）
  *   GET  /register           公开自助注册页（public/register.html）
  *
- * 会员域（服务端 1.5.0，插件 0.25.x；Free / Pro 两档 + 价格表 + 永久会员 + 对账核销 + 优惠券
+ * 会员域（服务端 1.6.0，插件 0.25.x；Free / Pro 两档 + 价格表 + 永久会员 + 对账核销 + 优惠券
  *          + 套餐 AI 能力（高级模型白名单 / 新用户全模型试用）
- *          + **AI 计费计量（网关按 token 记成本，为按量计费铺路）**）：
+ *          + **AI 计费计量（网关按 token 记成本，为按量计费铺路）**
+ *          + **余额域（注册赠送 / 充值 / 按成本扣减 / 流水）**）：
  * AI 计量（1.5.0）：每次成功转发都解析上游 usage（流式自动带 include_usage），
  *   按「响应里的真实模型」计价并累计到 user.usage（token / 成本微元 / 按模型）。
  *   上游没返 usage → 计入 missingUsage（未知成本，不是 0），后台看板显著提示。
+ * 余额域（1.6.0）：user.balance = { grantedMicro（赠送,有期）/ paidMicro（充值,永不过期）/ ledger }。
+ *   注册自动赠送（signupGrantMicro，默认 ¥6/30 天，限基础模型）；网关按真实成本扣减
+ *   （先扣赠送再扣充值；高级模型只扣充值）；enforce=false 为观察模式只记账不拦，
+ *   开启后余额低于阈值返回 402 + 充值引导。管理员可充值/调账（audit: balance.adjust）。
  * 登录设备（1.4.7）：令牌带 sid/设备/来源 IP 与最近活动；用户可自查并踢出设备，
  *   GET  /api/plans                 公开 → {plans, priceOptions, priceItems, upcoming, cycles, pay}
  *   GET  /api/membership            Bearer → {membership(等级/到期/剩余天数/额度/历史), user(含用量趋势)}
@@ -39,6 +44,8 @@
  *   GET  /api/admin/pricing         （1.5.0）AI 模型单价表 + 实际用过但未配价的模型
  *   PUT  /api/admin/pricing         （1.5.0）改单价 {set:{模型:{inPer1k,outPer1k}},remove:[...],fallback:{}}
  *   GET  /api/admin/usage-summary   （1.5.0）成本看板 ?days=30（总量/按天/按模型/人均/Top 账号）
+ *   PUT  /api/admin/pricing         （1.6.0）同接口可改余额配置 {balance:{enforce,signupGrantMicro,...}}
+ *   POST /api/admin/users/:id/balance  （1.6.0）充值/调余额 {micro（有符号微元）,kind,reason}
  *   POST /api/admin/prices          新增价格条目 {plan, cycle, months, price, label,
  *                                   effectiveFrom, effectiveTo, enabled, note}
  *   PUT  /api/admin/prices/:id      改价格条目（局部更新，用于改价 / 定时生效 / 启停）
@@ -110,6 +117,7 @@ const audit = require('./lib/audit');
 const reconcile = require('./lib/reconcile');
 const mail = require('./lib/mail');
 const pricing = require('./lib/pricing');
+const balance = require('./lib/balance');
 
 /* ---------------- 配置 ---------------- */
 
@@ -187,7 +195,13 @@ const alertStore = new JsonStore(path.join(DATA_DIR, 'alerts.json'), {});
 // 后台看板会显著提示哪些模型还没配价——**不猜价**，缺价就是缺数据。
 const pricingStore = new JsonStore(path.join(DATA_DIR, 'pricing.json'), pricing.newDoc());
 pricingStore.data = pricing.normalize(pricingStore.data);
+// 1.6.0 余额配置（pricing.json 顶层 balance 块）：注册赠送 / enforce 开关 / 拦截阈值。
+// ★ enforce 默认 false = 观察模式：只扣账不拦截。真实成本数据没跑够之前，
+//   任何拦截阈值都是拍脑袋——先观察、配准价，再开。
+balance.normalizeCfg(pricingStore.data);
 pricingStore.save();
+/** 当前余额配置（每次读都归一化，改配置即时生效） */
+function balanceCfg() { return balance.cfgOf(pricingStore.data); }
 
 /* ---------------- 工具 ---------------- */
 
@@ -536,6 +550,8 @@ function userForClient(user) {
     },
     // 1.5.0 AI 计量：今日 / 近 7 天 / 近 30 天 token 与成本（为按量计费铺路）
     cost: costViewOf(user),
+    // 1.6.0 余额（注册赠送 + 充值；enforce=false 时仅展示与记账，不拦截）
+    balance: balance.userView(user, balanceCfg()),
   };
     if (user.expiresAt) out.expiresAt = user.expiresAt; // 套餐有效期（可缺省）
     // 1.4.9 套餐 AI 能力（供插件端展示与升级引导；lockedModels 让面板能灰显）
@@ -1030,6 +1046,16 @@ function gatewayChat(req, res, user) {
     }
     const payload = Buffer.from(JSON.stringify(upstreamBody), 'utf8');
 
+    // 1.6.0 余额 pre-check：放在 auto 解析之后，高级模型判定才准确。
+    // enforce=false（观察模式）恒放行，只记账不拦——真实成本数据没跑够之前
+    // 任何阈值都是拍脑袋，先观察、配准价、再开。
+    const isHighTier = highTierModels().includes(String(upstreamBody.model));
+    const gate = balance.precheck(user, balanceCfg(), { highTier: isHighTier });
+    if (!gate.allowed) {
+      return json(res, 402, { ok: false, code: gate.code, error: gate.error,
+        balance: balance.userView(user, balanceCfg()) });
+    }
+
     let u;
     try { u = new URL(String(c.baseUrl).replace(/\/+$/, '') + '/chat/completions'); }
     catch (e) { return json(res, 500, { ok: false, error: '通道 baseUrl 非法：' + c.baseUrl }); }
@@ -1111,6 +1137,14 @@ function gatewayChat(req, res, user) {
           //   按请求里的 "auto" 计价会让成本统计彻底失真。
           const billModel = respModel || requestedModel;
           const cost = respUsage ? pricing.costOf(pricingStore.data, billModel, respUsage) : null;
+          // 1.6.0 余额扣减：按真实成本扣（允许透支——拦截由请求前的 pre-check 负责）。
+          // 必须在 countUsage 之前：countUsage 内部的 usersStore.save() 会把余额一并落盘。
+          if (cost && cost.micro > 0) {
+            balance.consume(user, cost.micro, {
+              highTier: highTierModels().includes(billModel),
+              reason: 'AI 调用 ' + billModel,
+            });
+          }
           countUsage(user, { model: billModel, usage: respUsage, costMicro: cost ? cost.micro : 0 });
           if (!respUsage) {
             log('metering: 上游未返回 usage →', billModel, '（计入 missingUsage，成本未知）');
@@ -1213,6 +1247,7 @@ function reloadStores() {
   // 1.5.0：单价表也参与快照回滚，回滚后必须一并重载，否则内存里还是旧价
   pricingStore.reload();
   pricingStore.data = pricing.normalize(pricingStore.data);
+  balance.normalizeCfg(pricingStore.data);
   return {
     before,
     after: { users: usersStore.data.users.length, orders: membershipStore.data.orders.length },
@@ -1426,6 +1461,8 @@ function pricingAdminOut() {
     fallback: doc.fallback,
     usedModels,
     unconfigured: usedModels.filter((x) => !x.configured).map((x) => x.model),
+    // 1.6.0 余额配置（enforce=false = 观察模式：只记账不拦截）
+    balance: balanceCfg(),
   };
 }
 
@@ -1560,6 +1597,8 @@ function userAdminOut(u) {
     usageDaily: usageDays(u, USAGE_KEEP_DAYS),
     // 1.5.0 AI 成本（后台用户列表 → 成本列 / Top 消耗用户）
     cost: costViewOf(u),
+    // 1.6.0 余额（含流水，供「调余额」弹窗回显）
+    balance: balance.adminView(u),
     status: u.status === 'pending' ? 'pending' : 'active',
     createdAt: u.createdAt || null, lastLoginAt: u.lastLoginAt || null,
     // 1.4.2 风控状态：后台用户列表据此显示「已锁定 / 近失败 N 次」
@@ -1674,7 +1713,7 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'GET' && url === '/api/health') {
       return json(res, 200, {
-        ok: true, service: 'paperpilot-account-server', version: '1.5.0',
+        ok: true, service: 'paperpilot-account-server', version: '1.6.0',
         uptime: Math.round(process.uptime()), now: new Date().toISOString(),
         mail: mail.configured() ? 'on' : 'off',
         users: usersStore.data.users.length,
@@ -1685,6 +1724,9 @@ const server = http.createServer(async (req, res) => {
         // 1.5.0 AI 计量：配了单价的模型数 + 计量盲区累计（上游未返回 usage 的次数）
         pricedModels: pricing.modelList(pricingStore.data).length,
         meteringGaps: usersStore.data.users.reduce((s, u) => s + (Number((u.usage || {}).missingUsage) || 0), 0),
+        // 1.6.0 余额：enforce=false = 观察模式（只记账不拦截）；signupGrant 为注册赠送额度
+        balanceEnforce: balanceCfg().enforce,
+        signupGrantMicro: balanceCfg().signupGrantMicro,
         // 0.23.0 会员域
         plans: Object.keys(membershipStore.data.plans || {}),
         orders: membershipStore.data.orders.length,
@@ -1723,6 +1765,12 @@ const server = http.createServer(async (req, res) => {
       const r = await adminCreateUser(Object.assign({}, input, { plan: 'Free' }));
       if (r.error) return json(res, 400, { ok: false, error: r.error });
       const user = findUserByEmail(r.user.email);
+      // 1.6.0 注册赠送 AI 额度（配置为 0 即关闭；重复发放幂等跳过）
+      const gift = balance.grantSignup(user, balanceCfg());
+      if (gift.granted) {
+        log('signup credit granted:', user.email, gift.granted + ' micro, expires', gift.expiresAt);
+        usersStore.save();
+      }
       const base = { email: user.email, name: user.nickname, plan: user.plan };
       if (mail.configured()) {
         // 邮箱验证注册：pending → 验证邮件（24h）；发信失败自动降级为直接激活
@@ -2428,6 +2476,15 @@ const server = http.createServer(async (req, res) => {
           };
           changed.push({ op: 'fallback', inPer1k: doc.fallback.inPer1k, outPer1k: doc.fallback.outPer1k });
         }
+        // 1.6.0 余额配置（局部更新：未提交的字段保持原值）
+        if (input.balance && typeof input.balance === 'object' && !Array.isArray(input.balance)) {
+          const merged = Object.assign({}, doc.balance || {}, input.balance);
+          const cfg = balance.normalizeCfg({ balance: merged });
+          doc.balance = cfg;
+          changed.push({ op: 'balance', enforce: cfg.enforce,
+            signupGrantMicro: cfg.signupGrantMicro, signupValidDays: cfg.signupValidDays,
+            minBalanceMicro: cfg.minBalanceMicro });
+        }
         if (!changed.length) return json(res, 400, { ok: false, error: '没有可应用的改动（需提供 set / remove / fallback）' });
         pricing.normalize(doc);
         pricingStore.save();
@@ -2616,6 +2673,27 @@ const server = http.createServer(async (req, res) => {
         auditLog(req, 'user.membership', { target: user.email, note: input.note || '',
           after: { plan: mp.plan, perpetual: !!mp.perpetual, expiresAt: mp.expiresAt, daysLeft: mp.daysLeft } });
         return json(res, 200, { ok: true, membership: mp, user: userAdminOut(user) });
+      }
+
+      /** 1.6.0 管理员充值 / 调余额：{ micro（有符号微元）, kind: recharge|adjust, reason } */
+      m = url.match(/^\/api\/admin\/users\/([a-zA-Z0-9-]+)\/balance$/);
+      if (m && method === 'POST') {
+        const user = findUserById(m[1]);
+        if (!user) return json(res, 404, { ok: false, error: '用户不存在' });
+        let input;
+        try { input = await readBody(req); } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+        const before = balance.adminView(user);
+        const r = balance.adminAdjust(user, {
+          micro: input.micro, kind: input.kind, reason: input.reason, refId: input.refId,
+        });
+        if (r.error) return json(res, 400, { ok: false, error: r.error });
+        usersStore.save();
+        log('balance adjusted by admin:', user.email, (Number(input.micro) || 0) + ' micro', input.reason || '');
+        auditLog(req, 'balance.adjust', { target: user.email,
+          before: { totalMicro: before.totalMicro, grantedMicro: before.grantedMicro, paidMicro: before.paidMicro },
+          after: { totalMicro: r.balance.totalMicro, grantedMicro: r.balance.grantedMicro, paidMicro: r.balance.paidMicro },
+          note: input.reason || '' });
+        return json(res, 200, { ok: true, balance: r.balance, user: userAdminOut(user) });
       }
 
       /* ---- 数据快照与一键回滚（1.4.2） ---- */

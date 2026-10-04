@@ -798,7 +798,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.5.0'" in srv, "18.31 服务端版本号 1.5.0")
+ok("version: '1.6.0'" in srv, "18.31 服务端版本号已随批次更新（1.6.0）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -849,6 +849,62 @@ ok(not _dupid, "18.43b ★ admin.html 无重复 DOM id" + ("" if not _dupid else
 _pf3 = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
 ok("test/pricing.test.js" in _pf3, "18.45 preflight 含 AI 计费单价测试")
 ok("test/metering.test.js" in _pf3, "18.46 preflight 含网关计量测试")
+
+# ---------- 19. 余额域（服务端 1.6.0：注册赠送 / 充值 / 按成本扣减） ----------
+BAL_LIB = os.path.join(ROOT, "server", "lib", "balance.js")
+bal_src = io.open(BAL_LIB, encoding="utf-8").read()
+
+for fn in ["normalizeCfg", "ensure", "sweep", "grantSignup", "adminAdjust", "consume", "precheck", "userView", "adminView"]:
+    ok(re.search(r"function %s\b" % fn, bal_src) is not None, "19.1 balance.js 定义 %s()" % fn)
+ok("signupGrantMicro: 6 * pricing.MICRO_PER_YUAN" in bal_src, "19.2 默认注册赠送 ¥6（用户决策）")
+ok("signupValidDays: 30" in bal_src, "19.3 赠送默认 30 天有效（防批量注册囤积）")
+
+# ★ 铁律：钱不过期，赠品才过期 —— paidMicro 没有任何到期机制
+ok("grantedExpiresAt" in bal_src and "paidExpiresAt" not in bal_src,
+   "19.4 ★ 充值余额无到期字段（钱不过期，赠品才过期）")
+# ★ 透支不得被读取路径消毒成 0（曾因 ensure 用非负夹取把欠费清零，测试揪出）
+ok("b.paidMicro = signedMicro(b.paidMicro);" in bal_src, "19.5 ★ ensure 保留负的充值余额（透支如实）")
+ok("micro(b.grantedMicro, 0)" in bal_src, "19.6 赠送余额仍非负（过期由 sweep 清零）")
+# ★ precheck 必须先看 enforce（曾漏判，把观察模式变成拦截）
+ok("if (!c.enforce) return { allowed: true" in bal_src, "19.7 ★ 观察模式（enforce=false）恒放行")
+# ★ 高级模型：赠送不算数，且必须有充值余额（阈值 0 时不能放行 0 充值用户）
+ok("b.paidMicro > 0 && b.paidMicro >= c.minBalanceMicro" in bal_src,
+   "19.8 ★ 高级模型要求充值余额过阈值且 > 0（赠送限基础模型）")
+ok("'BALANCE_REQUIRED_FOR_HIGH_TIER'" in bal_src, "19.9 高级模型拦截有独立 code")
+ok("'INSUFFICIENT_BALANCE'" in bal_src, "19.10 余额不足拦截有可编程 code")
+ok("自带 Key 不受额度限制" in bal_src, "19.11 拦截文案给「充值 / 自有 Key」两条出路")
+
+# --- 服务端接线 ---
+ok("require('./lib/balance')" in srv, "19.12 服务端引入 balance 模块")
+ok("balance.normalizeCfg(pricingStore.data)" in srv, "19.13 启动归一化余额配置")
+ok("balance.grantSignup(user, balanceCfg())" in srv, "19.14 注册自动赠送")
+ok("const gate = balance.precheck(user, balanceCfg(), { highTier: isHighTier });" in srv,
+   "19.15 网关 pre-check（在 auto 解析之后，高级判定才准确）")
+ok("return json(res, 402, { ok: false, code: gate.code" in srv, "19.16 余额不足 → 402（非 429，语义独立）")
+ok("balance.consume(user, cost.micro" in srv, "19.17 网关按真实成本扣减")
+# 用位置关系断言顺序（正则跨多行块太脆）：扣减必须先于 countUsage，
+# 借 countUsage 内部的 usersStore.save() 把余额变动一并落盘
+_consume_pos = srv.find("balance.consume(user, cost.micro")
+_count_pos = srv.find("countUsage(user, { model: billModel")
+ok(_consume_pos >= 0 and _count_pos >= 0 and _consume_pos < _count_pos,
+   "19.18 ★ 扣减在 countUsage 之前（借它的 save 一并落盘）")
+ok("balance: balance.userView(user, balanceCfg())," in srv, "19.19 /api/auth/me 下发 balance")
+ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余额")
+ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
+ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
+ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
+ok("version: '1.6.0'" in srv, "19.24 服务端版本 1.6.0")
+
+# --- 审计（两处都要有） ---
+ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
+ok("'balance.adjust'" in ps, "19.26 launcher 的 Get-AuditText 也含 balance.adjust")
+
+# --- Web 管理页（余额 UI） ---
+for k in ["bl-enforce", "bl-grant", "bl-valid", "bl-min", "u-bal", "u-bal-delta"]:
+    ok(k in html, "19.27 admin.html 含 %s" % k)
+
+# --- 门禁接入 ---
+ok("test/balance.test.js" in _pf3, "19.28 preflight 含余额域测试")
 
 # ---------- 输出 ----------
 print("=" * 60)

@@ -210,15 +210,19 @@ function microToCents(micro) { return (Number(micro) || 0) / MICRO_PER_CENT; }
 function yuanToMicro(yuan) { return Math.round((Number(yuan) || 0) * MICRO_PER_YUAN); }
 
 /**
- * 金额文案：小额给足小数位，避免满屏「¥0.00」。
- *   ≥ 1 元 → 2 位；≥ 0.01 元 → 3 位；否则 4 位。
+ * 金额文案：小额给足小数位，避免满屏「¥0.00」；负数（透支）带负号，
+ * 否则并发透支会在界面上被看成「刚好 0」，掩盖真实状态。
+ *   |y| ≥ 1 元 → 2 位；≥ 0.01 元 → 3 位；否则 4 位。
  */
 function microText(micro) {
-  const y = microToYuan(micro);
-  if (!Number.isFinite(y) || y <= 0) return '¥0';
-  if (y >= 1) return '¥' + y.toFixed(2);
-  if (y >= 0.01) return '¥' + y.toFixed(3);
-  return '¥' + y.toFixed(4);
+  const v = Number(micro) || 0;
+  const y = v / MICRO_PER_YUAN;
+  if (!Number.isFinite(y) || y === 0) return '¥0';
+  const sign = y < 0 ? '-¥' : '¥';
+  const a = Math.abs(y);
+  if (a >= 1) return sign + a.toFixed(2);
+  if (a >= 0.01) return sign + a.toFixed(3);
+  return sign + a.toFixed(4);
 }
 
 /** token 数文案：≥ 10000 用「万」，否则千分位 */

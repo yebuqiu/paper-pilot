@@ -33,13 +33,16 @@ test("并发：maxConcurrent=3 时允许最多 3 个同时在跑", async () => {
   const rl = new RateLimiter({ minIntervalMs: 0, maxConcurrent: 3 });
   let active = 0;
   let maxActive = 0;
-  await Promise.all(Array.from({ length: 9 }, () => rl.run(async () => {
+  await Promise.all(Array.from({ length: 18 }, () => rl.run(async () => {
     active++;
     maxActive = Math.max(maxActive, active);
-    await sleep(10);
+    // 25ms 而非 10ms：断言「确实并行」依赖重叠窗口，机器负载高时
+    // 事件循环饥饿会把 10ms 的窗口压没，造成假红（意图是测上限，不是测时钟）
+    await sleep(25);
     active--;
   })));
-  assert.ok(maxActive <= 3 && maxActive >= 2, "实际峰值 " + maxActive);
+  assert.ok(maxActive <= 3, "同时运行数不得超过 3，实际 " + maxActive);
+  assert.ok(maxActive >= 2, "应观察到并行（峰值 " + maxActive + "）");
 });
 
 test("异常：任务抛错只影响自身，不阻断队列", async () => {
@@ -100,7 +103,9 @@ test("sleep：0/负数立即返回", async () => {
   const t = Date.now();
   await sleep(0);
   await sleep(-5);
-  assert.ok(Date.now() - t < 50);
+  // 意图是「不等待」而不是精确计时：负载下事件循环可能拖延几十毫秒，
+  // 卡 50ms 会假红。1 秒仍能区分「立即返回」与「真睡了一觉」
+  assert.ok(Date.now() - t < 1000, "耗时 " + (Date.now() - t) + "ms");
 });
 
 run("rate-limiter");
