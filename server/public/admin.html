@@ -349,6 +349,10 @@
           <input id="p-pay-text" placeholder="微信号 xxx / 支付宝账号 xxx" style="width:100%"></div>
         <div class="field wide"><label>支付说明</label>
           <input id="p-pay-note" placeholder="扫码支付后点「我已完成支付」，管理员核销后自动开通" style="width:100%"></div>
+        <div class="field wide"><label>免费版 · 权益文案（一行一条，展示在插件会员卡片）</label>
+          <textarea id="p-free-feats" rows="3" style="width:100%"></textarea></div>
+        <div class="field wide"><label>专业版 · 权益文案（一行一条）</label>
+          <textarea id="p-pro-feats" rows="3" style="width:100%"></textarea></div>
       </div>
       <div style="display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap">
         <button id="p-plan-save" class="btn primary" onclick="savePlans()">保存配置</button>
@@ -1830,6 +1834,9 @@ function renderPlanForm() {
     $('p-pro-price').value = byId.Pro.price;
     if ($('p-pro-grant')) $('p-pro-grant').value = ((Number(byId.Pro.monthlyGrantMicro) || 0) / 1e6).toFixed(2);
   }
+  // 权益文案（一行一条；插件会员卡片直接展示这些字符串）
+  if ($('p-free-feats')) $('p-free-feats').value = ((byId.Free && byId.Free.features) || []).join('\n');
+  if ($('p-pro-feats')) $('p-pro-feats').value = ((byId.Pro && byId.Pro.features) || []).join('\n');
   var pay = mb.plans.pay || {};
   $('p-pay-channel').value = pay.channel || '';
   $('p-pay-qr').value = pay.qrImage || '';
@@ -1981,6 +1988,15 @@ function copyCode(code) {
   } catch (e) { prompt('复制激活码：', code); }
 }
 
+/** 权益文案：一行一条，去掉空行（插件会员卡片按行渲染） */
+function readFeatures(id) {
+  var el = $(id);
+  if (!el) return undefined;
+  return String(el.value || '').split('\n')
+    .map(function (s) { return s.trim(); })
+    .filter(function (s) { return !!s; });
+}
+
 function savePlans() {
   var body = {
     plans: {},
@@ -1993,7 +2009,8 @@ function savePlans() {
   };
   body.plans.Free = { dailyLimit: Number($('p-free-limit').value) || 0,
     highTierModels: !!$('p-free-hi').checked,
-    monthlyGrantMicro: Math.round((Number($('p-free-grant').value) || 0) * 1e6) };
+    monthlyGrantMicro: Math.round((Number($('p-free-grant').value) || 0) * 1e6),
+    features: readFeatures('p-free-feats') };
   body.ai = { trialDays: Math.max(0, Math.min(365, Number($('p-trial-days').value) || 0)) };
   body.plans.Pro = {
     dailyLimit: Number($('p-pro-limit').value) || 0,
@@ -2001,6 +2018,7 @@ function savePlans() {
     price: Number($('p-pro-price').value) || 0,
     // 1.6.0 订阅去无限化：每月发放的额度（元 → 微元）
     monthlyGrantMicro: Math.round((Number($('p-pro-grant').value) || 0) * 1e6),
+    features: readFeatures('p-pro-feats'),
   };
   api('PUT', '/api/admin/membership', body).then(function (r) {
     if (!r.ok) return msg('p-msg', '✗ ' + (r.error || '保存失败'), false);

@@ -906,6 +906,18 @@ ok("'balance.adjust'" in ps, "19.26 launcher 的 Get-AuditText 也含 balance.ad
 for k in ["bl-enforce", "bl-grant", "bl-valid", "bl-min", "u-bal", "u-bal-delta"]:
     ok(k in html, "19.27 admin.html 含 %s" % k)
 
+# --- 1.6.0 管理页补充：订阅额度 / 充值档位 / 权益文案 ---
+for k in ["p-pro-grant", "p-free-grant", "bl-opts", "p-free-feats", "p-pro-feats"]:
+    ok(k in html, "19.28 admin.html 含 %s" % k)
+ok("monthlyGrantMicro: Math.round((Number($('p-pro-grant').value) || 0) * 1e6)" in html,
+   "19.29 ★ 套餐表单提交每月订阅额度（元 → 微元）")
+ok("features: readFeatures('p-pro-feats')" in html,
+   "19.30 ★ 权益文案可在后台编辑（否则权益说明只能靠 API 改）")
+ok("rechargeOptions: readRechargeOptions()" in html, "19.31 充值档位随余额配置一并提交")
+ok("function applyOrderFulfill(order, by) {" in srv, "19.32 ★ 核销副作用唯一入口存在")
+ok(srv.count("applyOrderFulfill(") >= 3, "19.33 ★ 手动核销与对账核销共用同一入口（防副作用逻辑漂移）")
+ok("membership.createCreditOrder(" in srv, "19.34 服务端接入充值下单")
+
 # --- 门禁接入 ---
 ok("test/balance.test.js" in _pf3, "19.28 preflight 含余额域测试")
 
