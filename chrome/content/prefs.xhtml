@@ -96,6 +96,43 @@
           <html:div id="pp-mb-features" class="pp-mb-features"></html:div>
           <!-- 用量趋势（0.24.4：今日/额度 + 近 7 天迷你柱状图 + 近 7 天合计） -->
           <html:div id="pp-mb-usage" class="pp-mb-usage" style="display:none;"></html:div>
+          <!-- ===== 0.26.0 AI 额度余额（注册赠送 / 订阅额度 / 充值） ===== -->
+          <html:div id="pp-bal-block" class="pp-bal" style="display:none;">
+            <html:div class="pp-bal-head">
+              <html:b>AI 额度</html:b>
+              <html:span id="pp-bal-total" class="pp-bal-total"></html:span>
+            </html:div>
+            <html:div id="pp-bal-detail" class="pp-bal-detail"></html:div>
+            <html:div id="pp-bal-note" class="pp-hint"></html:div>
+            <html:div class="pp-row pp-row-tight">
+              <html:button id="pp-bal-recharge-toggle" class="pp-btn pp-btn-primary pp-btn-sm">充值额度</html:button>
+              <html:button id="pp-bal-refresh" class="pp-btn pp-btn-sm">刷新余额</html:button>
+              <html:span id="pp-bal-msg" class="pp-msg"></html:span>
+            </html:div>
+            <!-- 充值面板：档位 → 生成订单 → 扫码 → 我已完成支付 → 轮询入账 -->
+            <html:div id="pp-bal-recharge" class="pp-bal-recharge" style="display:none;">
+              <html:div class="pp-mb-order-head">
+                <html:b>充值 AI 额度</html:b>
+                <html:span id="pp-bal-price-note" class="pp-mb-price-note"></html:span>
+              </html:div>
+              <html:div id="pp-bal-options" class="pp-row pp-row-tight"></html:div>
+              <html:div class="pp-row pp-row-tight">
+                <html:button id="pp-bal-create" class="pp-btn pp-btn-primary pp-btn-sm">生成充值订单</html:button>
+                <html:button id="pp-bal-close" class="pp-btn pp-btn-sm">收起</html:button>
+                <html:span id="pp-bal-order-msg" class="pp-msg"></html:span>
+              </html:div>
+              <html:div id="pp-bal-pay" class="pp-mb-pay" style="display:none;">
+                <html:div id="pp-bal-pay-info" class="pp-mb-pay-info"></html:div>
+                <html:img id="pp-bal-qr" class="pp-mb-qr" style="display:none;"/>
+                <html:div class="pp-row pp-row-tight">
+                  <html:button id="pp-bal-claim" class="pp-btn pp-btn-primary pp-btn-sm">我已完成支付</html:button>
+                  <html:button id="pp-bal-poll" class="pp-btn pp-btn-sm">刷新订单状态</html:button>
+                  <html:button id="pp-bal-cancel" class="pp-btn pp-btn-sm">取消订单</html:button>
+                </html:div>
+                <html:div id="pp-bal-pay-result" class="pp-msg"></html:div>
+              </html:div>
+            </html:div>
+          </html:div>
           <html:div class="pp-row pp-row-tight">
             <html:button id="pp-mb-upgrade" class="pp-btn pp-btn-primary pp-btn-sm">升级专业版</html:button>
             <html:button id="pp-mb-refresh" class="pp-btn pp-btn-sm">刷新会员</html:button>

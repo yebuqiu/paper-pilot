@@ -867,9 +867,12 @@ ok("b.paidMicro = signedMicro(b.paidMicro);" in bal_src, "19.5 ★ ensure 保留
 ok("micro(b.grantedMicro, 0)" in bal_src, "19.6 赠送余额仍非负（过期由 sweep 清零）")
 # ★ precheck 必须先看 enforce（曾漏判，把观察模式变成拦截）
 ok("if (!c.enforce) return { allowed: true" in bal_src, "19.7 ★ 观察模式（enforce=false）恒放行")
-# ★ 高级模型：赠送不算数，且必须有充值余额（阈值 0 时不能放行 0 充值用户）
-ok("b.paidMicro > 0 && b.paidMicro >= c.minBalanceMicro" in bal_src,
-   "19.8 ★ 高级模型要求充值余额过阈值且 > 0（赠送限基础模型）")
+# ★ 高级模型：注册赠送不算数，且必须有订阅额度/充值（阈值 0 时不能放行 0 额度用户）
+ok("const okPaid = avail > 0 && avail >= c.minBalanceMicro;" in bal_src,
+   "19.8 ★ 高级模型要求订阅额度+充值过阈值且 > 0（注册赠送限基础模型）")
+# ★ 订阅额度：不结转 —— 只认期号，本期发过就不再补（否则"花完自动续杯"）
+ok("if (b.planPeriodKey === key) return null;" in srv,
+   "19.8b ★ 订阅额度只按期号判重（花完不补，落实不结转）")
 ok("'BALANCE_REQUIRED_FOR_HIGH_TIER'" in bal_src, "19.9 高级模型拦截有独立 code")
 ok("'INSUFFICIENT_BALANCE'" in bal_src, "19.10 余额不足拦截有可编程 code")
 ok("自带 Key 不受额度限制" in bal_src, "19.11 拦截文案给「充值 / 自有 Key」两条出路")
@@ -905,6 +908,39 @@ for k in ["bl-enforce", "bl-grant", "bl-valid", "bl-min", "u-bal", "u-bal-delta"
 
 # --- 门禁接入 ---
 ok("test/balance.test.js" in _pf3, "19.28 preflight 含余额域测试")
+
+# ---------- 20. 插件端余额展示与充值（0.26.0） ----------
+ACCT_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "account.js")
+acct_js = io.open(ACCT_JS, encoding="utf-8").read()
+PREFS_CSS = os.path.join(ROOT, "chrome", "content", "prefs.css")
+prefs_css = io.open(PREFS_CSS, encoding="utf-8").read()
+MANIFEST = io.open(os.path.join(ROOT, "manifest.json"), encoding="utf-8").read()
+
+ok(re.search(r"^  balance\(\) \{", acct_js, re.M) is not None, "20.1 account.js 定义 balance() 访问器")
+ok('if (!b || typeof b !== "object") return null;' in acct_js,
+   "20.2 ★ 旧服务端无 balance → 返回 null（面板整块隐藏，不显示假数据）")
+ok("async createCreditOrder(optionId)" in acct_js, "20.3 account.js 提供充值下单")
+ok("rechargeOptions: Array.isArray(j.rechargeOptions) ? j.rechargeOptions : []" in acct_js,
+   "20.4 plans() 透出充值档位（旧服务端为空数组）")
+ok("overdraft: num(b.paidMicro) < 0" in acct_js, "20.5 透支状态透出给面板（不静默）")
+
+for fn in ["renderBalance", "renderBalOptions", "ensureRechargeOptions", "onBalCreate",
+           "renderBalPay", "onBalClaim", "onBalPoll", "onBalCancel", "onBalRefresh"]:
+    ok(re.search(r"function %s\b" % fn, prefs_js) is not None, "20.6 prefs-account.js 定义 %s()" % fn)
+ok("try { renderBalance(); } catch (e)" in prefs_js, "20.7 renderAll 纳入 renderBalance（并自带 try）")
+ok("stopBalPolling(); // 充值订单轮询同理" in prefs_js, "20.8 面板关闭停掉充值订单轮询（定时器不泄漏）")
+ok("bind(\"pp-bal-create\", \"click\", onBalCreate)" in prefs_js, "20.9 充值按钮已绑定")
+
+for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
+            "pp-bal-recharge-toggle", "pp-bal-recharge", "pp-bal-options",
+            "pp-bal-create", "pp-bal-pay", "pp-bal-pay-info", "pp-bal-claim",
+            "pp-bal-poll", "pp-bal-cancel", "pp-bal-refresh"]:
+    ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
+ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
+
+ok('"version": "0.26.0"' in MANIFEST, "20.12 manifest 版本 0.26.0")
+ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
+   "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
 # ---------- 输出 ----------
 print("=" * 60)

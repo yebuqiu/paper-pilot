@@ -322,6 +322,15 @@
         <div class="field"><label>免费版 · 每日额度（次）</label><input id="p-free-limit" type="number" min="0" style="width:140px"></div>
         <div class="field"><label>专业版 · 每日额度（次）</label><input id="p-pro-limit" type="number" min="0" style="width:140px"></div>
         <div class="field"><label>专业版 · 兜底月单价（¥）</label><input id="p-pro-price" type="number" min="0" style="width:140px"></div>
+        <div class="field"><label>专业版 · 每月订阅额度（¥，0 = 不发）</label>
+          <input id="p-pro-grant" type="number" min="0" step="0.01" style="width:140px">
+          <div class="hint" style="margin-top:4px">
+            订阅去无限化的落点：Pro 每月发放这笔额度（<b>不结转</b>，可用于全部模型含高级）。
+            ⚠ 金额应先跑出真实人均成本再定，当前默认 ¥20 是占位值。
+          </div></div>
+        <div class="field"><label>免费版 · 每月订阅额度（¥）</label>
+          <input id="p-free-grant" type="number" min="0" step="0.01" style="width:140px">
+          <div class="hint" style="margin-top:4px">免费版一般不发放（0）</div></div>
         <div class="field"><label>新用户全模型试用（天，0 = 关闭）</label>
           <input id="p-trial-days" type="number" min="0" max="365" style="width:140px">
           <div class="hint" style="margin-top:4px">从注册时间起算；试用期内免费用户也能用「高级模型」，额度不变</div></div>
@@ -460,6 +469,18 @@
         <span class="hint">拦截阈值</span>
         <input id="bl-min" type="number" step="0.01" min="0" style="width:90px" title="可用余额低于此值时拒绝新的 AI 请求"> 元
         <button class="btn primary" onclick="saveBalanceCfg()">保存</button>
+      </div>
+      <div style="margin-top:12px">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+          <b style="font-size:13px">充值档位</b>
+          <span class="hint">付款 → 到账（到账 ≥ 付款，差额即「充值赠送」）；充值余额永不过期</span>
+          <button class="btn sm" onclick="addRechargeOption()">新增档位</button>
+        </div>
+        <table>
+          <thead><tr><th style="width:130px">付款（¥）</th><th style="width:130px">到账（¥）</th>
+            <th>文案（选填，插件直接显示）</th><th style="width:70px">启用</th><th style="width:70px">操作</th></tr></thead>
+          <tbody id="bl-opts"></tbody>
+        </table>
       </div>
       <div class="msg" id="bl-msg"></div>
     </div>
@@ -1799,6 +1820,7 @@ function renderPlanForm() {
   if (byId.Free) {
     $('p-free-limit').value = byId.Free.dailyLimit;
     $('p-free-hi').checked = !!byId.Free.highTierModels;
+    if ($('p-free-grant')) $('p-free-grant').value = ((Number(byId.Free.monthlyGrantMicro) || 0) / 1e6).toFixed(2);
   }
   // 试用天数来自 mb.ai（**不是 r**：本函数没有 r 作用域，写成 r.ai 会抛 ReferenceError）
   if ($('p-trial-days')) $('p-trial-days').value = (mb.ai && mb.ai.trialDays) || 0;
@@ -1806,6 +1828,7 @@ function renderPlanForm() {
     $('p-pro-limit').value = byId.Pro.dailyLimit;
     $('p-pro-hi').checked = !!byId.Pro.highTierModels;
     $('p-pro-price').value = byId.Pro.price;
+    if ($('p-pro-grant')) $('p-pro-grant').value = ((Number(byId.Pro.monthlyGrantMicro) || 0) / 1e6).toFixed(2);
   }
   var pay = mb.plans.pay || {};
   $('p-pay-channel').value = pay.channel || '';
@@ -1969,12 +1992,15 @@ function savePlans() {
     },
   };
   body.plans.Free = { dailyLimit: Number($('p-free-limit').value) || 0,
-    highTierModels: !!$('p-free-hi').checked };
+    highTierModels: !!$('p-free-hi').checked,
+    monthlyGrantMicro: Math.round((Number($('p-free-grant').value) || 0) * 1e6) };
   body.ai = { trialDays: Math.max(0, Math.min(365, Number($('p-trial-days').value) || 0)) };
   body.plans.Pro = {
     dailyLimit: Number($('p-pro-limit').value) || 0,
     highTierModels: !!$('p-pro-hi').checked,
     price: Number($('p-pro-price').value) || 0,
+    // 1.6.0 订阅去无限化：每月发放的额度（元 → 微元）
+    monthlyGrantMicro: Math.round((Number($('p-pro-grant').value) || 0) * 1e6),
   };
   api('PUT', '/api/admin/membership', body).then(function (r) {
     if (!r.ok) return msg('p-msg', '✗ ' + (r.error || '保存失败'), false);
@@ -2391,7 +2417,71 @@ function loadBalanceCfg() {
     $('bl-grant').value = (Number(c.signupGrantMicro) || 0) / 1e6;
     $('bl-valid').value = Number(c.signupValidDays) || 0;
     $('bl-min').value = (Number(c.minBalanceMicro) || 0) / 1e6;
+    renderRechargeOptions(c.rechargeOptions || []);
   });
+}
+
+/** 充值档位表格：行内可编辑，保存时统一读取（id 由付款金额推导，保证稳定） */
+function renderRechargeOptions(list) {
+  var tb = $('bl-opts');
+  if (!tb) return;
+  tb.textContent = '';
+  (list || []).forEach(function (o) { tb.appendChild(rechargeRow(o)); });
+}
+
+function rechargeRow(o) {
+  var tr = document.createElement('tr');
+  var mk = function (val, step, width) {
+    var td = document.createElement('td');
+    var inp = document.createElement('input');
+    inp.type = 'number'; inp.min = '0'; inp.step = step; inp.style.width = width;
+    inp.value = val;
+    td.appendChild(inp);
+    return { td: td, inp: inp };
+  };
+  var pay = mk(((Number(o && o.cents) || 0) / 100).toFixed(2), '0.01', '110px');
+  var got = mk(((Number(o && o.creditCents) || 0) / 100).toFixed(2), '0.01', '110px');
+  var noteTd = document.createElement('td');
+  var note = document.createElement('input');
+  note.style.width = '100%';
+  note.placeholder = '如：¥30 · 到账 ¥33';
+  note.value = (o && o.label) || '';
+  noteTd.appendChild(note);
+  var onTd = document.createElement('td');
+  var on = document.createElement('input');
+  on.type = 'checkbox';
+  on.checked = !o || o.enabled !== false;
+  onTd.appendChild(on);
+  var opTd = document.createElement('td');
+  var del = document.createElement('button');
+  del.className = 'btn sm danger';
+  del.textContent = '删除';
+  del.onclick = function () { tr.parentNode.removeChild(tr); };
+  opTd.appendChild(del);
+  tr.appendChild(pay.td); tr.appendChild(got.td); tr.appendChild(noteTd);
+  tr.appendChild(onTd); tr.appendChild(opTd);
+  tr._read = function () {
+    var cents = Math.round((Number(pay.inp.value) || 0) * 100);
+    var creditCents = Math.round((Number(got.inp.value) || 0) * 100);
+    if (cents <= 0) return null;                    // 金额非法 → 丢弃（服务端也会再筛一遍）
+    return { id: 'rc' + cents, cents: cents,
+      creditCents: creditCents > 0 ? creditCents : cents,
+      label: note.value.trim(), enabled: on.checked };
+  };
+  return tr;
+}
+
+function addRechargeOption() {
+  var tb = $('bl-opts');
+  if (!tb) return;
+  tb.appendChild(rechargeRow({ cents: 1000, creditCents: 1000, label: '¥10', enabled: true }));
+}
+
+function readRechargeOptions() {
+  var tb = $('bl-opts');
+  if (!tb) return [];
+  return Array.prototype.map.call(tb.children, function (tr) { return tr._read ? tr._read() : null; })
+    .filter(function (x) { return !!x; });
 }
 
 /** 保存余额配置（观察模式 ↔ 拦截模式 的开关就在这里） */
@@ -2401,13 +2491,15 @@ function saveBalanceCfg() {
     signupGrantMicro: Math.round((Number($('bl-grant').value) || 0) * 1e6),
     signupValidDays: Number($('bl-valid').value) || 0,
     minBalanceMicro: Math.round((Number($('bl-min').value) || 0) * 1e6),
+    rechargeOptions: readRechargeOptions(),
   } };
   api('PUT', '/api/admin/pricing', body).then(function (r) {
     if (!r.ok) return msg('bl-msg', '✗ ' + (r.error || '保存失败'), false);
     var c = r.pricing.balance;
-    msg('bl-msg', c.enforce
+    msg('bl-msg', (c.enforce
       ? '✓ 已保存，并已开启拦截（余额不足将拒绝 AI 请求）'
-      : '✓ 已保存（观察模式：只记账不拦截）', true);
+      : '✓ 已保存（观察模式：只记账不拦截）')
+      + ' · 充值档位 ' + (c.rechargeOptions || []).length + ' 个', true);
   });
 }
 

@@ -112,6 +112,11 @@ const PLANS_PAYLOAD = {
     perMonth: 24.83, label: '半年', effectiveFrom: '2026-11-11T00:00:00.000Z' }],
   cycles: [],
   pay: { channel: '微信收款码', note: '备注订单号' },
+  // 0.26.0 充值档位
+  rechargeOptions: [
+    { id: 'rc10', cents: 1000, creditCents: 1000, bonusCents: 0, label: '¥10', amountText: '¥10.00', creditText: '¥10.00', bonusText: '' },
+    { id: 'rc30', cents: 3000, creditCents: 3300, bonusCents: 300, label: '¥30 · 到账 ¥33', amountText: '¥30.00', creditText: '¥33.00', bonusText: '送 ¥3.00' },
+  ],
 };
 
 function fakeAccount(over) {
@@ -133,6 +138,15 @@ function fakeAccount(over) {
       today: 5, limit: 3000, last7: 12,
       days: Array.from({ length: 30 }, (_, i) => ({ date: isoDay(i - 29), count: i % 4 })),
     }),
+    // 0.26.0 AI 额度余额（默认三档都有值，便于断言分档展示）
+    balance: () => ({
+      totalMicro: 26100000, grantedMicro: 6000000, planMicro: 1000000, paidMicro: 19100000,
+      text: '¥26.10', grantedText: '¥6.00', planText: '¥1.00', paidText: '¥19.10',
+      grantedDaysLeft: 21, planDaysLeft: 12,
+      grantedExpiresAt: '2026-10-25T00:00:00.000Z', planExpiresAt: '2026-10-31T16:00:00.000Z',
+      planPeriodKey: '2026-10', enforce: true, minBalanceMicro: 1000000, overdraft: false,
+    }),
+    refreshUser: async () => null,
     plans: async () => PLANS_PAYLOAD,
     // 1.4.9 套餐 AI 能力（同步方法——面板是同步读取后立即渲染的）
     ai: () => ({ highTier: true, reason: 'plan', trial: null,
@@ -575,6 +589,105 @@ const flush = () => new Promise((r) => setImmediate(r));
     ({ registry } = boot({ isLoggedIn: () => false }));
     await flush(); await flush(); await flush();
     eq(registry.get('pp-ai-tier-note').style.display, 'none', 'I29 未登录不显示分层说明条');
+  }
+
+  /* ============ J. AI 额度余额面板（插件 0.26.0） ============ */
+  {
+    // ---- J1~J6：三档余额展示 ----
+    ({ registry } = boot({}));
+    await flush(); await flush(); await flush();
+    const balBlock = registry.get('pp-bal-block');
+    eq(balBlock.style.display, '', 'J1 余额块出现');
+    eq(registry.get('pp-bal-total').textContent, '¥26.10', 'J2 总额按服务端文案展示');
+    const detail = registry.get('pp-bal-detail').textContent;
+    has(detail, '注册赠送 ¥6.00', 'J3 明细含注册赠送（带剩余天数）');
+    has(detail, '剩 21 天', 'J4 注册赠送标注剩余天数');
+    has(detail, '订阅额度 ¥1.00', 'J5 明细含订阅额度（标注本月底作废）');
+    has(detail, '本月底作废', 'J6 订阅额度明示「不结转」');
+    has(detail, '充值 ¥19.10', 'J7 明细含充值并标注永不过期');
+    has(detail, '永不过期', 'J8 充值额度明示不过期');
+    has(registry.get('pp-bal-note').textContent, '注册赠送额度仅限基础模型', 'J9 说明条讲清模型限制');
+
+    // ---- J10~J12：观察模式 / 透支 / 额度不足 三种状态各说各的话 ----
+    ({ registry } = boot({
+      balance: () => ({ totalMicro: 1000000, grantedMicro: 1000000, planMicro: 0, paidMicro: 0,
+        text: '¥1.00', grantedText: '¥1.00', planText: '¥0', paidText: '¥0',
+        grantedDaysLeft: 5, planDaysLeft: null, grantedExpiresAt: null, planExpiresAt: null,
+        planPeriodKey: null, enforce: false, minBalanceMicro: 0, overdraft: false }),
+    }));
+    await flush(); await flush(); await flush();
+    has(registry.get('pp-bal-note').textContent, '观察模式', 'J10 未开启拦截时明示观察模式');
+
+    ({ registry } = boot({
+      balance: () => ({ totalMicro: -2000, grantedMicro: 0, planMicro: 0, paidMicro: -2000,
+        text: '-¥0.0020', grantedText: '¥0', planText: '¥0', paidText: '-¥0.0020',
+        grantedDaysLeft: null, planDaysLeft: null, grantedExpiresAt: null, planExpiresAt: null,
+        planPeriodKey: null, enforce: true, minBalanceMicro: 0, overdraft: true }),
+    }));
+    await flush(); await flush(); await flush();
+    has(registry.get('pp-bal-note').textContent, '透支', 'J11 透支时显式告警（不静默）');
+    eq(registry.get('pp-bal-note').style.color, 'var(--pp-danger)', 'J12 透支用危险色');
+
+    ({ registry } = boot({
+      balance: () => ({ totalMicro: 0, grantedMicro: 0, planMicro: 0, paidMicro: 0,
+        text: '¥0', grantedText: '¥0', planText: '¥0', paidText: '¥0',
+        grantedDaysLeft: null, planDaysLeft: null, grantedExpiresAt: null, planExpiresAt: null,
+        planPeriodKey: null, enforce: true, minBalanceMicro: 1000000, overdraft: false }),
+    }));
+    await flush(); await flush(); await flush();
+    has(registry.get('pp-bal-note').textContent, '额度不足', 'J13 额度低于阈值时提示会被拦截');
+
+    // ---- J14：旧服务端（无 balance 字段）→ 整块隐藏，绝不显示假数据 ----
+    ({ registry } = boot({ balance: () => null }));
+    await flush(); await flush(); await flush();
+    eq(registry.get('pp-bal-block').style.display, 'none', 'J14 ★ 旧服务端无 balance → 整块隐藏');
+
+    // ---- J15~J19：充值档位与下单 ----
+    let created = null;
+    ({ registry } = boot({
+      createCreditOrder: async (optionId) => {
+        created = optionId;
+        return { id: 'o-cr1', kind: 'credit', amount: 30.42, amountText: '¥30.42',
+          creditMicro: 33000000, bonusMicro: 3000000, tailCents: 42, status: 'pending',
+          pay: { channel: '微信收款码', note: '备注订单号' } };
+      },
+    }));
+    await flush(); await flush(); await flush();
+    ok(!registry.get('pp-bal-recharge-toggle').disabled, 'J15 有充值档位时按钮可用');
+    registry.get('pp-bal-recharge-toggle').click();
+    await flush(); await flush(); await flush();
+    eq(registry.get('pp-bal-recharge').style.display, '', 'J16 点「充值额度」展开充值面板');
+    const balChips = registry.get('pp-bal-options').children.filter((c) => /pp-mb-opt/.test(c.className));
+    eq(balChips.length, 2, 'J17 渲染服务端下发的充值档位', balChips.map((c) => c.textContent));
+    has(balChips[1].textContent, '送 ¥3.00', 'J18 带赠送的档位标注赠送额');
+    eq(balChips.filter((c) => /pp-mb-opt-on/.test(c.className)).length, 1, 'J19 恰有一个默认选中档位');
+
+    // 选第二档 → 生成订单
+    balChips[1].click();
+    registry.get('pp-bal-create').click();
+    await flush(); await flush(); await flush();
+    eq(created, 'rc30', 'J20 下单带上选中的档位 id');
+    const payInfo = registry.get('pp-bal-pay-info').textContent;
+    has(payInfo, '到账 ¥33.00', 'J21 付款页展示到账额度');
+    has(payInfo, '含赠送 ¥3.00', 'J22 付款页展示赠送额');
+    has(payInfo, '¥30.42', 'J23 付款页展示含尾数的精确金额');
+    has(payInfo, '专属尾数', 'J24 提示尾数用于自动对账');
+
+    // ---- J25：核销完成 → 提示已入账 ----
+    ({ registry } = boot({
+      createCreditOrder: async () => ({ id: 'o-cr2', kind: 'credit', amount: 10.05, amountText: '¥10.05',
+        creditMicro: 10000000, bonusMicro: 0, tailCents: 5, status: 'pending', pay: {} }),
+      orderStatus: async () => ({ id: 'o-cr2', kind: 'credit', amount: 10.05, amountText: '¥10.05',
+        creditMicro: 10000000, bonusMicro: 0, tailCents: 5, status: 'fulfilled', pay: {} }),
+    }));
+    await flush(); await flush(); await flush();
+    registry.get('pp-bal-recharge-toggle').click();
+    await flush(); await flush(); await flush();
+    registry.get('pp-bal-create').click();
+    await flush(); await flush();
+    registry.get('pp-bal-poll').click();
+    await flush(); await flush(); await flush();
+    has(registry.get('pp-bal-pay-result').textContent, '已入账', 'J25 轮询到 fulfilled → 提示已入账');
   }
 
   console.log('\n会员面板渲染测试：' + pass + ' 项通过，' + fails.length + ' 项失败');

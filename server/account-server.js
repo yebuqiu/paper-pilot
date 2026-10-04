@@ -203,6 +203,43 @@ pricingStore.save();
 /** 当前余额配置（每次读都归一化，改配置即时生效） */
 function balanceCfg() { return balance.cfgOf(pricingStore.data); }
 
+/* ---------------- 订阅额度发放（1.6.0 订阅去无限化） ----------------
+ * ★ 不做定时任务：在 /api/auth/me 与网关入口**现场补发**当期额度。
+ *   代价是"从不登录的用户不会拿到额度"——他们本来也不用 AI，无影响。
+ * ★ 不结转：直接覆盖（不是累加），过期时间 = 当期自然月末。
+ */
+
+/** 当期标识：自然月 YYYY-MM（本地时区） */
+function planPeriodKey(now) {
+  const d = new Date(Number.isFinite(now) ? now : Date.now());
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+/** 当期截止：下月 1 日 0 点（本地时区）——订阅额度作废的时间点 */
+function planPeriodEnd(now) {
+  const d = new Date(Number.isFinite(now) ? now : Date.now());
+  return new Date(d.getFullYear(), d.getMonth() + 1, 1, 0, 0, 0, 0).toISOString();
+}
+
+/**
+ * 按期发放订阅额度（幂等）。
+ * @returns {{micro,periodKey,expiresAt}|null} null = 本期不需要发放
+ */
+function ensurePlanGrant(user, now) {
+  const t = Number.isFinite(now) ? now : Date.now();
+  const p = membership.planOf(membershipStore.data, planEffective(user));
+  const grantMicro = Math.max(0, Math.round(Number(p.monthlyGrantMicro) || 0));
+  if (!grantMicro) return null;                     // 该档不发订阅额度（Free）
+  const b = balance.ensure(user);
+  const key = planPeriodKey(t);
+  // ★ 只认 periodKey，不认余额是否为 0：本期已发过（哪怕已花完）就不再补，
+  //   否则会把"不结转"变成"花完自动续杯"
+  if (b.planPeriodKey === key) return null;
+  const r = balance.grantPlan(user, { micro: grantMicro, periodKey: key, expiresAt: planPeriodEnd(t) }, t);
+  if (r) log('plan credit granted:', user.email, planEffective(user), r.micro + ' micro, period', r.periodKey);
+  return r;
+}
+
 /* ---------------- 工具 ---------------- */
 
 // 日志：始终写 server-console.log（任何启动方式都有排障日志，不依赖 stdout 重定向）；
@@ -1026,7 +1063,13 @@ function gatewayChat(req, res, user) {
           + (acc.locked || []).join('、') });
     }
 
-    if (dailyUsedOf(user) >= dailyLimitOf(user)) {
+    // 1.6.0 现场补发当期订阅额度（幂等）——用户只要在用就会拿到当月额度
+    ensurePlanGrant(user);
+
+    // ★ 次数额度（dailyLimit）只在**观察模式**下生效：
+    //   观察模式 = 次数管、余额只记账；开启 enforce 后改由余额管，
+    //   否则"订阅去无限化"就是空话（用户既拿每月额度、又享受每日 3000 次）。
+    if (!balanceCfg().enforce && dailyUsedOf(user) >= dailyLimitOf(user)) {
       return json(res, 429, { ok: false,
         error: '今日官方模型用量已达上限（' + dailyLimitOf(user) + ' 次），明日自动重置；或在设置中配置自己的模型通道' });
     }
@@ -1627,6 +1670,35 @@ function adminCodeOut(c) {
   return out;
 }
 
+/**
+ * 核销订单并施加副作用（**唯一入口**：管理端手动核销与对账自动核销共用，
+ * 避免两条路径的副作用逻辑漂移）。
+ *   会员订单（kind=plan）  → 叠加开通/续期 + 留一枚已用兑换码
+ *   充值订单（kind=credit）→ 到账进「充值余额」（永不过期）
+ * @returns {{ok:true, user, order, ...}|{ok:false, error}}
+ */
+function applyOrderFulfill(order, by) {
+  const user = findUserById(order.userId);
+  if (!user) return { ok: false, error: '下单账号已不存在（无法开通/入账）' };
+  if (order.kind === 'credit' && !(Number(order.creditMicro) > 0)) {
+    return { ok: false, error: '充值订单的到账额度非法，拒绝核销（避免核销后无法入账）', user };
+  }
+  const f = membership.fulfillOrder(membershipStore.data, order, { by });
+  if (f.error) return { ok: false, error: f.error, user };
+  if (order.kind === 'credit') {
+    const r = balance.creditTopUp(user, Number(order.creditMicro), {
+      orderId: order.id, reason: '充值订单 ' + order.id,
+    });
+    if (r.error) return { ok: false, error: r.error, user };
+    return { ok: true, user, order, creditMicro: Number(order.creditMicro), balance: r.balance };
+  }
+  const mp = membership.grantMembership(membershipStore.data, user, {
+    plan: order.plan, months: order.months, perpetual: order.perpetual,
+    cycle: order.cycle, source: 'order', refId: order.id,
+  });
+  return { ok: true, user, order, membership: mp };
+}
+
 async function adminCreateUser(input) {
   const email = String(input.email || '').trim();
   const password = String(input.password || '');
@@ -1939,6 +2011,8 @@ const server = http.createServer(async (req, res) => {
     if (method === 'GET' && url === '/api/auth/me') {
       const user = userByToken(req);
       if (!user) return json(res, 401, { ok: false, error: '登录已过期' });
+      // 1.6.0 现场补发当期订阅额度（幂等；跨月后第一次 /me 就会到账）
+      ensurePlanGrant(user);
       touchToken(req);
       usersStore.save();
       return json(res, 200, {
@@ -1951,7 +2025,11 @@ const server = http.createServer(async (req, res) => {
 
     // 套餐目录：公开接口（未登录也能看价格，便于登录前决策）
     if (method === 'GET' && url === '/api/plans') {
-      return json(res, 200, Object.assign({ ok: true }, membership.plansForClient(membershipStore.data)));
+      return json(res, 200, Object.assign({ ok: true },
+        membership.plansForClient(membershipStore.data),
+        // 1.6.0 充值档位（插件据此展示「充值」入口）
+        { rechargeOptions: balance.rechargeOptionsForClient(balanceCfg()),
+          recharge: { enforce: balanceCfg().enforce, minBalanceMicro: balanceCfg().minBalanceMicro } }));
     }
 
     if (url === '/api/membership' || url === '/api/orders' || url === '/api/redeem'
@@ -2060,6 +2138,26 @@ const server = http.createServer(async (req, res) => {
         let input;
         try { input = await readBody(req); } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
         if (membership.reapOrders(membershipStore.data)) membershipStore.save();
+
+        // 1.6.0 充值订单：{ kind:'credit', optionId } → 买 AI 余额（核销后自动入账）
+        if (input.kind === 'credit') {
+          const opt = balance.rechargeOptionOf(balanceCfg(), input.optionId);
+          if (!opt) return json(res, 400, { ok: false, error: '充值档位不存在或已下架' });
+          const r = membership.createCreditOrder(membershipStore.data, {
+            user,
+            cents: opt.cents,
+            // 1 分 = 1e4 微元（pricing.MICRO_PER_CENT），到账额度含赠送
+            creditMicro: opt.creditCents * pricing.MICRO_PER_CENT,
+            bonusMicro: Math.max(0, opt.creditCents - opt.cents) * pricing.MICRO_PER_CENT,
+            label: opt.label || ('AI 额度充值 ¥' + (opt.cents / 100).toFixed(0)),
+          });
+          if (r.error) return json(res, 400, { ok: false, error: r.error });
+          membershipStore.save();
+          log('credit order created:', user.email, '¥' + (opt.cents / 100).toFixed(2),
+            '→ credit', r.order.creditMicro + ' micro');
+          return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, r.order) });
+        }
+
         const r = membership.createOrder(membershipStore.data, {
           user, plan: input.plan, months: input.months, cycle: input.cycle,
           // couponCode 由插件在上一步 /api/coupons/validate 拿到并回传；
@@ -2344,6 +2442,8 @@ const server = http.createServer(async (req, res) => {
           ok: true, orders, codes,
           plans: membership.plansForClient(membershipStore.data),
           ai: { trialDays: membership.trialDaysFor(membershipStore.data) }, // 1.4.9 新用户全模型试用天数
+          // 1.6.0 余额与充值档位（后台「充值档位」编辑用）
+          balance: balanceCfg(),
           priceItems: membershipStore.data.priceItems.map((i) => membership.priceItemOut(membershipStore.data, i)),
           cycles: membership.CYCLE_PRESETS,
           counts: {
@@ -2483,7 +2583,7 @@ const server = http.createServer(async (req, res) => {
           doc.balance = cfg;
           changed.push({ op: 'balance', enforce: cfg.enforce,
             signupGrantMicro: cfg.signupGrantMicro, signupValidDays: cfg.signupValidDays,
-            minBalanceMicro: cfg.minBalanceMicro });
+            minBalanceMicro: cfg.minBalanceMicro, rechargeOptions: cfg.rechargeOptions.length });
         }
         if (!changed.length) return json(res, 400, { ok: false, error: '没有可应用的改动（需提供 set / remove / fallback）' });
         pricing.normalize(doc);
@@ -2517,6 +2617,10 @@ const server = http.createServer(async (req, res) => {
             if (p.tagline !== undefined) doc.plans[pid].tagline = String(p.tagline).slice(0, 60);
             // 1.4.9：高级模型开关（此前只定义、无处可改——补上管理入口）
             if (p.highTierModels !== undefined) doc.plans[pid].highTierModels = !!p.highTierModels;
+            // 1.6.0 订阅去无限化：每月发放的额度（微元；0 = 该档不发）
+            if (p.monthlyGrantMicro !== undefined) {
+              doc.plans[pid].monthlyGrantMicro = Math.max(0, Math.round(Number(p.monthlyGrantMicro) || 0));
+            }
             if (Array.isArray(p.features)) {
               doc.plans[pid].features = p.features.slice(0, 12).map((s) => String(s).slice(0, 80));
             }
@@ -2582,18 +2686,23 @@ const server = http.createServer(async (req, res) => {
         let input = {};
         try { input = await readBody(req); } catch (e) { /* 允许空请求体 */ }
         if (m[2] === 'fulfill') {
-          const user = findUserById(order.userId);
-          if (!user) return json(res, 400, { ok: false, error: '下单账号已不存在（无法开通）' });
           snapshot('orders-change', { note: '核销订单 ' + order.id });
-          const r = membership.fulfillOrder(membershipStore.data, order, { by: 'admin' });
-          if (r.error) return json(res, 400, { ok: false, error: r.error });
-          // 核销即开通：直接给下单账号叠加续期（同时留档一枚已用兑换码）
-          membership.grantMembership(membershipStore.data, user, {
-            plan: order.plan, months: order.months, perpetual: order.perpetual,
-            cycle: order.cycle, source: 'order', refId: order.id,
-          });
+          const r = applyOrderFulfill(order, 'admin');
+          if (!r.ok) return json(res, 400, { ok: false, error: r.error });
+          const user = r.user;
           membershipStore.save();
           usersStore.save();
+          if (order.kind === 'credit') {
+            log('credit order fulfilled:', order.id, user.email, order.creditMicro + ' micro');
+            auditLog(req, 'order.fulfill', { target: order.id, note: '充值入账 ' + user.email,
+              after: { kind: 'credit', creditMicro: order.creditMicro,
+                amountCents: membership.amountCentsOf(order),
+                balanceMicro: (user.balance || {}).paidMicro } });
+            return json(res, 200, {
+              ok: true, order: membership.orderOut(membershipStore.data, order),
+              archiveCode: null, user: userAdminOut(user),
+            });
+          }
           log('order fulfilled:', order.id, user.email, order.plan, order.months + 'm');
           auditLog(req, 'order.fulfill', { target: order.id, note: '下单账号 ' + user.email,
             after: { plan: order.plan, months: order.months, perpetual: !!order.perpetual,
@@ -2601,7 +2710,9 @@ const server = http.createServer(async (req, res) => {
               expiresAt: (user.membership && user.membership.expiresAt) || null } });
           return json(res, 200, {
             ok: true, order: membership.orderOut(membershipStore.data, order),
-            archiveCode: membership.codeOut(r.code), user: userAdminOut(user),
+            archiveCode: r.order.codeId ? membership.codeOut(
+              membershipStore.data.codes.find((c) => c.id === r.order.codeId)) : null,
+            user: userAdminOut(user),
           });
         }
         snapshot('orders-change', { note: '取消订单 ' + order.id });
@@ -2796,18 +2907,25 @@ const server = http.createServer(async (req, res) => {
         for (const r of m.results) {
           if (r.status !== 'matched') continue;
           const order = membership.findOrder(membershipStore.data, r.orderId);
-          const user = order ? findUserById(order.userId) : null;
-          if (!order || !user) {
-            applied.push({ orderId: r.orderId, ok: false, error: '订单或账号已不存在' });
+          if (!order) {
+            applied.push({ orderId: r.orderId, ok: false, error: '订单已不存在' });
             continue;
           }
           snapshot('orders-change', { note: '对账核销 ' + order.id });
-          const f = membership.fulfillOrder(membershipStore.data, order, { by: 'reconcile' });
-          if (f.error) { applied.push({ orderId: order.id, ok: false, error: f.error }); continue; }
-          membership.grantMembership(membershipStore.data, user, {
-            plan: order.plan, months: order.months, perpetual: order.perpetual,
-            cycle: order.cycle, source: 'order', refId: order.id,
-          });
+          const f = applyOrderFulfill(order, 'reconcile');
+          if (!f.ok) { applied.push({ orderId: order.id, ok: false, error: f.error }); continue; }
+          const user = f.user;
+          if (order.kind === 'credit') {
+            applied.push({ orderId: order.id, ok: true, email: user.email, kind: 'credit',
+              creditMicro: order.creditMicro, balanceMicro: (user.balance || {}).paidMicro });
+            auditLog(req, 'order.reconcile', {
+              target: order.id,
+              note: '对账自动充值：' + user.email + '（流水 ' + reconcile.money(r.amountCents)
+                + (r.entry && r.entry.txnId ? ' / ' + r.entry.txnId : '') + '）',
+              after: { kind: 'credit', amountCents: r.amountCents, creditMicro: order.creditMicro },
+            });
+            continue;
+          }
           const mp = (user.membership) || {};
           applied.push({ orderId: order.id, ok: true, email: user.email,
             plan: mp.plan || null, perpetual: !!mp.perpetual, expiresAt: mp.expiresAt || null });

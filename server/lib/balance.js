@@ -39,11 +39,19 @@ const pricing = require('./pricing');
 /** 流水保留条数（每账号；users.json 是全量读写的 JSON，不能无限长） */
 const LEDGER_KEEP = 50;
 
+/** 充值档位默认值：到账额度 creditCents ≥ 付款 cents（差额即「充值赠送」） */
+const DEFAULT_RECHARGE_OPTIONS = [
+  { id: 'rc10', cents: 1000, creditCents: 1000, label: '¥10', enabled: true },
+  { id: 'rc30', cents: 3000, creditCents: 3300, label: '¥30 · 到账 ¥33', enabled: true },
+  { id: 'rc100', cents: 10000, creditCents: 11500, label: '¥100 · 到账 ¥115', enabled: true },
+];
+
 const DEFAULT_CFG = {
   signupGrantMicro: 6 * pricing.MICRO_PER_YUAN,   // ¥6
   signupValidDays: 30,
   enforce: false,
   minBalanceMicro: 0,
+  rechargeOptions: DEFAULT_RECHARGE_OPTIONS,
 };
 
 function clone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -61,12 +69,30 @@ function signedMicro(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+/** 充值档位消毒：id 唯一、金额 > 0、到账 ≥ 付款（不允许「充得多到得少」） */
+function sanitizeRechargeOptions(raw) {
+  if (!Array.isArray(raw)) return clone(DEFAULT_RECHARGE_OPTIONS);
+  const out = [];
+  const seen = new Set();
+  for (const o of raw) {
+    if (!o || typeof o !== 'object') continue;
+    const id = String(o.id || '').trim().slice(0, 24);
+    const cents = Math.round(Number(o.cents) || 0);
+    const creditCents = Math.round(Number(o.creditCents) || cents);
+    if (!id || seen.has(id) || cents <= 0) continue;
+    if (creditCents < cents) continue;
+    seen.add(id);
+    out.push({ id, cents, creditCents, label: String(o.label || '').slice(0, 40), enabled: o.enabled !== false });
+  }
+  return out.length ? out : clone(DEFAULT_RECHARGE_OPTIONS);
+}
+
 /**
  * 规范化 pricing 文档的 balance 配置块（幂等）。
  * @param {object} pricingDoc pricing.json 文档（原位修改）
  */
 function normalizeCfg(pricingDoc) {
-  if (!pricingDoc || typeof pricingDoc !== 'object') return newCfg();
+  if (!pricingDoc || typeof pricingDoc !== 'object') return clone(DEFAULT_CFG);
   const raw = pricingDoc.balance && typeof pricingDoc.balance === 'object'
     ? pricingDoc.balance : {};
   const cfg = {
@@ -74,6 +100,7 @@ function normalizeCfg(pricingDoc) {
     signupValidDays: Math.max(0, Math.round(Number(raw.signupValidDays) || 0)) || 30,
     enforce: raw.enforce === true,
     minBalanceMicro: micro(raw.minBalanceMicro, 0),
+    rechargeOptions: sanitizeRechargeOptions(raw.rechargeOptions),
   };
   pricingDoc.balance = cfg;
   return cfg;
@@ -91,7 +118,10 @@ function ensure(user) {
     user.balance = {};
   }
   const b = user.balance;
-  b.grantedMicro = micro(b.grantedMicro, 0);   // 赠送永不为负（过期由 sweep 清零）
+  b.grantedMicro = micro(b.grantedMicro, 0);   // 注册赠送：非负（过期由 sweep 清零）
+  b.planMicro = micro(b.planMicro, 0);         // 订阅额度：非负（换期由 sweep/发放重置）
+  b.planExpiresAt = b.planExpiresAt || null;
+  b.planPeriodKey = b.planPeriodKey || null;
   // ★ 充值余额允许为负（并发窗口下的透支）：绝不能在读取路径上被"消毒"成 0——
   //   那会让欠费凭空消失、看板失真、透支用户继续畅通无阻。
   b.paidMicro = signedMicro(b.paidMicro);
@@ -106,9 +136,17 @@ function sweep(b, now) {
   if (b.grantedMicro > 0 && b.grantedExpiresAt && t >= Date.parse(b.grantedExpiresAt)) {
     push(b, {
       delta: -b.grantedMicro, kind: 'grant-expire',
-      reason: '赠送额度到期回收', grantedAfter: 0, paidAfter: b.paidMicro,
+      reason: '注册赠送额度到期回收', grantedAfter: 0, planAfter: b.planMicro, paidAfter: b.paidMicro,
     });
     b.grantedMicro = 0;
+  }
+  // 订阅额度：不结转 —— 过了当期就作废（这是"订阅"与"充值"的本质区别）
+  if (b.planMicro > 0 && b.planExpiresAt && t >= Date.parse(b.planExpiresAt)) {
+    push(b, {
+      delta: -b.planMicro, kind: 'plan-expire',
+      reason: '订阅额度到期回收（不结转）', grantedAfter: b.grantedMicro, planAfter: 0, paidAfter: b.paidMicro,
+    });
+    b.planMicro = 0;
   }
   return b;
 }
@@ -119,21 +157,33 @@ function push(b, entry) {
   return b;
 }
 
-/** 赠送部分当前可用（过期 = 0） */
+/** 注册赠送部分当前可用（过期 = 0） */
 function grantedAvailable(b, now) {
   const t = Number.isFinite(now) ? now : Date.now();
   if (!b.grantedExpiresAt) return b.grantedMicro;
   return t >= Date.parse(b.grantedExpiresAt) ? 0 : b.grantedMicro;
 }
 
-/** 可用总额 = 未过期赠送 + 充值 */
-function totalMicro(b, now) {
-  return grantedAvailable(b, now) + b.paidMicro;
+/** 订阅额度当前可用（当期有效，不结转） */
+function planAvailable(b, now) {
+  const t = Number.isFinite(now) ? now : Date.now();
+  if (!b.planExpiresAt) return b.planMicro;
+  return t >= Date.parse(b.planExpiresAt) ? 0 : b.planMicro;
 }
 
-/** 高级模型只能用充值余额（铁律三） */
+/** 可用总额 = 未过期赠送 + 当期订阅额度 + 充值 */
+function totalMicro(b, now) {
+  return grantedAvailable(b, now) + planAvailable(b, now) + b.paidMicro;
+}
+
+/**
+ * 可用于该类模型的额度（铁律三：注册赠送只限基础模型）。
+ *   高级模型：订阅额度 + 充值（订阅本来就是为了开高级模型，不能用反）
+ *   基础模型：三者皆可
+ */
 function payableMicro(b, { highTier } = {}, now) {
-  return highTier ? b.paidMicro : totalMicro(b, now);
+  const t = Number.isFinite(now) ? now : Date.now();
+  return highTier ? (planAvailable(b, t) + b.paidMicro) : totalMicro(b, t);
 }
 
 /* ---------------- 写操作 ---------------- */
@@ -174,17 +224,61 @@ function adminAdjust(user, { micro: amount, kind, reason, refId }, now) {
   if (amt > 0) {
     b.paidMicro += amt;
   } else {
-    const need = -amt;
+    let need = -amt;
+    // 扣减顺序与消耗一致：赠送 → 订阅 → 充值（越保值的越晚动）
     const fromGranted = Math.min(b.grantedMicro, need);
-    b.grantedMicro -= fromGranted;
-    const fromPaid = need - fromGranted;
-    if (fromPaid > b.paidMicro) return { error: '扣减超出当前余额（可用 ' + totalMicro(b, t) + ' 微元）' };
-    b.paidMicro -= fromPaid;
+    b.grantedMicro -= fromGranted; need -= fromGranted;
+    const fromPlan = Math.min(b.planMicro, need);
+    b.planMicro -= fromPlan; need -= fromPlan;
+    if (need > b.paidMicro) return { error: '扣减超出当前余额（可用 ' + totalMicro(b, t) + ' 微元）' };
+    b.paidMicro -= need;
   }
   push(b, {
     delta: amt, kind: kind === 'recharge' ? 'recharge' : 'adjust',
     reason: String(reason || (amt > 0 ? '管理员充值' : '管理员修正')).slice(0, 80),
-    refId: String(refId || ''), grantedAfter: b.grantedMicro, paidAfter: b.paidMicro,
+    refId: String(refId || ''),
+    grantedAfter: b.grantedMicro, planAfter: b.planMicro, paidAfter: b.paidMicro,
+  });
+  return { balance: viewOf(b, t) };
+}
+
+/**
+ * 订阅额度按月发放（1.6.0）：**现场推导，不需要定时任务**。
+ * 触发点在 /api/auth/me 与网关 pre-check —— 用户只要在用，就会拿到当期额度。
+ * 不结转：直接**覆盖** planMicro（不是累加），并记一笔流水。
+ * @returns {{micro:number, periodKey:string, expiresAt:string}|null} null = 本期无需发放
+ */
+function grantPlan(user, { micro: amount, periodKey, expiresAt }, now) {
+  const amt = Math.max(0, Math.round(Number(amount) || 0));
+  if (!amt) return null;
+  const t = Number.isFinite(now) ? now : Date.now();
+  const b = sweep(ensure(user), t);
+  b.planMicro = amt;
+  b.planPeriodKey = String(periodKey || '');
+  b.planExpiresAt = expiresAt || null;
+  push(b, {
+    delta: amt, kind: 'plan-grant',
+    reason: '订阅额度发放（' + b.planPeriodKey + '，不结转）',
+    grantedAfter: b.grantedMicro, planAfter: b.planMicro, paidAfter: b.paidMicro,
+  });
+  return { micro: amt, periodKey: b.planPeriodKey, expiresAt: b.planExpiresAt };
+}
+
+/**
+ * 充值到账（充值订单核销时调用）。进 paidMicro（永不过期）。
+ * 充值赠送（bonus）随充值一并入 paidMicro —— 它是购买的附属物，不单独设有效期。
+ */
+function creditTopUp(user, amount, { orderId, reason } = {}, now) {
+  const amt = Math.max(0, Math.round(Number(amount) || 0));
+  if (!amt) return { error: '到账额度必须大于 0' };
+  const t = Number.isFinite(now) ? now : Date.now();
+  const b = sweep(ensure(user), t);
+  b.paidMicro += amt;
+  push(b, {
+    delta: amt, kind: 'recharge',
+    reason: String(reason || '额度充值').slice(0, 80),
+    refId: String(orderId || ''),
+    grantedAfter: b.grantedMicro, planAfter: b.planMicro, paidAfter: b.paidMicro,
   });
   return { balance: viewOf(b, t) };
 }
@@ -192,20 +286,23 @@ function adminAdjust(user, { micro: amount, kind, reason, refId }, now) {
 /**
  * 消耗（网关计费扣减）。★ 铁律二：永远如实记账、允许透支——
  * 是否"付得起"由 canAfford 在请求发出前判定，这里不做拦截。
- * @returns {{fromGranted:number, fromPaid:number, overdraft:number}}
+ * 扣减顺序：注册赠送 → 订阅额度 → 充值（越"保值"的越晚扣）。
+ *   高级模型跳过注册赠送（铁律三），从订阅额度起扣。
+ * @returns {{fromGranted:number, fromPlan:number, fromPaid:number, overdraft:number}}
  */
 function consume(user, amount, { highTier, reason, refId } = {}, now) {
   const amt = Math.max(0, Math.round(Number(amount) || 0));
-  const out = { fromGranted: 0, fromPaid: 0, overdraft: 0 };
+  const out = { fromGranted: 0, fromPlan: 0, fromPaid: 0, overdraft: 0 };
   if (!amt) return out;
   const t = Number.isFinite(now) ? now : Date.now();
   const b = sweep(ensure(user), t);
   let left = amt;
-  // 铁律三：高级模型不走赠送额度
   if (!highTier) {
     const fromGranted = Math.min(grantedAvailable(b, t), left);
     if (fromGranted > 0) { b.grantedMicro -= fromGranted; left -= fromGranted; out.fromGranted = fromGranted; }
   }
+  const fromPlan = Math.min(planAvailable(b, t), left);
+  if (fromPlan > 0) { b.planMicro -= fromPlan; left -= fromPlan; out.fromPlan = fromPlan; }
   b.paidMicro -= left;
   out.fromPaid = left;
   out.overdraft = b.paidMicro < 0 ? -b.paidMicro : 0;
@@ -213,7 +310,7 @@ function consume(user, amount, { highTier, reason, refId } = {}, now) {
     delta: -amt, kind: 'consume',
     reason: String(reason || 'AI 调用').slice(0, 80),
     refId: String(refId || ''),
-    grantedAfter: b.grantedMicro, paidAfter: b.paidMicro,
+    grantedAfter: b.grantedMicro, planAfter: b.planMicro, paidAfter: b.paidMicro,
   });
   return out;
 }
@@ -232,16 +329,17 @@ function precheck(user, cfg, { highTier } = {}, now) {
   const b = sweep(ensure(user), t);
   // ★ 观察模式（enforce=false）恒放行：只扣账不拦截。
   //   真实成本数据没跑够之前，任何阈值都是拍脑袋——先观察、配准价、再开。
-  if (!c.enforce) return { allowed: true, avail: highTier ? b.paidMicro : totalMicro(b, t) };
+  if (!c.enforce) return { allowed: true, avail: payableMicro(b, { highTier }, t) };
   if (highTier) {
-    const okPaid = b.paidMicro > 0 && b.paidMicro >= c.minBalanceMicro;
-    if (okPaid) return { allowed: true, avail: b.paidMicro };
+    const avail = planAvailable(b, t) + b.paidMicro;
+    const okPaid = avail > 0 && avail >= c.minBalanceMicro;
+    if (okPaid) return { allowed: true, avail };
     return {
-      allowed: false, avail: b.paidMicro,
+      allowed: false, avail,
       code: 'BALANCE_REQUIRED_FOR_HIGH_TIER',
-      error: '高级模型需要充值余额（赠送额度仅限基础模型）。当前充值余额 '
-        + pricing.microText(b.paidMicro)
-        + '。请充值，或在设置中接入自己的模型通道（自带 Key 不受额度限制）。',
+      error: '高级模型需要订阅额度或充值余额（注册赠送额度仅限基础模型）。当前可用 '
+        + pricing.microText(avail)
+        + '。请充值或升级专业版（每月发放额度），也可在设置中接入自己的模型通道。',
     };
   }
   const avail = totalMicro(b, t);
@@ -259,17 +357,26 @@ function precheck(user, cfg, { highTier } = {}, now) {
 /** 客户端/后台共用的余额视图（微元 + 已格式化文案，前端不换算） */
 function viewOf(b, now) {
   const t = Number.isFinite(now) ? now : Date.now();
+  const g = grantedAvailable(b, t);
+  const pl = planAvailable(b, t);
   return {
     grantedMicro: b.grantedMicro,
-    grantedAvailableMicro: grantedAvailable(b, t),
+    grantedAvailableMicro: g,
     grantedExpiresAt: b.grantedExpiresAt,
+    planMicro: b.planMicro,
+    planAvailableMicro: pl,
+    planExpiresAt: b.planExpiresAt,
+    planPeriodKey: b.planPeriodKey || null,
     paidMicro: b.paidMicro,
-    totalMicro: totalMicro(b, t),
-    text: pricing.microText(totalMicro(b, t)),
-    grantedText: pricing.microText(grantedAvailable(b, t)),
+    totalMicro: g + pl + b.paidMicro,
+    text: pricing.microText(g + pl + b.paidMicro),
+    grantedText: pricing.microText(g),
+    planText: pricing.microText(pl),
     paidText: pricing.microText(b.paidMicro),
     grantedDaysLeft: b.grantedExpiresAt
       ? Math.max(0, Math.ceil((Date.parse(b.grantedExpiresAt) - t) / 86400e3)) : null,
+    planDaysLeft: b.planExpiresAt
+      ? Math.max(0, Math.ceil((Date.parse(b.planExpiresAt) - t) / 86400e3)) : null,
   };
 }
 
@@ -287,15 +394,37 @@ function adminView(user, now) {
   return Object.assign(viewOf(b, now), {
     ledger: b.ledger.slice(-LEDGER_KEEP).reverse().map((e) => ({
       at: e.at, delta: e.delta, kind: e.kind, reason: e.reason || '',
-      refId: e.refId || '', grantedAfter: e.grantedAfter, paidAfter: e.paidAfter,
+      refId: e.refId || '',
+      grantedAfter: e.grantedAfter, planAfter: e.planAfter, paidAfter: e.paidAfter,
     })),
   });
 }
 
+/** 按 id 找充值档位（只返回启用中的；找不到返回 null） */
+function rechargeOptionOf(cfg, id) {
+  const c = cfg || newCfg();
+  const hit = (c.rechargeOptions || []).find((o) => o && o.id === String(id || ''));
+  return hit && hit.enabled ? hit : null;
+}
+
+/** 客户端可见的充值档位（含到账额度与赠送，供插件展示） */
+function rechargeOptionsForClient(cfg) {
+  const c = cfg || newCfg();
+  return (c.rechargeOptions || []).filter((o) => o && o.enabled).map((o) => ({
+    id: o.id, cents: o.cents, creditCents: o.creditCents,
+    bonusCents: Math.max(0, o.creditCents - o.cents),
+    label: o.label || '',
+    amountText: '¥' + (o.cents / 100).toFixed(2),
+    creditText: pricing.microText(o.creditCents * pricing.MICRO_PER_CENT),
+    bonusText: o.creditCents > o.cents ? '送 ' + pricing.microText((o.creditCents - o.cents) * pricing.MICRO_PER_CENT) : '',
+  }));
+}
+
 module.exports = {
-  LEDGER_KEEP, DEFAULT_CFG, MICRO_PER_YUAN: pricing.MICRO_PER_YUAN,
-  newCfg, normalizeCfg, cfgOf,
-  ensure, sweep, grantedAvailable, totalMicro, payableMicro,
-  grantSignup, adminAdjust, consume, precheck,
+  LEDGER_KEEP, DEFAULT_CFG, DEFAULT_RECHARGE_OPTIONS, MICRO_PER_YUAN: pricing.MICRO_PER_YUAN,
+  newCfg, normalizeCfg, cfgOf, sanitizeRechargeOptions,
+  ensure, sweep, grantedAvailable, planAvailable, totalMicro, payableMicro,
+  grantSignup, grantPlan, creditTopUp, adminAdjust, consume, precheck,
   viewOf, userView, adminView,
+  rechargeOptionOf, rechargeOptionsForClient,
 };

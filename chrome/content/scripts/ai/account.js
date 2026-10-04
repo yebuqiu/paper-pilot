@@ -642,6 +642,42 @@ var Account = {
     return { highTier: true, reason: "unknown", trial: null, models: [], lockedModels: [], defaultModel: "auto" };
   },
 
+  /**
+   * AI 额度余额（0.26.0，服务端 1.6.0）。
+   * 三档：注册赠送（有期，限基础模型）/ 订阅额度（当期有效不结转）/ 充值（永不过期）。
+   * **旧服务端没有 balance 字段 → 返回 null**，面板据此隐藏余额区块（不显示假数据）。
+   * @returns {{totalMicro:number, grantedMicro:number, planMicro:number, paidMicro:number,
+   *            text:string, grantedText:string, planText:string, paidText:string,
+   *            grantedDaysLeft:number|null, planDaysLeft:number|null,
+   *            grantedExpiresAt:string|null, planExpiresAt:string|null, planPeriodKey:string|null,
+   *            enforce:boolean, minBalanceMicro:number, overdraft:boolean}|null}
+   */
+  balance() {
+    const u = this.user();
+    const b = u && u.balance;
+    if (!b || typeof b !== "object") return null;
+    const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+    return {
+      totalMicro: num(b.totalMicro),
+      grantedMicro: num(b.grantedAvailableMicro != null ? b.grantedAvailableMicro : b.grantedMicro),
+      planMicro: num(b.planAvailableMicro != null ? b.planAvailableMicro : b.planMicro),
+      paidMicro: num(b.paidMicro),
+      text: b.text || "",
+      grantedText: b.grantedText || "",
+      planText: b.planText || "",
+      paidText: b.paidText || "",
+      grantedDaysLeft: b.grantedDaysLeft == null ? null : num(b.grantedDaysLeft),
+      planDaysLeft: b.planDaysLeft == null ? null : num(b.planDaysLeft),
+      grantedExpiresAt: b.grantedExpiresAt || null,
+      planExpiresAt: b.planExpiresAt || null,
+      planPeriodKey: b.planPeriodKey || null,
+      enforce: !!b.enforce,
+      minBalanceMicro: num(b.minBalanceMicro),
+      // 充值余额为负 = 并发窗口透支；面板要显式提示（不是"刚好用完"）
+      overdraft: num(b.paidMicro) < 0,
+    };
+  },
+
   /** 是否 Pro（含到期判断：过期的 Pro 视为 Free） */
   isPro() {
     const m = this.membership();
@@ -696,7 +732,22 @@ var Account = {
       upcoming: j.upcoming || [],
       cycles: j.cycles || [],
       pay: j.pay || {},
+      // 0.26.0：充值档位（服务端 1.6.0 起下发；旧服务端为空数组 → 面板隐藏充值入口）
+      rechargeOptions: Array.isArray(j.rechargeOptions) ? j.rechargeOptions : [],
+      recharge: j.recharge || {},
     };
+  },
+
+  /**
+   * 充值下单（0.26.0）：{ kind:'credit', optionId } → 返回充值订单
+   * （含唯一尾数金额 + 收款信息；核销后自动入账余额）
+   */
+  async createCreditOrder(optionId) {
+    const resp = await this._request("POST", "/api/orders",
+      { kind: "credit", optionId: String(optionId || "") }, this.token(), 15000);
+    const j = resp.json || {};
+    if (!j.ok || !j.order) throw new Error(j.error || "充值下单失败");
+    return j.order;
   },
 
   /** 下单：返回 {order}（含订单号、金额、收款信息与状态）。cycle==='perpetual' 表示永久会员 */

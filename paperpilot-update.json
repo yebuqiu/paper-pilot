@@ -471,6 +471,16 @@
               "strict_max_version": "99.*"
             }
           }
+        },
+        {
+          "version": "0.26.0",
+          "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/raw/main/dist/paper-pilot-0.26.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          }
         }
       ]
     }

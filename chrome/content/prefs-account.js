@@ -914,6 +914,252 @@
     }
   }
 
+  /* ==================== AI 额度余额（0.26.0） ====================
+   * 三档：注册赠送（有期，限基础模型）/ 订阅额度（当月有效不结转）/ 充值（永不过期）。
+   * 服务端 1.6.0 起在 /api/auth/me 下发 user.balance；旧服务端没有该字段 →
+   * **整块隐藏**（绝不显示假数据）。
+   * 充值走与会员同一套订单机制：档位 → 生成订单（带唯一尾数）→ 扫码 →
+   * 「我已完成支付」→ 轮询 → 管理员核销后**自动入账余额**。
+   */
+
+  let balOpts = [];      // 服务端下发的充值档位
+  let balSel = null;     // 选中的档位
+  let balOrder = null;   // 当前充值订单
+  let balTimer = null;   // 订单轮询定时器
+  let balDeadline = 0;
+  let balTried = false;  // 档位已尝试拉取（避免渲染 ↔ 拉取互相触发成无限循环）
+
+  /** 微元 → 元文案（服务端已给带币种文案时优先用它，避免前后端口径漂移） */
+  function microTxt(micro, fallback) {
+    if (fallback) return fallback;
+    const y = (Number(micro) || 0) / 1e6;
+    if (y >= 1) return "¥" + y.toFixed(2);
+    if (y > 0) return "¥" + y.toFixed(3);
+    return "¥0";
+  }
+
+  function renderBalance() {
+    const A = account();
+    const block = $("pp-bal-block");
+    if (!A || !block) return;
+    const b = A.isLoggedIn() ? A.balance() : null;
+    if (!b) { block.style.display = "none"; return; }   // 旧服务端 → 整块隐藏
+    block.style.display = "";
+
+    $("pp-bal-total").textContent = microTxt(b.totalMicro, b.text);
+    const parts = [];
+    if (b.grantedMicro > 0) {
+      parts.push("注册赠送 " + microTxt(b.grantedMicro, b.grantedText)
+        + (b.grantedDaysLeft != null ? "（剩 " + b.grantedDaysLeft + " 天）" : ""));
+    }
+    if (b.planMicro > 0) {
+      parts.push("订阅额度 " + microTxt(b.planMicro, b.planText)
+        + (b.planDaysLeft != null ? "（本月底作废）" : ""));
+    }
+    parts.push("充值 " + microTxt(b.paidMicro, b.paidText) + "（永不过期）");
+    $("pp-bal-detail").textContent = parts.join(" ｜ ");
+
+    // 说明条：透支 / 观察模式 / 消耗口径 —— 三种状态给三种说法
+    const note = $("pp-bal-note");
+    if (b.overdraft) {
+      note.textContent = "⚠ 充值余额已透支（并发调用所致）：下次 AI 请求会被拦截，请充值后继续。";
+      note.style.color = "var(--pp-danger)";
+    } else if (!b.enforce) {
+      note.textContent = "当前为观察模式：额度照常扣减与记账，但用尽不会中断使用。";
+      note.style.color = "var(--pp-muted)";
+    } else if (b.totalMicro <= (b.minBalanceMicro || 0)) {
+      note.textContent = "⚠ 额度不足，AI 请求将被拦截；充值或接入自己的模型通道即可继续。";
+      note.style.color = "var(--pp-danger)";
+    } else {
+      note.textContent = "注册赠送额度仅限基础模型；订阅额度与充值额度可用于全部模型。";
+      note.style.color = "var(--pp-muted)";
+    }
+
+    const tg = $("pp-bal-recharge-toggle");
+    if (tg) { tg.disabled = !balOpts.length; tg.textContent = balOpts.length ? "充值额度" : "充值暂未开放"; }
+    renderBalOptions();
+    // 档位懒加载（只试一次；失败就显示「服务端未配置充值档位」）
+    if (!balOpts.length && A.isLoggedIn()) ensureRechargeOptions(false).catch(() => { /* 忽略 */ });
+  }
+
+  function renderBalOptions() {
+    const box = $("pp-bal-options");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!balOpts.length) {
+      box.appendChild(el("span", { class: "pp-hint" }, "服务端未配置充值档位"));
+      return;
+    }
+    for (const o of balOpts) {
+      const on = balSel && balSel.id === o.id;
+      const text = (o.label || o.amountText || "") + (o.bonusText ? "（" + o.bonusText + "）" : "");
+      const chip = el("span", { class: on ? "pp-mb-opt pp-mb-opt-on" : "pp-mb-opt" }, text);
+      chip.addEventListener("click", () => {
+        balSel = o;
+        renderBalOptions();
+        const n = $("pp-bal-price-note");
+        if (n) n.textContent = "付款 " + (o.amountText || "") + " → 到账 " + (o.creditText || "");
+      });
+      box.appendChild(chip);
+    }
+  }
+
+  async function ensureRechargeOptions(force) {
+    const A = account();
+    if (!A || !A.isLoggedIn()) return;
+    if (balOpts.length && !force) return;
+    if (balTried && !force) return;   // 试过一次就够了，失败也不再反复请求
+    balTried = true;
+    try {
+      const p = await A.plans();
+      balOpts = (p && p.rechargeOptions) || [];
+      if (!balSel && balOpts.length) balSel = balOpts[0];
+    } catch (e) { balOpts = []; }
+    renderBalance();
+  }
+
+  function onBalRechargeToggle() {
+    const box = $("pp-bal-recharge");
+    if (!box) return;
+    // 初始隐藏来自 XHTML 的内联 style；在无样式解析的环境（测试迷你 DOM）里
+    // 该值为 undefined，所以「隐藏」要同时认 "none" 与空值，否则点了展不开。
+    const hidden = !box.style.display || box.style.display === "none";
+    box.style.display = hidden ? "" : "none";
+    if (hidden) ensureRechargeOptions(true).catch(() => { /* 拉不到就显示空档位提示 */ });
+  }
+
+  async function onBalCreate() {
+    const A = account();
+    const btn = $("pp-bal-create");
+    if (!A || !balSel) return mbSetMsg("pp-bal-order-msg", "请先选择充值档位", "var(--pp-danger)");
+    btn.disabled = true;
+    mbSetMsg("pp-bal-order-msg", "正在生成订单…", "var(--pp-muted)");
+    try {
+      balOrder = await A.createCreditOrder(balSel.id);
+      mbSetMsg("pp-bal-order-msg", "", "var(--pp-muted)");
+      renderBalPay();
+      startBalPolling();
+    } catch (e) {
+      mbSetMsg("pp-bal-order-msg", "✗ " + ((e && e.message) || "下单失败"), "var(--pp-danger)");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function renderBalPay() {
+    const pay = $("pp-bal-pay");
+    const info = $("pp-bal-pay-info");
+    if (!pay || !info) return;
+    if (!balOrder) { pay.style.display = "none"; return; }
+    pay.style.display = "";
+    const o = balOrder;
+    const money = o.amountText || ("¥" + (Number(o.amount) || 0).toFixed(2));
+    const credit = microTxt(o.creditMicro);
+    const bonus = microTxt(o.bonusMicro);
+    const lines = ["订单号：" + o.id];
+    lines.push("充值 " + money + " → 到账 " + credit
+      + (Number(o.bonusMicro) > 0 ? "（含赠送 " + bonus + "）" : ""));
+    lines.push("状态：" + (MB_STATUS[o.status] || o.status));
+    if (o.tailCents) {
+      lines.push("⚠ 请**精确转账 " + money + "**（不能凑整）：末尾 "
+        + String(o.tailCents).padStart(2, "0") + " 分是这笔订单的专属尾数，用于自动对账");
+    }
+    const p = o.pay || {};
+    if (p.channel) lines.push("收款方式：" + p.channel);
+    if (p.qrText) lines.push(p.qrText);
+    if (p.note) lines.push(p.note);
+    info.textContent = lines.join("\n");
+    const qr = $("pp-bal-qr");
+    if (qr) {
+      if (p.qrImage) { qr.setAttribute("src", p.qrImage); qr.style.display = ""; }
+      else { qr.removeAttribute("src"); qr.style.display = "none"; }
+    }
+    const done = o.status === "fulfilled";
+    const claim = $("pp-bal-claim");
+    if (claim) {
+      claim.disabled = done || o.status === "claimed" || o.status === "cancelled" || o.status === "expired";
+      claim.textContent = o.status === "claimed" ? "已提交，等待核销" : "我已完成支付";
+    }
+    const cancel = $("pp-bal-cancel");
+    if (cancel) cancel.disabled = done || o.status === "cancelled";
+    if (done) mbSetMsg("pp-bal-pay-result", "✓ 已入账，余额已更新", "var(--pp-success)");
+  }
+
+  function startBalPolling() {
+    stopBalPolling();
+    balDeadline = Date.now() + 10 * 60e3;
+    balTimer = window.setInterval(() => { onBalPoll(true); }, 6000);
+  }
+
+  function stopBalPolling() {
+    if (balTimer) { try { window.clearInterval(balTimer); } catch (e) { /* ignore */ } balTimer = null; }
+  }
+
+  async function onBalPoll(silent) {
+    const A = account();
+    if (!A || !balOrder) return;
+    if (Date.now() > balDeadline) { stopBalPolling(); return; }
+    try {
+      const o = await A.orderStatus(balOrder.id);
+      balOrder = o;
+      if (o.status === "fulfilled") {
+        stopBalPolling();
+        try { await A.refreshUser(); } catch (e) { /* 失败也有本地兜底 */ }
+        renderAll();
+        renderBalPay();
+        return;
+      }
+      if (o.status === "expired" || o.status === "cancelled") stopBalPolling();
+      renderBalPay();
+      if (!silent) mbSetMsg("pp-bal-pay-result", "状态：" + (MB_STATUS[o.status] || o.status), "var(--pp-muted)");
+    } catch (e) {
+      if (!silent) mbSetMsg("pp-bal-pay-result", "✗ " + ((e && e.message) || "查询失败"), "var(--pp-danger)");
+    }
+  }
+
+  async function onBalClaim() {
+    const A = account();
+    if (!A || !balOrder) return;
+    mbSetMsg("pp-bal-pay-result", "正在提交…", "var(--pp-muted)");
+    try {
+      balOrder = await A.claimOrder(balOrder.id);
+      renderBalPay();
+      mbSetMsg("pp-bal-pay-result",
+        "✓ 已提交，等待管理员核销（一般几分钟内）。可点「刷新订单状态」查看。", "var(--pp-success)");
+      startBalPolling();
+    } catch (e) {
+      mbSetMsg("pp-bal-pay-result", "✗ " + ((e && e.message) || "提交失败"), "var(--pp-danger)");
+    }
+  }
+
+  async function onBalCancel() {
+    const A = account();
+    if (!A || !balOrder) return;
+    try {
+      await A.cancelOrder(balOrder.id);
+      stopBalPolling();
+      balOrder = null;
+      $("pp-bal-pay").style.display = "none";
+      mbSetMsg("pp-bal-order-msg", "订单已取消，可重新生成", "var(--pp-muted)");
+    } catch (e) {
+      mbSetMsg("pp-bal-pay-result", "✗ " + ((e && e.message) || "取消失败"), "var(--pp-danger)");
+    }
+  }
+
+  async function onBalRefresh() {
+    const A = account();
+    if (!A || !A.isLoggedIn()) return;
+    mbSetMsg("pp-bal-msg", "刷新中…", "var(--pp-muted)");
+    try {
+      await A.refreshUser();
+      await ensureRechargeOptions(true);
+      renderAll();
+      mbSetMsg("pp-bal-msg", "✓ 余额已刷新", "var(--pp-success)");
+    } catch (e) {
+      mbSetMsg("pp-bal-msg", "✗ " + ((e && e.message) || "刷新失败"), "var(--pp-danger)");
+    }
+  }
+
   /* ---------- 激活码 ---------- */
 
   function onMbCodeToggle() {
@@ -1389,6 +1635,7 @@
     // 登录设备是异步拉取的，失败时自行隐藏，不影响其余渲染
     try { renderDevices(); } catch (e) { /* ignore */ }
     try { renderMembership(); } catch (e) { /* ignore */ }
+    try { renderBalance(); } catch (e) { /* ignore */ }
     try { renderChannels(); } catch (e) { /* ignore */ }
   }
 
@@ -1434,6 +1681,14 @@
     bind("pp-mb-code-toggle", "click", onMbCodeToggle);
     bind("pp-mb-code-btn", "click", onMbRedeem);
     bind("pp-mb-code-input", "keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); onMbRedeem(); } });
+    // AI 额度余额（0.26.0）
+    bind("pp-bal-recharge-toggle", "click", onBalRechargeToggle);
+    bind("pp-bal-create", "click", onBalCreate);
+    bind("pp-bal-claim", "click", onBalClaim);
+    bind("pp-bal-poll", "click", () => onBalPoll(false));
+    bind("pp-bal-cancel", "click", onBalCancel);
+    bind("pp-bal-refresh", "click", onBalRefresh);
+    bind("pp-bal-close", "click", () => { const b = $("pp-bal-recharge"); if (b) b.style.display = "none"; });
     // 通道
     bind("pp-ch-add", "click", () => openForm(null));
     bind("pp-mf-provider", "change", onProviderChange);
@@ -1452,6 +1707,7 @@
     window.addEventListener("unload", () => {
       if (_offSession) { try { _offSession(); } catch (e) { /* ignore */ } _offSession = null; }
       stopMbPolling(); // 面板关闭必须停掉订单轮询，否则定时器泄漏
+      stopBalPolling(); // 充值订单轮询同理
     });
   }
 

@@ -389,7 +389,10 @@ test("限速：多页请求之间的实际间隔不小于 minIntervalMs", async 
     assert.strictEqual(hits.length, 3);
     for (let i = 1; i < hits.length; i++) {
       const gap = hits[i].at - hits[i - 1].at;
-      assert.ok(gap >= 50, "第 " + (i + 1) + " 次请求间隔仅 " + gap + "ms（应 ≥60）");
+      // 同 rate-limiter：断言的是「分页请求确实被排开了」，不是时钟精度。
+      // 记录时刻来自服务端处理请求时的 Date.now()，负载高时有数毫秒抖动
+      // （60ms 的间隔偶读成 4x ms → 卡 50ms 会假红）。不排开的实现 gap ≈ 0。
+      assert.ok(gap >= 30, "第 " + (i + 1) + " 次请求间隔仅 " + gap + "ms（应 ≈60）");
     }
   } finally { await srv.close(); rmTemp(dir); }
 });

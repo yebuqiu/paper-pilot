@@ -291,6 +291,13 @@
 .pp-root .pp-mb-usage {
   margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--pp-border);
 }
+/* ===== 0.26.0 AI 额度余额 ===== */
+.pp-root .pp-bal { margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--pp-border); }
+.pp-root .pp-bal-head { display: flex; align-items: baseline; gap: 8px; }
+.pp-root .pp-bal-total { font-size: 15px; font-weight: 600; color: var(--pp-accent); }
+.pp-root .pp-bal-detail { margin-top: 3px; font-size: 11.5px; color: var(--pp-muted); }
+.pp-root .pp-bal .pp-hint { display: block; margin-top: 4px; }
+.pp-root .pp-bal-recharge { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--pp-border); }
 .pp-root .pp-mb-usage-head { font-size: 11.5px; color: var(--pp-muted); }
 .pp-root .pp-mb-bars {
   margin-top: 6px; display: flex; align-items: flex-end; gap: 6px; height: 44px;

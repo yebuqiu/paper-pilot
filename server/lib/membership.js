@@ -57,10 +57,10 @@ const DEFAULT_PLANS = {
   Free: {
     id: 'Free', name: '免费版', rank: 0, price: 0, currency: 'CNY',
     dailyLimit: 100, highTierModels: false,
+    monthlyGrantMicro: 0,                       // 1.6.0：Free 无订阅额度
     tagline: '登录即用，个人日常够用',
     features: [
-      '官方基础模型每日 100 次',
-      '新用户前 7 天可用全部官方模型（含推理档）',
+      '注册赠送 ¥6 额度（30 天内有效，限基础模型）',
       '全部核心功能（期刊分区列 / 标签治理 / 附件体检 / 库内问答 / PDF 对比…）',
       '可接入自己的 OpenAI 兼容接口，不受额度限制',
       '社区支持',
@@ -69,10 +69,13 @@ const DEFAULT_PLANS = {
   Pro: {
     id: 'Pro', name: '专业版', rank: 1, price: 29, currency: 'CNY',
     dailyLimit: 3000, highTierModels: true,
+    // 1.6.0 订阅去无限化：Pro 的权益从「每日 3000 次」改为「每月发放额度」
+    // ★ 20000000 微元 = ¥20。**待人均成本数据校准**（后台可改，见 plans 编辑）。
+    monthlyGrantMicro: 20000000,
     tagline: '高频写论文/做综述时用',
     features: [
-      '官方模型每日 3000 次',
-      '全部官方模型（含推理档 / 长上下文），不设试用期限制',
+      '每月发放 ¥20 AI 额度（不结转，含全部高级模型）',
+      '全部官方模型（含推理档 / 长上下文）',
       '可接入自己的 OpenAI 兼容接口，多通道一键切换',
       '邮件优先支持',
     ],
@@ -200,6 +203,8 @@ function normalize(doc) {
   for (const id of Object.keys(DEFAULT_PLANS)) {
     if (!out.plans[id]) out.plans[id] = clone(DEFAULT_PLANS[id]);
     else out.plans[id] = Object.assign(clone(DEFAULT_PLANS[id]), out.plans[id]);
+    // 1.6.0 订阅额度：非负整数微元（0 = 该档不发订阅额度）
+    out.plans[id].monthlyGrantMicro = Math.max(0, Math.round(Number(out.plans[id].monthlyGrantMicro) || 0));
   }
   // ---- 价格表：priceItems 权威源 ----
   if (!Array.isArray(out.priceItems) || !out.priceItems.length) {
@@ -614,6 +619,7 @@ function plansForClient(doc, now) {
       price: Number(p.price) || 0, currency: p.currency || 'CNY',
       dailyLimit: dailyLimitFor(doc, p.id),
       highTierModels: !!p.highTierModels,
+      monthlyGrantMicro: Number(p.monthlyGrantMicro) || 0,   // 1.6.0 订阅每月发放额度
       tagline: p.tagline || '',
       features: Array.isArray(p.features) ? p.features : [],
       // purchasable = 有生效价格 → 可下单；grantable = 可被开通/发激活码（与价格无关）
@@ -738,6 +744,10 @@ function grantMembership(doc, user, opts) {
 function orderOut(doc, o) {
   return {
     id: o.id, plan: o.plan, planName: planOf(doc, o.plan).name,
+    // 1.6.0 订单类型：plan = 买会员时长；credit = 买 AI 余额（核销后加余额）
+    kind: o.kind === 'credit' ? 'credit' : 'plan',
+    creditMicro: Number(o.creditMicro) || 0,
+    bonusMicro: Number(o.bonusMicro) || 0,
     months: o.months, amount: o.amount, currency: o.currency || 'CNY',
     // 1.4.5 对账信息：实付（含唯一尾数）/ 原始价 / 尾数，全部用「分」表达，避免浮点误差
     amountCents: amountCentsOf(o),
@@ -905,6 +915,46 @@ function createOrder(doc, opts) {
   return { order };
 }
 
+/**
+ * 充值订单（1.6.0）：买的是「AI 余额」而不是会员时长。
+ * 与会员订单共用同一套生命周期（pending → claimed → fulfilled/expired）与
+ * **唯一尾数对账**，只有核销后的副作用不同（加余额而不是开通会员）。
+ * 金额一律用「分」；到账额度 creditMicro 由调用方按 1 分 = 1e4 微元换算传入。
+ * @param {{user:object, cents:number, creditMicro:number, bonusMicro?:number, label?:string, rng?:function}} opts
+ */
+function createCreditOrder(doc, opts) {
+  const o = opts || {};
+  const cents = Math.round(Number(o.cents) || 0);
+  if (cents < 100 + TAIL_MAX) return { error: '充值金额过低（需至少 ¥1.99），无法分出对账尾数' };
+  const creditMicro = Math.max(0, Math.round(Number(o.creditMicro) || 0));
+  if (creditMicro <= 0) return { error: '到账额度必须大于 0' };
+  const tail = assignTail(doc, cents, { rng: o.rng });
+  if (tail.error) return { error: tail.error };
+  const amountCents = cents + tail.tailCents;
+  const now = new Date().toISOString();
+  const order = {
+    id: rid('o', 6),
+    kind: 'credit',
+    userId: o.user.id, email: o.user.email,
+    plan: null, months: 0, perpetual: false,
+    amount: amountCents / 100, amountCents, baseCents: cents, tailCents: tail.tailCents,
+    originalCents: cents, discountCents: 0, couponId: null, couponCode: null,
+    currency: 'CNY', status: 'pending',
+    createdAt: now, updatedAt: now,
+    claimedAt: null, fulfilledAt: null, cancelledAt: null, cancelReason: '',
+    codeId: null, note: String(o.label || 'AI 额度充值').slice(0, 80),
+    priceItemId: null, cycle: null, priceSource: 'credit',
+    creditMicro,
+    // 充值赠送（如充 ¥30 到账 ¥33）：随充值一并进「充值余额」，**不单独设有效期**
+    //
+    // ——它是购买的附属物，不是独立赠品；让送的钱过期只会招来客诉。
+    bonusMicro: Math.max(0, Math.round(Number(o.bonusMicro) || 0)),
+    unitPrice: null,
+  };
+  doc.orders.push(order);
+  return { order };
+}
+
 function findOrder(doc, id) {
   return doc.orders.find((o) => o && o.id === id) || null;
 }
@@ -936,25 +986,30 @@ function cancelOrder(doc, order, user, reason) {
 /**
  * 核销订单（管理员）：给下单账号开通会员，同时生成一枚**已使用**的兑换码留档对账。
  * 幂等：已 fulfilled 的订单重复调用不重复开通。
+ * ★ 充值订单（kind='credit'）不生成留档码：它的凭据就是 user.balance 的流水条目。
  */
 function fulfillOrder(doc, order, { by, now } = {}) {
   const t = now || Date.now();
   if (!order) return { error: '订单不存在' };
   if (order.status === 'fulfilled') return { error: '订单已核销，无需重复操作' };
   if (order.status === 'cancelled') return { error: '订单已取消，无法核销' };
-  const code = {
-    id: rid('c', 6), code: newCode(),
-    plan: order.plan, months: order.months,
-    createdAt: new Date(t).toISOString(), createdBy: String(by || 'admin'),
-    note: '订单 ' + order.id + ' 核销留档',
-    boundTo: order.userId, orderId: order.id,
-    usedAt: new Date(t).toISOString(), usedBy: order.userId,
-  };
-  doc.codes.push(code);
+  const isCredit = order.kind === 'credit';
+  let code = null;
+  if (!isCredit) {
+    code = {
+      id: rid('c', 6), code: newCode(),
+      plan: order.plan, months: order.months,
+      createdAt: new Date(t).toISOString(), createdBy: String(by || 'admin'),
+      note: '订单 ' + order.id + ' 核销留档',
+      boundTo: order.userId, orderId: order.id,
+      usedAt: new Date(t).toISOString(), usedBy: order.userId,
+    };
+    doc.codes.push(code);
+    order.codeId = code.id;
+  }
   order.status = 'fulfilled';
-  order.fulfilledAt = code.usedAt;
+  order.fulfilledAt = new Date(t).toISOString();
   order.updatedAt = order.fulfilledAt;
-  order.codeId = code.id;
   coupon.consumeUseByOrder(doc, order.id);   // 核销 = 券真正消耗
   return { order, code };
 }
@@ -1043,7 +1098,7 @@ module.exports = {
   priceRank, pickPriceWinner, activeWinnerMap, findPriceOverlaps, coverageGapAfter,
   upsertPriceItem, removePriceItem, hasActivePrice, effectivePrice, rangesOverlap,
   membershipOf, grantMembership,
-  orderOut, reapOrders, createOrder, findOrder, claimOrder, cancelOrder, fulfillOrder,
+  orderOut, reapOrders, createOrder, createCreditOrder, findOrder, claimOrder, cancelOrder, fulfillOrder,
   PERPETUAL, isPerpetual, monthsLabel, TAIL_MIN, TAIL_MAX,
   tailActive, baseCentsOf, amountCentsOf, originalCentsOf, assignTail,
   orderStatusText,
