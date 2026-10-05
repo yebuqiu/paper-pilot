@@ -42,6 +42,15 @@ def sh(*args, binary=False, check=True):
 
 
 def token():
+    """取 GitHub PAT。
+    优先读环境变量 PP_GITHUB_TOKEN —— 本机 git 的 credential.helper 被 WorkBuddy 注入到
+    **system 层**（helper-selector），该链路会漂移：一旦没接上 Windows 凭据管理器，
+    `git credential fill` 要么返回空、要么弹出 GUI 把脚本挂死（已实踩）。
+    环境变量可绕开这条链路，也让自动化可复现。密钥绝不写进仓库。
+    """
+    env = os.environ.get("PP_GITHUB_TOKEN", "").strip()
+    if env:
+        return env
     r = subprocess.run(
         ["git", "credential", "fill"],
         input=b"protocol=https\nhost=github.com\n\n",
@@ -50,7 +59,7 @@ def token():
     for line in r.stdout.decode("utf-8", "replace").splitlines():
         if line.startswith("password="):
             return line[len("password="):].strip()
-    raise SystemExit("未能从凭据管理器取到 github.com 的 PAT")
+    raise SystemExit("未能从凭据管理器取到 github.com 的 PAT（可设 PP_GITHUB_TOKEN 绕过）")
 
 
 def api(method, path, body=None, tok=None):

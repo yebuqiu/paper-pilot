@@ -178,6 +178,26 @@ python scripts/sync-github.py --dry-run
 
 PAT 从 Windows 凭据管理器读取，不落盘。
 
+> ⚠️ **本机 `credential.helper` 被 WorkBuddy 注入在 system 层**（PortableGit 的
+> `helper-selector`），这条链路会漂移：一旦没接上 Windows 凭据管理器，
+> `git credential fill` 要么返回空、要么弹出 GUI **把脚本挂死**（实踩）。
+> 所以 `sync-github.py` 支持环境变量入口 —— 取不到时这样跑：
+> ```bash
+> export PP_GITHUB_TOKEN=<PAT>   # 见用户级 memory topics/02-Git与令牌.md
+> python scripts/sync-github.py
+> ```
+
+### 3.5.1 推送 Gitee（`git push` 会卡住时用它）
+
+```bash
+git pushgitee        # 仓库内别名：绕过会弹窗的全局 helper，只走 ~/.git-credentials 的 store
+```
+
+`git push origin main` 直接跑有概率**卡死**：URL 专用 helper 之外，system 层的
+`helper-selector` 仍会被调用，而 gitee 凭据不在 Windows 凭据管理器里 → 弹 GUI。
+别名等价于 `git -c credential.helper= -c credential.https://gitee.com.helper=store push origin main`。
+另注：**本机到 gitee 单次 push 可能耗时 4~16 分钟**，别把超时设太短，或直接后台跑。
+
 ### 3.6 GitHub 侧版本 tag 与 Release
 
 ```bash
