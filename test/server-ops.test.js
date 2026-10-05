@@ -345,7 +345,7 @@ function rewindOrder(orderId, minutes) {
 
     /* ================= D. 既有能力不回归 ================= */
     r = await req('GET', '/api/health');
-    eq(r.json.version, '1.6.0', 'D1 服务端版本');
+    eq(r.json.version, '1.7.0', 'D1 服务端版本');
     ok(/Free/.test((r.json.plans || []).join(',')), 'D2 套餐仍在');
     r = await req('GET', '/api/admin/prices');
     ok(r.json.items.length >= 5, 'D3 价格表仍可用（含 A24 新增的两条）', r.json.items.length);

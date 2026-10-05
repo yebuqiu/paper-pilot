@@ -38,6 +38,8 @@ const ACTIONS = {
   'price.delete': '删除价格条目',
   'membership.config': '修改会员/收款配置',
   'order.fulfill': '核销开通订单',
+  'order.pay': '在线支付自动入账',
+  'pay.config': '修改支付网关配置',
   'order.cancel': '取消订单',
   'order.reconcile': '对账自动核销',
   'code.create': '生成激活码',

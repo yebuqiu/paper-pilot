@@ -17,10 +17,18 @@
  * AI 计量（1.5.0）：每次成功转发都解析上游 usage（流式自动带 include_usage），
  *   按「响应里的真实模型」计价并累计到 user.usage（token / 成本微元 / 按模型）。
  *   上游没返 usage → 计入 missingUsage（未知成本，不是 0），后台看板显著提示。
- * 余额域（1.6.0）：user.balance = { grantedMicro（赠送,有期）/ paidMicro（充值,永不过期）/ ledger }。
- *   注册自动赠送（signupGrantMicro，默认 ¥6/30 天，限基础模型）；网关按真实成本扣减
- *   （先扣赠送再扣充值；高级模型只扣充值）；enforce=false 为观察模式只记账不拦，
- *   开启后余额低于阈值返回 402 + 充值引导。管理员可充值/调账（audit: balance.adjust）。
+ * 余额域（1.6.0）：user.balance = { grantedMicro（注册赠送,有期）/ planMicro（订阅额度,当期不结转）
+ *   / paidMicro（充值,永不过期）/ ledger }。
+ *   注册自动赠送（signupGrantMicro，默认 ¥6/30 天，限基础模型）；Pro 每月发放订阅额度
+ *   （plans[].monthlyGrantMicro，现场推导不发定时任务，只按期号判重＝不结转）；
+ *   网关按真实成本扣减（注册赠送 → 订阅额度 → 充值，越保值越晚扣；高级模型跳过注册赠送）；
+ *   enforce=false 为观察模式只记账不拦，开启后余额低于阈值返回 402 + 充值引导
+ *   （同时 dailyLimit 次数上限自动失效，额度改由余额承担）。
+ *   管理员可充值/调账（audit: balance.adjust）。
+ * 在线支付（1.7.0）：易支付/码支付接入，充值订单可自助下单→扫码→**自动到账**。
+ *   配置存 data/pay.json，商户密钥用 AES-256-GCM 加密（主密钥 data/.secret.key，均不进备份）。
+ *   ★ 回调地址由 **PP_PUBLIC_URL** 决定（不按 Host 头推断——公网 Host 可伪造）。
+ *   ★ 不启用时一切照旧（收款码 + 人工核销）；`enforce`/`enabled` 各自独立开关。
  * 登录设备（1.4.7）：令牌带 sid/设备/来源 IP 与最近活动；用户可自查并踢出设备，
  *   GET  /api/plans                 公开 → {plans, priceOptions, priceItems, upcoming, cycles, pay}
  *   GET  /api/membership            Bearer → {membership(等级/到期/剩余天数/额度/历史), user(含用量趋势)}
@@ -29,6 +37,11 @@
  *   GET  /api/orders/:id            Bearer → 订单状态
  *   POST /api/orders/:id/claim      Bearer → 标记「我已完成支付」，等管理员核销
  *   POST /api/orders/:id/cancel     Bearer → 取消未支付订单
+ *   POST /api/orders/:id/pay        （1.7.0）发起在线支付 {channel:wxpay|alipay} → {payUrl}
+ *   POST /api/orders/:id/query      （1.7.0）主动查单：网关回调丢包时的兜底，确认即自动入账
+ *   GET  /api/pay/notify            （1.7.0）**公开**：网关异步回调（验签→商户号→状态→金额→幂等履约）
+ *   GET  /api/pay/return            （1.7.0）**公开**：支付完成同步返回页（轮询 + 引导回插件）
+ *   GET  /api/pay/return/status     （1.7.0）**公开**：返回页轮询用（只回是否已支付，不泄露细节）
  *   POST /api/redeem                Bearer {code} → 激活码兑换（绑定账号 + 叠加续期）
  *   POST /api/coupons/validate      Bearer {code,plan,months|cycle} → 优惠码试算（不占名额）
  *   GET  /api/sessions              Bearer → 本账号登录设备（IP 打码）+ 活跃设备数
@@ -46,6 +59,8 @@
  *   GET  /api/admin/usage-summary   （1.5.0）成本看板 ?days=30（总量/按天/按模型/人均/Top 账号）
  *   PUT  /api/admin/pricing         （1.6.0）同接口可改余额配置 {balance:{enforce,signupGrantMicro,...}}
  *   POST /api/admin/users/:id/balance  （1.6.0）充值/调余额 {micro（有符号微元）,kind,reason}
+ *   GET|PUT /api/admin/payment      （1.7.0）在线支付网关配置（密钥只写不读；PUT 支持三态）
+ *   POST /api/admin/payment/test    （1.7.0）连接自检 {deep:true 会探一笔 0.01 元测试单}
  *   POST /api/admin/prices          新增价格条目 {plan, cycle, months, price, label,
  *                                   effectiveFrom, effectiveTo, enabled, note}
  *   PUT  /api/admin/prices/:id      改价格条目（局部更新，用于改价 / 定时生效 / 启停）
@@ -118,6 +133,8 @@ const reconcile = require('./lib/reconcile');
 const mail = require('./lib/mail');
 const pricing = require('./lib/pricing');
 const balance = require('./lib/balance');
+const pay = require('./lib/pay');
+const secretbox = require('./lib/secretbox');
 
 /* ---------------- 配置 ---------------- */
 
@@ -136,7 +153,9 @@ const RESET_HTML = path.join(__dirname, 'public', 'reset.html');
 /* 本地配置文件 {DATA_DIR}/pp.env（KEY=VALUE 每行；server/data/ 已 gitignore，密钥不进 git）：
  * PP_RESEND_KEY=re_xxx      启用邮箱验证/密码找回（Resend）
  * PP_MAIL_FROM=...          发件人（可选）
- * PP_PUBLIC_URL=https://... 邮件链接前缀（可选，默认按 Host 头推断）
+ * PP_PUBLIC_URL=https://... 站点公网地址。邮件链接前缀用它；**在线支付的回调地址也由它决定**
+ *                           （不按 Host 头推断——公网 Host 可伪造）。未配置时在线支付不可用。
+ * PP_PAY_MAX / PP_PAY_QUERY_MAX / PP_PAY_NOTIFY_MAX  支付相关限速（可选，见下方常量）
  * 已有的同名进程环境变量优先，不会被覆盖。 */
 (function loadEnvFile() {
   try {
@@ -172,6 +191,10 @@ const REDEEM_MAX = limitOf('PP_REDEEM_MAX', 10);   // 激活码兑换限速（�
 const REG_MAX = 5;                       // 公开注册限速（每 IP 每分钟）
 const MAIL_MAX = 3;                      // 验证/重置邮件请求限速（每 IP 每分钟）
 const GATEWAY_MAX = 20;                  // 网关全局限速（每 IP 每分钟，防高频薅上游 Key）
+// 1.6.0 在线支付限速：下单/查单按账号，回调按 IP
+const PAY_MAX = limitOf('PP_PAY_MAX', 10);              // 发起支付（每账号每分钟）
+const PAY_QUERY_MAX = limitOf('PP_PAY_QUERY_MAX', 12);  // 主动查单（每账号每分钟）
+const PAY_NOTIFY_MAX = limitOf('PP_PAY_NOTIFY_MAX', 60); // 网关回调（每 IP 每分钟，网关会重试）
 const VERIFY_TTL_MS = 24 * 3600e3;       // 邮箱验证链接有效期
 const RESET_TTL_MS = 30 * 60e3;          // 密码重置链接有效期
 const GATEWAY_TIMEOUT_MS = 120e3;        // 网关转发上限（流式应答可能较长）
@@ -195,6 +218,15 @@ const alertStore = new JsonStore(path.join(DATA_DIR, 'alerts.json'), {});
 // 后台看板会显著提示哪些模型还没配价——**不猜价**，缺价就是缺数据。
 const pricingStore = new JsonStore(path.join(DATA_DIR, 'pricing.json'), pricing.newDoc());
 pricingStore.data = pricing.normalize(pricingStore.data);
+/* 1.6.0 在线支付网关配置（易支付/码支付）。**独立文件**，且**不进快照备份**：
+ *   · 密钥属运营商级基础设施配置，不是用户数据；跟着数据回滚被换成一份旧商户配置，
+ *     是"改钱"级的意外，宁可显式排除。
+ *   · 密文字段由 secretbox 加密，主密钥单独存 data/.secret.key（同样不进备份），
+ *     于是备份被整包拿走也解不开商户密钥。
+ *   · enabled 默认 false：接进来但这轮不开，先跑通链路再决定上线。
+ */
+const payStore = new JsonStore(path.join(DATA_DIR, 'pay.json'), pay.newCfg());
+payStore.data = pay.sanitizeCfg(payStore.data);
 // 1.6.0 余额配置（pricing.json 顶层 balance 块）：注册赠送 / enforce 开关 / 拦截阈值。
 // ★ enforce 默认 false = 观察模式：只扣账不拦截。真实成本数据没跑够之前，
 //   任何拦截阈值都是拍脑袋——先观察、配准价，再开。
@@ -202,6 +234,46 @@ balance.normalizeCfg(pricingStore.data);
 pricingStore.save();
 /** 当前余额配置（每次读都归一化，改配置即时生效） */
 function balanceCfg() { return balance.cfgOf(pricingStore.data); }
+
+/* ---------------- 在线支付网关（1.6.0） ----------------
+ * 配置存 pay.json；密钥密文用 secretbox 解出**仅在本进程内**使用，绝不下发、绝不日志。
+ */
+
+/**
+ * 取支付配置。
+ * @param {boolean} withSecrets true 时解出 key / privateKey 明文（仅服务端内部使用）
+ */
+function payCfg(withSecrets) {
+  const c = pay.sanitizeCfg(payStore.data);
+  if (!withSecrets) return c;
+  const out = Object.assign({}, c);
+  out.key = c.keyEnc ? (secretbox.decrypt(DATA_DIR, c.keyEnc) || '') : '';
+  out.privateKey = c.privateKeyEnc ? (secretbox.decrypt(DATA_DIR, c.privateKeyEnc) || '') : '';
+  // 密文存在但解不开（主密钥换了/密文损坏）——要能说清，不能让它表现成"密钥没填"
+  out.keyBroken = !!c.keyEnc && !out.key;
+  out.privateKeyBroken = !!c.privateKeyEnc && !out.privateKey;
+  return out;
+}
+
+/**
+ * 站点公网基地址（回调 notify_url 用）。
+ * **必须显式配置 PP_PUBLIC_URL**：不能按请求 Host 头推断——
+ * 支付下单是公网请求，Host 可被伪造，会把回调指向攻击者域名。
+ * 未配置时退回本地地址（此时在线支付不可用，见 onlinePayReady）。
+ */
+function siteBaseUrl() {
+  const u = String(process.env.PP_PUBLIC_URL || '').trim().replace(/\/+$/, '');
+  if (u) return u;
+  return 'http://127.0.0.1:' + (process.env.PP_PORT || 8000);
+}
+
+/** 在线支付是否真的可用（配置齐 + 公网基地址已显式配置 + 密钥能解开） */
+function onlinePayReady() {
+  const c = payCfg(true);
+  if (!pay.isReady(c)) return false;
+  if (c.keyBroken || c.privateKeyBroken) return false;
+  return /^https:\/\//i.test(siteBaseUrl());   // 回调必须是公网 https
+}
 
 /* ---------------- 订阅额度发放（1.6.0 订阅去无限化） ----------------
  * ★ 不做定时任务：在 /api/auth/me 与网关入口**现场补发**当期额度。
@@ -1671,8 +1743,63 @@ function adminCodeOut(c) {
 }
 
 /**
- * 核销订单并施加副作用（**唯一入口**：管理端手动核销与对账自动核销共用，
- * 避免两条路径的副作用逻辑漂移）。
+ * 在线支付确认入账（**回调通知与主动查单共用**，保证两条路径副作用完全一致）。
+ * 幂等：已 fulfilled 直接返回 already —— 网关会重试通知，不能重复入账。
+ * 第一阶段只接充值订单（kind='credit'）。
+ * @returns {{ok:true, already?:boolean, user?:object, creditMicro?:number}|{ok:false, error:string}}
+ */
+function fulfillByGateway(order, { tradeNo, channel, source } = {}) {
+  if (!order) return { ok: false, error: 'order_not_found' };
+  if (order.status === 'fulfilled') return { ok: true, already: true };
+  if (order.status !== 'pending' && order.status !== 'claimed') {
+    return { ok: false, error: 'order_' + order.status };
+  }
+  if (order.kind !== 'credit') return { ok: false, error: 'unsupported_kind' };
+  const r = applyOrderFulfill(order, source || 'gateway');
+  if (!r.ok) return r;
+  order.tradeNo = String(tradeNo || order.tradeNo || '').slice(0, 64);
+  if (channel) order.payChannel = String(channel).slice(0, 16);
+  order.paidAt = new Date().toISOString();
+  return { ok: true, user: r.user, creditMicro: r.creditMicro };
+}
+
+/** 支付完成后的同步返回页：轮询订单状态，然后引导用户回插件 */
+function payReturnHtml(outTradeNo) {
+  const no = String(outTradeNo || '').replace(/[^A-Za-z0-9]/g, '');
+  return [
+    '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<title>支付结果 · PaperPilot</title>',
+    '<style>',
+    'body{margin:0;font:15px/1.7 -apple-system,"Segoe UI",system-ui,sans-serif;background:#f6f7f9;color:#222}',
+    '.box{max-width:420px;margin:12vh auto;background:#fff;border-radius:14px;padding:28px 26px;',
+    'box-shadow:0 8px 30px rgba(0,0,0,.08);text-align:center}',
+    'h1{font-size:19px;margin:0 0 8px}.s{font-size:46px;margin:0 0 8px}',
+    'p{color:#666;margin:6px 0}.n{font-family:ui-monospace,Consolas,monospace;color:#888;font-size:12px}',
+    '</style></head><body><div class="box">',
+    '<div class="s" id="icon">⏳</div><h1 id="title">正在确认支付结果…</h1>',
+    '<p id="hint">通常几秒内到账，请不要关闭此页</p>',
+    '<p class="n">订单号 ' + (no || '—') + '</p>',
+    '</div><script>',
+    '(function(){var no=' + JSON.stringify(no) + ';var n=0;',
+    'function tick(){n++;fetch("/api/pay/return/status?out_trade_no="+encodeURIComponent(no),{cache:"no-store"})',
+    '.then(function(r){return r.json()}).then(function(j){',
+    'if(j&&j.paid){document.getElementById("icon").textContent="✅";',
+    'document.getElementById("title").textContent="支付成功，额度已到账";',
+    'document.getElementById("hint").textContent="可以关闭本页，回到 Zotero 查看余额";return}',
+    'slow()}).catch(slow)}',
+    'function slow(){if(n<20){setTimeout(tick,3000)}else{',
+    'document.getElementById("icon").textContent="ℹ️";',
+    'document.getElementById("title").textContent="暂未查到支付结果";',
+    'document.getElementById("hint").textContent="若已付款，请回 Zotero 点「刷新订单状态」；未付款可关闭本页";}}',
+    'tick()})();',
+    '</script></body></html>',
+  ].join('');
+}
+
+/**
+ * 核销订单并施加副作用（**唯一入口**：管理端手动核销、对账自动核销、在线支付回调共用，
+ * 避免多条路径的副作用逻辑漂移）。
  *   会员订单（kind=plan）  → 叠加开通/续期 + 留一枚已用兑换码
  *   充值订单（kind=credit）→ 到账进「充值余额」（永不过期）
  * @returns {{ok:true, user, order, ...}|{ok:false, error}}
@@ -1785,7 +1912,7 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'GET' && url === '/api/health') {
       return json(res, 200, {
-        ok: true, service: 'paperpilot-account-server', version: '1.6.0',
+        ok: true, service: 'paperpilot-account-server', version: '1.7.0',
         uptime: Math.round(process.uptime()), now: new Date().toISOString(),
         mail: mail.configured() ? 'on' : 'off',
         users: usersStore.data.users.length,
@@ -1799,6 +1926,8 @@ const server = http.createServer(async (req, res) => {
         // 1.6.0 余额：enforce=false = 观察模式（只记账不拦截）；signupGrant 为注册赠送额度
         balanceEnforce: balanceCfg().enforce,
         signupGrantMicro: balanceCfg().signupGrantMicro,
+        // 1.7.0 在线支付：仅当「配置齐 + PP_PUBLIC_URL 已配（须 https）+ 密钥能解开」才算可用
+        onlinePay: onlinePayReady(),
         // 0.23.0 会员域
         plans: Object.keys(membershipStore.data.plans || {}),
         orders: membershipStore.data.orders.length,
@@ -2029,7 +2158,11 @@ const server = http.createServer(async (req, res) => {
         membership.plansForClient(membershipStore.data),
         // 1.6.0 充值档位（插件据此展示「充值」入口）
         { rechargeOptions: balance.rechargeOptionsForClient(balanceCfg()),
-          recharge: { enforce: balanceCfg().enforce, minBalanceMicro: balanceCfg().minBalanceMicro } }));
+          recharge: { enforce: balanceCfg().enforce, minBalanceMicro: balanceCfg().minBalanceMicro },
+          // 1.7.0 在线支付可用性（插件据此决定「在线支付」按钮是否出现；未开通时走收款码）
+          onlinePay: onlinePayReady()
+            ? { available: true, channels: pay.CHANNELS.map((id) => ({ id, text: pay.CHANNEL_TEXT[id] })) }
+            : { available: false, channels: [] } }));
     }
 
     if (url === '/api/membership' || url === '/api/orders' || url === '/api/redeem'
@@ -2192,7 +2325,150 @@ const server = http.createServer(async (req, res) => {
           return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, order) });
         }
       }
+
+      /* ---- 1.6.0 在线支付：发起支付 / 主动查单 ---- */
+
+      let pm;
+
+      /** 发起在线支付：返回收银台跳转地址（客户端开浏览器，再轮询订单状态即可） */
+      pm = url.match(/^\/api\/orders\/([a-zA-Z0-9-]+)\/pay$/);
+      if (pm && method === 'POST') {
+        if (rateThrottled('pay:' + user.id, PAY_MAX, LOGIN_WINDOW_MS)) {
+          return json(res, 429, { ok: false, error: '操作过于频繁，请稍后再试' });
+        }
+        const order = membership.findOrder(membershipStore.data, pm[1]);
+        if (!order || order.userId !== user.id) return json(res, 404, { ok: false, error: '订单不存在' });
+        if (!onlinePayReady()) return json(res, 503, { ok: false, error: '在线支付未开通，请用收款码支付' });
+        // 第一阶段只接充值订单：金额小、退款纠纷少，先跑通链路
+        if (order.kind !== 'credit') return json(res, 400, { ok: false, error: '该订单类型暂不支持在线支付' });
+        if (order.status !== 'pending') return json(res, 400, { ok: false, error: '订单当前状态不可支付' });
+        let input = {};
+        try { input = await readBody(req); } catch (e) { /* 允许空体 */ }
+        const channel = pay.CHANNELS.indexOf(String(input.channel)) >= 0 ? String(input.channel) : 'wxpay';
+        // 商户订单号：网关只收字母数字，内部 id 带连字符，故另生成并落库
+        if (!order.outTradeNo) order.outTradeNo = pay.newTradeNo('PP');
+        order.payChannel = channel;
+        order.updatedAt = new Date().toISOString();
+        const cfg = payCfg(true);
+        const payUrl = pay.createPayUrl(cfg, {
+          outTradeNo: order.outTradeNo,
+          amountCents: order.amountCents,
+          itemName: order.note || ('PaperPilot ' + pay.moneyStr(order.amountCents) + ' 充值'),
+        }, channel, siteBaseUrl());
+        membershipStore.save();
+        log('online pay started:', user.email, order.id, channel, pay.moneyStr(order.amountCents), 'no=' + order.outTradeNo);
+        return json(res, 200, { ok: true, payUrl,
+          order: membership.orderOut(membershipStore.data, order),
+          channel, channelText: pay.CHANNEL_TEXT[channel] });
+      }
+
+      /** 主动查单：网关异步通知丢包时的兜底（也是「用户点了支付但没返回」时的补救） */
+      pm = url.match(/^\/api\/orders\/([a-zA-Z0-9-]+)\/query$/);
+      if (pm && method === 'POST') {
+        if (rateThrottled('payq:' + user.id, PAY_QUERY_MAX, LOGIN_WINDOW_MS)) {
+          return json(res, 429, { ok: false, error: '查询过于频繁，请稍后再试' });
+        }
+        const order = membership.findOrder(membershipStore.data, pm[1]);
+        if (!order || order.userId !== user.id) return json(res, 404, { ok: false, error: '订单不存在' });
+        if (order.status !== 'pending') {
+          return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, order) });
+        }
+        if (!order.outTradeNo || !onlinePayReady()) {
+          return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, order),
+            hint: '该订单未发起在线支付' });
+        }
+        const cfg = payCfg(true);
+        let q;
+        try {
+          q = await pay.queryOrder(cfg, order.outTradeNo);
+        } catch (e) {
+          return json(res, 502, { ok: false, error: '查单失败：' + e.message });
+        }
+        if (q.ok && q.paid) {
+          const r = fulfillByGateway(order, { tradeNo: q.tradeNo, channel: order.payChannel, source: 'gateway-query' });
+          if (!r.ok) return json(res, 500, { ok: false, error: '入账失败：' + r.error });
+          membershipStore.save();
+          usersStore.save();
+          if (!r.already) {
+            auditLog(req, 'order.pay', { target: order.id, note: '主动查单确认支付：' + user.email,
+              after: { outTradeNo: order.outTradeNo, tradeNo: order.tradeNo,
+                amountCents: membership.amountCentsOf(order), creditMicro: order.creditMicro } });
+          }
+          return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, order), justPaid: true });
+        }
+        return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, order),
+          hint: '网关显示暂未支付' });
+      }
       return json(res, 405, { ok: false, error: '该方法不支持：' + method + ' ' + url });
+    }
+
+    /* ---- 1.6.0 支付网关回调（**公开路由**：靠验签而非来源 IP 保护） ----
+     * 放在 isLocalAdmin 守卫之前——网关服务器从公网发起，不可能来自回环。
+     * 校验顺序：限速 → 配置就绪 → 验签 → 商户号 → 交易状态 → 订单存在 → **金额比对** → 幂等履约。
+     * 拒绝原因**只进本地日志**，响应体恒为 fail：不给探测者任何可观测差异。
+     */
+    if (method === 'GET' && url === '/api/pay/notify') {
+      const qp = new URLSearchParams(queryOf(req));
+      const q = {};
+      for (const [k, v] of qp.entries()) q[k] = v;
+      const reject = (why) => {
+        log('[pay-notify] reject:', why, '| no=' + String(q.out_trade_no || ''),
+          'pid=' + String(q.pid || ''), 'st=' + String(q.trade_status || ''), 'ip', clientIp(req));
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end(pay.NOTIFY_FAIL);
+        return true;
+      };
+      if (rateThrottled('payn:' + clientIp(req), PAY_NOTIFY_MAX, LOGIN_WINDOW_MS)) return reject('rate_limit');
+      const cfg = payCfg(true);
+      if (!pay.isReady(cfg) || cfg.keyBroken || cfg.privateKeyBroken) return reject('not_ready');
+      if (!pay.verifyNotify(cfg, q)) return reject('bad_sign');
+      if (String(q.pid) !== cfg.pid) return reject('pid_mismatch');
+      if (q.trade_status !== 'TRADE_SUCCESS') return reject('trade_status_' + String(q.trade_status || ''));
+      const order = membership.findOrderByTradeNo(membershipStore.data, q.out_trade_no);
+      if (!order) return reject('order_not_found');
+      // ★ 防少付：只验签不够，必须比对实付金额与本地订单金额（精确到分）
+      const localMoney = pay.moneyStr(order.amountCents);
+      if (Number(q.money).toFixed(2) !== localMoney) {
+        return reject('amount_mismatch gw=' + String(q.money) + ' local=' + localMoney);
+      }
+      const r = fulfillByGateway(order, { tradeNo: q.trade_no, channel: q.type, source: 'gateway' });
+      if (!r.ok) return reject('fulfill_' + r.error);
+      membershipStore.save();
+      usersStore.save();
+      log('[pay-notify] fulfilled', order.id, 'no=' + order.outTradeNo, r.already ? '(already)' : '');
+      if (!r.already) {
+        auditLog(req, 'order.pay', { target: order.id,
+          note: '在线支付自动入账：' + String(order.email || ''),
+          after: { outTradeNo: order.outTradeNo, tradeNo: order.tradeNo, channel: order.payChannel,
+            amountCents: membership.amountCentsOf(order), creditMicro: order.creditMicro } });
+      }
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end(pay.NOTIFY_OK);
+      return true;
+    }
+
+    /* 支付完成后的同步跳转页（浏览器从这里回来）：只做「轮询订单状态 + 引导回插件」 */
+    if (method === 'GET' && url === '/api/pay/return') {
+      const qp = new URLSearchParams(queryOf(req));
+      const no = String(qp.get('out_trade_no') || '').replace(/[^A-Za-z0-9]/g, '');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(payReturnHtml(no));
+      return true;
+    }
+
+    /* 返回页轮询用：按商户订单号查支付状态。
+     * 无需登录（浏览器里没有 Bearer）；号是随机不可猜的，故只回「是否已支付 + 状态」，
+     * 不回金额、账号等任何信息，并按 IP 限速。 */
+    if (method === 'GET' && url === '/api/pay/return/status') {
+      if (rateThrottled('payrs:' + clientIp(req), PAY_NOTIFY_MAX, LOGIN_WINDOW_MS)) {
+        return json(res, 429, { ok: false, error: '查询过于频繁' });
+      }
+      const qp = new URLSearchParams(queryOf(req));
+      const no = String(qp.get('out_trade_no') || '').replace(/[^A-Za-z0-9]/g, '');
+      const order = membership.findOrderByTradeNo(membershipStore.data, no);
+      if (!order) return json(res, 200, { ok: true, paid: false, status: 'not_found' });
+      return json(res, 200, { ok: true,
+        paid: order.status === 'fulfilled', status: order.status });
     }
 
     /* --- 插件契约：官方模型网关 --- */
@@ -2494,6 +2770,93 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true, warn: r.warn || '',
           item: membership.priceItemOut(membershipStore.data, r.item),
           plans: membership.plansForClient(membershipStore.data) });
+      }
+
+      /* ---- 1.6.0 在线支付网关配置（仅本机：守卫已在本区块入口检查） ----
+       * ★ 故意**不打快照**：pay.json 不在备份文件清单里，打一份不含它的快照会给人
+       *   「出事了能回滚支付配置」的错觉。这条链路的可追溯性靠审计（pay.config）。
+       */
+
+      if (url === '/api/admin/payment' && method === 'GET') {
+        const c = payCfg(true);
+        return json(res, 200, {
+          ok: true,
+          payment: pay.adminOut(c, {
+            keyBroken: c.keyBroken, privateKeyBroken: c.privateKeyBroken,
+            siteBaseUrl: siteBaseUrl(),
+            siteBaseConfigured: !!String(process.env.PP_PUBLIC_URL || '').trim(),
+            onlineReady: onlinePayReady(),
+          }),
+          notifyUrl: siteBaseUrl() + '/api/pay/notify',
+          returnUrl: siteBaseUrl() + '/api/pay/return',
+        });
+      }
+
+      if (url === '/api/admin/payment' && method === 'PUT') {
+        let input;
+        try { input = await readBody(req); } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+        const before = pay.adminOut(payCfg(true));
+        const cur = payStore.data;
+        const next = pay.sanitizeCfg({
+          enabled: input.enabled === undefined ? cur.enabled : !!input.enabled,
+          provider: input.provider === undefined ? cur.provider : input.provider,
+          gateway: input.gateway === undefined ? cur.gateway : input.gateway,
+          pid: input.pid === undefined ? cur.pid : input.pid,
+          name: input.name === undefined ? cur.name : input.name,
+          queryMode: input.queryMode === undefined ? cur.queryMode : input.queryMode,
+          keyEnc: cur.keyEnc,
+          privateKeyEnc: cur.privateKeyEnc,
+          platformKey: cur.platformKey,
+        });
+        // 保存前校验密钥可解析——别等回调来了才发现粘贴不完整
+        const keyErr = pay.checkKeys({
+          privateKey: typeof input.privateKey === 'string' ? input.privateKey : '',
+          platformKey: typeof input.platformKey === 'string' ? input.platformKey : '',
+        });
+        if (keyErr) return json(res, 400, { ok: false, error: keyErr });
+        if (cur.provider === 'mzf2' && next.provider === 'mzf2' && !next.pid) {
+          return json(res, 400, { ok: false, error: 'V2（RSA）需要填写商户号 pid' });
+        }
+        // 密钥三态：提交非空 → 加密保存；提交空串 → 清除；未提交（undefined）→ 保持原值
+        if (input.key !== undefined) {
+          const k = String(input.key).trim();
+          next.keyEnc = k ? secretbox.encrypt(DATA_DIR, k) : '';
+        }
+        if (input.privateKey !== undefined) {
+          const k = pay.cleanKeyMaterial(input.privateKey);
+          next.privateKeyEnc = k ? secretbox.encrypt(DATA_DIR, k) : '';
+        }
+        if (input.platformKey !== undefined) next.platformKey = pay.cleanKeyMaterial(input.platformKey);
+        payStore.data = next;
+        payStore.save();
+        const after = pay.adminOut(payCfg(true));
+        log('payment config updated:', 'enabled=' + after.enabled, 'provider=' + after.provider, 'ready=' + after.ready);
+        auditLog(req, 'pay.config', {
+          target: 'payment',
+          before: { enabled: before.enabled, provider: before.provider, gateway: before.gateway, pid: before.pid, ready: before.ready },
+          after: { enabled: after.enabled, provider: after.provider, gateway: after.gateway, pid: after.pid, ready: after.ready },
+          note: input.note ? String(input.note).slice(0, 80) : '',
+        });
+        return json(res, 200, { ok: true, payment: after,
+          notifyUrl: siteBaseUrl() + '/api/pay/notify', returnUrl: siteBaseUrl() + '/api/pay/return' });
+      }
+
+      /** 连接自检。deep=true 会按真实参数探一笔 0.01 元测试单（网关后台会留未支付记录） */
+      if (url === '/api/admin/payment/test' && method === 'POST') {
+        let input = {};
+        try { input = await readBody(req); } catch (e) { /* 允许空体 */ }
+        const c = payCfg(true);
+        if (c.keyBroken || c.privateKeyBroken) {
+          return json(res, 400, { ok: false, msg: '已保存的密钥无法解密（主密钥文件可能已更换），请重新粘贴密钥' });
+        }
+        let r;
+        try {
+          r = await pay.testConnection(c, { deep: !!input.deep });
+        } catch (e) {
+          r = { ok: false, msg: '自检异常：' + e.message };
+        }
+        log('payment connection test:', r.ok ? 'OK' : 'FAIL', '|', String(r.msg || '').slice(0, 160));
+        return json(res, 200, { ok: !!r.ok, msg: r.msg || '', raw: r.raw || null });
       }
 
       /** 修改 / 启停价格条目（局部更新：未提交字段保持原值） */

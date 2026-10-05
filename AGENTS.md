@@ -13,7 +13,7 @@ PaperPilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstra
 | 组成 | 说明 | 版本锚点 |
 |---|---|---|
 | **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.26.0`） |
-| **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.6.0`） |
+| **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.7.0`） |
 
 - 插件 ID：`paperpilot@dev.local`；兼容 `strict_min_version: "6.999"` → `strict_max_version: "99.*"`。
 - 授权：**Apache-2.0**（见 [LICENSE](LICENSE) / [NOTICE](NOTICE)）。插件本体永久免费开源。
@@ -58,7 +58,7 @@ PaperPilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstra
 
 ```bash
 # 一键门禁（推荐，发版前必跑）：全 JS 语法 + arXiv 生成物同步 + 全部 Node 测试套件
-#                              + 接线扫描 + 后台 E2E（当前共 23 步）
+#                              + 接线扫描 + 后台 E2E（当前共 24 步）
 python scripts/preflight.py
 
 # 快速模式（跳过浏览器 E2E，约 95s，适合改代码时的内循环）
@@ -131,8 +131,31 @@ curl http://127.0.0.1:8000/api/health
 - 守护脚本 `scripts/guard-paperpilot.ps1`（计划任务 `PaperPilotGuard`，每分钟一次）**不因代码更新而重启**，只在端口无人应答时用仓库新代码拉起；`server/data/stopped-account.flag` 存在时保持停机。
 - `scripts/start-account-server.ps1` 直接调用会被本机执行策略拦；走上面的 `powershell -ExecutionPolicy Bypass` 形式。
 
-### 3.4 收款流水对账
+### 3.7 在线支付（运维）
 
+```bash
+# 配置入口只有网页管理页（仅本机）：会员管理 → 在线支付网关
+#   填写：协议（V1 MD5 / V2 RSA）、网关地址、商户号 pid、密钥 → 「连接测试」→ 启用
+#   「深度测试」会按真实参数在网关探一笔 0.01 元未支付测试单（默认不做）
+```
+
+**上线前提（缺一不可）**：
+
+1. `PP_PUBLIC_URL` 必须显式配置为**公网 https 地址**（写在 `server/data/pp.env`）——
+   回调地址由它决定。**不要依赖 Host 头推断**：下单是公网请求，Host 可被伪造，
+   会把 `notify_url` 指向攻击者域名。未配置时 `onlinePayReady()` 为 false，在线支付不可用。
+2. 账号后台的公网入口必须在（Cloudflare 隧道 `paperpilot` → `pp.xinglintools.top` → `:8000`），
+   否则网关的异步通知到不了。**但即使丢了通知也不会漏单**：客户端的「刷新订单状态」
+   走主动查单，确认即入账。
+3. 网关侧把 `{PP_PUBLIC_URL}/api/pay/notify` 作为回调地址（下单时自动带上，无需手填）。
+
+**数据与密钥**：配置在 `server/data/pay.json`，商户密钥 AES-256-GCM 加密（主密钥
+`server/data/.secret.key`）。两者**都不进快照备份**——回滚数据不会（也不该）把支付配置换掉。
+**换机器要一并带走 `.secret.key`**，否则需重新粘贴密钥（支付会自动变为不可用，不会半残运行）。
+
+**关闭方式**：管理页取消「启用」即可，客户端立刻回落到收款码 + 人工核销，其余功能不受影响。
+
+### 3.4 收款流水对账
 ```bash
 node scripts/reconcile.js payments.txt            # 预览（默认 dryRun，不改任何数据）
 node scripts/reconcile.js payments.txt --apply    # 确认后核销
@@ -210,7 +233,7 @@ paper-pilot/
 │
 ├── server/                   账号后台（独立于 xpi，零依赖）
 │   ├── account-server.js     ★ 入口：路由 + HTTP + 限速 + 网关
-│   ├── lib/                  领域模块：membership / coupon / pricing / balance / reconcile /
+│   ├── lib/                  领域模块：membership / coupon / pricing / balance / pay / secretbox / reconcile /
 │   │                         sessions / audit / backup / alerts / lockout / mail /
 │   │                         presets / store
 │   ├── public/               管理页与自助页 HTML：admin.html / register / reset / verify / forgot
@@ -231,7 +254,7 @@ paper-pilot/
 ├── test/                     测试（不进 xpi）
 │   ├── account-persistence / membership / price / usage / membership-panel /
 │   │   server-ops / audit / reconcile / coupon / sessions / ai-tier /
-│   │   pricing / metering / balance / arxiv-core / smoke-load
+│   │   pricing / metering / balance / pay / arxiv-core / smoke-load
 │   │                         .test.js（Node 单测；arxiv-core 守生成物等价性）
 │   ├── legacy-rootcause.probe.js   历史根因探针（接受 git-ref 参数）
 │   └── admin-e2e.test.js     后台浏览器 E2E（无浏览器/NODE_PATH 时自动跳过）
@@ -343,6 +366,7 @@ paper-pilot/
   - 插件：`0.24.8(服务端 1.4.9): 套餐 AI 能力分级 —— 官方模型白名单 + 新用户全模型试用`
   - 纯服务端：`服务端 1.5.0: AI 计费计量 —— 网关按 token 记成本 + 单价表 + 成本看板`
   - 纯服务端：`服务端 1.6.0: 余额域 —— 注册赠送 / 充值 / 按成本扣减 / 观察模式`
+  - 纯服务端：`服务端 1.7.0: 在线支付（易支付/码支付）—— 充值自助下单 + 回调自动入账`
   - 插件+服务端：`0.26.0(服务端 1.6.0): AI 额度余额展示与充值 + 订阅去无限化 + 充值订单`
   - 纯服务端：`服务端 1.4.7: 登录设备与会话管理`
 - **版本号口径**：只改服务端/脚本就别挂一个不会发布的插件版本号（服务端版本看 `/api/health` 的 `version`）；插件没动就不动 `manifest.json` 和 xpi。

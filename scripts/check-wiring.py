@@ -798,7 +798,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.6.0'" in srv, "18.31 服务端版本号已随批次更新（1.6.0）")
+ok("version: '1.7.0'" in srv, "18.31 服务端版本号已随批次更新（1.7.0）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -896,7 +896,7 @@ ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余�
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.6.0'" in srv, "19.24 服务端版本 1.6.0")
+ok("version: '1.7.0'" in srv, "19.24 服务端版本随批次推进（1.7.0）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -953,6 +953,91 @@ ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 ok('"version": "0.26.0"' in MANIFEST, "20.12 manifest 版本 0.26.0")
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
+
+# ---------- 21. 在线支付（服务端 1.7.0：易支付/码支付接入） ----------
+PAY_LIB = os.path.join(ROOT, "server", "lib", "pay.js")
+SB_LIB = os.path.join(ROOT, "server", "lib", "secretbox.js")
+pay_src = io.open(PAY_LIB, encoding="utf-8").read()
+sb_src = io.open(SB_LIB, encoding="utf-8").read()
+bk_src = io.open(os.path.join(ROOT, "server", "lib", "backup.js"), encoding="utf-8").read()
+
+for fn in ["newCfg", "sanitizeCfg", "isReady", "adminOut", "buildSign", "verifySign",
+           "rsaSign", "rsaVerify", "verifyNotify", "newTradeNo", "createPayUrl",
+           "queryOrder", "testConnection", "checkKeys"]:
+    ok(re.search(r"^(?:async )?function %s\b" % fn, pay_src, re.M) is not None, "21.1 pay.js 定义 %s()" % fn)
+
+# ★ 本仓库服务端声明支持 Node ≥14：不得用全局 fetch（医疗项目原实现用了，这里必须换掉）
+ok(pay_src.count("mod.request(") >= 1 and "? https : http" in pay_src,
+   "21.2 ★ 用原生 http/https 模块按协议选传输（不依赖全局 fetch）")
+ok("fetch(" not in pay_src, "21.3 ★ pay.js 里没有裸 fetch 调用")
+ok("timingSafeEqual" in pay_src, "21.4 MD5 验签用定长比对（防时序侧信道）")
+ok("NOTIFY_OK = 'success'" in pay_src and "NOTIFY_FAIL = 'fail'" in pay_src,
+   "21.5 回调应答常量（协议要求收 success 才停止重试）")
+ok("/^[A-Za-z0-9]+$/" in io.open(os.path.join(TEST_DIR, "pay.test.js"), encoding="utf-8").read(),
+   "21.6 商户订单号纯字母数字有测试守（网关只收字母数字）")
+ok("deep" in pay_src and "0.01" in pay_src,
+   "21.7 深度自检会探一笔 0.01 元测试单，且**默认关闭**（由管理员显式触发）")
+
+# 加密盒子
+ok("aes-256-gcm" in sb_src, "21.8 secretbox 用 AES-256-GCM")
+ok(".secret.key" in sb_src, "21.9 主密钥独立文件（不进备份）")
+ok("  } catch (e) {\n    return null;\n  }" in sb_src, "21.10 ★ 解密失败返回 null（不抛异常上去）")
+# ★ 密钥文件与支付配置都不能进快照：回滚把它们换成旧的，是「改钱」级意外
+ok("pay.json" not in bk_src, "21.11 ★ pay.json 不在备份文件清单里")
+ok(".secret" not in bk_src, "21.12 ★ 主密钥不进备份（备份被拿走也解不开商户密钥）")
+
+# 服务端接线
+ok("require('./lib/pay')" in srv and "require('./lib/secretbox')" in srv, "21.13 服务端引入 pay/secretbox")
+ok("const payStore = new JsonStore(path.join(DATA_DIR, 'pay.json')" in srv, "21.14 支付配置存 pay.json")
+ok("payStore.data = pay.sanitizeCfg(payStore.data);" in srv, "21.15 启动归一化支付配置")
+for fn in ["payCfg", "siteBaseUrl", "onlinePayReady", "fulfillByGateway", "payReturnHtml"]:
+    ok(re.search(r"^function %s\b" % fn, srv, re.M) is not None, "21.16 服务端定义 %s()" % fn)
+# ★ notify_url 不能按 Host 头推断（公网请求可伪造 Host，会把回调指向攻击者域名）
+ok("process.env.PP_PUBLIC_URL" in srv and "/^https:\\/\\//i.test(siteBaseUrl())" in srv,
+   "21.17 ★ 回调地址用 PP_PUBLIC_URL 显式配置，且要求 https")
+ok("secretbox.encrypt(DATA_DIR," in srv, "21.18 商户密钥加密后落盘")
+ok("next.keyEnc = k ? secretbox.encrypt(DATA_DIR, k) : '';" in srv,
+   "21.19 密钥三态：非空=保存 / 空串=清除 / 未提交=保持")
+
+# ★ notify 是公开路由：必须在 isLocalAdmin 守卫**之前**注册（网关从公网来，永不来自回环）
+_i_guard = srv.find("if (!isLocalAdmin(req)) return json(res, 403, { ok: false, error: '管理接口仅限本机调用' });")
+_i_notify = srv.find("url === '/api/pay/notify'")
+ok(_i_guard > 0 and _i_notify > 0 and _i_notify < _i_guard,
+   "21.20 ★ 回调路由注册在管理守卫之前（否则公网网关打不进来 → 支付全部不到账）")
+
+# 五重校验 + 幂等履约
+_notify_body = srv[_i_notify:_i_notify + 2600] if _i_notify > 0 else ""
+for probe, label in [("pay.verifyNotify(cfg, q)", "验签"), ("!== cfg.pid", "商户号比对"),
+                     ("TRADE_SUCCESS", "交易状态"), ("amount_mismatch", "金额比对（防少付）"),
+                     ("fulfillByGateway(order", "幂等履约")]:
+    ok(probe in _notify_body, "21.21 回调校验：%s" % label)
+ok("res.end(pay.NOTIFY_FAIL)" in _notify_body and "res.end(pay.NOTIFY_OK)" in _notify_body,
+   "21.22 回调应答用固定 'fail'/'success'（不泄露拒绝原因）")
+ok(srv.count("fulfillByGateway(") >= 3,
+   "21.23 ★ 回调与主动查单共用同一履约入口（副作用不漂移）")
+ok("applyOrderFulfill(order, source || 'gateway')" in srv,
+   "21.24 支付履约复用既有唯一入口 applyOrderFulfill")
+
+# 订单模型
+mem_src = io.open(os.path.join(ROOT, "server", "lib", "membership.js"), encoding="utf-8").read()
+ok("outTradeNo: ''," in mem_src and "function findOrderByTradeNo" in mem_src,
+   "21.25 订单带 outTradeNo + 可按商户订单号反查")
+ok("tradeNo: ''" in mem_src and "paidAt: null" in mem_src, "21.26 订单记录网关交易号与支付时间")
+
+# 审计（三处）
+ok("'order.pay'" in io.open(os.path.join(ROOT, "server", "lib", "audit.js"), encoding="utf-8").read()
+   and "'pay.config'" in io.open(os.path.join(ROOT, "server", "lib", "audit.js"), encoding="utf-8").read(),
+   "21.27 audit.js 含 order.pay / pay.config")
+ok("'order.pay'" in ps and "'pay.config'" in ps, "21.28 launcher 的 Get-AuditText 同步两份文案")
+
+# 客户端契约与后台
+ok("onlinePay: onlinePayReady()" in srv, "21.29 health 暴露 onlinePay")
+ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/plans 暴露 onlinePay 可用性")
+for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
+    ok(k in html, "21.31 admin.html 含 %s" % k)
+
+ok("version: '1.7.0'" in srv, "21.32 服务端版本 1.7.0")
+ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 输出 ----------
 print("=" * 60)

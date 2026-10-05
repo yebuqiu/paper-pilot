@@ -111,6 +111,7 @@ NODE_SUITES = [
     ("AI 计费单价", "test/pricing.test.js"),
     ("网关计量", "test/metering.test.js"),
     ("余额域", "test/balance.test.js"),
+    ("在线支付", "test/pay.test.js"),
     ("arXiv 核心(插件侧)", "test/arxiv-core.test.js"),
     ("双栏对照窗口", "test/bilingual-view.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),

@@ -748,6 +748,11 @@ function orderOut(doc, o) {
     kind: o.kind === 'credit' ? 'credit' : 'plan',
     creditMicro: Number(o.creditMicro) || 0,
     bonusMicro: Number(o.bonusMicro) || 0,
+    // 1.6.0 在线支付相关（无支付时为空值，不影响既有渲染）
+    outTradeNo: o.outTradeNo || '',
+    payChannel: o.payChannel || '',
+    tradeNo: o.tradeNo || '',
+    paidAt: o.paidAt || null,
     months: o.months, amount: o.amount, currency: o.currency || 'CNY',
     // 1.4.5 对账信息：实付（含唯一尾数）/ 原始价 / 尾数，全部用「分」表达，避免浮点误差
     amountCents: amountCentsOf(o),
@@ -950,6 +955,12 @@ function createCreditOrder(doc, opts) {
     // ——它是购买的附属物，不是独立赠品；让送的钱过期只会招来客诉。
     bonusMicro: Math.max(0, Math.round(Number(o.bonusMicro) || 0)),
     unitPrice: null,
+    // 1.6.0 在线支付（可选）：网关要求的商户订单号**只能是字母数字**，
+    // 而内部 id 形如 `o-05ebc5e72c3b`（带连字符会被拒单）——所以另存一个。
+    outTradeNo: '',
+    payChannel: '',        // wxpay | alipay
+    tradeNo: '',           // 网关侧交易号（退款/客服查证用）
+    paidAt: null,          // 网关确认支付的时间
   };
   doc.orders.push(order);
   return { order };
@@ -957,6 +968,13 @@ function createCreditOrder(doc, opts) {
 
 function findOrder(doc, id) {
   return doc.orders.find((o) => o && o.id === id) || null;
+}
+
+/** 按网关商户订单号反查（回调只带 out_trade_no，不带内部 id） */
+function findOrderByTradeNo(doc, no) {
+  const s = String(no || '');
+  if (!s) return null;
+  return doc.orders.find((o) => o && o.outTradeNo === s) || null;
 }
 
 function claimOrder(doc, order, user) {
@@ -1098,7 +1116,7 @@ module.exports = {
   priceRank, pickPriceWinner, activeWinnerMap, findPriceOverlaps, coverageGapAfter,
   upsertPriceItem, removePriceItem, hasActivePrice, effectivePrice, rangesOverlap,
   membershipOf, grantMembership,
-  orderOut, reapOrders, createOrder, createCreditOrder, findOrder, claimOrder, cancelOrder, fulfillOrder,
+  orderOut, reapOrders, createOrder, createCreditOrder, findOrder, findOrderByTradeNo, claimOrder, cancelOrder, fulfillOrder,
   PERPETUAL, isPerpetual, monthsLabel, TAIL_MIN, TAIL_MAX,
   tailActive, baseCentsOf, amountCentsOf, originalCentsOf, assignTail,
   orderStatusText,

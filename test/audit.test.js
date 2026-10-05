@@ -236,7 +236,7 @@ const readAuditFile = () => {
 
     /* ---- health ---- */
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.6.0', 'B23 服务端版本');
+    eq(h.version, '1.7.0', 'B23 服务端版本');
     ok(typeof h.auditBytes === 'number' && h.auditBytes > 0, 'B24 health 暴露审计日志体积', h.auditBytes);
   } catch (e) {
     fails.push('异常中断：' + ((e && e.stack) || e));

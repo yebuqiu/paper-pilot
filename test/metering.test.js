@@ -268,7 +268,7 @@ const todayKey = () => mod.isoDay(Date.now());
 
     /* ---------- I. health 暴露计量状态 ---------- */
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.6.0', 'I1 服务端版本 1.6.0');
+    eq(h.version, '1.7.0', 'I1 服务端版本 1.7.0');
     eq(h.pricedModels, 1, 'I2 health 报告已配价模型数');
     eq(h.meteringGaps, 2, 'I3 health 报告计量盲区累计');
   } catch (e) {

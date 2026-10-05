@@ -360,6 +360,61 @@
       </div>
       <div class="msg" id="p-msg"></div>
     </div>
+
+    <!-- ===== 1.7.0 在线支付网关（易支付/码支付）：充值订单可自动到账 ===== -->
+    <div class="card">
+      <div class="toolbar"><h2 style="margin:0">在线支付网关（可选）</h2>
+        <div>
+          <button class="btn" onclick="loadPayment()">刷新</button>
+          <button class="btn" id="pay-test" onclick="testPayment(false)">连接测试</button>
+          <button class="btn" id="pay-test-deep" onclick="testPayment(true)">深度测试</button>
+        </div></div>
+      <p class="hint" style="margin:0 0 12px">
+        接入后，用户充值可<b>自助下单 → 扫码 → 自动到账</b>，不必再人工核销。
+        <b>不开启时一切照旧</b>（收款码 + 管理员核销），随时可以关闭。
+        密钥加密后落盘，页面不回显；主密钥在服务器的 <code>data/.secret.key</code>，
+        <b>换机器请一并带走</b>，否则需重新粘贴密钥。
+      </p>
+      <div class="grid2">
+        <div class="field"><label>启用在线支付</label>
+          <div style="padding-top:4px">
+            <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
+              <input type="checkbox" id="pay-enabled"> 开启（充值下单走在线支付）
+            </label>
+          </div>
+          <div class="hint" style="margin-top:4px">关闭时发起支付接口返回 503，客户端自动回落收款码</div></div>
+        <div class="field"><label>网关协议</label>
+          <select id="pay-provider" onchange="syncPayProvider()">
+            <option value="epay">易支付 / 码支付 V1（MD5 签名）</option>
+            <option value="mzf2">易支付 / 码支付 V2（RSA 签名）</option>
+          </select></div>
+        <div class="field wide"><label>网关地址 *</label>
+          <input id="pay-gateway" placeholder="https://gateway.example.com（不带结尾斜杠）" style="width:100%"></div>
+        <div class="field"><label>商户号 pid *</label><input id="pay-pid" style="width:180px"></div>
+        <div class="field"><label>支付方式名称</label><input id="pay-name" placeholder="在线支付" style="width:180px"></div>
+        <div class="field" id="pay-qm-wrap"><label>查询接口变体</label>
+          <select id="pay-query-mode">
+            <option value="">标准易支付 api.php?act=order</option>
+            <option value="checkOrder">变体 GET /Api/checkOrder</option>
+          </select>
+          <div class="hint" style="margin-top:4px">查单不通就换一个试试（不同网关实现不一）</div></div>
+        <div class="field wide" id="pay-key-wrap"><label>商户密钥（V1 MD5）</label>
+          <input id="pay-key" type="password" placeholder="留空=不修改；填新值=覆盖" style="width:100%"></div>
+        <div class="field wide" id="pay-priv-wrap" style="display:none"><label>商户私钥（V2 RSA）</label>
+          <input id="pay-private-key" type="password" placeholder="留空=不修改；支持 base64 或 PEM" style="width:100%"></div>
+        <div class="field wide" id="pay-pub-wrap" style="display:none"><label>平台公钥（V2，用于验证回调）</label>
+          <input id="pay-platform-key" placeholder="支持 base64 或 PEM；公钥可回显便于核对" style="width:100%"></div>
+      </div>
+      <div class="grid2" style="margin-top:6px">
+        <div class="field wide"><label>回调地址（须公网可达，由 PP_PUBLIC_URL 决定）</label>
+          <div id="pay-urls" class="hint mono" style="word-break:break-all"></div></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap">
+        <button class="btn primary" id="pay-save" onclick="savePayment()">保存支付配置</button>
+        <span class="hint">保存前会校验密钥能否解析；不通过不会写入</span>
+      </div>
+      <div class="msg" id="pay-msg"></div>
+    </div>
   </section>
 
   <!-- ============ 审计日志（服务端 1.4.4） ============ -->
@@ -1734,6 +1789,69 @@ var CODE_STATUS = { unused: 'unused', used: 'used', expired: 'expired' };
 var CODE_LABEL = { unused: '未使用', used: '已使用', expired: '已过期' };
 var CODE_CLASS = { unused: 'green', used: 'gray', expired: 'red' };
 
+/* ================= 1.7.0 在线支付网关 ================= */
+
+/** 按协议切换输入项：V1 用商户密钥，V2 用私钥 + 平台公钥 */
+function syncPayProvider() {
+  var v2 = $('pay-provider').value === 'mzf2';
+  $('pay-key-wrap').style.display = v2 ? 'none' : '';
+  $('pay-priv-wrap').style.display = v2 ? '' : 'none';
+  $('pay-pub-wrap').style.display = v2 ? '' : 'none';
+  $('pay-qm-wrap').style.display = v2 ? 'none' : '';
+}
+
+function loadPayment() {
+  return api('GET', '/api/admin/payment').then(function (r) {
+    if (!r.ok) { msg('pay-msg', r.error || '加载支付配置失败', false); return; }
+    var p = r.payment || {};
+    $('pay-enabled').checked = !!p.enabled;
+    $('pay-provider').value = p.provider === 'mzf2' ? 'mzf2' : 'epay';
+    $('pay-gateway').value = p.gateway || '';
+    $('pay-pid').value = p.pid || '';
+    $('pay-name').value = p.name || '';
+    $('pay-query-mode').value = p.queryMode === 'checkOrder' ? 'checkOrder' : '';
+    $('pay-platform-key').value = p.platformKey || '';
+    $('pay-key').value = ''; $('pay-private-key').value = '';
+    $('pay-key').placeholder = p.hasKey ? '已保存（留空=不修改）' : '留空=不修改；填新值=覆盖';
+    $('pay-private-key').placeholder = p.hasPrivateKey ? '已保存（留空=不修改）' : '留空=不修改；支持 base64 或 PEM';
+    syncPayProvider();
+    $('pay-urls').textContent = (r.notifyUrl || '') + '\n' + (r.returnUrl || '');
+    var notes = [];
+    if (p.keyBroken || p.privateKeyBroken) notes.push('⚠ 已保存的密钥无法解密（主密钥文件可能已更换），请重新粘贴');
+    if (!p.siteBaseConfigured) notes.push('⚠ 未配置 PP_PUBLIC_URL，回调地址是本地地址，网关无法访问');
+    if (p.enabled && !p.onlineReady) notes.push('⚠ 已启用但未就绪：' + (p.ready ? '回调地址须为公网 https' : '网关/商户号/密钥不完整'));
+    if (!notes.length) notes.push(p.onlineReady ? '✓ 已就绪' : '未启用（客户端走收款码 + 人工核销）');
+    msg('pay-msg', notes.join('；'), p.onlineReady);
+  });
+}
+
+function savePayment() {
+  var body = {
+    enabled: $('pay-enabled').checked,
+    provider: $('pay-provider').value,
+    gateway: $('pay-gateway').value.trim(),
+    pid: $('pay-pid').value.trim(),
+    name: $('pay-name').value.trim(),
+    queryMode: $('pay-query-mode').value,
+  };
+  // 密钥：**只有填了才提交**（空 = 保持原值），避免"保存一次就把密钥清掉"
+  if ($('pay-key').value.trim()) body.key = $('pay-key').value.trim();
+  if ($('pay-private-key').value.trim()) body.privateKey = $('pay-private-key').value.trim();
+  body.platformKey = $('pay-platform-key').value.trim();
+  api('PUT', '/api/admin/payment', body).then(function (r) {
+    if (!r.ok) return msg('pay-msg', '✗ ' + (r.error || '保存失败'), false);
+    msg('pay-msg', '✓ 已保存支付配置' + (r.payment.onlineReady ? '（已就绪）' : ''), true);
+    loadPayment();
+  });
+}
+
+function testPayment(deep) {
+  msg('pay-msg', deep ? '正在进行深度测试（会在网关生成一笔 0.01 元未支付测试单）…' : '正在连接网关测试…', true);
+  api('POST', '/api/admin/payment/test', { deep: !!deep }).then(function (r) {
+    msg('pay-msg', (r.ok ? '✅ ' : '❌ ') + (r.msg || r.error || '未知结果'), !!r.ok);
+  });
+}
+
 function fmtTime(s) { return s ? String(s).replace('T', ' ').slice(0, 16) : '—'; }
 
 function loadMembership() {
@@ -1751,6 +1869,7 @@ function loadMembership() {
     renderCodes();
     renderPlanForm();
     loadPrices();
+    loadPayment();          // 1.7.0 在线支付网关配置
     // Pro 用户数：从用户列表统计（保证与账号页一致）
     api('GET', '/api/admin/users').then(function (ru) {
       if (!ru.ok) return;
