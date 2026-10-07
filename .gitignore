@@ -3,6 +3,7 @@
 Thumbs.db
 .DS_Store
 .workbuddy/
+__pycache__/
 
 # 账号后台运行时数据（用户/令牌/通道密钥/日志，绝不入库）
 server/data/

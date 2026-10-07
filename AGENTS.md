@@ -214,6 +214,20 @@ tag + Release + xpi 附件。`sync-github.py` 只镜像**内容**，不会建 ta
 - 找不到对应提交的版本**如实跳过并报告**（如 `0.21.3`：当年版本号只在打包时改、没提交），
   不做张冠李戴的 tag。
 
+### 3.6.1 Gitee 侧版本发行版（xpi 随包下载）
+
+```bash
+python scripts/gitee-release.py --version 0.26.0   # 发版时（tag 已推、push 完 Gitee 之后）
+python scripts/gitee-release.py --backfill         # 给缺 xpi 附件的版本全量补发
+python scripts/gitee-release.py --backfill --dry-run
+```
+
+Gitee 的「发行版」**不会自动带上 xpi** —— 不发就只剩源码 zip/tar.gz，用户看不到安装包
+（实踩：0.14~0.25 共 37 个版本长期缺失，2026-10-07 发现并补建）。Gitee 是主仓库与国内
+下载通道，发版时要像 GitHub 一样跑一遍。同样**幂等**：已有 release 且有附件则跳过；
+release 在但缺附件则只补传（不动正文）。版本→提交映射读本地 git（tag 优先）；
+token 优先 `PP_GITEE_TOKEN` 环境变量，回退 `~/.git-credentials`。
+
 ---
 
 ## 4. 目录与文件组织说明
