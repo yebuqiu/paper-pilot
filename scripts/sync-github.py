@@ -19,6 +19,11 @@ PAT 取自 Windows 凭据管理器（git:https://github.com），无需写进文
      \\xxx 八进制（会以转义名上传、真实中文名被误删）；
   3. urllib 对 307 POST 不自动跟随（抛 HTTPError），必须手动带原 body
      向 Location 重试（blob 上传会被重定向到 objects host）。
+
+增量上传（2026-10-08）：blob 内容寻址 ⇒ 远端树里 path+sha 均未变的条目直接复用，
+不重传。此前全量 264 个 blob，链路抖动时三次同步都在中途被掐；增量后通常只需
+传个位数~几十个。断线重试因此安全且越来越快（已传过的新 blob 不在远端树里，
+仍会重传，但数量有限）。
 """
 import base64
 import json
@@ -114,10 +119,19 @@ def main():
     parent_tree = parent
     print("GitHub 当前 %s = %s" % (BRANCH, parent[:10]))
 
+    # 增量上传：blob 内容寻址 ⇒ 远端树里 path+sha 均未变的条目无需重传
+    remote_tree = api("GET", "/repos/%s/git/trees/%s?recursive=1" % (REPO, parent_tree), None, tok)
+    remote_blobs = {e["path"]: e["sha"] for e in remote_tree.get("tree", []) if e["type"] == "blob"}
+
     trees = []
+    n_reused = 0
     for i, (path, mode, sha) in enumerate(entries, 1):
         if dry:
             trees.append({"path": path, "mode": mode, "type": "blob", "sha": sha})
+            continue
+        if remote_blobs.get(path) == sha:
+            trees.append({"path": path, "mode": mode, "type": "blob", "sha": sha})
+            n_reused += 1
             continue
         content = sh("git", "cat-file", "blob", sha, binary=True)
         blob = api("POST", "/repos/%s/git/blobs" % REPO, {
@@ -129,12 +143,12 @@ def main():
             print("  ! blob sha 不一致（本地 %s / 远端 %s）: %s" % (sha[:8], blob["sha"][:8], path))
         trees.append({"path": path, "mode": mode, "type": "blob", "sha": blob["sha"]})
         if i % 20 == 0:
-            print("  已上传 %d/%d" % (i, len(entries)))
+            print("  已处理 %d/%d（复用 %d）" % (i, len(entries), n_reused))
+    if not dry:
+        print("  增量：复用远端 blob %d 个，需上传 %d 个" % (n_reused, len(entries) - n_reused))
 
-    # 先做一个临时 tree 用于比较（GitHub 的 tree sha 由内容决定，
-    # 但我们的 tree 是「自建」的——先比路径集合再看是否需要新提交）
-    remote_tree = api("GET", "/repos/%s/git/trees/%s?recursive=1" % (REPO, parent_tree), None, tok)
-    remote_paths = {e["path"]: e["sha"] for e in remote_tree.get("tree", []) if e["type"] == "blob"}
+    # 与远端树比对路径集合，判断是否需要新提交（remote_blobs 前面已拉取）
+    remote_paths = remote_blobs
     local_paths = {p: s for p, m, s in entries}
     added = sorted(set(local_paths) - set(remote_paths))
     removed = sorted(set(remote_paths) - set(local_paths))

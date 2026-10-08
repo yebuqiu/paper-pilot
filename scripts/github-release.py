@@ -37,13 +37,18 @@ DIST = os.path.join(ROOT, "dist")
 
 
 def _token():
+    # 同 sync-github.py：优先 PP_GITHUB_TOKEN（本机 credential.helper 链路会漂移，
+    # `git credential fill` 可能返回空/弹 GUI 挂死时用环境变量绕过）
+    env = os.environ.get("PP_GITHUB_TOKEN", "").strip()
+    if env:
+        return env
     out = subprocess.run(["git", "credential", "fill"],
                          input=b"protocol=https\nhost=github.com\n\n",
                          capture_output=True).stdout.decode()
     for line in out.splitlines():
         if line.startswith("password="):
             return line.split("=", 1)[1].strip()
-    raise SystemExit("取不到 GitHub PAT（git credential fill 无 password=）")
+    raise SystemExit("取不到 GitHub PAT（可设 PP_GITHUB_TOKEN 绕过；git credential fill 无 password=）")
 
 
 TOK = None
