@@ -81,7 +81,7 @@
           { t: zh ? "智能清理" : "Smart cleanup", d: zh ? "扫描重复/无附件/缺元数据条目" : "Scan duplicates & gaps", run: () => PP.smartCleanup.run() },
           { t: zh ? "真假文献识别" : "Fake check", d: zh ? "AI 幻觉检测：题录是否真实存在" : "Detect hallucinated references", run: () => PP.fakeCheck.runForSelected() },
           { t: zh ? "粘贴文献列表核验" : "Verify pasted list", d: zh ? "粘贴一段参考文献列表逐条核验真伪" : "Verify a pasted reference list", run: () => PP.fakeCheck.openPasteDialog() },
-          { t: zh ? "开放获取补全文" : "Find OA full text", d: zh ? "Unpaywall 合法渠道为有 DOI 条目补 PDF" : "Attach OA PDFs via Unpaywall", run: () => PP.oaFetch.runForSelected() },
+          { t: zh ? "开放获取 / Sci-Hub 补全文" : "Find full text (OA / Sci-Hub)", d: zh ? "Unpaywall 合法渠道优先；未命中时按设置用 Sci-Hub / Sci-Net 补充（可关）" : "Unpaywall first; optionally fall back to Sci-Hub / Sci-Net (configurable)", run: () => PP.oaFetch.runForSelected() },
           { t: zh ? "附件按规则重命名" : "Rename attachments", d: zh ? "按 作者-年份-标题 模板统一附件文件名" : "Rename PDFs by pattern", run: () => PP.attachManager.runForSelected() },
           { t: zh ? "附件体检（断链/重复/扫描件）" : "Attachment doctor", d: zh ? "扫描无附件、文件丢失、同父重复、无文本层 PDF（AI 读不了）、存储孤儿文件，出报告不打标签不删文件" : "Scan missing/duplicate/scanned attachments and storage orphans", run: () => PP.attachDoctor.run() },
         ],

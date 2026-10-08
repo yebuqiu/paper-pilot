@@ -514,6 +514,30 @@
                     placeholder="you@example.com"/>
       </html:div>
       <html:div class="pp-field" style="margin-top:10px;">
+        <html:label class="pp-label">补全文补充渠道：Sci-Hub / Sci-Net（Unpaywall 未命中时）</html:label>
+        <html:label class="pp-check">
+          <html:input type="checkbox" preference="extensions.zotero.paperpilot.scihubEnabled" id="pp-scihub-enabled"/>
+          <html:span>启用 Sci-Hub 补全文（按镜像顺序探测；要求人机验证时在 Zotero 中打开验证页，完成后重跑即可）</html:span>
+        </html:label>
+        <html:label class="pp-check">
+          <html:input type="checkbox" preference="extensions.zotero.paperpilot.scinetEnabled" id="pp-scinet-enabled"/>
+          <html:span>Sci-Hub 未收录（2021 年后新文献居多）时尝试 Sci-Net</html:span>
+        </html:label>
+        <html:div class="pp-grid2" style="margin-top:8px;">
+          <html:div class="pp-field">
+            <html:label class="pp-label">Sci-Hub 镜像（逗号分隔，按序尝试）</html:label>
+            <html:input type="text" preference="extensions.zotero.paperpilot.scihubMirrors" class="pp-input"
+                        placeholder="sci-hub.ru, sci-hub.se, sci-hub.st"/>
+          </html:div>
+          <html:div class="pp-field">
+            <html:label class="pp-label">Sci-Net 地址（新文献兜底）</html:label>
+            <html:input type="text" preference="extensions.zotero.paperpilot.scinetUrl" class="pp-input"
+                        placeholder="https://sci-net.xyz"/>
+          </html:div>
+        </html:div>
+        <html:div class="pp-hint">镜像可换成自己网络下可用的（如 sci-hub.box）；「不可达」会在本次运行中暂停该渠道并给出提示。补充渠道仅供个人学术研究用途，如所在机构/地区有版权要求可在此关闭。</html:div>
+      </html:div>
+      <html:div class="pp-field" style="margin-top:10px;">
         <html:label class="pp-label">自定义笔记模板（每行一条：名称=模板正文，换行用 \n）</html:label>
         <html:textarea preference="extensions.zotero.paperpilot.noteTemplatesCustom" class="pp-textarea" rows="3"
                        placeholder="周报卡=## {{title}}\n本周进展：\n{{aiSummary}}"/>

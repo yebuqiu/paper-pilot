@@ -154,7 +154,7 @@ var I18n = (() => {
     menuReview: zh ? "AI 文献综述（多篇，带引用）" : "AI Literature Review (multi)",
     noteReviewTitle: zh ? "AI 文献综述" : "AI Literature Review",
     menuMetaLint: zh ? "元数据规范清洗（DOI/日期/标题/URL）" : "Metadata Lint",
-    menuOaFetch: zh ? "开放获取补全文（Unpaywall）" : "Find OA Full Text (Unpaywall)",
+    menuOaFetch: zh ? "开放获取 / Sci-Hub 补全文" : "Find Full Text (OA / Sci-Hub)",
     menuAnki: zh ? "AI 制卡导出 Anki…" : "AI Cards to Anki…",
     menuLibGraph: zh ? "PaperPilot 文献统计图谱（HTML 报告）" : "PaperPilot Library Report (HTML)",
     // 0.16.0 外观主题

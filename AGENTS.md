@@ -12,7 +12,7 @@ PaperPilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstra
 
 | 组成 | 说明 | 版本锚点 |
 |---|---|---|
-| **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.26.0`） |
+| **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.27.0`） |
 | **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.7.0`） |
 
 - 插件 ID：`paperpilot@dev.local`；兼容 `strict_min_version: "6.999"` → `strict_max_version: "99.*"`。
@@ -103,8 +103,8 @@ python scripts/build-arxiv-core.py --check
 ### 3.2 打包插件
 
 ```bash
-python scripts/build-xpi.py 0.26.0
-# 产物：dist/paper-pilot-0.26.0.xpi（zip，源码目录内容置于根，含包内清单与版本自检）
+python scripts/build-xpi.py 0.27.0
+# 产物：dist/paper-pilot-0.27.0.xpi（zip，源码目录内容置于根，含包内清单与版本自检）
 ```
 
 - 打包内容 = 顶层文件（`bootstrap.js` / `LICENSE` / `NOTICE` / `prefs.js` / `README.md` / `manifest.json`）+ 遍历 `chrome/` + `locale/`。
@@ -201,7 +201,7 @@ git pushgitee        # 仓库内别名：绕过会弹窗的全局 helper，只�
 ### 3.6 GitHub 侧版本 tag 与 Release
 
 ```bash
-python scripts/github-release.py --version 0.26.0   # 发版时（tag + Release + xpi 附件）
+python scripts/github-release.py --version 0.27.0   # 发版时（tag + Release + xpi 附件）
 python scripts/github-release.py --backfill         # 历史补发（dist 里有产物但缺 Release 的版本）
 python scripts/github-release.py --backfill --dry-run
 ```
@@ -217,7 +217,7 @@ tag + Release + xpi 附件。`sync-github.py` 只镜像**内容**，不会建 ta
 ### 3.6.1 Gitee 侧版本发行版（xpi 随包下载）
 
 ```bash
-python scripts/gitee-release.py --version 0.26.0   # 发版时（tag 已推、push 完 Gitee 之后）
+python scripts/gitee-release.py --version 0.27.0   # 发版时（tag 已推、push 完 Gitee 之后）
 python scripts/gitee-release.py --backfill         # 给缺 xpi 附件的版本全量补发
 python scripts/gitee-release.py --backfill --dry-run
 ```
@@ -243,7 +243,7 @@ paper-pilot/
 ├── LICENSE / NOTICE           Apache-2.0
 │
 ├── chrome/content/            插件前端与逻辑（打包进 xpi）
-│   ├── prefs.xhtml/js        设置面板（fragment，含 AI 额度余额与充值面板）
+│   ├── prefs.xhtml/js        设置面板（fragment，含 AI 额度余额 / 充值 / Sci-Hub 补全文渠道设置）
 │   ├── prefs-account.js      设置面板·账号/会员卡片逻辑
 │   ├── prefs-theme.js        设置面板·主题逻辑
 │   ├── prefs.css             设置面板样式（随系统明暗切换，类名 .pp-）
@@ -402,6 +402,7 @@ paper-pilot/
   - 纯服务端：`服务端 1.6.0: 余额域 —— 注册赠送 / 充值 / 按成本扣减 / 观察模式`
   - 纯服务端：`服务端 1.7.0: 在线支付（易支付/码支付）—— 充值自助下单 + 回调自动入账`
   - 插件+服务端：`0.26.0(服务端 1.6.0): AI 额度余额展示与充值 + 订阅去无限化 + 充值订单`
+  - 插件：`0.27.0: Sci-Hub / Sci-Net 补全文 —— Unpaywall 未命中时的补充渠道（镜像轮换 + 验证页处理 + Sci-Net 兜底）`
   - 纯服务端：`服务端 1.4.7: 登录设备与会话管理`
 - **版本号口径**：只改服务端/脚本就别挂一个不会发布的插件版本号（服务端版本看 `/api/health` 的 `version`）；插件没动就不动 `manifest.json` 和 xpi。
 - GitHub 镜像走 `sync-github.py`（内容）；**版本 tag + Release + xpi 附件走 `github-release.py`**——

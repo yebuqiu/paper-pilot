@@ -65,6 +65,11 @@ pref("extensions.zotero.paperpilot.bilingualViewLayout", "auto");
 pref("extensions.zotero.paperpilot.noteTemplatesCustom", "");
 pref("extensions.zotero.paperpilot.attachNamePattern", "{author} - {year} - {title}");
 pref("extensions.zotero.paperpilot.unpaywallEmail", "");
+// 0.27.0 新增：Sci-Hub / Sci-Net 补全文（Unpaywall 未命中时的补充渠道，可在设置关闭）
+pref("extensions.zotero.paperpilot.scihubEnabled", true);
+pref("extensions.zotero.paperpilot.scihubMirrors", "sci-hub.ru, sci-hub.se, sci-hub.st");
+pref("extensions.zotero.paperpilot.scinetEnabled", true);
+pref("extensions.zotero.paperpilot.scinetUrl", "https://sci-net.xyz");
 pref("extensions.zotero.paperpilot.ankiCardCount", 10);
 // 0.13.0 新增：工作台 2.0（主题 auto/light/dark；会话持久化 JSON）
 pref("extensions.zotero.paperpilot.wbTheme", "auto");
