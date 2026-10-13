@@ -950,7 +950,7 @@ for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
-ok('"version": "0.29.0"' in MANIFEST, "20.12 manifest 版本 0.29.0")
+ok('"version": "0.31.0"' in MANIFEST, "20.12 manifest 版本 0.31.0")
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
@@ -1054,8 +1054,9 @@ ok("this.translateSvc = TranslateSvc;" in mainjs, "22.2 main.js 把 TranslateSvc
 ok("TranslateSvc.migrate();" in mainjs, "22.3 启动时执行翻译配置一次性迁移")
 ok('"chrome/content/prefs-translate.js"' in mainjs, "22.4 设置面板注册 prefs-translate.js 脚本")
 
-for _sid in ["google", "googleapi", "bing", "youdao", "mymemory", "libretranslate",
-             "deeplx", "deepl", "microsoft", "baidu", "tencent", "caiyun", "llm"]:
+for _sid in ["google", "googleapi", "bing", "edge", "youdao", "transmart", "mymemory",
+             "libretranslate", "lingva", "deeplx", "deepl", "microsoft", "baidu",
+             "tencent", "caiyun", "llm"]:
     ok(('id: "%s"' % _sid) in tr_js, "22.5 引擎注册表含 %s" % _sid)
 ok("CFG_DEFAULTS" in tr_js and "fallback" in tr_js, "22.6 有回退链默认配置")
 ok("function hmacSha1" in tr_js and "function googleTk" in tr_js,
@@ -1089,7 +1090,8 @@ ok('paperpilot.readerPopupTargetLang", "zh-CN"' in prefsdef, "22.18 目标语言
 for _k in ["translateFromLang", "translateCfg", "translateMigrated28"]:
     ok(("paperpilot.%s" % _k) in prefsdef, "22.19 prefs.js 含 %s 默认值" % _k)
 for _k in ["pp-tr-status", "pp-tr-active", "pp-tr-from", "pp-tr-to", "pp-tr-fallback",
-           "pp-tr-timeout", "pp-tr-retry", "pp-tr-cache", "pp-tr-list", "pp-tr-test-result"]:
+           "pp-tr-timeout", "pp-tr-retry", "pp-tr-cache", "pp-tr-list", "pp-tr-test-result",
+           "pp-tr-route", "pp-tr-total", "pp-tr-cooldown", "pp-tr-local-scan", "pp-tr-local"]:
     ok(_k in xhtml_ids, "22.20 prefs.xhtml 含 #%s" % _k)
 _trp_used = set(re.findall(r'\$\("([A-Za-z0-9_-]+)"\)', trp_js))
 _trp_used |= set(re.findall(r'bind\("([A-Za-z0-9_-]+)"', trp_js))
@@ -1098,10 +1100,75 @@ ok(not _trp_missing,
    "22.21 prefs-translate.js 引用的元素 id 都存在于 prefs.xhtml → 缺失: %s" % (_trp_missing or "无"))
 ok("test/translate.test.js" in _pf3, "22.22 preflight 含翻译引擎测试")
 
+# ---- 22.23~22.34：0.31.0 引擎补强（免密钥 Edge / 单次上限分段 / prepare 修复 / 额度说明）----
+# 起因：① bing 依赖 prepare 取页面 token，而 prepare 只声明、从未被调用 → 该引擎必然失败；
+#      ② MyMemory 单次上限是 500 **UTF-8 字节**（不是 500 字符），我们按字符分段 → 长句必失败；
+#      ③ 免密钥阵营缺一个"语种最全又稳定"的引擎（必应网页版易 429）。
+ok('id: "edge"' in tr_js, "22.23 新增免密钥 edge 引擎（必应/Edge）")
+ok("edge.microsoft.com/translate/auth" in tr_js, "22.24 ★ edge 走官方 token 端点取临时票据")
+ok("api-edge.cognitive.microsofttranslator.com" in tr_js, "22.25 ★ edge 走微软 v3 接口（非网页逆向）")
+ok('"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)' in tr_js,
+   "22.26 edge 携带 Edge UA（该接口对 UA 敏感）")
+ok("if (typeof svc.prepare === \"function\" && !ctx.pre)" in tr_js,
+   "22.27 ★★ prepare 真正被调用（此前只声明未调用 → bing 引擎失效）")
+ok("ctx = Object.assign({}, ctx, { pre: await svc.prepare(ctx) });" in tr_js,
+   "22.28 prepare 整次调用只做一次（多段复用同一 token）")
+ok("function _splitText" in tr_js, "22.29 长文本分段纯函数存在")
+ok("splitText: _splitText, segmentsFor: _segmentsFor" in tr_js, "22.30 分段函数已导出（可单测）")
+ok("limits: { bytes: 500 }" in tr_js, "22.31 ★ MyMemory 声明 500 字节上限（官方是字节不是字符）")
+ok("limits: { chars: 1000 }" in tr_js, "22.32 必应网页版声明 1000 字符上限")
+ok("SEG_MAX" in tr_js, "22.33 分段数上限保护（避免退化成上百次串行请求）")
+ok("s.hint" in trp_js, "22.34 设置面板渲染引擎自带的使用说明（额度/申请方式）")
+
+# ---- 22.35~22.46：0.31.0 P1（回退链调度三件套 + Lingva/TranSmart）----
+# 起因：只有"重试一次 + 依次回退"，缺**冷却**与**总预算**——一次网络抖动会把整条链跑满，
+#      表现为"翻译转半天然后失败"；另外免密钥阵营缺"自建即无限流"的 Google 质量后端，
+#      以及中文方向强的免密钥引擎。
+ok("function _markCooldown" in tr_js and "function _inCooldown" in tr_js,
+   "22.35 ★ 实现失败冷却（刚失败的引擎短时间内不再用）")
+ok("clearCooldown, cooldownLeft," in tr_js, "22.36 冷却状态可查询/可清除（测试与界面都需要）")
+ok("routeMs: 20000" in tr_js and "totalMs: 45000" in tr_js and "cooldownMs: 60000" in tr_js,
+   "22.37 预算三件套有默认值（单路 20s / 总 45s / 冷却 60s）")
+ok("chain = cands.filter((id) => {" in tr_js, "22.38 translate() 会跳过冷却中的引擎")
+ok("if (!o.engine && c.cooldownMs > 0)" in tr_js,
+   "22.39 ★ 显式指定 engine 时不受冷却影响（尊重调用方意图）")
+ok("if (c.totalMs > 0 && c.totalMs - spent < 2000)" in tr_js,
+   "22.40 总预算不足时停止整条链（而不是继续试下一个）")
+ok("budget = Math.min(budget, c.routeMs);" in tr_js, "22.41 单路预算会压到该引擎的调用预算上")
+ok("_markCooldown(id, c.cooldownMs);" in tr_js, "22.42 引擎失败后自动进入冷却")
+ok("cooled," in tr_js and "detail:" in tr_js, "22.43 结果里回报「被跳过的引擎」与逐条原因明细")
+ok("https://transmart.qq.com/api/imt" in tr_js and '"auto_translation"' in tr_js,
+   "22.44 新增 TranSmart 引擎（免密钥，腾讯交互翻译）")
+ok("transmart.qq.com/api/imt" in tr_js and "\"Origin\": \"https://transmart.qq.com\"" in tr_js,
+   "22.45 TranSmart 带 Origin/Referer（网页接口要求）")
+ok('"zh_HANT"' in tr_js and "/api/v1/" in tr_js,
+   "22.46 新增 Lingva 引擎（REST /api/v1/，繁中用 zh_HANT）")
+ok("translateFallbackUpgraded" in prefsdef, "22.47 prefs.js 含回退链升级迁移标记")
+ok("translateFallbackUpgraded" in tr_js, "22.48 迁移逻辑只升级「从未自定义过」的回退链")
+
+# ---- 22.49~22.57：0.31.0 P2（自建一键可用 + 隐私提示 + 引擎分组）----
+# 起因：「自建离线」在调研里是 P3，但真正挡住用户的是"要自己记 5000/3000/1188 端口"；
+#      把它做成一次探测 + 一键填入，P3 就不需要新增任何引擎也能落地。
+#      另外：免密钥引擎会把文本发给第三方，学术场景必须如实告知（此前界面里没有任何提示）。
+ok("probeLocal, LOCAL_PROBES," in tr_js, "22.49 自建服务探测已导出（设置面板与测试都用）")
+ok("const LOCAL_PROBES = [" in tr_js, "22.50 定义本机候选服务清单")
+for _e, _p in [("libretranslate", 5000), ("lingva", 3000), ("deeplx", 1188)]:
+    ok(('engine: "%s"' % _e) in tr_js and ("port: %d" % _p) in tr_js,
+       "22.51 探测 %s（默认端口 %d）" % (_e, _p))
+ok('"http://127.0.0.1:" + p.port' in tr_js, "22.52 只探本机回环地址（不对外网扫描）")
+ok("probeLocal(2000)" in trp_js, "22.53 设置面板发起探测（2s 超时，不卡界面）")
+ok("S.setSecret(f.engine, { url: f.url })" in trp_js, "22.54 ★ 探测结果一键填入该引擎地址")
+ok("onLocalScan" in trp_js and 'bind("pp-tr-local-scan", "click", onLocalScan)' in trp_js,
+   "22.55 「检测本机自建服务」按钮已接线")
+ok("catOf" in trp_js and "完全免配置" in trp_js and "需自备密钥" in trp_js,
+   "22.56 引擎列表按「免配置 / 需地址 / 需密钥 / AI」分组")
+ok("数据去向" in prefs_xhtml and "不出本机" in prefs_xhtml,
+   "22.57 ★ 界面明确提示数据去向（免密钥引擎会把文本发给第三方）")
+
 # ---------- 23. 菜单瘦身（插件 0.29.0）----------
 # 改动面：menus.js 注册表化 + classic 回退、prefs.js 三个菜单 pref、
 # prefs.xhtml 菜单定制卡片、prefs-menu.js 面板脚本、main.js 暴露 menus/i18n。
-# 钉死「重组不减功能」：注册表必须恰好 40 条（0.28 的全部右键命令），
+# 钉死「重组不减功能」：注册表必须恰好 41 条（0.28 的 40 条 + 0.31.0 新增 ai-chat），
 # classic 平铺回退必须真实存在（menuMode=classic 不是空话）。
 ok('paperpilot.menuMode", "grouped"' in prefsdef, "23.1 prefs.js 有 menuMode 默认值 grouped")
 for _k in ["menuHiddenGroups", "menuQuickItems"]:
@@ -1114,8 +1181,8 @@ ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
 for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
     ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
 _item_reg_src = menus_js.split("GROUPS:")[0]
-ok(_item_reg_src.count("labelKey:") == 40,
-   "23.7 ★ 注册表恰好 40 条命令（实测 %d，功能一项不减）" % _item_reg_src.count("labelKey:"))
+ok(_item_reg_src.count("labelKey:") == 41,
+   "23.7 ★ 注册表恰好 41 条命令（实测 %d，功能一项不减）" % _item_reg_src.count("labelKey:"))
 ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
@@ -1132,6 +1199,55 @@ ok(not _pmp_missing,
 ok("Zotero.PaperPilot.menus" in _pmp_js or "PP().menus" in _pmp_js,
    "23.13 prefs-menu.js 经 Zotero.PaperPilot.menus 读注册表（不维护第二份列表）")
 ok("test/menu-registry.test.js" in _pf3, "23.14 preflight 含菜单注册表测试")
+
+# ---------- 24. 阅读器右侧栏 · 翻译面板（插件 0.30.0） ----------
+# 起因：把翻译的「操作+选项+结果」从右键菜单/设置搬进右侧栏（ItemPane section）。
+# 这类改动有四类静默失败：
+#   ① ItemPaneManager.registerSection 缺 onRender → Z10 schema 校验不通过、**静默返回 false**
+#      （面板根本不出现，且控制台只多一行 boot 日志）；
+#   ② l10nID 没有对应的 .ftl 条目 → header/sidenav 不渲染（官网明示，本项目 ftl 注释也写了）；
+#   ③ 注销时用注册时的 paneID 而非返回值 → 注销不掉；
+#   ④ 划词缓存放在浮窗开关之后 → 用户关掉浮窗后侧栏永远拿不到选中文本。
+PANE_JS = os.path.join(ROOT, "chrome", "content", "scripts", "panels", "translate-pane.js")
+pane_js = io.open(PANE_JS, encoding="utf-8").read()
+ZH_FTL = io.open(os.path.join(ROOT, "locale", "zh-CN", "paperpilot.ftl"), encoding="utf-8").read()
+EN_FTL = io.open(os.path.join(ROOT, "locale", "en-US", "paperpilot.ftl"), encoding="utf-8").read()
+
+ok('"panels/translate-pane.js"' in mainjs, "24.1 main.js 装配清单含 panels/translate-pane.js")
+ok("this.translatePane = TranslatePane;" in mainjs, "24.2 main.js 把 TranslatePane 挂到 Zotero.PaperPilot")
+ok("TranslatePane.register(id);" in mainjs, "24.3 main.js 启动时注册翻译面板")
+ok("TranslatePane.unregister();" in mainjs, "24.4 main.js 关闭时注销翻译面板")
+ok("Zotero.ItemPaneManager.registerSection({" in pane_js, "24.5 走官方 ItemPaneManager.registerSection")
+ok('paneID: "paperpilot-translate"' in pane_js or 'PANE_ID: "paperpilot-translate"' in pane_js,
+   "24.6 paneID 为 paperpilot-translate")
+ok("onRender(" in pane_js, "24.7 ★ 提供 onRender（Z10 缺了会静默返回 false，面板不出现）")
+ok("sidenav:" in pane_js, "24.8 提供 sidenav（右侧栏图标位）")
+ok('l10nID: "paperpilot-translate-section-header"' in pane_js, "24.9 header l10nID 正确")
+ok('l10nID: "paperpilot-translate-section-sidenav"' in pane_js, "24.10 sidenav l10nID 正确")
+for _ftl, _tag in [(ZH_FTL, "zh-CN"), (EN_FTL, "en-US")]:
+    ok("paperpilot-translate-section-header =" in _ftl and "paperpilot-translate-section-sidenav =" in _ftl,
+       "24.11 %s ftl 有 header+sidenav 条目（缺了图标不渲染）" % _tag)
+# ★ 注销必须用 registerSection 的返回值（带命名空间的主键）
+ok("this._registeredPaneID = registeredPaneID;" in pane_js
+   and "unregisterSection(this._registeredPaneID" in pane_js,
+   "24.12 ★ 注销用返回值（不是注册时的 paneID）")
+ok("if (!registeredPaneID)" in pane_js, "24.13 显式检查 registerSection 返回值（false 时不静默）")
+
+# ★ 划词缓存在浮窗开关判断之前（否则关掉浮窗后侧栏永远拿不到选中文本）
+_rp_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "reader-popup.js"),
+                  encoding="utf-8").read()
+_i_cap = _rp_src.find("TranslatePane.captureSelection(")
+_i_gate = _rp_src.find('if (!Prefs.get("readerPopupEnabled", true)) return;')
+ok(_i_cap > 0 and _i_gate > 0 and _i_cap < _i_gate,
+   "24.14 ★ 划词缓存先于浮窗开关判断（关掉浮窗也能在侧栏翻译）")
+
+# 单一真源：分段与笔记正文复用全文对照翻译的实现，避免两处格式漂移
+ok("BilingualTranslate._chunk(" in pane_js, "24.15 分段复用 BilingualTranslate._chunk（不重造）")
+ok("BilingualTranslate._noteMd(" in pane_js, "24.16 笔记正文复用 BilingualTranslate._noteMd（格式零漂移）")
+ok("BilingualTranslate.openViewer(" in pane_js, "24.17 「双栏窗口」复用既有对照窗口")
+ok("AIClient.chat(" not in pane_js, "24.18 面板不直连 AIClient（一律经 TranslateSvc/AIChat）")
+ok("TranslateSvc.translate(" in pane_js, "24.19 翻译经 TranslateSvc（多引擎 + 回退）")
+ok("test/translate-pane.test.js" in _pf3, "24.20 preflight 含翻译面板测试")
 
 # ---------- 输出 ----------
 print("=" * 60)

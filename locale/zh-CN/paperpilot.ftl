@@ -20,3 +20,11 @@ paperpilot-glance-section-header = PDF 速览
 paperpilot-glance-section-sidenav = 速览
     .label = 速览
     .tooltiptext = 不打开 PDF 速览摘要与全文开篇
+
+paperpilot-translate-section-header = 翻译
+    .label = 翻译
+    .tooltiptext = 翻译
+
+paperpilot-translate-section-sidenav = 翻译
+    .label = 翻译
+    .tooltiptext = 侧栏翻译：划词即译 / 换引擎 / 全文对照，一处搞定

@@ -19,3 +19,11 @@ paperpilot-glance-section-header = PDF Glance
 paperpilot-glance-section-sidenav = Glance
     .label = Glance
     .tooltiptext = Glance at the abstract and opening text without opening the PDF
+
+paperpilot-translate-section-header = Translate
+    .label = Translate
+    .tooltiptext = Translate
+
+paperpilot-translate-section-sidenav = Translate
+    .label = Translate
+    .tooltiptext = Sidebar translation: select-to-translate, switch engines, full-text — all in one place

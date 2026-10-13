@@ -1,0 +1,515 @@
+#!/usr/bin/env node
+/* AI 问答悬浮窗（ChatFloat）测试（插件 0.31.0）
+ *
+ * 悬浮窗是「AI 问答的入口本身」——渲染崩了或接线断了就是「快捷键没反应 /
+ * 按钮点了没动静」，典型的静默失败。两层覆盖：
+ *   纯逻辑层：会话状态机（setSessionItem）、runSend 单源发送（成功/无Key/
+ *     无条目/NO_PDF/ABORTED/busy 重入）、几何 pref 解析与夹取、resolveItem。
+ *   迷你 DOM 层：真加载 utils.js + chat-float.js，构建悬浮窗并发送一轮，
+ *     断言气泡渲染、输入历史 ↑↓、划词注入预填、停靠切换、Esc/按钮接线。
+ *
+ * 运行：node test/chat-float.test.js
+ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+const ROOT = path.join(__dirname, '..');
+const FILES = [
+  'chrome/content/scripts/core/utils.js',
+  'chrome/content/scripts/panels/chat-float.js',
+];
+
+let pass = 0;
+const fails = [];
+function ok(c, label, extra) {
+  if (c) { pass++; return true; }
+  fails.push(label + (extra !== undefined ? '  ← ' + JSON.stringify(extra) : ''));
+  return false;
+}
+function eq(a, b, label) { return ok(a === b, label, { got: a, want: b }); }
+function has(hay, needle, label) {
+  return ok(String(hay).indexOf(needle) >= 0, label, { want: needle, got: String(hay).slice(0, 200) });
+}
+
+/* ---------------- 迷你 DOM ---------------- */
+
+class El {
+  constructor(tag) {
+    this.tag = tag; this.children = []; this.style = new StyleObj();
+    this._attrs = {}; this.dataset = {};
+    this.className = ''; this._text = ''; this.value = ''; this.disabled = false;
+    this.id = ''; this.parentNode = null; this.handlers = {};
+    this.scrollTop = 0; this.scrollHeight = 0;
+    this.title = '';
+  }
+  setAttribute(k, v) {
+    if (k === 'class') this.className = String(v);
+    else if (k === 'id') this.id = String(v);
+    else if (k === 'title') this.title = String(v);
+    this._attrs[k] = String(v);
+  }
+  getAttribute(k) {
+    if (k === 'class') return this.className;
+    if (k === 'id') return this.id;
+    return k in this._attrs ? this._attrs[k] : null;
+  }
+  appendChild(c) { c.parentNode = this; this.children.push(c); return c; }
+  remove() {
+    if (this.parentNode) {
+      this.parentNode.children = this.parentNode.children.filter((x) => x !== this);
+      this.parentNode = null;
+    }
+  }
+  removeChild(c) { return c.remove(); }
+  addEventListener(ev, fn) { (this.handlers[ev] = this.handlers[ev] || []).push(fn); }
+  removeEventListener(ev, fn) {
+    const list = this.handlers[ev] || [];
+    const i = list.indexOf(fn);
+    if (i >= 0) list.splice(i, 1);
+  }
+  fire(ev, arg) {
+    for (const f of (this.handlers[ev] || []).slice()) {
+      const r = f(arg || {});
+      if (r === false) break;
+    }
+  }
+  click() { this.fire('click'); }
+  focus() {}
+  setPointerCapture() {}
+  getBoundingClientRect() {
+    return { left: 0, top: 0, right: 400, bottom: 540, width: 400, height: 540 };
+  }
+  get isConnected() {
+    let n = this;
+    while (n.parentNode) n = n.parentNode;
+    return !!(n._isDocRoot);
+  }
+  get ownerDocument() { return this._ownerDoc || null; }
+  set textContent(v) { this._text = v == null ? '' : String(v); this.children = []; }
+  get textContent() {
+    if (this.children.length) return this.children.map((c) => c.textContent).join('');
+    return this._text;
+  }
+  set innerHTML(v) { this._html = String(v); this._text = String(v); }
+  get innerHTML() { return this._html || ''; }
+  /** 极简 querySelector：只支持本模块用到的两种形态 */
+  querySelector(sel) {
+    let m = /^:scope > (\w+):not\(\.([\w-]+)\)$/.exec(sel);
+    if (m) {
+      for (const c of this.children) {
+        if (c.tag === m[1] && String(c.className).split(/\s+/).indexOf(m[2]) < 0) return c;
+      }
+      return null;
+    }
+    m = /^#([\w-]+)$/.exec(sel);
+    if (m) return this._by((n) => n.id === m[1]);
+    return null;
+  }
+  _by(pred) {
+    for (const c of this.children) {
+      if (pred(c)) return c;
+      const r = c._by(pred);
+      if (r) return r;
+    }
+    return null;
+  }
+  /** 极简 closest：按 id / tag 向上爬 */
+  closest(sel) {
+    const mId = /^#([\w-]+)$/.exec(sel);
+    const mTag = /^(\w+)$/.exec(sel);
+    let n = this;
+    while (n) {
+      if (mId && n.id === mId[1]) return n;
+      if (mTag && n.tag === mTag[1]) return n;
+      n = n.parentNode;
+    }
+    return null;
+  }
+  all() { return this.children.reduce((a, c) => a.concat([c], c.all()), []); }
+  byTag(t) { return this.all().filter((n) => n.tag === t); }
+  byId(i) { return this.all().find((n) => n.id === i) || null; }
+}
+
+class StyleObj {
+  constructor() { this._map = {}; }
+  // cssText 赋值时解析 display（模块把 display:none 写在 cssText 串里，
+  // 之后又用 style.display="flex" 直改——两边要互通）
+  set cssText(v) {
+    this._cssText = String(v);
+    const m = /(?:^|;)\s*display\s*:\s*([^;]+)/.exec(this._cssText);
+    if (m) this._map.display = m[1].trim();
+  }
+  get cssText() { return this._cssText || ''; }
+  set(k, v) { this._map[k] = v; }
+  get display() { return this._map.display; }
+  set display(v) { this._map.display = v; }
+  get opacity() { return this._map.opacity; }
+  set opacity(v) { this._map.opacity = v; }
+  get left() { return this._map.left; }
+  set left(v) { this._map.left = v; }
+  get top() { return this._map.top; }
+  set top(v) { this._map.top = v; }
+  get right() { return this._map.right; }
+  set right(v) { this._map.right = v; }
+  get bottom() { return this._map.bottom; }
+  set bottom(v) { this._map.bottom = v; }
+  get width() { return this._map.width; }
+  set width(v) { this._map.width = v; }
+  get height() { return this._map.height; }
+  set height(v) { this._map.height = v; }
+}
+
+function makeDoc() {
+  const docRoot = new El('window');
+  docRoot._isDocRoot = true;
+  const document = {
+    documentElement: docRoot,
+    createElementNS: (ns, tag) => { const el = new El(tag); el._ownerDoc = document; return el; },
+    createElement: (tag) => { const el = new El(tag); el._ownerDoc = document; return el; },
+    createXULElement: (tag) => { const el = new El(tag); el._ownerDoc = document; return el; },
+    getElementById(id) { return docRoot.byId(id); },
+    addEventListener(ev, fn) { (this.handlers = this.handlers || {})[ev] = this.handlers[ev] || []; this.handlers[ev].push(fn); },
+  };
+  return { document, docRoot };
+}
+
+/* ---------------- 桩环境 ---------------- */
+
+const PrefStore = new Map();
+const PREFIX = 'extensions.zotero.paperpilot.';
+const getPref = (k, d) => (PrefStore.has(PREFIX + k) ? PrefStore.get(PREFIX + k) : d);
+
+const itemA = { id: 101, isRegularItem: () => true, getDisplayTitle: () => '论文A',
+  getField: () => '', getCreators: () => [] };
+const itemB = { id: 202, isRegularItem: () => true, getDisplayTitle: () => '论文B',
+  getField: () => '', getCreators: () => [] };
+
+let readers = [];
+const Zotero = {
+  locale: 'zh-CN',
+  Prefs: { get: (k) => (PrefStore.has(k) ? PrefStore.get(k) : undefined), set: (k, v) => PrefStore.set(k, v) },
+  getMainWindow: () => win,
+  getMainWindows: () => [win],
+  getActiveZoteroPane: () => ({ getSelectedItems: () => selectedItems }),
+  Items: { get: (id) => (id === 101 ? itemA : id === 202 ? itemB : null) },
+  Reader: { _readers: readers },
+  Utilities: { Internal: { copyText() {} } },
+  logError() {},
+};
+
+let selectedItems = [itemB];
+const { document, docRoot } = makeDoc();
+const win = {
+  document, innerWidth: 1280, innerHeight: 800, ZoteroPane: {},
+  openDialog() { throw new Error('unexpected openDialog'); },
+};
+
+let aiReady = true;
+let aiReply = '这是**AI**的回答';
+let aiThrows = null; // null=成功；Error=抛
+let chatStreamDelay = false;
+const streamHandles = [];
+const AIClient = {
+  hasKey: () => aiReady,
+  guidance: () => '未登录/未配置',
+  async chat() { if (aiThrows) throw aiThrows; return aiReply; },
+  chatStream(messages, onDelta) {
+    const h = {
+      aborted: false,
+      abort() { this.aborted = true; },
+      promise: (async () => {
+        // 先让出一轮，保证 h 构造完成后才消费（否则 h.aborted 撞 TDZ）
+        await new Promise((r) => setImmediate(r));
+        if (aiThrows) throw aiThrows;
+        if (chatStreamDelay) await new Promise((r) => setTimeout(r, 5));
+        if (h.aborted) { const e = new Error('aborted'); e.message = 'ABORTED'; throw e; }
+        onDelta(aiReply.slice(0, 4));
+        if (h.aborted) { const e = new Error('aborted'); e.message = 'ABORTED'; throw e; }
+        return aiReply;
+      })(),
+    };
+    streamHandles.push(h);
+    return h;
+  },
+};
+
+const AIChat = {
+  async getFullText() { return fullText; },
+  async buildMessages(item, q, history, ft) {
+    const e = new Error('NO_PDF');
+    if (!ft && !abstractFallback) throw e;
+    return [{ role: 'system', content: 'sys' }]
+      .concat(history.slice(-12))
+      .concat([{ role: 'user', content: q }]);
+  },
+};
+let fullText = '论文全文……';
+let abstractFallback = '';
+
+let noteArgs = null;
+const Notes = { async createFromMarkdown(item, title, md) { noteArgs = { title, md, id: item.id }; return true; } };
+const Prompts = { all: () => [
+  { id: 'p1', name: '总结', text: '请总结这篇论文' },
+  { id: 'p2', name: '方法', text: '这篇论文用了什么方法？' },
+] };
+
+const sandbox = {
+  console, Zotero, Services: {}, AIClient, AIChat, Notes, Prompts,
+  IOUtils: {}, PathUtils: {},
+  setTimeout: (fn) => { if (typeof fn === 'function') setTimeout(fn, 0); return 0; },
+  clearTimeout: () => {},
+  Promise, Date, Math, JSON,
+};
+sandbox.globalThis = sandbox;
+vm.createContext(sandbox);
+for (const f of FILES) {
+  vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
+}
+// utils.js 的 var Notes 会覆盖预注入桩（vm 全局属性），加载后重新桩掉落笔记动作
+// （translate-pane.test.js 同款处理）
+sandbox.Notes.createFromMarkdown = async (item, title, md) => { noteArgs = { title, md, id: item.id }; return true; };
+const CF = sandbox.ChatFloat;
+const I18n = sandbox.I18n;
+
+async function tick(n = 4) { for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r)); }
+
+(async function main() {
+  /* ---------------- ① 会话状态机 setSessionItem ---------------- */
+
+  eq(CF.setSessionItem(itemA), '', 'setSessionItem: 首次设置不报切换');
+  eq(CF.session.item, itemA, '会话条目已锁定');
+  eq(CF.setSessionItem(itemA), '', '同条目重复设置不切换');
+  CF.session.history.push({ role: 'user', content: 'q' });
+  eq(CF.setSessionItem(itemB), 'switched', '换条目且已有历史 → switched');
+  eq(CF.session.history.length, 0, '切换条目清空历史');
+
+  /* ---------------- ② runSend 单源发送 ---------------- */
+
+  let ui = null;
+  function freshUI() {
+    const u = {
+      user: '', statuses: [], deltas: [], done: '', errors: [], aborted: false, busyFlags: [],
+      itemTitles: [],
+      onUser(t) { this.user = t; },
+      onStatus(t) { this.statuses.push(t); },
+      onDelta(a) { this.deltas.push(a); },
+      onDone(t) { this.done = t; },
+      onError(m) { this.errors.push(m); },
+      onAbort() { this.aborted = true; },
+      onBusy(b) { this.busyFlags.push(b); },
+      onItemChanged(t) { this.itemTitles.push(t); },
+    };
+    return u;
+  }
+
+  // 成功轮次（流式）
+  CF.session.item = itemA; CF.session.history = [];
+  ui = freshUI();
+  await CF.runSend('这篇论文的创新点？', ui);
+  ok(ui.user === '这篇论文的创新点？', 'runSend: onUser 收到问题');
+  ok(ui.deltas.length >= 1, 'runSend: 流式 onDelta 至少一次');
+  has(ui.done, aiReply, 'runSend: onDone 收到完整答案');
+  eq(ui.errors.length, 0, 'runSend: 成功无错误');
+  eq(CF.session.history.length, 2, 'runSend: 成功轮次入历史（user+assistant）');
+  if (CF.session.history.length !== 2) {
+    console.log('DEBUG history=', JSON.stringify(CF.session.history));
+    console.log('DEBUG errors=', JSON.stringify(ui.errors), 'aborted=', ui.aborted, 'done=', JSON.stringify(ui.done));
+  }
+  eq(CF.session.history[1] && CF.session.history[1].content, aiReply, 'runSend: 历史里是完整答案');
+  eq(CF.session.busy, false, 'runSend: 结束后 busy=false');
+  ok(ui.busyFlags.indexOf(true) >= 0 && ui.busyFlags.indexOf(false) >= 0, 'runSend: onBusy 开合成对');
+  eq(CF.session.inputHistory[0], '这篇论文的创新点？', 'runSend: 输入历史入栈');
+
+  // 无 Key
+  aiReady = false; CF.session.item = itemA; CF.session.history = [];
+  ui = freshUI();
+  await CF.runSend('问题', ui);
+  eq(ui.errors.length, 1, 'runSend: 无 Key → onError 一次');
+  has(ui.errors[0], I18n.t('chatNoKey'), 'runSend: 无 Key 的错误文案正确');
+  eq(CF.session.history.length, 0, 'runSend: 无 Key 不入历史');
+  aiReady = true;
+
+  // 无条目
+  CF.session.item = null; selectedItems.length = 0; readers.length = 0;
+  ui = freshUI();
+  await CF.runSend('问题', ui);
+  eq(ui.errors.length, 1, 'runSend: 无条目 → onError 一次');
+  has(ui.errors[0], I18n.t('chatNoItem'), 'runSend: 无条目的错误文案正确');
+  selectedItems.length = 0; selectedItems.push(itemB);
+
+  // 无条目但可 resolve（选中条目兜底）
+  CF.session.item = null;
+  ui = freshUI();
+  await CF.runSend('问题', ui);
+  eq(CF.session.item, itemB, 'runSend: 未锁定时 resolve 到选中条目');
+  ok(ui.itemTitles.length >= 1, 'runSend: 条目变化通知 onItemChanged');
+  eq(ui.errors.length, 0, 'runSend: resolve 成功后正常发送');
+
+  // NO_PDF：buildMessages 抛 NO_PDF
+  fullText = null; abstractFallback = false;
+  CF.session.item = itemA; CF.session.history = [];
+  ui = freshUI();
+  await CF.runSend('问题', ui);
+  eq(ui.errors.length, 1, 'runSend: NO_PDF → onError 一次');
+  has(ui.errors[0], I18n.t('chatNoPdf'), 'runSend: NO_PDF 的错误文案正确');
+  eq(CF.session.history.length, 0, 'runSend: NO_PDF 不入历史');
+  fullText = '论文全文……'; abstractFallback = true;
+
+  // ABORTED：停止后丢弃半截、不入历史
+  CF.session.item = itemA; CF.session.history = [];
+  ui = freshUI();
+  const p = CF.runSend('需要停止的问题', ui);
+  await tick(1);
+  CF.stop();
+  await p;
+  ok(ui.aborted, 'runSend: 停止 → onAbort');
+  eq(ui.done, '', 'runSend: 停止后无 onDone');
+  eq(CF.session.history.length, 0, 'runSend: 停止的轮次不入历史');
+  eq(CF.session.busy, false, 'runSend: 停止后 busy=false');
+
+  // busy 重入
+  CF.session.item = itemA;
+  chatStreamDelay = true;
+  ui = freshUI();
+  const slow = CF.runSend('慢问题', ui);
+  await tick(1);
+  const ui2 = freshUI();
+  await CF.runSend('并发的第二个问题', ui2);
+  eq(ui2.user, '', 'runSend: busy 期间重入被忽略');
+  eq(ui2.errors.length, 0, 'runSend: busy 重入不产生错误');
+  CF.stop();
+  await slow;
+  chatStreamDelay = false;
+
+  /* ---------------- ③ 几何 pref 解析与夹取 ---------------- */
+
+  eq(CF._parsePair('10,20', [1, 2])[0], 10, 'parsePair: 合法值');
+  eq(CF._parsePair('bad', [7, 8])[1], 8, 'parsePair: 坏值回退默认');
+  eq(CF._parsePair('', [5, 6]).length, 2, 'parsePair: 空串回退');
+  eq(CF._clamp(50, 0, 10), 10, 'clamp: 上界');
+  eq(CF._clamp(-5, 0, 10), 0, 'clamp: 下界');
+
+  /* ---------------- ④ _resolveItem：reader 优先、选中回退 ---------------- */
+
+  // reader 引用必须原位 mutate（readers 数组已被 Zotero.Reader._readers 引用，
+  // 重新赋值变量会断开桩）
+  readers.length = 0;
+  selectedItems.length = 0; selectedItems.push(itemB);
+  eq(CF._resolveItem(), itemB, 'resolveItem: 无 reader → 选中条目');
+  // reader 里是 itemA 的 PDF 附件（parent 101）
+  readers.push({ itemID: 999, _iframeWindow: null });
+  Zotero.Items.get = (id) => (id === 999 ? { id: 999, isRegularItem: () => false, parentItemID: 101 } : (id === 101 ? itemA : itemB));
+  eq(CF._resolveItem(), itemA, 'resolveItem: reader 附件上溯父条目');
+  readers.length = 0;
+
+  /* ---------------- ⑤ 悬浮窗 DOM：构建 / 发送 / 输入历史 / 注入 / 停靠 ---------------- */
+
+  const entry = CF._ensure(win);
+  ok(!!entry, '悬浮窗构建成功');
+  ok(docRoot.byId(CF.ROOT_ID) === entry.root, '悬浮窗已挂载到窗口文档');
+  eq(entry.root.style.display, 'none', '初始隐藏');
+  const refs = entry.refs;
+  ok(refs.head && refs.msgs && refs.input && refs.sendBtn, '关键结构齐备（标题栏/消息区/输入框/发送）');
+  ok(entry.refs.dockLBtn && entry.refs.dockRBtn && entry.refs.opBtn && entry.refs.popBtn, '停靠/透明度/分屏按钮齐备');
+
+  // show：默认浮起
+  CF.setSessionItem(itemA);
+  CF.show(win);
+  eq(entry.root.style.display, 'flex', 'show 后可见');
+  has(refs.titleEl.textContent, '论文A', '标题显示文献名');
+
+  // 发送一轮（走悬浮窗 UI 回调）
+  CF.session.history = [];
+  refs.input.value = '悬浮窗里的问题';
+  CF._doSend(entry);
+  await tick(6);
+  eq(CF.session.history.length, 2, '悬浮窗发送成功入历史');
+  const bubbles = refs.msgs.children.filter((c) => c.className.indexOf('pp-cf-msg') >= 0);
+  ok(bubbles.length >= 2, '悬浮窗渲染 user + assistant 气泡');
+  has(refs.msgs.textContent, '悬浮窗里的问题', '用户气泡可见');
+  ok(String(bubbles[bubbles.length - 1].innerHTML || '').indexOf('<') >= 0,
+    'assistant 气泡走 MdLite 富文本');
+
+  // 输入历史 ↑↓（回溯→还原）
+  refs.input.fire('keydown', { key: 'ArrowUp', selectionStart: 0, selectionEnd: 0, preventDefault() {} });
+  has(refs.input.value, '悬浮窗里的问题', '↑ 回溯输入历史');
+  refs.input.fire('keydown', { key: 'ArrowDown', selectionStart: refs.input.value.length, preventDefault() {} });
+  eq(refs.input.value, '', '↓ 回到末尾清空');
+
+  // 停靠切换
+  CF._dock(entry, 'right');
+  eq(entry.geo.dock, 'right', '停靠右侧生效');
+  CF._dock(entry, 'left');
+  eq(entry.geo.dock, 'left', '停靠左侧生效');
+  CF._dock(entry, '');
+  eq(entry.geo.dock, '', '取消停靠恢复浮动');
+  eq(String(getPref('chatFloatDock', '')), '', '停靠状态持久化写回');
+
+  // 位置持久化
+  entry.geo.x = 120; entry.geo.y = 60; entry.geo.w = 420; entry.geo.h = 560;
+  CF._saveGeo(entry);
+  eq(String(getPref('chatFloatPos', '')), '120,60', '位置持久化');
+  eq(String(getPref('chatFloatSize', '')), '420,560', '尺寸持久化');
+  const geo2 = CF._restoreGeo();
+  eq(geo2.x, 120, 'restoreGeo: 位置读回');
+  eq(geo2.h, 560, 'restoreGeo: 尺寸读回');
+
+  // hide / toggle
+  CF.hide(win);
+  eq(entry.root.style.display, 'none', 'hide 后隐藏');
+  CF.toggle(win);
+  eq(entry.root.style.display, 'flex', 'toggle 再度唤起');
+  CF.toggle(win);
+  eq(entry.root.style.display, 'none', 'toggle 关闭（对 toggle 幂等）');
+
+  // 划词注入：唤起 + 预填
+  CF.session.item = null;
+  const injected = CF.injectQuote(itemA, '选中的原文片段');
+  eq(injected, true, 'injectQuote 返回成功');
+  has(refs.input.value, '选中的原文片段', '注入选区到输入框');
+  eq(entry.root.style.display, 'flex', '注入唤起悬浮窗');
+  eq(CF.session.item, itemA, '注入锁定条目');
+
+  /* ---------------- ⑥ saveHistoryAsNote ---------------- */
+
+  CF.session.item = itemA;
+  CF.session.history = [
+    { role: 'user', content: '问1' },
+    { role: 'assistant', content: '答1' },
+  ];
+  noteArgs = null;
+  const saved = await CF.saveHistoryAsNote(null);
+  eq(saved, true, '存为笔记成功');
+  ok(!!noteArgs, '笔记参数齐备');
+  has(noteArgs.md, '问1', '笔记含问答内容');
+  CF.session.history = [];
+  eq(await CF.saveHistoryAsNote({ onError: (m) => ui.errors.push(m) }), false, '空历史存笔记返回失败');
+
+  /* ---------------- ⑦ Esc 接线 ---------------- */
+
+  // _bindEsc 在 _build 时把 keydown 捕获监听挂到 document（不是 docRoot）
+  ok(Array.isArray(document.handlers.keydown) && document.handlers.keydown.length > 0,
+    'Esc 捕获监听已挂到窗口 document');
+
+  /* ---------------- ⑧ unregister 清场 ---------------- */
+
+  CF.register('test@plugin');
+  CF.unregister();
+  ok(!docRoot.byId(CF.ROOT_ID), 'unregister 后悬浮窗 DOM 已摘除');
+  ok(!docRoot.byId(CF.STYLE_ID), 'unregister 后样式表已摘除');
+  eq(CF.session.history.length, 0, 'unregister 重置会话');
+  eq(CF.session.item, null, 'unregister 清除锁定条目');
+
+  /* ---------------- 汇总 ---------------- */
+
+  console.log(`\nchat-float: ${pass} passed, ${fails.length} failed`);
+  if (fails.length) {
+    for (const f of fails) console.log('  ✗ ' + f);
+    process.exit(1);
+  }
+  console.log('ALL OK');
+
+})().catch((e) => { console.error(e); process.exit(1); });

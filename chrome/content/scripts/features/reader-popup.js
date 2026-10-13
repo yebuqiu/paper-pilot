@@ -14,7 +14,7 @@
  * - 按钮统一样式（边框/圆角/hover/disabled），结果区细滚动条
  * - <style> 随 box 挂载、随浮窗销毁，不残留 reader 文档
  */
-/* global Zotero, Prefs, AIClient, AIChat, AIChatPane, I18n, TranslateSvc */
+/* global Zotero, Prefs, AIClient, AIChat, AIChatPane, ChatFloat, I18n, TranslateSvc, TranslatePane */
 
 var ReaderPopup = {
   _handler: null,
@@ -138,13 +138,22 @@ var ReaderPopup = {
 
   _onPopup(event) {
     try {
-      if (!Prefs.get("readerPopupEnabled", true)) return;
       const { doc, params, append } = event;
       const text =
         (params && params.annotation && params.annotation.text) ||
         (params && params.text) || "";
       const cleanText = text.trim();
       if (!cleanText || cleanText.length < 2) return;
+      // 0.30.0：把划词推给右侧栏「翻译」面板。放在 readerPopupEnabled 判断**之前**——
+      // 面板是独立入口，用户即使关掉浮窗也应能在侧栏里看到/翻译刚选中的内容；
+      // 用官方弹窗事件缓存选中文本，避免去碰 reader 私有 API（同 zotero-pdf-translate 策略）。
+      try {
+        const rid = event && event.reader && event.reader.itemID;
+        if (rid && typeof TranslatePane !== "undefined" && TranslatePane) {
+          TranslatePane.captureSelection(rid, cleanText);
+        }
+      } catch (e) { /* 捕获失败不得影响浮窗 */ }
+      if (!Prefs.get("readerPopupEnabled", true)) return;
       // 0.21.0：AI 未就绪不再静默 return。
       // 旧行为是 `if (!AIClient.hasKey()) return;`——浮窗什么都不渲染，
       // 用户划词后看到的只有「没反应」，完全不知道是没登录/没配 Key。
@@ -256,6 +265,9 @@ var ReaderPopup = {
       const retryBtn = mkBtn(I18n.t("popupRetry"));
       const wbBtn = mkBtn(I18n.t("popupWriteBack"));
       const paneBtn = mkBtn(I18n.t("popupContinuePane"));
+      // 0.31.0 在浮窗继续：与「在侧栏继续」并列的第二出口（悬浮窗总能唤起，
+      // 不依赖右侧栏是否已渲染，体验比侧栏入口更稳）
+      const floatBtn = mkBtn(I18n.t("popupContinueFloat"));
       const status = mk("span",
         "color:#888;font-size:11.5px;flex:1;min-width:0;overflow:hidden;" +
         "text-overflow:ellipsis;white-space:nowrap;");
@@ -265,6 +277,7 @@ var ReaderPopup = {
         actions.appendChild(wbBtn);
       }
       if (item) actions.appendChild(paneBtn);
+      if (item) actions.appendChild(floatBtn);
       actions.appendChild(status);
 
       // 未就绪提示行（0.21.0 起为「不再静默」而加；0.28.0 拆成「无 AI」与「无翻译引擎」两种）
@@ -543,6 +556,15 @@ var ReaderPopup = {
           status.textContent = ok ? "" : I18n.t("popupPaneUnavailable");
         } catch (e) {
           status.textContent = I18n.t("popupPaneUnavailable");
+        }
+      });
+
+      // 0.31.0：送入 AI 问答悬浮窗继续（悬浮窗总能唤起，无「先打开面板」前置条件）
+      floatBtn.addEventListener("click", () => {
+        try {
+          ChatFloat.injectQuote(item, cleanText);
+        } catch (e) {
+          Zotero.logError(e);
         }
       });
 

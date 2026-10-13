@@ -351,6 +351,30 @@
           <html:span>结果缓存（同一段内容不重复请求）</html:span>
         </html:label>
       </html:div>
+      <html:div class="pp-grid3" style="margin-top:6px;">
+        <html:div class="pp-field">
+          <html:label class="pp-label">单个引擎预算（毫秒，0=不限）</html:label>
+          <html:input type="number" id="pp-tr-route" class="pp-input" min="0" max="120000" placeholder="20000"/>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">回退链总预算（毫秒，0=不限）</html:label>
+          <html:input type="number" id="pp-tr-total" class="pp-input" min="0" max="300000" placeholder="45000"/>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">失败冷却（秒，0=关闭）</html:label>
+          <html:input type="number" id="pp-tr-cooldown" class="pp-input" min="0" max="3600" placeholder="60"/>
+        </html:div>
+      </html:div>
+      <html:div class="pp-hint">稳定性三件套：单路预算到点就换下一个引擎；总预算到点就停整条链；某引擎刚失败过会在冷却期内被自动跳过（由其它引擎顶上），避免一次网络抖动把整条链跑满。</html:div>
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">自建 / 离线（可选，零成本且无额度限制）</html:div>
+        <html:div class="pp-sub-desc">本机跑一个翻译服务即可摆脱额度与外网依赖：LibreTranslate（默认 5000 端口）、Lingva（3000）、DLX（1188）。点下面的按钮会自动发现并一键填入地址，无需新增任何引擎。</html:div>
+        <html:div class="pp-row">
+          <html:button id="pp-tr-local-scan" class="pp-btn pp-btn-sm">检测本机自建服务</html:button>
+          <html:span id="pp-tr-local" class="pp-msg"></html:span>
+        </html:div>
+      </html:div>
+      <html:div class="pp-hint" style="margin-top:10px;">🔒 数据去向：免密钥引擎会把待译文本发往对应服务商（Google / 微软 / 腾讯 / 有道等）；「AI 大模型」引擎发往你在「AI 模型通道」里配置的通道；自建引擎（LibreTranslate / Lingva / DLX）与本地 Ollama 不出本机。未发表的稿件建议优先走自建或本地通道。</html:div>
       <html:div class="pp-sub" style="margin-top:12px;">
         <html:div class="pp-sub-title">全部引擎</html:div>
         <html:div class="pp-sub-desc">「设为当前」= 用作主翻译引擎；「纳入回退」= 主引擎失败时依次尝试；带 🔑 的引擎需填写密钥后可用</html:div>

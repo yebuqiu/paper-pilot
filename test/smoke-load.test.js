@@ -56,7 +56,7 @@ console.log("加载模块 " + files.length + " 个，失败 " + failed + " 个")
 
 const expect = ["Prefs", "I18n", "MdLite", "Notes", "ItemSel", "TagCurator", "AttachDoctor", "LibSearch",
   "SmartCleanup", "RuleTag", "Automation", "AutoRead", "TagCurator", "LibSearch", "NoteGraph", "ReadingStats", "AttachDoctor", "AIChat", "AIClient", "Menus", "ReadingState", "UiTheme", "PdfCompare", "MetaRules", "Discovery", "MCP", "SciHub", "OAFetch",
-  "TranslateSvc",
+  "TranslateSvc", "TranslatePane", "ChatFloat",
   "ArxivErrors", "ArxivDates", "ArxivQuery", "ArxivCategories", "ArxivAtom", "ArxivAnalyze", "ArxivRateLimiter", "ArxivFetch"];
 const missing = expect.filter((k) => !sandbox[k]);
 console.log("关键全局缺失:", missing.length ? missing : "无 ✓");
@@ -74,6 +74,11 @@ console.log("TranslateSvc 引擎数:", svcN >= 13 ? "✓ " + svcN : "✗ " + svc
 console.log("TranslateSvc.normalizeLang 可用:",
   sandbox.TranslateSvc.normalizeLang("中文") === "zh-CN" &&
   sandbox.TranslateSvc.normalizeLang("zh-Hant") === "zh-TW" ? "✓" : "✗");
+// 0.30.0 阅读器右侧栏翻译面板
+const tp = sandbox.TranslatePane;
+console.log("TranslatePane 就绪:",
+  tp && tp.PANE_ID === "paperpilot-translate" &&
+  typeof tp.captureSelection === "function" && typeof tp._build === "function" ? "✓" : "✗");
 // 0.25.0 起解析不再由 Discovery 自带，改为生成出来的 ArxivAtom（单一真源 tools/arxiv/src）
 const atom = sandbox.ArxivAtom.parseAtom('<entry><id>http://arxiv.org/abs/2401.00001v1</id><title>T</title><summary>S</summary><author><name>A B</name></author></entry>');
 console.log("ArxivAtom.parseAtom 可用:", atom.entries.length === 1 && atom.entries[0].arxivId === "2401.00001" ? "✓" : "✗");

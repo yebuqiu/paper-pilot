@@ -54,8 +54,20 @@ const Prefs = {
 // HTTP 计划：数组，每项 {match(urlSub), res(obj) | fail(msg) | failStatus(code)}
 let httpPlan = [];
 const httpCalls = [];
-function resetHttp() { httpPlan = []; httpCalls.length = 0; }
-function plan(match, outcome) { httpPlan.push({ match, outcome }); }
+function resetHttp() {
+  httpPlan = []; httpCalls.length = 0;
+  // 冷却与缓存都是"会话级状态"，用例之间必须清掉，否则会串味（0.31.0 新增冷却后踩到）
+  if (T && T.clearCooldown) T.clearCooldown();
+  if (T && T.clearCache) T.clearCache();
+}
+/** 只换 HTTP 计划，保留冷却状态（测冷却行为时用） */
+function resetHttpOnly() { httpPlan = []; httpCalls.length = 0; }
+function plan(match, outcome) { httpPlan.push({ match, outcome, count: 0 }); }
+/** 某匹配串被真正请求了几次 */
+function hits(match) {
+  const h = httpPlan.find((p) => p.match === match);
+  return h ? h.count : 0;
+}
 
 const Zotero = {
   locale: 'zh-CN',
@@ -66,14 +78,17 @@ const Zotero = {
       httpCalls.push({ method, url, opts });
       const hit = httpPlan.find((p) => url.indexOf(p.match) >= 0);
       if (!hit) throw new Error('no http plan for ' + url.slice(0, 80));
-      const o = hit.outcome;
+      hit.count++;
+      // outcome / outcome.res 都支持函数形式（按请求 URL 动态造响应，用于多段分段的回显）
+      const o = (typeof hit.outcome === 'function') ? hit.outcome(url, method) : hit.outcome;
       if (o.fail) throw new Error(o.fail);
       if (o.failStatus) {
         const e = new Error('HTTP ' + o.failStatus);
         e.xmlhttp = { status: o.failStatus, response: null, responseText: 'err' };
         throw e;
       }
-      return { status: 200, response: o.res, responseText: o.text };
+      const res = (typeof o.res === 'function') ? o.res(url, method) : o.res;
+      return { status: 200, response: res, responseText: o.text };
     },
   },
 };
@@ -357,6 +372,312 @@ ok(T.googleTk('a') !== T.googleTk('b'), '⑥ Google tk 随文本变化');
 
   ok(ov.services.length >= 13, '⑦ 引擎数量 ≥ 13', ov.services.length);
   ok(ov.langs.some((l) => l.code === 'zh-CN'), '⑦ 语言表含简中');
+
+  /* ==================== ⑧ 长文本分段 / Edge 引擎 / prepare（0.31.0） ==================== */
+
+  /** 把分段结果按 sep 拼回（应与原文一致） */
+  const rejoin = (sp) => {
+    let out = sp.parts[0] || '';
+    for (let i = 1; i < sp.parts.length; i++) out += (sp.seps[i - 1] || '') + sp.parts[i];
+    return out;
+  };
+
+  // --- 纯函数 _splitText ---
+  let sp = T.splitText('aa bb cc', 4, 'chars');
+  eq(sp.parts.length, 3, '⑧ 按字符切分：4 字符上限 → 3 段');
+  eq(sp.parts[0], 'aa', '⑧ 段内容正确（不含尾随空格）');
+  eq(sp.seps[0], ' ', '⑧ 尾随空白被摘成 sep（拼回时空格不丢）');
+  eq(sp.seps.length, sp.parts.length - 1, '⑧ seps 与 parts 对齐');
+  eq(rejoin(sp), 'aa bb cc', '⑧ 拼回 == 原文');
+
+  sp = T.splitText('你好世界', 3, 'bytes');
+  eq(sp.parts.length, 4, '⑧ 按字节切分：CJK 每字 3 字节 → 4 段');
+  eq(rejoin(sp), '你好世界', '⑧ 无空格 CJK 硬切后拼回 == 原文');
+
+  sp = T.splitText('😀😀😀', 4, 'bytes');
+  eq(sp.parts.length, 3, '⑧ 4 字节 emoji 按字节切分');
+  ok(sp.parts.every((p) => p.length === 2), '⑧ 代理对不被切开（每段是完整的 2 个 UTF-16 单元）', sp.parts);
+  eq(rejoin(sp), '😀😀😀', '⑧ emoji 拼回 == 原文');
+
+  sp = T.splitText('abc', 1, 'chars');
+  eq(sp.parts.join(''), 'abc', '⑧ 上限=1 也不丢内容、不死循环');
+
+  sp = T.splitText('  lead', 3, 'chars');
+  eq(sp.parts.join(''), 'lead', '⑧ 行首空白不产出空段（否则会发出空请求）');
+  ok(sp.parts.every((p) => p.trim().length > 0), '⑧ 任何一段都不是空白');
+
+  eq(T.splitText('', 10, 'chars').parts.length, 0, '⑧ 空文本 → 0 段');
+  eq(T.splitText('abc', 0, 'chars').parts.length, 1, '⑧ 上限为 0 时不切分');
+
+  // 一段长文本按同一规则反复切分都应能无损拼回
+  const longText = Array.from({ length: 300 }, (_, i) => 'word' + i).join(' ');
+  for (const metric of ['chars', 'bytes']) {
+    const r = T.splitText(longText, 120, metric);
+    eq(rejoin(r), longText, '⑧ 长文本按 ' + metric + ' 切分后无损拼回');
+    ok(r.parts.every((p) => (metric === 'chars' ? p.length <= 120 : T.utf8Bytes(p).length <= 120)),
+      '⑧ 每段都不超上限（' + metric + '）', r.parts.map((p) => p.length).slice(0, 5));
+  }
+
+  // --- 各引擎的单次上限（决定谁会分段） ---
+  eq(T.get('mymemory').limits.bytes, 500, '⑧ MyMemory 声明 500 字节上限（★ 官方是字节不是字符）');
+  eq(T.get('bing').limits.chars, 1000, '⑧ 必应网页版声明 1000 字符上限');
+  eq(T.get('edge').limits.chars, 5000, '⑧ Edge 引擎声明 5000 字符上限');
+  eq(T.get('tencent').limits.chars, 2000, '⑧ 腾讯 TMT 声明 2000 字符上限');
+  eq(T.get('baidu').limits.bytes, 4000, '⑧ 百度按字节声明上限');
+  eq(T.segmentsFor(T.get('mymemory'), 'x'.repeat(1200)).parts.length, 3, '⑧ 1200 字节 → MyMemory 切 3 段');
+  eq(T.segmentsFor(T.get('edge'), 'x'.repeat(1200)).parts.length, 1, '⑧ 1200 字符 → Edge 不分段');
+  eq(T.segmentsFor(T.get('deepl'), 'x'.repeat(9000)).parts.length, 1, '⑧ 未声明上限的引擎不分段');
+
+  // --- 引擎清单含 edge，且免密钥 ---
+  ok(!!T.get('edge'), '⑧ 引擎注册表含 edge');
+  eq(T.resolveSecret('edge', '').ok, true, '⑧ edge 免密钥恒就绪');
+  ok(/Edge/i.test(T.get('edge').name), '⑧ edge 名称可读');
+  ok(!!T.get('edge').hint, '⑧ edge 带使用说明');
+  ok(!!T.get('microsoft').hint, '⑧ microsoft 带 Azure F0 申请说明');
+  ok(/F0|200 万/.test(T.get('microsoft').hint), '⑧ microsoft 说明里点出 F0 免费额度');
+
+  // --- edge 的请求构造 / 响应解析（纯） ---
+  const eCtx = T.makeCtx('edge', { text: 'Hello', from: 'en', to: 'zh-CN', pre: { token: 'T.OK' } });
+  const eSpec = T.buildEndpoint('edge', eCtx);
+  includes(eSpec.url, 'api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0', '⑧ edge 端点正确');
+  includes(eSpec.url, 'to=zh-Hans', '⑧ edge 目标语言用微软码 zh-Hans');
+  includes(eSpec.url, 'from=en', '⑧ edge 源语言带上');
+  eq(eSpec.headers.Authorization, 'Bearer T.OK', '⑧ edge 用 prepare 拿到的 token');
+  includes(eSpec.headers['User-Agent'], 'Edg/', '⑧ edge 必须伪装成 Edge UA（接口对 UA 敏感）');
+  eq(JSON.parse(eSpec.body)[0].Text, 'Hello', '⑧ edge 请求体是 [{Text}]');
+  eq(T.extractResult('edge', { response: [{ translations: [{ text: '你好' }] }] }, {}), '你好', '⑧ edge 解析译文');
+  throws(() => T.extractResult('edge', { response: { error: { code: '401', message: 'bad token' } } }, {}),
+    /bad token/, '⑧ edge 错误体必须抛出（不能当空结果）');
+
+  // --- ★ prepare 真的会被调用（此前只声明未调用 → bing 引擎必然失败） ---
+  const BING_PAGE = '<html><script>IG:"1A2B3C4D5E",data-iid="translator.5023",' +
+    'var params_AbusePreventionHelper = [1699999999999,"TOKEN-XYZ",3600000];</script></html>';
+  setCfg({ active: 'bing', fallback: [], cache: false });
+  resetHttp();
+  plan('www.bing.com/translator', { text: BING_PAGE });
+  plan('www.bing.com/ttranslatev3', { res: [{ translations: [{ text: '你好' }] }] });
+  const rBing = await T.translate('hello', { to: 'zh-CN' });
+  eq(rBing.ok, true, '⑧ bing 引擎可翻译（prepare 被调用）', rBing);
+  eq(rBing.text, '你好', '⑧ bing 返回译文');
+  eq(hits('www.bing.com/translator'), 1, '⑧ 先取一次页面参数');
+  const bingCall = httpCalls.find((c) => c.url.indexOf('ttranslatev3') >= 0);
+  ok(!!bingCall, '⑧ 再发正式翻译请求');
+  includes(bingCall.url, 'IG=1A2B3C4D5E', '⑧ IG 来自页面（prepare 产物进了 URL）');
+  includes(bingCall.url, 'IID=translator.5023', '⑧ IID 来自页面');
+  includes(String(bingCall.opts.body), 'token=TOKEN-XYZ', '⑧ 反滥用 token 进了请求体');
+
+  resetHttp();
+  plan('www.bing.com/translator', { text: '<html>no helper here</html>' });
+  const rBing2 = await T.translate('hello', { to: 'zh-CN' });
+  eq(rBing2.ok, false, '⑧ 取不到页面参数 → 失败而非静默');
+  ok(/取 token 失败/.test(rBing2.error), '⑧ 给出可定位的错误', rBing2.error);
+
+  // --- edge 端到端（auth → 翻译） ---
+  const FAKE_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + 'x'.repeat(60) + '.abc123signature';
+  setCfg({ active: 'edge', fallback: [], cache: false });
+  resetHttp();
+  plan('edge.microsoft.com/translate/auth', { text: FAKE_JWT });
+  plan('api-edge.cognitive.microsofttranslator.com', { res: [{ translations: [{ text: '你好世界' }] }] });
+  const rEdge = await T.translate('Hello world', { to: 'zh-CN' });
+  eq(rEdge.ok, true, '⑧ Edge 引擎端到端可用', rEdge);
+  eq(rEdge.text, '你好世界', '⑧ Edge 返回译文');
+  eq(hits('edge.microsoft.com/translate/auth'), 1, '⑧ auth 只取一次');
+
+  resetHttp();
+  plan('edge.microsoft.com/translate/auth', { text: 'not-a-jwt' });
+  const rEdge2 = await T.translate('Hello', { to: 'zh-CN' });
+  eq(rEdge2.ok, false, '⑧ auth 返回异常内容 → 明确失败');
+  ok(/取 token 失败/.test(rEdge2.error), '⑧ 不把"接口变了"误报成"密钥无效"', rEdge2.error);
+
+  // --- MyMemory 多段：真发多次请求并正确拼回 ---
+  const mmText = Array.from({ length: 400 }, (_, i) => 'w' + i).join(' '); // > 1000 字节
+  const mmParts = T.splitText(mmText, 500, 'bytes').parts.length;
+  ok(mmParts >= 3, '⑧ 测试文本足够触发多段（' + mmParts + ' 段）');
+  setCfg({ active: 'mymemory', fallback: [], cache: false });
+  resetHttp();
+  plan('api.mymemory.translated.net', {
+    res: () => ({ responseStatus: 200, responseData: { translatedText: '(seg)' } }),
+  });
+  const rMM = await T.translate(mmText, { to: 'zh-CN' });
+  ok(rMM.ok, '⑧ MyMemory 长文本可分多次调用', rMM);
+  const mmOut = rMM.text || '';
+  eq(hits('api.mymemory.translated.net'), mmParts, '⑧ 请求次数 == 分段数（超长才拆，不长不拆）');
+  eq(mmOut.split('(seg)').length - 1, mmParts, '⑧ 每段译文都拼回结果', mmOut.slice(0, 60));
+  includes(mmOut, ' ', '⑧ 拼回时保留段落间空格');
+
+  // --- 分段数保护 ---
+  setCfg({ active: 'mymemory', fallback: [], cache: false });
+  resetHttp();
+  plan('api.mymemory.translated.net', { res: { responseStatus: 200, responseData: { translatedText: 'x' } } });
+  const huge = Array.from({ length: 4000 }, (_, i) => 'w' + i).join(' ');
+  const rHuge = await T.translate(huge, { to: 'zh-CN' });
+  eq(rHuge.ok, false, '⑧ 分段数超上限 → 明确失败（不退化成上百次串行请求）');
+  ok(/文本过长/.test(rHuge.error), '⑧ 给出可执行提示', rHuge.error);
+  eq(httpCalls.length, 0, '⑧ 超限时一个请求都不发');
+
+  /* ==================== ⑨ P1：冷却 / 预算 / Lingva / TranSmart（0.31.0） ==================== */
+
+  // --- 新增引擎入册 ---
+  ok(!!T.get('lingva'), '⑨ 引擎注册表含 lingva（自建=Google 质量）');
+  ok(!!T.get('transmart'), '⑨ 引擎注册表含 transmart（腾讯交互翻译，免密钥）');
+  eq(T.list().length >= 16, true, '⑨ 引擎总数 ≥ 16', T.list().length);
+  ok(!!T.get('transmart').experimental, '⑨ transmart 标注实验性（非官方协议）');
+
+  // --- Lingva：REST 形态与语言码 ---
+  setCfg({ secrets: { lingva: 'https://lingva.example.com/' } });
+  const lv = T.buildEndpoint('lingva', T.makeCtx('lingva', { text: 'Hello world', from: 'en', to: 'zh-CN' }));
+  eq(lv.method, 'GET', '⑨ Lingva 用 GET');
+  includes(lv.url, 'https://lingva.example.com/api/v1/', '⑨ Lingva 走 /api/v1/{source}/{target}/{query}（末尾斜杠被规整）');
+  includes(lv.url, '/en/zh/', '⑨ Lingva 语言码：简中 = zh（Google 码约定）');
+  includes(lv.url, encodeURIComponent('Hello world'), '⑨ Lingva 查询串已编码');
+  const lv2 = T.buildEndpoint('lingva', T.makeCtx('lingva', { text: 'x', from: 'auto', to: 'zh-TW' }));
+  includes(lv2.url, '/auto/zh_HANT/', '⑨ Lingva 繁中 = zh_HANT');
+  eq(T.extractResult('lingva', { response: { translation: '你好世界' } }, {}), '你好世界', '⑨ Lingva 解析译文');
+  throws(() => T.extractResult('lingva', { response: { error: 'Invalid target language' } }, {}),
+    /Invalid target/, '⑨ Lingva 错误体必须抛出');
+  throws(() => T.buildEndpoint('lingva', T.makeCtx('lingva', { text: 'x', secret: '' })),
+    /实例地址/, '⑨ Lingva 缺地址 → 明确报错');
+
+  // --- TranSmart：请求体形态 ---
+  const tm = T.buildEndpoint('transmart', T.makeCtx('transmart', { text: '你好，世界', from: 'auto', to: 'en' }));
+  eq(tm.method, 'POST', '⑨ TranSmart 用 POST');
+  eq(tm.url, 'https://transmart.qq.com/api/imt', '⑨ TranSmart 端点正确');
+  eq(tm.headers.Origin, 'https://transmart.qq.com', '⑨ TranSmart 带 Origin');
+  eq(tm.headers.Referer, 'https://transmart.qq.com/', '⑨ TranSmart 带 Referer');
+  const tmB = JSON.parse(tm.body);
+  eq(tmB.header.fn, 'auto_translation', '⑨ TranSmart header.fn 正确');
+  eq(tmB.type, 'plain', '⑨ TranSmart type=plain');
+  eq(tmB.source.text_list[0], '你好，世界', '⑨ TranSmart 文本放 text_list');
+  eq(tmB.source.lang, 'auto', '⑨ TranSmart 源语言 auto 透传');
+  eq(tmB.target.lang, 'en', '⑨ TranSmart 目标语言');
+  ok(/^browser-chrome-[\d.]+-Windows_10-[0-9a-f-]{36}-\d+$/.test(tmB.header.client_key),
+    '⑨ TranSmart client_key 形如 browser-chrome-<ver>-<os>-<uuid>-<ts>', tmB.header.client_key);
+  const tmZH = T.buildEndpoint('transmart', T.makeCtx('transmart', { text: 'x', from: 'en', to: 'zh-CN' }));
+  eq(JSON.parse(tmZH.body).target.lang, 'zh', '⑨ TranSmart 简中目标写成 zh');
+  eq(T.extractResult('transmart', { response: { auto_translation: ['Hello', 'world'] } }, {}),
+    'Hello\nworld', '⑨ TranSmart 多段换行拼接');
+  throws(() => T.extractResult('transmart', { response: { header: { ret_code: '1' } } }, {}),
+    /ret_code/, '⑨ TranSmart 无译文时抛出并带 ret_code');
+
+  // --- 失败冷却：失败过的引擎短时间内被跳过，冷却期内由备用引擎顶上 ---
+  setCfg({ active: 'google', fallback: ['youdao'], cache: false, cooldownMs: 60000, retry: 0 });
+  T.clearCooldown();
+  resetHttp();
+  plan('translate.google.com', { failStatus: 500 });
+  plan('aidemo.youdao.com', { res: { errorCode: '0', translation: ['你好'] } });
+  const cd1 = await T.translate('alpha', { to: 'zh-CN' });
+  eq(cd1.engine, 'youdao', '⑨ 首次：google 失败 → 回退 youdao');
+  eq(cd1.cooled.length, 0, '⑨ 首次没有引擎处于冷却');
+  ok(T.cooldownLeft('google') > 0, '⑨ 失败的引擎进入冷却');
+
+  resetHttpOnly();
+  plan('aidemo.youdao.com', { res: { errorCode: '0', translation: ['你好'] } });
+  const cd2 = await T.translate('beta', { to: 'zh-CN' });
+  eq(cd2.engine, 'youdao', '⑨ 冷却期内直接走备用引擎');
+  eq(cd2.cooled.length, 1, '⑨ 结果里报告了被跳过的引擎');
+  eq(cd2.cooled[0].engine, 'google', '⑨ 被跳过的是刚失败的 google');
+  ok(cd2.cooled[0].leftMs > 0, '⑨ 附带剩余冷却时间（UI 可直接展示）');
+  eq(hits('translate.google.com'), 0, '⑨ 冷却期内不再请求该引擎');
+
+  resetHttp();
+  plan('translate.google.com', { res: [[['OK', 'gamma']]] });
+  T.clearCooldown();
+  const cd3 = await T.translate('gamma', { to: 'zh-CN' });
+  eq(cd3.engine, 'google', '⑨ 清除冷却后立即恢复使用');
+  eq(hits('translate.google.com'), 1, '⑨ 恢复后确实发了请求');
+
+  // 显式指定引擎时不受冷却影响（尊重调用方意图）
+  T.clearCooldown();
+  setCfg({ active: 'google', fallback: [], cache: false, cooldownMs: 60000 });
+  resetHttp();
+  plan('translate.google.com', { failStatus: 500 });
+  await T.translate('delta', { to: 'zh-CN' });
+  ok(T.cooldownLeft('google') > 0, '⑨ google 处于冷却');
+  resetHttpOnly(); // 保留冷却，验证"显式指定 engine"能绕过它
+  plan('translate.google.com', { res: [[['OK', 'eps']]] });
+  const cd4 = await T.translate('epsilon', { to: 'zh-CN', engine: 'google' });
+  eq(cd4.ok, true, '⑨ 显式指定 engine 时即使冷却也会尝试（不被静默跳过）');
+  eq(hits('translate.google.com'), 1, '⑨ 显式指定确实发了请求');
+
+  // 冷却可关闭
+  setCfg({ active: 'google', fallback: ['youdao'], cache: false, cooldownMs: 0, retry: 0 });
+  T.clearCooldown();
+  resetHttp();
+  plan('translate.google.com', { failStatus: 500 });
+  plan('aidemo.youdao.com', { res: { errorCode: '0', translation: ['你好'] } });
+  await T.translate('zeta', { to: 'zh-CN' });
+  eq(T.cooldownLeft('google'), 0, '⑨ cooldownMs=0 → 不做冷却');
+
+  // --- 预算：单路预算会真正压到 HTTP 超时上；0 = 关闭该保护 ---
+  setCfg({ active: 'google', fallback: [], cache: false, timeoutMs: 15000, routeMs: 6000 });
+  resetHttp();
+  plan('translate.google.com', { res: [[['OK', 'eta']]] });
+  await T.translate('eta', { to: 'zh-CN' });
+  ok(httpCalls[0].opts.timeout <= 6000 && httpCalls[0].opts.timeout >= 3000,
+    '⑨ 单路预算压到 HTTP 超时（≤ routeMs）', httpCalls[0].opts.timeout);
+
+  const cc = T.cfg();
+  setCfg({ routeMs: 999999, totalMs: 999999, cooldownMs: 999999 });
+  const cHigh = T.cfg();
+  ok(cHigh.routeMs <= 120000 && cHigh.totalMs <= 300000 && cHigh.cooldownMs <= 3600000,
+    '⑨ 预算参数有上限保护（不会因为填了天文数字而永不超时）', cHigh);
+  setCfg({ routeMs: 0, totalMs: 0, cooldownMs: 0 });
+  const cOff = T.cfg();
+  eq(cOff.routeMs, 0, '⑨ routeMs=0 → 关闭单路预算');
+  eq(cOff.totalMs, 0, '⑨ totalMs=0 → 关闭总预算');
+  eq(cOff.cooldownMs, 0, '⑨ cooldownMs=0 → 关闭冷却');
+  setCfg({ routeMs: cc.routeMs, totalMs: cc.totalMs, cooldownMs: cc.cooldownMs });
+
+  // --- 默认回退链升级（仅当从未自定义） ---
+  setCfg({ fallback: ['google', 'bing', 'youdao'] });
+  Prefs.set('translateFallbackUpgraded', false);
+  T.migrate();
+  eq(T.cfg().fallback.join(','), 'edge,google,bing,youdao',
+    '⑨ 旧默认回退链升级为含 edge 的新默认（edge 排首位）');
+  eq(Prefs.get('translateFallbackUpgraded'), true, '⑨ 升级只做一次（打标）');
+  setCfg({ fallback: ['youdao', 'google'] });
+  Prefs.set('translateFallbackUpgraded', false);
+  T.migrate();
+  eq(T.cfg().fallback.join(','), 'youdao,google', '⑨ 用户自定义过的回退链不被覆盖');
+
+  // --- 全链失败时给出可读明细 ---
+  setCfg({ active: 'google', fallback: ['youdao'], cache: false, retry: 0, cooldownMs: 0 });
+  resetHttp();
+  plan('translate.google.com', { failStatus: 500 });
+  plan('aidemo.youdao.com', { failStatus: 500 });
+  const allFail = await T.translate('theta', { to: 'zh-CN' });
+  eq(allFail.ok, false, '⑨ 全链失败 → ok:false');
+  ok(/Google/.test(allFail.detail) && /有道/.test(allFail.detail),
+    '⑨ detail 逐条列出「引擎：原因」便于排障', allFail.detail);
+
+  /* ==================== ⑩ 本机自建服务探测（把"自建离线"变成一键可用） ==================== */
+
+  eq(T.LOCAL_PROBES.length, 3, '⑩ 探测三个常见自建翻译服务');
+  eq(T.LOCAL_PROBES.map((p) => p.engine).sort().join(','), 'deeplx,libretranslate,lingva',
+    '⑩ 覆盖 LibreTranslate / Lingva / DLX');
+  eq(T.LOCAL_PROBES.find((p) => p.engine === 'libretranslate').port, 5000, '⑩ LibreTranslate 默认 5000');
+  eq(T.LOCAL_PROBES.find((p) => p.engine === 'lingva').port, 3000, '⑩ Lingva 默认 3000');
+  eq(T.LOCAL_PROBES.find((p) => p.engine === 'deeplx').port, 1188, '⑩ DLX 默认 1188');
+
+  resetHttpOnly();
+  plan('127.0.0.1:5000', { res: [{ code: 'en' }] });
+  plan('127.0.0.1:1188', { res: { code: 200, data: 'ping' } });
+  const probe = await T.probeLocal(1000);
+  eq(probe.found.length, 2, '⑩ 命中两个本机服务');
+  eq(probe.found.map((f) => f.engine).sort().join(','), 'deeplx,libretranslate',
+    '⑩ 命中的是 LibreTranslate 与 DLX');
+  eq(probe.found[0].url, 'http://127.0.0.1:5000', '⑩ 返回可直接填入的地址');
+  ok(typeof probe.found[0].latencyMs === 'number', '⑩ 附带延迟（界面展示用）');
+  eq(probe.missed.length, 1, '⑩ 未命中的记为 missed（探测永不抛异常）');
+  eq(probe.missed[0].engine, 'lingva', '⑩ 未命中的是没起服务的 Lingva');
+  eq(httpCalls.length, 3, '⑩ 三个候选都探了（没起服务的也要探一次才知道）');
+
+  // 一键填入：写入的正是该引擎的 url 字段，填完即就绪
+  T.setSecret('libretranslate', { url: probe.found[0].url });
+  eq(T.parseSecret('libretranslate', T.secretOf('libretranslate')).url, 'http://127.0.0.1:5000',
+    '⑩ 探测结果可直接写入引擎地址');
+  ok(T.ready('libretranslate'), '⑩ 填入地址后该引擎立即可用');
+  T.setSecret('libretranslate', '');
 
   /* ---------------- 输出 ---------------- */
   console.log('='.repeat(60));

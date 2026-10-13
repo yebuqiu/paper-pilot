@@ -109,6 +109,35 @@ var AIChat = {
   },
 
   /**
+   * 0.31.0：对话消息构造（单源）。悬浮窗与分屏窗口共用的构造器，
+   * 与 ask() 的差异：全文拿不到时**回退摘要**并在上下文里声明依据有限
+   * （对齐 askTask 的口径，用户在浮窗里就标题/摘要追问不至于直接报错）。
+   * @param item 条目 @param question 本轮问题 @param history [{role,content}]
+   * @param fullText 可选；不传或 null 时自动 getFullText，仍为空则回退 abstractNote
+   */
+  async buildMessages(item, question, history = [], fullText) {
+    if (fullText === undefined || fullText === null) {
+      fullText = await this.getFullText(item);
+    }
+    const meta = this.paperMeta(item);
+    let context;
+    if (fullText) {
+      context = `【论文全文】\n${fullText}`;
+    } else {
+      let abstract = "";
+      try { abstract = item.getField("abstractNote") || ""; } catch (e) { /* ignore */ }
+      if (!abstract.trim()) throw new Error("NO_PDF");
+      context =
+        `【论文摘要】（说明：未获取到该文献的 PDF 全文，请仅基于摘要与题录信息回答，并在开头注明依据有限）\n${abstract}`;
+    }
+    const messages = [{ role: "system", content: this._systemWith(meta, context) }];
+    // 与 ask() 同口径：只带最近 6 轮历史，控制 token
+    messages.push(...history.slice(-12));
+    messages.push({ role: "user", content: question });
+    return messages;
+  },
+
+  /**
    * 基于 PDF 全文回答一个问题
    * @param item Zotero 常规条目（或其 PDF 附件）
    * @param question 用户问题

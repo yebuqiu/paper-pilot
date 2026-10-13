@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE window>
+<!-- PaperPilot · AI 问答分屏窗口（0.31.0）
+     与悬浮窗共享同一会话（Zotero.PaperPilot.chatFloat.session）；
+     真独立窗口，可与 Zotero 主程序并排摆放（Windows Snap / 并排平铺），零遮挡正文。 -->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="PaperPilot · AI 问答（分屏窗口）"
+        windowtype="paperpilot:chatwin"
+        width="460" height="640">
+  <script src="chrome://paperpilot/content/chat-window.js"></script>
+  <vbox flex="1" style="min-width:0;">
+    <hbox style="align-items:center;gap:6px;padding:6px 8px;background:var(--fill-quinary,rgba(128,128,128,.08));border-bottom:1px solid var(--color-border,rgba(128,128,128,.3));">
+      <label id="pp-cw-title" value="AI 问答" style="font-weight:600;font-size:12.5px;flex:1;overflow:hidden;"/>
+      <html:button id="pp-cw-save" style="padding:2px 8px;font-size:11.5px;">存为笔记</html:button>
+      <html:button id="pp-cw-clear" style="padding:2px 8px;font-size:11.5px;">清空</html:button>
+      <html:button id="pp-cw-close" style="padding:2px 8px;font-size:11.5px;">关闭</html:button>
+    </hbox>
+    <vbox id="pp-cw-msgs" flex="1"
+      style="overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:6px;min-height:0;"/>
+    <hbox id="pp-cw-chips" style="flex-wrap:wrap;gap:4px;padding:0 8px 4px;"/>
+    <hbox style="align-items:flex-end;gap:6px;padding:0 8px 8px;">
+      <html:textarea id="pp-cw-input" rows="2"
+        style="flex:1;min-width:0;resize:none;padding:4px 6px;font-size:13px;font-family:inherit;"
+        placeholder="针对这篇文献提问…"/>
+      <html:button id="pp-cw-send"
+        style="padding:4px 14px;font-size:12.5px;font-weight:bold;">发送</html:button>
+    </hbox>
+  </vbox>
+</window>

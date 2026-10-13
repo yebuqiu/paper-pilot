@@ -58,6 +58,8 @@ pref("extensions.zotero.paperpilot.translateFromLang", "auto");
 pref("extensions.zotero.paperpilot.translateCfg", "");
 // 0.28.0 一次性迁移标记：目标语言显示名 → 规范码
 pref("extensions.zotero.paperpilot.translateMigrated28", false);
+// 0.31.0 一次性迁移标记：默认回退链升级为含 edge 的新默认（仅当用户从未自定义过排序）
+pref("extensions.zotero.paperpilot.translateFallbackUpgraded", false);
 pref("extensions.zotero.paperpilot.readerPopupStream", true);
 pref("extensions.zotero.paperpilot.readerPopupWriteBack", true);
 // 0.15.0 新增：浮窗结果区字号缩放（"0.85"/"1"/"1.15"/"1.3"/"1.5"，字符串存法同 aiTemperature）
@@ -187,3 +189,11 @@ pref("extensions.zotero.paperpilot.menuMode", "grouped");
 pref("extensions.zotero.paperpilot.menuHiddenGroups", "");
 // 右键菜单顶部高频直达项（逗号分隔命令 id，最多 3 个；取值见 menus.js ITEM_REGISTRY）
 pref("extensions.zotero.paperpilot.menuQuickItems", "ai-summary,bilingual-view");
+// 0.31.0 新增：AI 问答悬浮窗几何记忆（zotero-gpt 式可拖动/停靠悬浮窗）
+// chatFloatPos = "x,y"（浮动坐标，px）；chatFloatSize = "w,h"（px）；
+// chatFloatDock = "" | "left" | "right"（贴边停靠模式）
+// chatFloatOpacity = "1" | "0.9" | "0.75" | "0.6"（整窗不透明度，字符串存法同 aiTemperature）
+pref("extensions.zotero.paperpilot.chatFloatPos", "");
+pref("extensions.zotero.paperpilot.chatFloatSize", "");
+pref("extensions.zotero.paperpilot.chatFloatDock", "");
+pref("extensions.zotero.paperpilot.chatFloatOpacity", "1");

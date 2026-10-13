@@ -108,6 +108,13 @@
     if (rt) rt.checked = !!c.retry;
     const ca = $("pp-tr-cache");
     if (ca) ca.checked = c.cache !== false;
+    // 回退链预算三件套（0.31.0）：预算存毫秒、冷却界面用秒
+    const ro = $("pp-tr-route");
+    if (ro) ro.value = String(c.routeMs || 0);
+    const tt = $("pp-tr-total");
+    if (tt) tt.value = String(c.totalMs || 0);
+    const cd = $("pp-tr-cooldown");
+    if (cd) cd.value = String(Math.round((c.cooldownMs || 0) / 1000));
   }
 
   /* ---------- 引擎行 ---------- */
@@ -134,6 +141,13 @@
     else if (s.group === "key") sub.push(zh ? "自有密钥" : "own key");
     else if (!s.needsSecret) sub.push(zh ? "免费·免配置" : "free");
     if (s.note) sub.push(s.note);
+    // 单次上限：超长自动分段（0.31.0）——让用户知道"为什么长文会被拆成几次请求"
+    if (s.limits) {
+      sub.push(zh
+        ? "单次 ≤ " + (s.limits.bytes ? s.limits.bytes + " 字节" : s.limits.chars + " 字符") + "（超长自动分段）"
+        : "≤ " + (s.limits.bytes || s.limits.chars) +
+          (s.limits.bytes ? " bytes" : " chars") + " per call (auto-split)");
+    }
     if (sub.length) left.appendChild(el("div", { class: "pp-ch-sub" }, sub.join(" · ")));
 
     // 密钥表单：每项一个输入，变更即保存（无需单独保存按钮）
@@ -177,6 +191,15 @@
       }
       left.appendChild(wrap);
     }
+
+    // 引擎说明（额度 / 免密钥 / 申请方式）：0.31.0 起由引擎自身声明，界面直接展示
+    if (s.hint) {
+      left.appendChild(el("div", {
+        class: "pp-hint",
+        style: "margin-top:5px;line-height:1.5;",
+      }, s.hint));
+    }
+
     row.appendChild(left);
 
     // 操作按钮
@@ -224,7 +247,62 @@
     if (!box || !S) return;
     while (box.firstChild) box.removeChild(box.firstChild);
     const ov = S.overview();
-    for (const s of ov.services) box.appendChild(buildEngineRow(s));
+    // 按「免配置 / 需地址 / 需密钥 / AI」分组（0.31.0）：用户一眼看出哪些开箱即用
+    const groups = [
+      { key: "plain", label: zh ? "完全免配置（开箱即用）" : "Zero-config" },
+      { key: "free-url", label: zh ? "免费 · 需填自建/公共地址" : "Free · needs a URL" },
+      { key: "key", label: zh ? "需自备密钥" : "Bring your own key" },
+      { key: "ai", label: zh ? "AI 大模型" : "AI model" },
+    ];
+    const catOf = (s) => (s.isLLM ? "ai"
+      : (s.needsSecret ? (s.group === "free" ? "free-url" : "key") : "plain"));
+    for (const g of groups) {
+      const list = ov.services.filter((s) => catOf(s) === g.key);
+      if (!list.length) continue;
+      box.appendChild(el("div", { class: "pp-sub-title", style: "margin-top:9px;" }, g.label));
+      for (const s of list) box.appendChild(buildEngineRow(s));
+    }
+  }
+
+  /** 检测本机自建翻译服务（LibreTranslate 5000 / Lingva 3000 / DLX 1188），命中即一键填入地址 */
+  async function onLocalScan() {
+    const S = T();
+    const btn = $("pp-tr-local-scan");
+    const box = $("pp-tr-local");
+    if (!S || !box) return;
+    if (btn) btn.disabled = true;
+    box.textContent = zh ? "检测中（本机 5000 / 3000 / 1188 端口）…" : "Scanning localhost ports…";
+    box.style.color = "var(--pp-muted)";
+    try {
+      const r = await S.probeLocal(2000);
+      while (box.firstChild) box.removeChild(box.firstChild);
+      if (!r.found.length) {
+        box.textContent = zh
+          ? "未发现本机自建服务。想零成本无限流？例如先跑一个：docker run -p 5000:5000 libretranslate/libretranslate —— 起来后再点此按钮。"
+          : "No local instance found. e.g. docker run -p 5000:5000 libretranslate/libretranslate";
+        box.style.color = "var(--pp-muted)";
+        return;
+      }
+      box.textContent = "";
+      box.style.color = "var(--pp-success)";
+      box.appendChild(el("span", null, (zh ? "发现 " : "Found ") + r.found.length + (zh ? " 个：" : ": ")));
+      for (const f of r.found) {
+        const b = el("button", { class: "pp-btn pp-btn-sm", title: f.url },
+          (zh ? "填入 " : "Use ") + f.name + "（" + f.latencyMs + "ms）");
+        b.style.marginRight = "6px";
+        b.addEventListener("click", () => {
+          S.setSecret(f.engine, { url: f.url });
+          setMsg((zh ? "已填入 " : "Filled ") + f.name + "：" + f.url, "var(--pp-success)");
+          renderAll();
+        });
+        box.appendChild(b);
+      }
+    } catch (e) {
+      box.textContent = "✗ " + ((e && e.message) || e);
+      box.style.color = "var(--pp-danger)";
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   async function onTest(id, btn) {
@@ -310,6 +388,22 @@
       S.saveCfg({ cache: !!$("pp-tr-cache").checked });
       try { S.clearCache(); } catch (e) { /* ignore */ }
     });
+    // 预算三件套：0 = 关闭该项保护（界面上写明）
+    bind("pp-tr-route", "change", () => {
+      S.saveCfg({ routeMs: Math.max(0, Number($("pp-tr-route").value) || 0) });
+      renderKnobs();
+    });
+    bind("pp-tr-total", "change", () => {
+      S.saveCfg({ totalMs: Math.max(0, Number($("pp-tr-total").value) || 0) });
+      renderKnobs();
+    });
+    bind("pp-tr-cooldown", "change", () => {
+      const sec = Math.max(0, Number($("pp-tr-cooldown").value) || 0);
+      S.saveCfg({ cooldownMs: sec > 0 ? Math.round(sec * 1000) : 0 });
+      try { S.clearCooldown(); } catch (e) { /* ignore */ } // 改了就重新计时
+      renderKnobs();
+    });
+    bind("pp-tr-local-scan", "click", onLocalScan);
 
     try { renderAll(); } catch (e) { /* 渲染失败不影响面板其余部分 */ }
   }

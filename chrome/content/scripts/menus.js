@@ -8,7 +8,7 @@
  *   - menuMode / menuHiddenGroups / menuQuickItems 三个 pref 变更即时重建菜单。
  * 设计口径：只做「重组」不做「删减」——被折叠的功能仍可从功能中心（Hub）、
  * 工具菜单分组、classic 模式三处到达，任何入口都不失联。 */
-/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP */
+/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ChatFloat */
 
 var Menus = {
   _nodes: [], // 记录注入的 DOM 节点，shutdown 时移除
@@ -22,6 +22,8 @@ var Menus = {
     // 顶层直达（不进分组、不受隐藏分组影响）
     { id: "pdf-compare", group: null, labelKey: "menuPdfCompare", run: () => PdfCompare.runForSelected() },
     { id: "hub", group: null, labelKey: "menuHub", run: () => Zotero.PaperPilot.openHub() },
+    // 0.31.0 AI 问答悬浮窗：锁定为右键选中的条目并唤起（Ctrl+Shift+K）
+    { id: "ai-chat", group: null, labelKey: "menuAiChat", run: () => Menus.openChatFloat() },
     // AI 阅读助手
     { id: "ai-summary", group: "ai", labelKey: "menuAiSummary",
       run: () => Menus.aiTaskForSelected((it) => AIChat.summarize(it), "noteSummaryTitle") },
@@ -354,6 +356,9 @@ var Menus = {
   _buildClassicItemMenu(doc, popup) {
     this._menuItem(doc, popup, "paperpilot-itemmenu-hub", "menuHub",
       () => Zotero.PaperPilot.openHub());
+    // 0.31.0 AI 问答悬浮窗（与 grouped 模式顶层直达同一功能的两处入口）
+    this._menuItem(doc, popup, "paperpilot-itemmenu-ai-chat", "menuAiChat",
+      () => Menus.openChatFloat());
     // 0.21.0 多篇 PDF 并排对比（需选中 ≥2 篇带 PDF 的文献）
     this._menuItem(doc, popup, "paperpilot-itemmenu-pdf-compare", "menuPdfCompare",
       () => PdfCompare.runForSelected());
@@ -575,6 +580,26 @@ var Menus = {
         try { PdfTheme.setTheme(t.id); } catch (e) { Zotero.logError(e); }
       });
       popup.appendChild(mi);
+    }
+  },
+
+  /**
+   * 0.31.0 AI 问答悬浮窗入口：锁定为右键选中的条目并唤起。
+   * 显式 setSessionItem（不走 ChatFloat.toggle 的条目解析——
+   * 用户在条目 B 上右键，即使 reader 开着别的文献也要就 B 对话）。
+   */
+  openChatFloat() {
+    try {
+      const win = Zotero.getMainWindow();
+      if (!win) return;
+      const zp = Zotero.getActiveZoteroPane();
+      if (zp) {
+        const items = ItemSel.regularOnly(zp.getSelectedItems() || []);
+        if (items.length) ChatFloat.setSessionItem(items[0]);
+      }
+      ChatFloat.show(win);
+    } catch (e) {
+      Zotero.logError(e);
     }
   },
 

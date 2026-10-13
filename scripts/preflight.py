@@ -115,6 +115,8 @@ NODE_SUITES = [
     ("arXiv 核心(插件侧)", "test/arxiv-core.test.js"),
     ("双栏对照窗口", "test/bilingual-view.test.js"),
     ("多引擎翻译", "test/translate.test.js"),
+    ("阅读器翻译面板", "test/translate-pane.test.js"),
+    ("AI 问答悬浮窗", "test/chat-float.test.js"),
     ("菜单注册表", "test/menu-registry.test.js"),
     ("Sci-Hub 补全文", "test/scihub-fetch.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),

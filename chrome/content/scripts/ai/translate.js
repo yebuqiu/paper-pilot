@@ -212,8 +212,13 @@ var TranslateSvc = (function () {
     return String(v) + "." + (v ^ 406644);
   }
 
-  /* ==================== 语言码映射（各厂商） ==================== */
+  /** 轻量 UUID：腾讯 TranSmart 的 client_key 里需要一个随机段（不要求密码学强度） */
+  function _guid() {
+    const hex = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).slice(1);
+    return hex() + hex() + "-" + hex() + "-" + hex() + "-" + hex() + "-" + hex() + hex() + hex();
+  }
 
+  /* ==================== 语言码映射（各厂商） ==================== */
   const identity = (code) => code;
 
   function mkMap(map, fallbackFn) {
@@ -266,6 +271,7 @@ var TranslateSvc = (function () {
     /* ---------- 免费、免配置 ---------- */
     {
       id: "google", name: "Google 翻译（免费接口）", group: "free",
+      limits: { chars: 2000 }, // gtx 走 GET，URL 长度有限，超长须分段
       docs: "https://translate.google.com",
       codes: identity,
       endpoint(ctx) {
@@ -287,6 +293,7 @@ var TranslateSvc = (function () {
     },
     {
       id: "googleapi", name: "Google 翻译（translate.googleapis.com）", group: "free",
+      limits: { chars: 2000 },
       codes: identity,
       endpoint(ctx) {
         const url = "https://translate.googleapis.com/translate_a/single" +
@@ -306,6 +313,8 @@ var TranslateSvc = (function () {
     {
       id: "bing", name: "必应翻译（免费接口，实验性）", group: "free",
       experimental: true,
+      hint: "网页版旧链路：语种最多但状态不稳（易 429）。已在「每段 1000 字符」内自动分段。",
+      limits: { chars: 1000 }, // 网页版单次 1000 字符（中国区 5000，取保守值）
       codes: (code) => M_ZH_HANS[normalizeLang(code)] || normalizeLang(code),
       // 必应网页接口：先取翻译页里的 IG / IID / 反滥用 token，再发正式请求
       async prepare() {
@@ -349,7 +358,55 @@ var TranslateSvc = (function () {
       },
     },
     {
+      id: "edge", name: "必应 / Edge 翻译（免密钥，推荐）", group: "free",
+      docs: "https://learn.microsoft.com/azure/ai-services/translator/reference/v3-0-translate",
+      hint: "免注册、最稳的免密钥引擎：先取 Edge 的临时 token，再调微软 v3 接口（语种最全）。建议排在回退链首位。",
+      limits: { chars: 5000 }, // v3 单次可达 5 万字符，这里压小以求请求体轻、与其它引擎一致
+      codes: (code) => M_ZH_HANS[normalizeLang(code)] || normalizeLang(code),
+      // Edge 网页翻译链路：GET /translate/auth 拿短期 token（约 10 分钟有效）
+      async prepare() {
+        const resp = await Zotero.HTTP.request("GET", "https://edge.microsoft.com/translate/auth", {
+          responseType: "text", timeout: 12000,
+        });
+        const token = String((resp && (resp.responseText || resp.response)) || "").trim();
+        // token 是 JWT（三段点分）。取不到就明确报错 —— 别发一个空 Bearer 出去，
+        // 那样只会拿到 401，把"接口调整了"误报成"密钥无效"。
+        if (!token || token.length < 40 || token.indexOf(".") < 0) {
+          throw new Error("Edge 翻译取 token 失败（接口可能已调整）");
+        }
+        return { token };
+      },
+      endpoint(ctx) {
+        const pre = ctx.pre || {};
+        let url = "https://api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0" +
+          "&to=" + encodeURIComponent(ctx.toCode);
+        if (ctx.from !== "auto") url += "&from=" + encodeURIComponent(ctx.fromCode);
+        return {
+          method: "POST",
+          url,
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + (pre.token || ""),
+            // 必须像 Edge 客户端：该接口对 UA 敏感，缺失/异样会 401
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+              "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
+          },
+          body: JSON.stringify([{ Text: ctx.text }]),
+          responseType: "json",
+        };
+      },
+      extract(resp) {
+        const d = resp && resp.response;
+        if (d && d.error) {
+          throw new Error("Edge 翻译：" + (d.error.message || d.error.code || "未知错误"));
+        }
+        const t = Array.isArray(d) && d[0] && d[0].translations && d[0].translations[0];
+        return (t && t.text) || "";
+      },
+    },
+    {
       id: "youdao", name: "有道翻译（免费接口）", group: "free",
+      limits: { chars: 2000 },
       codes: mkMap(M_YOUDAO, lowerBase),
       endpoint(ctx) {
         return {
@@ -372,7 +429,59 @@ var TranslateSvc = (function () {
       },
     },
     {
+      id: "transmart", name: "腾讯交互翻译 TranSmart（免密钥，实验性）", group: "free",
+      docs: "https://transmart.qq.com",
+      experimental: true,
+      hint: "腾讯 AI Lab 的交互翻译网页接口：免注册、中英方向质量好、无需密钥。属非官方 API，协议可能变动（故标注实验性）。",
+      limits: { chars: 3000 }, // 网页接口按块翻译，压小以求稳
+      codes: (code) => {
+        const c = normalizeLang(code);
+        if (c === "zh-CN") return "zh"; // 社区实测：简中要写成 zh
+        if (c === "zh-TW") return "zh-TW";
+        return c === "auto" ? "auto" : lowerBase(c);
+      },
+      endpoint(ctx) {
+        const body = {
+          header: {
+            fn: "auto_translation",
+            // client_key 形如 browser-chrome-<ver>-<os>-<uuid>-<ts>，由前端自行拼（服务端不校验真实性）
+            client_key: "browser-chrome-121.0.0-Windows_10-" + _guid() + "-" + Date.now(),
+            session: "",
+            user: "",
+          },
+          type: "plain",
+          model_category: "normal",
+          text_domain: "",
+          source: { lang: ctx.from === "auto" ? "auto" : ctx.fromCode, text_list: [ctx.text] },
+          target: { lang: ctx.toCode },
+        };
+        return {
+          method: "POST",
+          url: "https://transmart.qq.com/api/imt",
+          headers: {
+            "Content-Type": "application/json",
+            "Origin": "https://transmart.qq.com",
+            "Referer": "https://transmart.qq.com/",
+          },
+          body: JSON.stringify(body),
+          responseType: "json",
+        };
+      },
+      extract(resp) {
+        const d = resp && resp.response;
+        if (!d) return "";
+        const arr = d.auto_translation;
+        if (!Array.isArray(arr) || !arr.length) {
+          const code = d.header && d.header.ret_code;
+          throw new Error("TranSmart 返回异常" + (code ? "（ret_code " + code + "）" : ""));
+        }
+        return arr.join("\n");
+      },
+    },
+    {
       id: "mymemory", name: "MyMemory（免费，量大限流）", group: "free",
+      limits: { bytes: 500 }, // ★ 官方单次上限是 500 UTF-8 字节（不是 500 字符！）
+      hint: "匿名 5000 字符/天，填邮箱升到 50000/天。已按官方 500 字节上限自动分段。",
       codes: (code) => normalizeLang(code),
       needsSecret: false,
       secretFields: [{ key: "email", label: "联系邮箱（可选，提升免费额度）", optional: true }],
@@ -395,6 +504,8 @@ var TranslateSvc = (function () {
     },
     {
       id: "libretranslate", name: "LibreTranslate（自建/公共实例）", group: "free",
+      limits: { chars: 2000 }, // 公共实例单次 2000 字符
+      hint: "公共实例已强制 API Key 且单次 2000 字符；自建实例免费无限流（推荐填自己的地址）。",
       docs: "https://libretranslate.com",
       codes: (code) => {
         const c = normalizeLang(code);
@@ -429,6 +540,7 @@ var TranslateSvc = (function () {
     },
     {
       id: "deeplx", name: "DeepLX（自建免密 Deepl）", group: "free",
+      limits: { chars: 5000 },
       docs: "https://github.com/OwO-Network/DeepLX",
       codes: (code) => {
         const c = normalizeLang(code);
@@ -459,9 +571,39 @@ var TranslateSvc = (function () {
       },
     },
 
+    {
+      id: "lingva", name: "Lingva Translate（自建/公共，Google 质量）", group: "free",
+      docs: "https://github.com/thedaviddelta/lingva-translate",
+      hint: "自建 Lingva 实例即得 Google 质量的 100+ 语种且**无限流**；也可填公共实例（限载）。自建：docker run -p 3000:3000 -e site_domain=你的域名 thedaviddelta/lingva-translate",
+      limits: { chars: 4000 }, // 第三方客户端按 4000 字符设限
+      // 语言码跟随 Lingva 的 Google 码约定：简中 = zh，繁中 = zh_HANT
+      codes: (code) => {
+        const c = normalizeLang(code);
+        if (c === "zh-CN") return "zh";
+        if (c === "zh-TW") return "zh_HANT";
+        return c === "auto" ? "auto" : c;
+      },
+      needsSecret: true,
+      secretFields: [{ key: "url", label: "Lingva 实例地址", placeholder: "https://lingva.ml（或你的自建地址）" }],
+      endpoint(ctx) {
+        const base = String((ctx.parts && ctx.parts.url) || "").replace(/\/+$/, "");
+        if (!base) throw new Error("未配置 Lingva 实例地址");
+        // REST: GET /api/v1/{source}/{target}/{query}
+        const url = base + "/api/v1/" + encodeURIComponent(ctx.fromCode) + "/" +
+          encodeURIComponent(ctx.toCode) + "/" + encodeURIComponent(ctx.text);
+        return { method: "GET", url, responseType: "json" };
+      },
+      extract(resp) {
+        const d = resp && resp.response;
+        if (d && d.error) throw new Error("Lingva：" + d.error);
+        return (d && d.translation) || "";
+      },
+    },
+
     /* ---------- 需要密钥 ---------- */
     {
       id: "deepl", name: "DeepL（Free / Pro）", group: "key",
+      hint: "额度语义注意：新注册用户是一次性 100 万字符（每月刷新的 API Free 已退役）；key 以 :fx 结尾走免费端点。",
       docs: "https://www.deepl.com/pro-api",
       codes: (code) => {
         const c = normalizeLang(code);
@@ -491,6 +633,8 @@ var TranslateSvc = (function () {
     },
     {
       id: "microsoft", name: "微软翻译 / Azure（需订阅）", group: "key",
+      limits: { chars: 5000 },
+      hint: "白嫖方式：Azure 门户 → 创建「翻译工具」资源 → 定价层选 F0（200 万字符/月，永久免费）→ 密钥与区域填这里。",
       docs: "https://learn.microsoft.com/azure/ai-services/translator/",
       codes: (code) => M_ZH_HANS[normalizeLang(code)] || normalizeLang(code),
       needsSecret: true,
@@ -522,6 +666,7 @@ var TranslateSvc = (function () {
     },
     {
       id: "baidu", name: "百度翻译（开放平台）", group: "key",
+      limits: { bytes: 4000 }, // 标准版 q 上限 6000 字节，GET URL 还要留余量
       docs: "https://fanyi-api.baidu.com/",
       codes: mkMap(M_BAIDU, lowerBase),
       needsSecret: true,
@@ -553,6 +698,7 @@ var TranslateSvc = (function () {
     },
     {
       id: "tencent", name: "腾讯云机器翻译（TMT）", group: "key",
+      limits: { chars: 2000 }, // TMT 单次 2000 字符
       docs: "https://cloud.tencent.com/document/product/551",
       codes: mkMap(M_TENCENT, lowerBase),
       needsSecret: true,
@@ -597,6 +743,7 @@ var TranslateSvc = (function () {
     },
     {
       id: "caiyun", name: "彩云小译（中英日互译）", group: "key",
+      limits: { chars: 5000 },
       docs: "https://docs.caiyunapp.com/blog/2018/09/03/lingocloud-api/",
       codes: (code) => {
         const c = normalizeLang(code);
@@ -691,11 +838,15 @@ var TranslateSvc = (function () {
 
   const CFG_DEFAULTS = {
     active: "llm",
-    fallback: ["google", "bing", "youdao"],
+    fallback: ["edge", "google", "bing", "youdao"],
     timeoutMs: 15000,
     retry: 1,
     cache: true,
     secrets: {},
+    // 回退链预算（0.31.0，参考 FluentRead 的调度参数）：单引擎预算 / 整条链总预算 / 失败冷却
+    routeMs: 20000,
+    totalMs: 45000,
+    cooldownMs: 60000,
   };
 
   function cfg() {
@@ -704,6 +855,7 @@ var TranslateSvc = (function () {
     let doc = null;
     try { doc = raw ? JSON.parse(raw) : null; } catch (e) { doc = null; }
     const out = Object.assign({}, CFG_DEFAULTS);
+    const num = (v, lo, hi) => (Number(v) > 0 ? Math.min(hi, Math.max(lo, Number(v))) : 0);
     if (doc && typeof doc === "object") {
       if (doc.active && get(doc.active)) out.active = doc.active;
       if (Array.isArray(doc.fallback)) out.fallback = doc.fallback.filter((x) => get(x));
@@ -711,6 +863,10 @@ var TranslateSvc = (function () {
       if (doc.retry !== undefined) out.retry = doc.retry ? 1 : 0;
       if (doc.cache !== undefined) out.cache = !!doc.cache;
       if (doc.secrets && typeof doc.secrets === "object") out.secrets = doc.secrets;
+      // 0 表示"关闭该项保护"（routeMs/totalMs 为 0 则不限时；cooldownMs 为 0 则不做冷却）
+      if (doc.routeMs !== undefined) out.routeMs = Number(doc.routeMs) > 0 ? num(doc.routeMs, 3000, 120000) : 0;
+      if (doc.totalMs !== undefined) out.totalMs = Number(doc.totalMs) > 0 ? num(doc.totalMs, 5000, 300000) : 0;
+      if (doc.cooldownMs !== undefined) out.cooldownMs = Number(doc.cooldownMs) > 0 ? num(doc.cooldownMs, 5000, 3600000) : 0;
     }
     return out;
   }
@@ -814,6 +970,67 @@ var TranslateSvc = (function () {
   }
   function clearCache() { cache.clear(); }
 
+  /* ---------------- 本机自建服务探测（0.31.0） ----------------
+   * 让「自建离线」真正可落地：LibreTranslate / DLX / Lingva 都能本机自建且默认端口固定，
+   * 但要求用户自己记住 5000/1188/3000 并不合理。这里做一次轻量探测，命中就告诉用户
+   * "你本机已经跑了一个，填这个地址就能用"，一键填入即可，无需新增引擎。
+   */
+  const LOCAL_PROBES = [
+    { engine: "libretranslate", name: "LibreTranslate", port: 5000, path: "/languages", method: "GET" },
+    { engine: "lingva", name: "Lingva", port: 3000, path: "/api/v1/languages?source", method: "GET" },
+    // DLX 没有健康检查端点，用一次极短的真实翻译来探活
+    { engine: "deeplx", name: "DLX（DeepLX）", port: 1188, path: "/translate", method: "POST" },
+  ];
+
+  /** 探测本机常见自建翻译服务。**永不抛异常**（探不到就是探不到）。
+   *  @returns {Promise<{found: Array<{engine,name,url,latencyMs}>, missed: Array<{engine,name,url,error}>}>} */
+  async function probeLocal(timeoutMs) {
+    const to = Number(timeoutMs) > 0 ? Number(timeoutMs) : 1500;
+    const found = [];
+    const missed = [];
+    for (const p of LOCAL_PROBES) {
+      const base = "http://127.0.0.1:" + p.port;
+      const t0 = Date.now();
+      try {
+        const opts = { timeout: to, responseType: "json" };
+        if (p.method === "POST") {
+          opts.headers = { "Content-Type": "application/json" };
+          opts.body = JSON.stringify({ text: "ping", source_lang: "EN", target_lang: "ZH" });
+        }
+        await Zotero.HTTP.request(p.method, base + p.path, opts);
+        found.push({ engine: p.engine, name: p.name, url: base, latencyMs: Date.now() - t0 });
+      } catch (e) {
+        missed.push({ engine: p.engine, name: p.name, url: base, error: (e && e.message) || String(e) });
+      }
+    }
+    return { found, missed };
+  }
+
+  /* ---------------- 失败冷却（0.31.0）：一个引擎刚失败过，短时间内不再用它 ----------------
+   * 目的是"别把整条回退链在一次抖动里跑满"：某引擎超时/限流后，后续请求先跳过它，
+   * 冷却期内其它引擎顶上；冷却到期自动恢复。只在内存里（会话级），不落 pref。
+   */
+  const cooldownUntil = new Map(); // engineId -> 到期时间戳
+
+  function _markCooldown(id, ms) {
+    if (!ms || ms <= 0) return;
+    cooldownUntil.set(id, Date.now() + ms);
+  }
+  function _inCooldown(id, now) {
+    const t = cooldownUntil.get(id);
+    if (!t) return false;
+    if (t <= (now || Date.now())) { cooldownUntil.delete(id); return false; }
+    return true;
+  }
+  /** 冷却剩余毫秒（0 = 未冷却） */
+  function cooldownLeft(id) {
+    const t = cooldownUntil.get(id);
+    return t && t > Date.now() ? t - Date.now() : 0;
+  }
+  function clearCooldown(id) {
+    if (id) cooldownUntil.delete(id); else cooldownUntil.clear();
+  }
+
   /** 网络/HTTP 异常 → 可读中文；带 retryable 标记供重试判定 */
   function _wrapError(e) {
     const status = e && e.xmlhttp && e.xmlhttp.status;
@@ -845,25 +1062,90 @@ var TranslateSvc = (function () {
     return await Zotero.HTTP.request(spec.method || "POST", spec.url, opts);
   }
 
-  /** 单次调用某引擎（含预算内重试）；失败抛异常 */
-  async function _runEngine(id, ctx, timeoutMs) {
-    const svc = get(id);
-    if (!svc) throw new Error("未知翻译引擎：" + id);
+  /* ---------------- 长文本分段（引擎声明单次长度/字节上限时） ---------------- */
 
-    if (svc.llm) {
-      // 大模型引擎：走当前 AI 通道（划词浮窗的流式路径不在这里，见 reader-popup.js）
-      const msgs = [
-        { role: "system", content: (Prefs.get("aiSystemPrompt", "") || "") },
-        { role: "user", content:
-          "请将以下内容翻译成" + langName(ctx.to) +
-          "，忠实原文，专业术语保留英文并用括号标注。" +
-          "纯文本输出，禁止使用任何 Markdown 标记；只输出译文，不要任何解释。\n\n" + ctx.text },
-      ];
-      const out = await AIClient.chat(msgs);
-      return String(out == null ? "" : out).trim();
+  /**
+   * 按上限把文本切成多段（**纯函数**，可离线单测）。
+   *
+   * 为什么需要它：不少引擎有"单次请求上限"——MyMemory 只有 **500 UTF-8 字节**
+   * （不是 500 个字符！），必应网页版 1000 字符，腾讯 TMT 2000 字符，百度 6000 字节。
+   * 超限时对方要么报错要么悄悄截断，表现都是"翻译结果莫名变短/失败"。
+   *
+   * 切分点优先落在空白处（不切开单词）；尾部空白从段里摘出来存进 `seps`，
+   * 拼接时按序补回，保证"原文 → 分段 → 拼回"与空白形态一致；
+   * CJK 无空白时 sep 为空串（直接相接，不会平白多出空格）。
+   *
+   * @param text 原文
+   * @param limit 单段上限（正数）
+   * @param metric "bytes"（UTF-8 字节）| "chars"（码点数）
+   * @returns {{parts: string[], seps: string[]}} seps.length === parts.length - 1
+   */
+  function _splitText(text, limit, metric) {
+    const s = String(text == null ? "" : text);
+    const cap = Number(limit) > 0 ? Number(limit) : 0;
+    if (!cap || !s) return { parts: s ? [s] : [], seps: [] };
+    const byChars = metric === "chars";
+    const cost = (t) => (byChars ? Array.from(t).length : utf8Bytes(t).length);
+    // 先按"词 / 空白"交替切 token：保证不切开单词，也不会切开代理对
+    const tokens = s.match(/[^\s\u3000]+|[\s\u3000]+/g) || [];
+    const parts = [];
+    const seps = [];
+    let cur = "";
+    let curCost = 0;
+    /** 收段：把段尾的空白摘出来存成 sep（拼回时按序补上） */
+    const flush = () => {
+      if (!cur) return;
+      const m = /([\s\u3000]+)$/.exec(cur);
+      const body = m ? cur.slice(0, cur.length - m[1].length) : cur;
+      if (!body) { cur = ""; curCost = 0; return; } // 纯空白：丢弃，不产空段
+      parts.push(body);
+      seps.push(m ? (m[1].indexOf("\n") >= 0 ? "\n" : " ") : "");
+      cur = "";
+      curCost = 0;
+    };
+    for (const t of tokens) {
+      const c = cost(t);
+      if (/^[\s\u3000]+$/.test(t)) { cur += t; curCost += c; continue; }
+      if (c > cap) {
+        // 单个"词"就超限（无空格的长 CJK 连串）：先收段，再按码点硬切
+        flush();
+        let piece = "";
+        let pieceCost = 0;
+        for (const ch of Array.from(t)) {
+          const cc = cost(ch);
+          if (piece && pieceCost + cc > cap) {
+            parts.push(piece); seps.push(""); piece = ""; pieceCost = 0;
+          }
+          piece += ch;
+          pieceCost += cc;
+        }
+        cur = piece;
+        curCost = pieceCost;
+        continue;
+      }
+      if (cur && curCost + c > cap) flush();
+      cur += t;
+      curCost += c;
     }
+    if (cur) parts.push(cur); // 末段：它与前一段之间的 sep 已在上一次 flush 写入
+    while (seps.length >= parts.length) seps.pop();
+    return { parts, seps };
+  }
 
-    const spec = buildEndpoint(id, ctx);
+  /** 该引擎单次能吞多少（未声明 limits 则不分段） */
+  function _segmentsFor(svc, text) {
+    const lim = svc && svc.limits;
+    if (lim && lim.bytes) return _splitText(text, lim.bytes, "bytes");
+    if (lim && lim.chars) return _splitText(text, lim.chars, "chars");
+    return { parts: [String(text == null ? "" : text)], seps: [] };
+  }
+
+  /** 分段数上限保护：切太多段会退化成一长串串行请求 */
+  const SEG_MAX = 24;
+
+  /** 单段调用（含预算内重试）；失败抛异常 */
+  async function _callOnce(svc, ctx, timeoutMs) {
+    const spec = buildEndpoint(svc.id, ctx);
     if (!spec) throw new Error("该引擎未实现请求构造");
 
     const budget = timeoutMs || ctx.timeoutMs || 15000;
@@ -875,7 +1157,7 @@ var TranslateSvc = (function () {
         const resp = await _http(spec, Math.max(3000, deadline - Date.now()));
         let out;
         try {
-          out = extractResult(id, resp, ctx);
+          out = extractResult(svc.id, resp, ctx);
         } catch (pe) {
           // 解析/业务错误（密钥错、参数错、配额用尽…）重试无意义且会白烧额度
           if (pe && pe.retryable === undefined) pe.retryable = false;
@@ -895,6 +1177,48 @@ var TranslateSvc = (function () {
       }
     }
     throw lastErr || new Error("翻译失败");
+  }
+
+  /** 调用某引擎（含 prepare、长文本分段、预算内重试）；失败抛异常 */
+  async function _runEngine(id, ctx, timeoutMs) {
+    const svc = get(id);
+    if (!svc) throw new Error("未知翻译引擎：" + id);
+
+    if (svc.llm) {
+      // 大模型引擎：走当前 AI 通道（划词浮窗的流式路径不在这里，见 reader-popup.js）
+      const msgs = [
+        { role: "system", content: (Prefs.get("aiSystemPrompt", "") || "") },
+        { role: "user", content:
+          "请将以下内容翻译成" + langName(ctx.to) +
+          "，忠实原文，专业术语保留英文并用括号标注。" +
+          "纯文本输出，禁止使用任何 Markdown 标记；只输出译文，不要任何解释。\n\n" + ctx.text },
+      ];
+      const out = await AIClient.chat(msgs);
+      return String(out == null ? "" : out).trim();
+    }
+
+    // prepare：联网预处理（取临时 token / 会话参数）。**整次调用只做一次**，
+    // 多段切分时复用同一份 pre —— 否则每段都会去取一次 token。
+    // （0.31.0 修：此前 prepare 只声明、从未被调用，导致依赖它的 bing 引擎必然失败）
+    if (typeof svc.prepare === "function" && !ctx.pre) {
+      ctx = Object.assign({}, ctx, { pre: await svc.prepare(ctx) });
+    }
+
+    const seg = _segmentsFor(svc, ctx.text);
+    if (seg.parts.length <= 1) return await _callOnce(svc, ctx, timeoutMs);
+
+    if (seg.parts.length > SEG_MAX) {
+      throw new Error("文本过长：「" + svc.name + "」按单次上限需切成 " + seg.parts.length +
+        " 段（上限 " + SEG_MAX + " 段）。请改用其他引擎，或调大「全文对照翻译分段字符数」");
+    }
+    const outs = [];
+    for (let i = 0; i < seg.parts.length; i++) {
+      outs.push(await _callOnce(svc, Object.assign({}, ctx, { text: seg.parts[i] }), timeoutMs));
+      if (i < seg.parts.length - 1) await new Promise((r) => setTimeout(r, 120));
+    }
+    let joined = outs[0];
+    for (let i = 1; i < outs.length; i++) joined += (seg.seps[i - 1] || "") + outs[i];
+    return joined;
   }
 
   /**
@@ -934,8 +1258,24 @@ var TranslateSvc = (function () {
     const cands = _candidates(o);
     if (!cands.length) return { ok: false, error: "没有可用的翻译引擎", tried };
 
-    for (let i = 0; i < cands.length; i++) {
-      const id = cands[i];
+    // 冷却过滤：跳过刚失败过的引擎（显式指定 o.engine 时不跳，尊重调用方意图）
+    const now0 = Date.now();
+    const cooled = [];
+    let chain = cands;
+    if (!o.engine && c.cooldownMs > 0) {
+      chain = cands.filter((id) => {
+        if (_inCooldown(id, now0)) { cooled.push({ engine: id, leftMs: cooldownLeft(id) }); return false; }
+        return true;
+      });
+      // 全在冷却 → 仍然按原顺序试一次（宁可慢，也不要"什么都没做"）
+      if (!chain.length) chain = cands;
+    }
+
+    const started = Date.now();
+    const nameOf = (id) => { const s = get(id); return s ? s.name : id; };
+
+    for (let i = 0; i < chain.length; i++) {
+      const id = chain[i];
       const svc = get(id);
       const useCache = c.cache && !o.noCache;
       const key = _cacheKey(id, from, to, clean);
@@ -943,7 +1283,7 @@ var TranslateSvc = (function () {
         const hit = _cacheGet(key);
         if (hit !== undefined) {
           return { ok: true, text: hit, engine: id, engineName: svc.name,
-            fallback: i > 0, cached: true, tried };
+            fallback: i > 0, cached: true, tried, cooled };
         }
       }
       // llm 引擎需要 AI 就绪；未就绪直接跳过（避免把「没登录」当成引擎故障）
@@ -955,14 +1295,28 @@ var TranslateSvc = (function () {
         const r = resolveSecret(id, secretOf(id));
         if (!r.ok) { tried.push({ engine: id, error: r.error }); continue; }
       }
+
+      // 预算：单路不超过 routeMs，整体不超过 totalMs（0 = 不限）
+      const spent = Date.now() - started;
+      if (c.totalMs > 0 && c.totalMs - spent < 2000) {
+        tried.push({ engine: id, error: "总预算已用完（" + c.totalMs + "ms）" });
+        break;
+      }
+      let budget = o.timeoutMs || c.timeoutMs;
+      if (c.routeMs > 0) budget = Math.min(budget, c.routeMs);
+      if (c.totalMs > 0) budget = Math.min(budget, Math.max(3000, c.totalMs - spent));
+
       try {
-        const ctx = makeCtx(id, { text: clean, from, to, secret: o.secret, timeoutMs: o.timeoutMs });
-        const out = await _runEngine(id, ctx, o.timeoutMs);
+        const ctx = makeCtx(id, { text: clean, from, to, secret: o.secret, timeoutMs: budget });
+        const out = await _runEngine(id, ctx, budget);
         if (useCache) _cacheSet(key, out);
+        if (i > 0) clearCooldown(id); // 顶上来了说明已恢复
         return { ok: true, text: out, engine: id, engineName: svc.name,
-          fallback: i > 0, cached: false, tried };
+          fallback: i > 0, cached: false, tried, cooled };
       } catch (e) {
-        tried.push({ engine: id, error: (e && e.message) || String(e) });
+        const msg = (e && e.message) || String(e);
+        tried.push({ engine: id, error: msg });
+        _markCooldown(id, c.cooldownMs); // 失败的引擎先冷一会儿
       }
     }
     const first = tried[0];
@@ -970,6 +1324,9 @@ var TranslateSvc = (function () {
       ok: false,
       error: first ? first.error : "翻译失败",
       tried,
+      cooled,
+      // 一键重排的可读摘要（UI 直接展示"哪些被跳过、为什么"）
+      detail: tried.map((t) => nameOf(t.engine) + "：" + t.error).join("；"),
     };
   }
 
@@ -1061,6 +1418,17 @@ var TranslateSvc = (function () {
       const raw = Prefs.get("translateCfg", "");
       if (!raw) saveCfg({});
     } catch (e) { /* ignore */ }
+    // 0.31.0：默认回退链升级（免密钥阵营加入 edge 并排首位）。**仅当用户从未自定义过**
+    // （现存值与旧默认完全一致）才改，避免覆盖用户自己的排序。
+    try {
+      if (!Prefs.get("translateFallbackUpgraded", false)) {
+        const cur = cfg();
+        if (JSON.stringify(cur.fallback) === JSON.stringify(["google", "bing", "youdao"])) {
+          saveCfg({ fallback: CFG_DEFAULTS.fallback.slice() });
+        }
+        Prefs.set("translateFallbackUpgraded", true);
+      }
+    } catch (e) { /* ignore */ }
   }
 
   /** 供设置界面渲染：全部引擎 + 当前状态 */
@@ -1080,6 +1448,8 @@ var TranslateSvc = (function () {
           id: s.id, name: s.name, group: s.group || "free",
           needsSecret, configured, experimental: !!s.experimental,
           docs: s.docs || "", note: s.note || "",
+          hint: s.hint || "",
+          limits: s.limits || null,
           secretFields: s.secretFields || [],
           secretRaw: secretOf(s.id),
           isLLM: !!s.llm,
@@ -1100,12 +1470,18 @@ var TranslateSvc = (function () {
     parseSecret, joinSecret, resolveSecret,
     // 纯构造/解析（测试用）
     makeCtx, buildEndpoint, extractResult,
+    // 长文本分段（测试用）：splitText 是纯函数；segmentsFor 是"按引擎上限分段"的入口
+    splitText: _splitText, segmentsFor: _segmentsFor, SEG_MAX,
     // 算法（测试用）
     googleTk, sha1Bytes, hmacSha1, base64, encodeRFC5987, utf8Bytes,
     // 配置
     cfg, saveCfg, setActive, setSecret, secretOf, targetCode, sourceCode, targetName,
     // 运行
     translate, testEngine, clearCache,
+    // 失败冷却（0.31.0）
+    clearCooldown, cooldownLeft,
+    // 本机自建服务探测（0.31.0）
+    probeLocal, LOCAL_PROBES,
     // 迁移
     migrate,
   };

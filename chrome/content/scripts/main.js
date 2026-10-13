@@ -1,7 +1,7 @@
 /* PaperPilot 主入口：装配各模块
  * 由 bootstrap.js 通过 Services.scriptloader 加载，共享 bootstrap 作用域
  */
-/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, _ppDiag */
+/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, _ppDiag */
 
 Zotero.PaperPilot = {
   id: null,
@@ -120,6 +120,10 @@ Zotero.PaperPilot = {
       "columns/citation-column.js",
       "panels/ai-chat-pane.js",
       "panels/glance-pane.js",
+      // 0.30.0 阅读器右侧栏 · 翻译面板（划词即译 / 换引擎 / 全文对照 一处搞定）
+      "panels/translate-pane.js",
+      // 0.31.0 AI 问答悬浮窗（可拖动/停靠/分屏；唤起：快捷键/阅读器按钮/右键/划词）
+      "panels/chat-float.js",
       "menus.js",
     ];
     for (const f of files) {
@@ -165,6 +169,11 @@ Zotero.PaperPilot = {
     this.annotations = Annotations;
     this.collectionStats = CollectionStats;
     this.bilingual = BilingualTranslate;
+    // 0.30.0 阅读器右侧栏翻译面板（功能中心/排障经此访问）
+    this.translatePane = TranslatePane;
+    // 0.31.0 AI 问答悬浮窗（分屏窗口脚本经 window.arguments 的 Zotero 访问；
+    // 会话与发送逻辑单源在 ChatFloat）
+    this.chatFloat = ChatFloat;
     this.cnMeta = CNMeta;
     this.cnTranslators = CNTranslators;
     this.cnFetch = CNFetch;
@@ -343,6 +352,14 @@ Zotero.PaperPilot = {
       await this._diag("glance pane FAILED: " + (e && (e.stack || e.message) || e));
     }
 
+    // 翻译面板（0.30.0）：右侧栏的翻译「操作 + 选项 + 结果」入口
+    try {
+      TranslatePane.register(id);
+      await this._diag("translate pane registered");
+    } catch (e) {
+      await this._diag("translate pane FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
     // 阅读状态自动化（0.11.0）：新条目打「未读」+ 打开 PDF「未读→在读」
     try {
       ReadingState.register();
@@ -386,6 +403,14 @@ Zotero.PaperPilot = {
       await this._diag("reader popup registered");
     } catch (e) {
       await this._diag("reader popup FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
+    // 0.31.0 AI 问答悬浮窗：主窗口快捷键 + 阅读器工具栏按钮/Ctrl+Enter + 分屏窗口
+    try {
+      ChatFloat.register(id);
+      await this._diag("chat float registered");
+    } catch (e) {
+      await this._diag("chat float FAILED: " + (e && (e.stack || e.message) || e));
     }
 
     // 规则打标：新条目自动应用的 Notifier（菜单部分已由 Menus 注入）
@@ -609,8 +634,10 @@ Zotero.PaperPilot = {
     try { MCP.unregister(); } catch (e) { Zotero.logError(e); }
     try { ReadingState.unregister(); } catch (e) { Zotero.logError(e); }
     try { ReaderPopup.unregister(); } catch (e) { Zotero.logError(e); }
+    try { ChatFloat.unregister(); } catch (e) { Zotero.logError(e); }
     try { AIChatPane.unregister(); } catch (e) { Zotero.logError(e); }
     try { GlancePane.unregister(); } catch (e) { Zotero.logError(e); }
+    try { TranslatePane.unregister(); } catch (e) { Zotero.logError(e); }
     try { RankColumn.unregister(); } catch (e) { Zotero.logError(e); }
     try { CitationColumn.unregister(); } catch (e) { Zotero.logError(e); }
     // unregister 接收的是 register 返回的 paneID（不是 pluginID；Z10 关机时也会自动注销）
