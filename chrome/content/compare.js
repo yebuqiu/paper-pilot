@@ -882,7 +882,7 @@
     }
   }
 
-  /** 本页对照翻译：走已有的 AIClient 链路（由 bootstrap 侧注入 translateText） */
+  /** 本页对照翻译：0.28.0 起经 TranslateSvc 多引擎链路（由 bootstrap 侧注入 translateText） */
   async function translateActivePage() {
     const rec = activePane();
     if (!rec || !rec.viewer) { setStatus(T("compareNotReady")); return; }

@@ -950,7 +950,7 @@ for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
-ok('"version": "0.27.0"' in MANIFEST, "20.12 manifest 版本 0.27.0")
+ok('"version": "0.29.0"' in MANIFEST, "20.12 manifest 版本 0.29.0")
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
@@ -1038,6 +1038,100 @@ for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "p
 
 ok("version: '1.7.0'" in srv, "21.32 服务端版本 1.7.0")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
+
+# ---------- 22. 多引擎翻译（插件 0.28.0） ----------
+# 起因：翻译从「只能走 AI 大模型」扩为「多引擎注册表」。这类改造有三类静默失败：
+#   ① 引擎注册表加了新厂商，但装配/暴露/设置脚本漏了一处 → 界面上看不到、或选了不生效；
+#   ② 消费方（浮窗/对照/标题摘要/对比整页）漏改一处 → 有的地方仍强绑 AI，未登录就废；
+#   ③ 语言/密钥这类「契约数据」在模块与设置界面之间对不上 → 选了引擎却发不出请求。
+TRANSLATE_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "translate.js")
+PREFS_TRANSLATE_JS = os.path.join(ROOT, "chrome", "content", "prefs-translate.js")
+tr_js = io.open(TRANSLATE_JS, encoding="utf-8").read()
+trp_js = io.open(PREFS_TRANSLATE_JS, encoding="utf-8").read()
+
+ok('"ai/translate.js"' in mainjs, "22.1 main.js 装配清单含 ai/translate.js")
+ok("this.translateSvc = TranslateSvc;" in mainjs, "22.2 main.js 把 TranslateSvc 挂到 Zotero.PaperPilot")
+ok("TranslateSvc.migrate();" in mainjs, "22.3 启动时执行翻译配置一次性迁移")
+ok('"chrome/content/prefs-translate.js"' in mainjs, "22.4 设置面板注册 prefs-translate.js 脚本")
+
+for _sid in ["google", "googleapi", "bing", "youdao", "mymemory", "libretranslate",
+             "deeplx", "deepl", "microsoft", "baidu", "tencent", "caiyun", "llm"]:
+    ok(('id: "%s"' % _sid) in tr_js, "22.5 引擎注册表含 %s" % _sid)
+ok("CFG_DEFAULTS" in tr_js and "fallback" in tr_js, "22.6 有回退链默认配置")
+ok("function hmacSha1" in tr_js and "function googleTk" in tr_js,
+   "22.7 自实现 HMAC-SHA1（腾讯云签名）与 Google tk 签名")
+ok("function normalizeLang" in tr_js, "22.8 语言归一化入口")
+ok("function buildEndpoint" in tr_js and "function extractResult" in tr_js,
+   "22.9 请求构造/响应解析拆成纯函数（可离线单测）")
+# ★ 默认活动引擎必须是 llm：老用户升级后行为不变（否则翻译质量会无声变化）
+ok('active: "llm"' in tr_js, "22.10 ★ 默认活动引擎为 AI 大模型（向后兼容）")
+ok("function available()" in tr_js, "22.11 提供 available() 供上层判定「翻译是否可用」")
+
+# 消费方：四处都要走 TranslateSvc，且对照翻译要脱离 AIClient.chat 直连
+rp_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "reader-popup.js"),
+                encoding="utf-8").read()
+bl_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "bilingual-translate.js"),
+                encoding="utf-8").read()
+ch_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "ai", "chat.js"),
+                encoding="utf-8").read()
+pc_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "pdf-compare.js"),
+                encoding="utf-8").read()
+ok("TranslateSvc.available()" in rp_js, "22.12 划词浮窗按引擎可用性放行翻译")
+ok("opts && opts.svc" in rp_js, "22.13 划词浮窗翻译支持专用引擎路径")
+ok("TranslateSvc.translate(chunk" in bl_js, "22.14 全文对照翻译走 TranslateSvc")
+_bl_chunk = bl_js.split("_translateChunk(chunk, lang)")[1].split("_titleOf(")[0] if "_translateChunk(chunk, lang)" in bl_js else ""
+ok("AIClient.chat(" not in _bl_chunk, "22.15 ★ 对照翻译的分段翻译不再直连 AIClient.chat")
+ok("TranslateSvc.translate(meta.title" in ch_js, "22.16 标题摘要翻译走 TranslateSvc")
+ok("TranslateSvc.translate(text" in pc_js, "22.17 对比窗口整页翻译走 TranslateSvc")
+
+# pref 默认值与设置界面
+ok('paperpilot.readerPopupTargetLang", "zh-CN"' in prefsdef, "22.18 目标语言默认规范码 zh-CN")
+for _k in ["translateFromLang", "translateCfg", "translateMigrated28"]:
+    ok(("paperpilot.%s" % _k) in prefsdef, "22.19 prefs.js 含 %s 默认值" % _k)
+for _k in ["pp-tr-status", "pp-tr-active", "pp-tr-from", "pp-tr-to", "pp-tr-fallback",
+           "pp-tr-timeout", "pp-tr-retry", "pp-tr-cache", "pp-tr-list", "pp-tr-test-result"]:
+    ok(_k in xhtml_ids, "22.20 prefs.xhtml 含 #%s" % _k)
+_trp_used = set(re.findall(r'\$\("([A-Za-z0-9_-]+)"\)', trp_js))
+_trp_used |= set(re.findall(r'bind\("([A-Za-z0-9_-]+)"', trp_js))
+_trp_missing = sorted(i for i in _trp_used if i not in xhtml_ids)
+ok(not _trp_missing,
+   "22.21 prefs-translate.js 引用的元素 id 都存在于 prefs.xhtml → 缺失: %s" % (_trp_missing or "无"))
+ok("test/translate.test.js" in _pf3, "22.22 preflight 含翻译引擎测试")
+
+# ---------- 23. 菜单瘦身（插件 0.29.0）----------
+# 改动面：menus.js 注册表化 + classic 回退、prefs.js 三个菜单 pref、
+# prefs.xhtml 菜单定制卡片、prefs-menu.js 面板脚本、main.js 暴露 menus/i18n。
+# 钉死「重组不减功能」：注册表必须恰好 40 条（0.28 的全部右键命令），
+# classic 平铺回退必须真实存在（menuMode=classic 不是空话）。
+ok('paperpilot.menuMode", "grouped"' in prefsdef, "23.1 prefs.js 有 menuMode 默认值 grouped")
+for _k in ["menuHiddenGroups", "menuQuickItems"]:
+    ok(("paperpilot.%s" % _k) in prefsdef, "23.2 prefs.js 含 %s 默认值" % _k)
+ok("ITEM_REGISTRY" in menus_js and "GROUPS" in menus_js, "23.3 menus.js 改为注册表驱动")
+ok('_buildClassicItemMenu' in menus_js and '_buildClassicTools' in menus_js,
+   "23.4 classic 平铺回退构建器存在（menuMode=classic 可一键切回）")
+ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
+   "23.5 三个菜单 pref 均注册观察者（改动即时重建）")
+for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
+    ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
+_item_reg_src = menus_js.split("GROUPS:")[0]
+ok(_item_reg_src.count("labelKey:") == 40,
+   "23.7 ★ 注册表恰好 40 条命令（实测 %d，功能一项不减）" % _item_reg_src.count("labelKey:"))
+ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
+   "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
+ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
+ok("this.menus = Menus;" in mainjs and "this.i18n = I18n;" in mainjs,
+   "23.10 main.js 把 Menus/I18n 挂到 Zotero.PaperPilot（面板单一真源）")
+for _k in ["pp-menu-mode", "pp-menu-groups", "pp-menu-quick-0", "pp-menu-quick-1",
+           "pp-menu-quick-2", "pp-menu-result"]:
+    ok(_k in xhtml_ids, "23.11 prefs.xhtml 含 #%s" % _k)
+_pmp_js = io.open(os.path.join(ROOT, "chrome", "content", "prefs-menu.js"), encoding="utf-8").read()
+_pmp_used = set(re.findall(r'\$\("([A-Za-z0-9_-]+)"\)', _pmp_js))
+_pmp_missing = sorted(i for i in _pmp_used if i not in xhtml_ids)
+ok(not _pmp_missing,
+   "23.12 prefs-menu.js 引用的元素 id 都存在于 prefs.xhtml → 缺失: %s" % (_pmp_missing or "无"))
+ok("Zotero.PaperPilot.menus" in _pmp_js or "PP().menus" in _pmp_js,
+   "23.13 prefs-menu.js 经 Zotero.PaperPilot.menus 读注册表（不维护第二份列表）")
+ok("test/menu-registry.test.js" in _pf3, "23.14 preflight 含菜单注册表测试")
 
 # ---------- 输出 ----------
 print("=" * 60)

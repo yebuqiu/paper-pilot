@@ -114,6 +114,8 @@ NODE_SUITES = [
     ("在线支付", "test/pay.test.js"),
     ("arXiv 核心(插件侧)", "test/arxiv-core.test.js"),
     ("双栏对照窗口", "test/bilingual-view.test.js"),
+    ("多引擎翻译", "test/translate.test.js"),
+    ("菜单注册表", "test/menu-registry.test.js"),
     ("Sci-Hub 补全文", "test/scihub-fetch.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),
     ("全模块加载冒烟", "test/smoke-load.test.js"),

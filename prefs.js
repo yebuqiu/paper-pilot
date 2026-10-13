@@ -49,7 +49,15 @@ pref("extensions.zotero.paperpilot.ruleTagRules", "// 每行一条规则：标�
 pref("extensions.zotero.paperpilot.ruleTagAutoOnNew", false);
 // 0.10.0 新增：阅读器划词浮窗 2.0
 pref("extensions.zotero.paperpilot.readerPopupAutoTranslate", false);
-pref("extensions.zotero.paperpilot.readerPopupTargetLang", "中文");
+// 0.28.0：目标语言值域由显示名（"中文"）迁移为规范语言码（"zh-CN"），
+// 对全部翻译功能统一生效；旧值由 TranslateSvc.migrate() 一次性改写
+pref("extensions.zotero.paperpilot.readerPopupTargetLang", "zh-CN");
+// 0.28.0 新增：多引擎翻译。源语言（"auto" = 自动检测）
+pref("extensions.zotero.paperpilot.translateFromLang", "auto");
+// 翻译引擎配置：{active, fallback:[引擎id], timeoutMs, retry, cache, secrets:{引擎id:"a#b"}}
+pref("extensions.zotero.paperpilot.translateCfg", "");
+// 0.28.0 一次性迁移标记：目标语言显示名 → 规范码
+pref("extensions.zotero.paperpilot.translateMigrated28", false);
 pref("extensions.zotero.paperpilot.readerPopupStream", true);
 pref("extensions.zotero.paperpilot.readerPopupWriteBack", true);
 // 0.15.0 新增：浮窗结果区字号缩放（"0.85"/"1"/"1.15"/"1.3"/"1.5"，字符串存法同 aiTemperature）
@@ -171,3 +179,11 @@ pref("extensions.zotero.paperpilot.renewPromptShownFor", "");
 //   ★ 它**不是凭据**：只是让服务端能区分「这是哪台机器」，用于「登录设备」列表与账号共享检测。
 //   非敏感标识，可以放 pref（与「令牌绝不进 pref」那条纪律不冲突：令牌是凭据，这个不是）。
 pref("extensions.zotero.paperpilot.installId", "");
+// 0.29.0 菜单瘦身：右键/工具菜单结构。grouped（默认）= 高频直达 + 语义分组两层；
+// classic = 0.28 及以前的平铺结构（设置窗格可一键切回）
+pref("extensions.zotero.paperpilot.menuMode", "grouped");
+// 右键菜单中隐藏的分组（逗号分隔组 id：ai/notes/citation/tags/meta/cn/automation/state；
+// 隐藏的功能仍可从功能中心、工具菜单、classic 模式到达）
+pref("extensions.zotero.paperpilot.menuHiddenGroups", "");
+// 右键菜单顶部高频直达项（逗号分隔命令 id，最多 3 个；取值见 menus.js ITEM_REGISTRY）
+pref("extensions.zotero.paperpilot.menuQuickItems", "ai-summary,bilingual-view");

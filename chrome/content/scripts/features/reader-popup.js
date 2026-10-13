@@ -14,7 +14,7 @@
  * - 按钮统一样式（边框/圆角/hover/disabled），结果区细滚动条
  * - <style> 随 box 挂载、随浮窗销毁，不残留 reader 文档
  */
-/* global Zotero, Prefs, AIClient, AIChat, AIChatPane, I18n */
+/* global Zotero, Prefs, AIClient, AIChat, AIChatPane, I18n, TranslateSvc */
 
 var ReaderPopup = {
   _handler: null,
@@ -109,7 +109,10 @@ var ReaderPopup = {
   /** 翻译/解读 prompt 构造（浮窗是纯文本渲染，必须显式禁止 Markdown，
    *  否则会受 aiSystemPrompt 里「使用 Markdown 格式输出」影响带出 **、# 等标记） */
   _buildPrompt(mode, text) {
-    const lang = Prefs.get("readerPopupTargetLang", "中文") || "中文";
+    // 目标语言统一走 TranslateSvc（值域为规范码，prompt 里用可读名）
+    const lang = (typeof TranslateSvc !== "undefined" && TranslateSvc)
+      ? TranslateSvc.targetName()
+      : (Prefs.get("readerPopupTargetLang", "中文") || "中文");
     if (mode === "translate") {
       return (I18n.isZh
         ? `请将以下内容翻译成${lang}，忠实原文，专业术语保留英文并用括号标注，只输出译文：\n\n`
@@ -147,6 +150,10 @@ var ReaderPopup = {
       // 用户划词后看到的只有「没反应」，完全不知道是没登录/没配 Key。
       // 现在照常渲染浮窗，只是按钮禁用 + 顶部给出精确指引与一键去设置。
       const aiReady = AIClient.hasKey();
+      // 0.28.0：翻译与「解读/追问」解耦——只要有可用翻译引擎（免费引擎开箱即用，
+      // 或已配置的专用引擎；引擎为 AI 大模型时仍要求 AI 就绪），划词翻译即可用。
+      const trReady = (typeof TranslateSvc !== "undefined" && TranslateSvc)
+        ? TranslateSvc.available() : aiReady;
 
       const item = this._currentItem(event);
       const annotation = (params && params.annotation && params.annotation.id)
@@ -200,7 +207,9 @@ var ReaderPopup = {
       const trBtn = mkBtn(I18n.t("popupTranslate"));
       const aiBtn = mkBtn(I18n.t("popupExplain"));
       const askBtn = mkBtn(I18n.t("popupAsk"));
-      if (!aiReady) for (const b of [trBtn, aiBtn, askBtn]) b.disabled = true;
+      // 翻译只看翻译引擎是否可用；解读/追问仍需 AI
+      if (!trReady) trBtn.disabled = true;
+      if (!aiReady) for (const b of [aiBtn, askBtn]) b.disabled = true;
       const src = mk("span",
         "color:#888;flex:1;min-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" +
         "font-size:11.5px;",
@@ -258,19 +267,23 @@ var ReaderPopup = {
       if (item) actions.appendChild(paneBtn);
       actions.appendChild(status);
 
-      // AI 未就绪提示行（0.21.0）：说明原因 + 一键去设置（区分未登录 / 缺 Key）
+      // 未就绪提示行（0.21.0 起为「不再静默」而加；0.28.0 拆成「无 AI」与「无翻译引擎」两种）
       let noticeRow = null;
-      if (!aiReady) {
+      if (!aiReady || !trReady) {
         noticeRow = mk("div",
           "display:flex;gap:6px;align-items:center;flex-wrap:wrap;" +
           "font-size:11.5px;color:#c0392b;line-height:1.5;");
-        noticeRow.appendChild(mk("span", "flex:1;min-width:120px;", I18n.t("popupNoAi")));
+        noticeRow.appendChild(mk("span", "flex:1;min-width:120px;",
+          trReady ? I18n.t("popupNoAi") : I18n.t("popupNoEngine")));
         const goBtn = mkBtn(I18n.t("popupGoLogin"));
         goBtn.addEventListener("click", () => this._openSettings());
         noticeRow.appendChild(goBtn);
+        const hintText = trReady
+          ? AIClient.guidance()
+          : ((typeof TranslateSvc !== "undefined" && TranslateSvc)
+              ? TranslateSvc.unavailableHint() : (AIClient.guidance() || ""));
         const hint = mk("div",
-          "font-size:11px;color:#888;line-height:1.5;width:100%;",
-          AIClient.guidance());
+          "font-size:11px;color:#888;line-height:1.5;width:100%;", hintText);
         noticeRow.appendChild(hint);
       }
 
@@ -323,8 +336,9 @@ var ReaderPopup = {
         result.textContent = I18n.t("errPrefix") + ((e && e.message) || e);
       };
 
-      /** 统一执行：流式优先，结果就绪后显示操作行；返回最终答案（失败为 null） */
-      const execute = async (messages, cacheKey) => {
+      /** 统一执行：流式优先，结果就绪后显示操作行；返回最终答案（失败为 null）
+       *  opts.svc = true 时改走 TranslateSvc（专用翻译引擎，一次性结果无流式） */
+      const execute = async (messages, cacheKey, opts) => {
         if (currentHandle) { try { currentHandle.abort(); } catch (e) { /* ignore */ } }
         stopped = false;
         setBusy(true);
@@ -362,7 +376,17 @@ var ReaderPopup = {
 
         try {
           let answer;
-          if (Prefs.get("readerPopupStream", true) && AIClient.chatStream) {
+          let note = "";
+          if (opts && opts.svc) {
+            // 专用翻译引擎（Google/DeepL/百度…）：一次性结果，无流式
+            const rr = await TranslateSvc.translate(cleanText, { to: TranslateSvc.targetCode() });
+            if (!result.isConnected) return null;
+            if (stopped) { result.style.display = "none"; stopRow.style.display = "none"; return null; }
+            if (!rr.ok) throw new Error(rr.error);
+            answer = rr.text;
+            result.textContent = answer;
+            if (rr.fallback && rr.engineName) note = "↩ " + rr.engineName;
+          } else if (Prefs.get("readerPopupStream", true) && AIClient.chatStream) {
             currentHandle = AIClient.chatStream(messages, onDelta);
             this._active.add(currentHandle);
             answer = await currentHandle.promise;
@@ -378,7 +402,7 @@ var ReaderPopup = {
           if (result.isConnected) {
             stopRow.style.display = "none";
             actions.style.display = "flex";
-            if (count !== 500) status.textContent = "";
+            status.textContent = count === 500 ? I18n.t("popupDailyNotice") : note;
           }
           return answer;
         } catch (e) {
@@ -406,12 +430,19 @@ var ReaderPopup = {
 
       const runTask = (mode) => {
         lastRun = { kind: mode };
-        const lang = Prefs.get("readerPopupTargetLang", "中文") || "中文";
-        const cacheKey = mode + "|" + lang + "|" + cleanText;
+        const tv = (typeof TranslateSvc !== "undefined" && TranslateSvc) ? TranslateSvc : null;
+        const lang = tv ? tv.targetCode()
+          : (Prefs.get("readerPopupTargetLang", "zh-CN") || "zh-CN");
+        // 翻译：活动引擎为 AI 大模型且 AI 就绪 → 走流式（与旧版一致，体验最好）；
+        // 否则交给 TranslateSvc（免费/专用引擎；大模型不可用时自动回退到备用引擎）
+        const useSvc = mode === "translate" && !!tv && !(aiReady && tv.isLLM());
+        const cacheKey = mode + "|" +
+          (useSvc ? "svc:" + tv.cfg().active + "|" : "") +
+          lang + "|" + cleanText;
         execute([
           { role: "system", content: Prefs.get("aiSystemPrompt", "") || "" },
           { role: "user", content: this._buildPrompt(mode, cleanText) },
-        ], cacheKey);
+        ], cacheKey, { svc: useSvc });
       };
 
       const runAsk = async (question) => {
@@ -519,7 +550,7 @@ var ReaderPopup = {
 
       // 划词即自动翻译：去重 + 800ms 限流 + 长度护栏
       try {
-        if (aiReady && Prefs.get("readerPopupAutoTranslate", false) &&
+        if (trReady && Prefs.get("readerPopupAutoTranslate", false) &&
             cleanText.length >= 2 && cleanText.length <= 2000) {
           const now = Date.now();
           const autoKey = "translate|" + cleanText;

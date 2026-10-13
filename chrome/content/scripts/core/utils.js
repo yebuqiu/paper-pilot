@@ -257,6 +257,13 @@ var I18n = (() => {
       ? "AI 不可用：未登录官方模型且未配置自己的模型通道。"
       : "AI unavailable: not logged in and no custom channel configured.",
     popupGoLogin: zh ? "去登录 / 配置" : "Log in / Configure",
+    // ---- 0.28.0 多引擎翻译：翻译与 AI 解耦后，缺引擎要有独立指引 ----
+    popupNoEngine: zh
+      ? "翻译不可用：当前没有可用的翻译引擎（AI 未登录/未配置，且无免费引擎兜底）。"
+      : "Translation unavailable: no usable engine (AI not logged in/configured, no free fallback).",
+    menuTranslateEngine: zh ? "PaperPilot 翻译引擎" : "PaperPilot Translation Engine",
+    translateTest: zh ? "测试" : "Test",
+    translateTesting: zh ? "测试中…" : "Testing…",
     chatNotLoggedIn: zh
       ? "官方模型需要登录：请在 设置 → PaperPilot 登录账号（登录后免费使用），或在「AI 模型通道」中配置自己的接口"
       : "The official model requires login: open Settings → PaperPilot to log in, or configure your own channel",
@@ -279,6 +286,17 @@ var I18n = (() => {
     menuDiscovery: zh ? "文献发现（arXiv 每日推荐）…" : "Discovery (arXiv Daily)…",
     menuMetaRules: zh ? "元数据体检（规则补齐）…" : "Metadata Rules (checklist)…",
     menuMcp: zh ? "MCP 对外供给（让外部 AI 调用文献库）…" : "MCP Server (expose library)…",
+    // ---- 0.29.0 菜单瘦身：语义分组标签（右键 + 工具菜单共用）----
+    menuGroupHub: zh ? "功能中心" : "Hub",
+    menuGroupDiscovery: zh ? "发现与报告" : "Discovery & Reports",
+    menuGroupGovernance: zh ? "治理与维护" : "Maintenance",
+    menuGroupAi: zh ? "AI 阅读助手" : "AI Reading",
+    menuGroupNotes: zh ? "笔记与输出" : "Notes & Export",
+    menuGroupCitation: zh ? "引文分析" : "Citation Analysis",
+    menuGroupTags: zh ? "标签治理" : "Tags",
+    menuGroupMeta: zh ? "元数据治理" : "Metadata",
+    menuGroupCn: zh ? "中文文献工具" : "Chinese Literature Tools",
+    menuGroupAutomation: zh ? "自动化" : "Automation",
   };
   return {
     t(key) { return table[key] || key; },

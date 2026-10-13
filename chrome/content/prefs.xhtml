@@ -284,6 +284,82 @@
     </html:div>
   </html:div>
 
+  <!-- ============ 2.5 · 翻译引擎（0.28.0） ============ -->
+  <html:div class="pp-card">
+    <html:div><html:span class="pp-card-icon">🌐</html:span><html:span class="pp-card-title">翻译引擎</html:span></html:div>
+    <html:div class="pp-card-desc">划词翻译 / 全文对照翻译 / 标题摘要翻译共用这一套引擎。可选 AI 大模型（默认，质量最好），也可切到 Google / 必应 / 有道 等免费引擎（无需登录、开箱即用），或填自己的 DeepL / 百度 / 腾讯云 密钥</html:div>
+    <html:div class="pp-card-body">
+      <html:div id="pp-tr-status" class="pp-ch-status" style="margin-top:10px;"></html:div>
+      <html:div class="pp-grid3">
+        <html:div class="pp-field">
+          <html:label class="pp-label">当前翻译引擎</html:label>
+          <html:select id="pp-tr-active" class="pp-select"></html:select>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">源语言</html:label>
+          <html:select preference="extensions.zotero.paperpilot.translateFromLang" id="pp-tr-from" class="pp-select">
+            <html:option value="auto">自动检测</html:option>
+            <html:option value="zh-CN">中文（简体）</html:option>
+            <html:option value="zh-TW">中文（繁體）</html:option>
+            <html:option value="en">English</html:option>
+            <html:option value="ja">日本語</html:option>
+            <html:option value="ko">한국어</html:option>
+            <html:option value="fr">Français</html:option>
+            <html:option value="de">Deutsch</html:option>
+            <html:option value="es">Español</html:option>
+            <html:option value="ru">Русский</html:option>
+            <html:option value="pt">Português</html:option>
+            <html:option value="it">Italiano</html:option>
+            <html:option value="ar">العربية</html:option>
+          </html:select>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">目标语言</html:label>
+          <html:select preference="extensions.zotero.paperpilot.readerPopupTargetLang" id="pp-tr-to" class="pp-select">
+            <html:option value="zh-CN">中文（简体）</html:option>
+            <html:option value="zh-TW">中文（繁體）</html:option>
+            <html:option value="en">English</html:option>
+            <html:option value="ja">日本語</html:option>
+            <html:option value="ko">한국어</html:option>
+            <html:option value="fr">Français</html:option>
+            <html:option value="de">Deutsch</html:option>
+            <html:option value="es">Español</html:option>
+            <html:option value="ru">Русский</html:option>
+            <html:option value="pt">Português</html:option>
+            <html:option value="it">Italiano</html:option>
+            <html:option value="ar">العربية</html:option>
+          </html:select>
+        </html:div>
+      </html:div>
+      <html:div class="pp-hint">源语言一般选「自动检测」；目标语言对全部翻译功能统一生效（与「阅读器划词浮窗」卡片里的选择是同一项）。</html:div>
+      <html:div class="pp-field" style="margin-top:10px;">
+        <html:label class="pp-label">主引擎失败时自动依次尝试（回退链，逗号分隔引擎 id）</html:label>
+        <html:input type="text" id="pp-tr-fallback" class="pp-input" placeholder="google, bing, youdao"/>
+        <html:div class="pp-hint">稳定性保障：主引擎超时 / 限流 / 报错时自动换用下一个可用引擎；结果区会标注实际使用的引擎。留空则不回退。</html:div>
+      </html:div>
+      <html:div class="pp-grid3" style="margin-top:6px;">
+        <html:div class="pp-field">
+          <html:label class="pp-label">单次请求超时（毫秒）</html:label>
+          <html:input type="number" id="pp-tr-timeout" class="pp-input" min="3000" max="120000" placeholder="15000"/>
+        </html:div>
+        <html:label class="pp-check" style="margin-top:18px;">
+          <html:input type="checkbox" id="pp-tr-retry"/>
+          <html:span>失败自动重试一次（5xx/超时/网络抖动）</html:span>
+        </html:label>
+        <html:label class="pp-check" style="margin-top:18px;">
+          <html:input type="checkbox" id="pp-tr-cache"/>
+          <html:span>结果缓存（同一段内容不重复请求）</html:span>
+        </html:label>
+      </html:div>
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">全部引擎</html:div>
+        <html:div class="pp-sub-desc">「设为当前」= 用作主翻译引擎；「纳入回退」= 主引擎失败时依次尝试；带 🔑 的引擎需填写密钥后可用</html:div>
+        <vbox id="pp-tr-list" class="pp-ch-list" style="gap:6px;"></vbox>
+      </html:div>
+      <html:div id="pp-tr-test-result" class="pp-msg" style="margin-top:6px;min-height:14px;"></html:div>
+    </html:div>
+  </html:div>
+
   <!-- ============ 3 · AI 参数 ============ -->
   <html:div class="pp-card">
     <html:div><html:span class="pp-card-icon">🎛️</html:span><html:span class="pp-card-title">AI 参数</html:span></html:div>
@@ -336,11 +412,21 @@
       <html:div class="pp-row">
         <html:span class="pp-label">翻译目标语言</html:span>
         <html:select preference="extensions.zotero.paperpilot.readerPopupTargetLang" id="pp-popup-lang" class="pp-select">
-          <html:option value="中文">中文</html:option>
-          <html:option value="English">English</html:option>
-          <html:option value="日本語">日本語</html:option>
+          <html:option value="zh-CN">中文（简体）</html:option>
+          <html:option value="zh-TW">中文（繁體）</html:option>
+          <html:option value="en">English</html:option>
+          <html:option value="ja">日本語</html:option>
+          <html:option value="ko">한국어</html:option>
+          <html:option value="fr">Français</html:option>
+          <html:option value="de">Deutsch</html:option>
+          <html:option value="es">Español</html:option>
+          <html:option value="ru">Русский</html:option>
+          <html:option value="pt">Português</html:option>
+          <html:option value="it">Italiano</html:option>
+          <html:option value="ar">العربية</html:option>
         </html:select>
       </html:div>
+      <html:div class="pp-hint" style="margin-top:4px;">目标语言对全部翻译功能统一生效（划词浮窗 / 全文对照 / 标题摘要），与上方「翻译引擎」卡片是同一项设置。</html:div>
       <html:div class="pp-hint" style="margin-top:8px;">0.15.0：浮窗已支持 A−/A+ 字号缩放（自动记住）、结果区展开/收起、生成中随时「停止」。</html:div>
     </html:div>
   </html:div>
@@ -691,6 +777,37 @@
           <html:span id="pp-pt-result" class="pp-msg"></html:span>
         </html:div>
       </html:div>
+    </html:div>
+  </html:div>
+
+  <!-- ============ 10 · 菜单定制（0.29.0） ============ -->
+  <html:div class="pp-card">
+    <html:div><html:span class="pp-card-icon">🧭</html:span><html:span class="pp-card-title">菜单定制</html:span></html:div>
+    <html:div class="pp-card-desc">右键菜单与「工具」菜单的结构、分组与高频直达项；所有改动即时生效，无需重启 Zotero</html:div>
+    <html:div class="pp-card-body">
+      <html:div class="pp-row" style="margin-top:6px;">
+        <html:span class="pp-label">菜单结构</html:span>
+        <html:select preference="extensions.zotero.paperpilot.menuMode" id="pp-menu-mode" class="pp-select">
+          <html:option value="grouped">分组两层（推荐：高频直达 + 语义分组）</html:option>
+          <html:option value="classic">经典平铺（0.28 及以前的单层结构）</html:option>
+        </html:select>
+      </html:div>
+      <html:div class="pp-hint" style="margin-top:4px;">分组模式下，条目右键菜单从 40 项平铺收拢为「直达 + 分组」；被折叠的功能仍可从功能中心与「工具 → PaperPilot」到达。</html:div>
+      <html:div class="pp-field" style="margin-top:10px;">
+        <html:label class="pp-label">右键菜单中隐藏的分组（取消勾选即从右键菜单移除）</html:label>
+        <html:div id="pp-menu-groups" class="pp-menu-groups" style="display:flex;flex-wrap:wrap;gap:4px 18px;"></html:div>
+        <html:div class="pp-hint">隐藏只是收起入口：功能本体不受影响，恢复勾选即回来。</html:div>
+      </html:div>
+      <html:div class="pp-field" style="margin-top:10px;">
+        <html:label class="pp-label">右键菜单顶部高频直达项（最多 3 个）</html:label>
+        <html:div class="pp-grid3">
+          <html:select id="pp-menu-quick-0" class="pp-select"></html:select>
+          <html:select id="pp-menu-quick-1" class="pp-select"></html:select>
+          <html:select id="pp-menu-quick-2" class="pp-select"></html:select>
+        </html:div>
+        <html:div class="pp-hint">直达项与分组内条目是同一功能的两处入口；选「（无）」表示该位留空。</html:div>
+      </html:div>
+      <html:div id="pp-menu-result" class="pp-msg"></html:div>
     </html:div>
   </html:div>
 

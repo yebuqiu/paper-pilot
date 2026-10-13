@@ -56,6 +56,7 @@ console.log("加载模块 " + files.length + " 个，失败 " + failed + " 个")
 
 const expect = ["Prefs", "I18n", "MdLite", "Notes", "ItemSel", "TagCurator", "AttachDoctor", "LibSearch",
   "SmartCleanup", "RuleTag", "Automation", "AutoRead", "TagCurator", "LibSearch", "NoteGraph", "ReadingStats", "AttachDoctor", "AIChat", "AIClient", "Menus", "ReadingState", "UiTheme", "PdfCompare", "MetaRules", "Discovery", "MCP", "SciHub", "OAFetch",
+  "TranslateSvc",
   "ArxivErrors", "ArxivDates", "ArxivQuery", "ArxivCategories", "ArxivAtom", "ArxivAnalyze", "ArxivRateLimiter", "ArxivFetch"];
 const missing = expect.filter((k) => !sandbox[k]);
 console.log("关键全局缺失:", missing.length ? missing : "无 ✓");
@@ -67,6 +68,12 @@ const t = sandbox.LibSearch.tokenize("机器学习 survey");
 console.log("LibSearch.tokenize 可用:", t.includes("学习") && t.includes("survey") ? "✓" : "✗");
 const mh = sandbox.MetaRules.journalHint("Nat Med", sandbox.MetaRules.journalIndex(""), "expand");
 console.log("MetaRules.journalHint 可用:", mh && mh.to === "Nature Medicine" ? "✓" : "✗ " + JSON.stringify(mh));
+// 0.28.0 多引擎翻译：注册表规模 + 语言归一化（纯函数，加载后应可调用）
+const svcN = sandbox.TranslateSvc.SERVICES.length;
+console.log("TranslateSvc 引擎数:", svcN >= 13 ? "✓ " + svcN : "✗ " + svcN);
+console.log("TranslateSvc.normalizeLang 可用:",
+  sandbox.TranslateSvc.normalizeLang("中文") === "zh-CN" &&
+  sandbox.TranslateSvc.normalizeLang("zh-Hant") === "zh-TW" ? "✓" : "✗");
 // 0.25.0 起解析不再由 Discovery 自带，改为生成出来的 ArxivAtom（单一真源 tools/arxiv/src）
 const atom = sandbox.ArxivAtom.parseAtom('<entry><id>http://arxiv.org/abs/2401.00001v1</id><title>T</title><summary>S</summary><author><name>A B</name></author></entry>');
 console.log("ArxivAtom.parseAtom 可用:", atom.entries.length === 1 && atom.entries[0].arxivId === "2401.00001" ? "✓" : "✗");

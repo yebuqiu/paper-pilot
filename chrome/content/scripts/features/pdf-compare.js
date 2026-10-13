@@ -17,7 +17,7 @@
  * 本模块只做 bootstrap 侧的事：解析选中的 PDF 附件、开窗/复用窗口。
  * 窗口内逻辑（布局、同步滚动缩放、面板生命周期）在 chrome/content/compare.js。
  */
-/* global Zotero, Services, Prefs, I18n, ItemSel, AIClient */
+/* global Zotero, Services, Prefs, I18n, ItemSel, AIClient, TranslateSvc */
 
 var PdfCompare = {
   WINDOW_TYPE: "paperpilot:compare",
@@ -144,19 +144,30 @@ var PdfCompare = {
       t: (key) => I18n.t(key),
       isZh: !!I18n.isZh,
       // AI 链路只能从 bootstrap 侧调（窗口脚本访问不到 AIClient）——
-      // 用于「翻译本页」：沿用划词浮窗的目标语言与系统提示词，保持口径一致
-      aiStatus: () => { try { return AIClient.status(); } catch (e) { return "no_key"; } },
-      aiGuidance: () => { try { return AIClient.guidance(); } catch (e) { return ""; } },
+      // 用于「翻译本页」：0.28.0 起改走 TranslateSvc（尊重用户在「翻译引擎」
+      // 里的选择；引擎为 AI 大模型时行为与旧版一致），并与划词浮窗同口径。
+      aiStatus: () => {
+        try {
+          if (AIClient.status() === "ok") return "ok";
+        } catch (e) { /* ignore */ }
+        // 大模型不可用时，只要有可用的翻译引擎（免费/自备密钥），本页翻译依然可用
+        try {
+          if (TranslateSvc.available()) return "ok";
+        } catch (e) { /* ignore */ }
+        return "no_key";
+      },
+      aiGuidance: () => {
+        try {
+          if (AIClient.status() === "ok" || TranslateSvc.available()) return "";
+          return TranslateSvc.unavailableHint();
+        } catch (e) { return ""; }
+      },
       // 自检开关同时打开窗口内的事件追踪（窗口脚本读不到 pref，故由此注入）
       trace: Prefs.get("compareSelfTest", false) === true,
       translateText: async (text) => {
-        const lang = Prefs.get("readerPopupTargetLang", "中文") || "中文";
-        return AIClient.chat([
-          { role: "system", content: Prefs.get("aiSystemPrompt", "") || "" },
-          { role: "user", content:
-            `请将以下论文页面内容翻译成${lang}，忠实原文，专业术语保留英文并用括号标注。` +
-            "纯文本输出，禁止使用任何 Markdown 标记；只输出译文，不要任何解释。\n\n" + text },
-        ]);
+        const r = await TranslateSvc.translate(text, { to: TranslateSvc.targetCode() });
+        if (!r.ok) throw new Error(r.error);
+        return r.text;
       },
     };
     return win.openDialog(

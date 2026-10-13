@@ -55,6 +55,9 @@ Zotero.PaperPilot = {
       "ai/account.js",
       "ai/channels.js",
       "ai/client.js",
+      // 0.28.0 多引擎翻译：注册表 + 统一调用层（独立于 AI 大模型）
+      // 须排在 client.js 之后（llm 引擎要调 AIClient）、chat.js 与各 features 之前
+      "ai/translate.js",
       "ai/chat.js",
       "ai/prompts.js",
       "ai/auto-tag.js",
@@ -136,6 +139,12 @@ Zotero.PaperPilot = {
     // 0.14.0 账号系统 + 模型通道（面板与各窗口脚本经此访问）
     this.account = Account;
     this.channels = Channels;
+    // 0.28.0 多引擎翻译：设置面板脚本经此访问引擎注册表与配置
+    this.translateSvc = TranslateSvc;
+    // 0.29.0 菜单瘦身：设置面板脚本经此读取菜单注册表与 i18n（单一真源，
+    // 面板里的分组/直达项定制直接遍历 Menus.ITEM_REGISTRY / GROUPS 渲染）
+    this.menus = Menus;
+    this.i18n = I18n;
     this.rankColumn = RankColumn;
     this.citationColumn = CitationColumn;
     this.s2 = S2Client;
@@ -226,6 +235,14 @@ Zotero.PaperPilot = {
     } catch (e) {
       await this._diag("channels migration FAILED: " + (e && (e.stack || e.message) || e));
     }
+    // 0.28.0：翻译引擎一次性迁移（目标语言显示名 → 规范码；初始化 translateCfg）
+    try {
+      TranslateSvc.migrate();
+      await this._diag("translate engine ready (active=" + TranslateSvc.cfg().active +
+        ", target=" + TranslateSvc.targetCode() + ")");
+    } catch (e) {
+      await this._diag("translate migration FAILED: " + (e && (e.stack || e.message) || e));
+    }
     // 0.15.0 一次性迁移：不再开放自建后台——清掉指向本地的旧服务器地址（设置界面
     // 已无服务器入口，残留 127.0.0.1 会让老用户升级后登录永远失败）。执行一次后打标。
     try {
@@ -267,6 +284,8 @@ Zotero.PaperPilot = {
         scripts: [
           rootURI + "chrome/content/prefs-pane.js",
           rootURI + "chrome/content/prefs-account.js",
+          rootURI + "chrome/content/prefs-translate.js",
+          rootURI + "chrome/content/prefs-menu.js",
           rootURI + "chrome/content/prefs-theme.js",
         ],
         stylesheets: [

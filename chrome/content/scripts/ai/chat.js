@@ -1,5 +1,5 @@
 /* PaperPilot PDF 全文提取 + 问答逻辑 */
-/* global Zotero, IOUtils, Prefs, AIClient */
+/* global Zotero, IOUtils, Prefs, AIClient, TranslateSvc, I18n */
 
 var AIChat = {
   // 附件全文缓存（存未截断原文，截断在使用时按当前 pref 值进行；FIFO 淘汰）
@@ -165,12 +165,45 @@ var AIChat = {
       "请用中文对这篇论文做 300-500 字的总结，涵盖研究问题、方法、主要结果与结论，一段话或分点均可。");
   },
 
-  /** AI 翻译标题与摘要：优先摘要字段；无摘要时回退翻译 PDF 开篇 3000 字 */
+  /**
+   * AI 翻译标题与摘要：优先摘要字段；无摘要时回退翻译 PDF 开篇 3000 字。
+   * 0.28.0：改为**尊重「翻译引擎」设置**——
+   *   · 引擎 = AI 大模型（默认）→ 沿用原单轮流式提示词（学术语气、术语括号标注）；
+   *   · 引擎 = 专用翻译服务（Google/DeepL/百度…）→ 标题与摘要分别送该引擎翻译，
+   *     这样未登录 AI 的用户也能用免费引擎翻译题录。
+   * 返回结构与旧版一致（纯文本，标题在前、摘要在后），调用方无需改动。
+   */
   async translateTitleAbstract(item) {
     const meta = this.paperMeta(item);
     let abstract = "";
     try { abstract = item.getField("abstractNote") || ""; } catch (e) { /* ignore */ }
 
+    // 非「AI 大模型」引擎（或大模型不可用）→ 直接走引擎，标题与摘要分开翻译
+    const useEngine = typeof TranslateSvc !== "undefined" && TranslateSvc &&
+      (!TranslateSvc.isLLM() || !AIClient.hasKey());
+    if (useEngine) {
+      const to = TranslateSvc.targetCode();
+      const head = I18n.isZh ? { t: "标题", a: "摘要" } : { t: "Title", a: "Abstract" };
+      const out = [];
+      if (meta.title) {
+        const rt = await TranslateSvc.translate(meta.title, { to });
+        if (!rt.ok) throw new Error(rt.error);
+        out.push(head.t + "\n" + rt.text);
+      }
+      let body = abstract;
+      if (!body.trim()) {
+        // 无摘要字段：回退翻译 PDF 开篇（与旧版兜底一致）
+        const fullText = await this.getFullText(item);
+        if (!fullText) throw new Error("NO_PDF");
+        body = fullText.slice(0, 3000);
+      }
+      const ra = await TranslateSvc.translate(body, { to });
+      if (!ra.ok) throw new Error(ra.error);
+      out.push(head.a + "\n" + ra.text);
+      return out.join("\n\n");
+    }
+
+    // AI 大模型引擎：原有单轮提示词路径（标题 + 摘要一次翻译，语气/术语更优）
     const system = Prefs.get("aiSystemPrompt", "") || "";
     if (abstract.trim()) {
       const q =

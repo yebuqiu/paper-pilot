@@ -10,7 +10,7 @@
  * 目标语言与系统提示词完全一致 —— 改一处两边都变。
  * 一次一篇（全文翻译属重任务），进度条按段推进。
  */
-/* global Zotero, Services, Prefs, AIChat, AIClient, Notes, I18n, ItemSel */
+/* global Zotero, Services, Prefs, AIChat, AIClient, Notes, I18n, ItemSel, TranslateSvc */
 
 var BilingualTranslate = {
   WINDOW_TYPE: "paperpilot:bilingual",
@@ -54,24 +54,24 @@ var BilingualTranslate = {
   },
 
   async _translateChunk(chunk, lang) {
-    return AIClient.chat([
-      { role: "system", content: Prefs.get("aiSystemPrompt", "") || "" },
-      { role: "user", content:
-        `请将以下论文片段翻译成${lang}，忠实原文，专业术语保留英文并用括号标注。` +
-        "纯文本输出，禁止使用任何 Markdown 标记；只输出译文，不要任何解释。\n\n" + chunk },
-    ]);
+    // 0.28.0：改走 TranslateSvc —— 尊重用户在「翻译引擎」里的选择
+    // （AI 大模型引擎行为与旧版一致；也可选 Google/DeepL/百度等专用引擎，
+    //  无需登录即可用免费引擎做全文对照翻译）。
+    const r = await TranslateSvc.translate(chunk, { to: TranslateSvc.targetCode() });
+    if (!r.ok) throw new Error(r.error || "翻译失败");
+    return r.text;
   },
 
   _titleOf(item) {
     try { return item.getDisplayTitle() || ""; } catch (e) { return ""; }
   },
 
-  /** 目标语言（与划词浮窗同一口径，改一处两边都变） */
+  /** 目标语言（prompt / 笔记抬头用；与划词浮窗同一口径，改一处两边都变） */
   _targetLang() {
-    return Prefs.get("readerPopupTargetLang", "中文") || "中文";
+    try { return TranslateSvc.targetName() || "中文"; } catch (e) { return "中文"; }
   },
 
-  /** 两个出口的公共前置校验：一次一篇 + AI 已就绪。返回条目或 null */
+  /** 两个出口的公共前置校验：一次一篇 + 翻译链路可用。返回条目或 null */
   _pickOne() {
     const zp = Zotero.getActiveZoteroPane();
     if (!zp) return null;
@@ -82,10 +82,11 @@ var BilingualTranslate = {
         I18n.isZh ? "全文对照翻译一次请只选一篇" : "Select only one item at a time");
       return null;
     }
-    if (!AIClient.hasKey()) {
-      // 0.21.0：区分「未登录官方模型」与「通道缺 Key」，不再用同一条笼统提示
+    // 0.28.0：不再要求「必须登录 AI」——只要有可用翻译引擎即可
+    // （免费引擎开箱即用；引擎为 AI 大模型时这一条等价于旧的 hasKey 判定）
+    if (!TranslateSvc.available()) {
       Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
-        AIClient.guidance() || I18n.t("chatNoKey"));
+        TranslateSvc.unavailableHint() || I18n.t("chatNoKey"));
       return null;
     }
     return items[0];
