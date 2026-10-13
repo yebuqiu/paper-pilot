@@ -399,6 +399,32 @@
         </html:div>
       </html:div>
       <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">PDF 原位对照翻译</html:div>
+        <html:div class="pp-sub-desc">在阅读器里把每段译文「按原文段落位置」叠加回 PDF 页面（保留原始排版、逐段对照），与「双栏窗口」是两条不同的路线。开启方式：阅读器工具栏的「原位翻译」按钮，或右键条目「PDF 原位对照翻译」。公式段落不翻译、原文原样保留；页眉页脚、页码等自动跳过。</html:div>
+        <html:div class="pp-grid3">
+          <html:div class="pp-field">
+            <html:label class="pp-label">显示模式</html:label>
+            <html:select id="pp-pi-mode" class="pp-select">
+              <html:option value="off">关闭（默认，用按钮按需开启）</html:option>
+              <html:option value="overlay">译文覆盖原文（原文淡显，最接近译文版）</html:option>
+              <html:option value="bilingual">译文半透明浮层（原文清晰可读）</html:option>
+            </html:select>
+          </html:div>
+          <html:div class="pp-field">
+            <html:label class="pp-label">译文卡字号比例（0.7–1.6）</html:label>
+            <html:input type="number" id="pp-pi-scale" class="pp-input" min="0.7" max="1.6" step="0.05" placeholder="1"/>
+          </html:div>
+          <html:div class="pp-field">
+            <html:label class="pp-label">段间节流（毫秒，0=不等待）</html:label>
+            <html:input type="number" id="pp-pi-gap" class="pp-input" min="0" max="5000" step="20" placeholder="120"/>
+          </html:div>
+        </html:div>
+        <html:label class="pp-check">
+          <html:input type="checkbox" id="pp-pi-selectable"/>
+          <html:span>译文卡可选中复制（关闭时卡片不拦鼠标，不影响原 PDF 划词）</html:span>
+        </html:label>
+      </html:div>
+      <html:div class="pp-sub" style="margin-top:12px;">
         <html:div class="pp-sub-title">全部引擎</html:div>
         <html:div class="pp-sub-desc">「设为当前」= 用作主翻译引擎；「纳入回退」= 主引擎失败时依次尝试；带 🔑 的引擎需填写密钥后可用</html:div>
         <vbox id="pp-tr-list" class="pp-ch-list" style="gap:6px;"></vbox>

@@ -36,6 +36,9 @@ var Menus = {
     // 笔记与输出
     { id: "bilingual-view", group: "notes", labelKey: "menuBilingualView",
       run: () => BilingualTranslate.openViewerForSelected() },
+    // 0.34.0 PDF 原位对照翻译：译文按原文段落坐标叠加回原页（不动排版，非另开窗口）
+    { id: "pdf-inline", group: "notes", labelKey: "menuPdfInline",
+      run: () => PdfInline.startForSelected() },
     { id: "bilingual", group: "notes", labelKey: "menuBilingual",
       run: () => BilingualTranslate.runForSelected() },
     { id: "review", group: "notes", labelKey: "menuReview", run: () => ReviewGen.forSelected() },
@@ -402,6 +405,9 @@ var Menus = {
     // 0.25.2：主入口改为左右双栏对照窗口；原「AI 双语笔记」保留（出口不变）
     this._menuItem(doc, popup, "paperpilot-itemmenu-bilingual-view", "menuBilingualView",
       () => BilingualTranslate.openViewerForSelected());
+    // 0.34.0：PDF 原位对照翻译（译文叠加在原页位置，保留原始排版）
+    this._menuItem(doc, popup, "paperpilot-itemmenu-pdf-inline", "menuPdfInline",
+      () => PdfInline.startForSelected());
     this._menuItem(doc, popup, "paperpilot-itemmenu-bilingual", "menuBilingual",
       () => BilingualTranslate.runForSelected());
     this._menuItem(doc, popup, "paperpilot-itemmenu-review", "menuReview",

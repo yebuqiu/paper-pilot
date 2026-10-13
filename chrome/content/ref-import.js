@@ -315,28 +315,65 @@
   async function onLoadReferences() {
     if (state.busy) return;
     if (!api.fetchReferences) { setStatus(zh ? "不可用" : "Unavailable"); return; }
+    const channels = selectedSources();
+    if (!channels.length) { setStatus(zh ? "至少勾选一个来源" : "Select at least one source"); return; }
     state.busy = true;
     const btn = $("pp-ri-refs-btn");
     if (btn) btn.disabled = true;
-    setStatus(zh ? "正在拉取当前文献的参考文献…" : "Fetching references…");
+    setStatus(zh ? "正在联合抓取参考文献（Semantic Scholar / Crossref / OpenAlex / Europe PMC / PDF 段落）…" : "Fetching references…");
     try {
-      const r = await api.fetchReferences({ max: 200 });
+      const r = await api.fetchReferences({ channels: channels, max: 500 });
       const recs = (r && r.records) || [];
       if (!recs.length) {
-        setStatus(zh ? "该文献没有可用的参考文献列表（或 Semantic Scholar 未收录）" : "No references found");
+        setStatus(diagnosisText(r));
         return;
       }
-      if (r.paper && r.paper.title) {
-        const sub = $("pp-ri-sub");
-        if (sub) sub.textContent = (zh ? "来源文献：" : "Source: ") + r.paper.title;
+      const sub = $("pp-ri-sub");
+      if (sub) {
+        const who = r.itemCount > 1
+          ? (zh ? r.itemCount + " 篇文献" : r.itemCount + " items")
+          : ((r.paper && r.paper.title) || (zh ? "当前选中文献" : "selected item"));
+        sub.textContent = (zh ? "来源文献：" : "Source: ") + who + " ｜ " + channelText(r.channels, r.merged, r.truncated)
+          + (r.matchedByTitle ? (zh ? " ｜ 已按标题定位到在线记录" : " | located by title") : "");
       }
-      await addRecords(recs, (zh ? "已拉取 " : "Fetched ") + recs.length + (zh ? " 篇参考文献（已标注库中已有）" : " references"));
+      await addRecords(recs, (zh ? "已抓取 " : "Fetched ") + recs.length + (zh ? " 条参考文献（多源合并去重，库中已有的已取消勾选）" : " references (multi-source, deduped)"));
     } catch (e) {
       setStatus((zh ? "拉取失败：" : "Failed: ") + ((e && e.message) || String(e)));
     } finally {
       state.busy = false;
       if (btn) btn.disabled = false;
     }
+  }
+
+  /** 各来源命中数 → 一行可读文本（用户据此判断「为什么少了几条」） */
+  function channelText(channels, merged, truncated) {
+    const map = channels || {};
+    const names = { s2: "S2", crossref: "Crossref", openalex: "OpenAlex", europepmc: "EuropePMC", pdf: "PDF" };
+    const parts = Object.keys(names).filter((k) => map[k] != null).map((k) => names[k] + " " + map[k]);
+    let s = parts.join(" · ");
+    if (merged) s += (zh ? " ｜ 去重合并 " : " | merged ") + merged;
+    if (truncated) s += (zh ? " ｜ 超出上限截断 " + truncated : " | truncated " + truncated);
+    return s || (zh ? "（无来源命中）" : "(no source hit)");
+  }
+
+  /** 抓不到时的**可执行**诊断文案（不要只说"没找到"） */
+  function diagnosisText(r) {
+    const d = (r && r.diagnosis) || "";
+    const zhTxt = {
+      no_identifier: "取不到参考文献列表：该条目没有 DOI/PMID，标题也没在任何在线库匹配上，无法定位它的参考文献表。建议先用「元数据治理 → 抓取中文元数据（知网）」把题录补全，或把题录粘贴到上面用「联合检索 / 解析」直接入库。",
+      scanned_pdf: "取不到参考文献列表：在线库里查不到这篇文献，且本机 PDF 是**扫描件（无文本层）**，无法解析参考文献段。建议先对 PDF 做 OCR，或换一份可复制文本的版本。",
+      no_bib_section: "取不到参考文献列表：本机 PDF 里没有找到「参考文献」段落（可能是标题写法特殊，或参考文献放在附录中）。",
+      not_indexed: "取不到参考文献列表：几个在线库都没有收录这篇文献、或未公开它的参考文献表（中文期刊/临床指南很常见）。可以试试把参考文献题录粘贴到上面用「联合检索 / 解析」。",
+    };
+    const enTxt = {
+      no_identifier: "No references: this item has no DOI/PMID and its title didn't match any online record, so its reference list can't be located. Fill in the metadata (CNKI metadata tool) or paste the reference list above.",
+      scanned_pdf: "No references: the paper isn't indexed online and the local PDF is a scan (no text layer). OCR the PDF or use a text-based copy.",
+      no_bib_section: "No references: no bibliography section found in the local PDF.",
+      not_indexed: "No references: none of the online databases index this paper or expose its reference list. Paste the reference entries above and use Search/Resolve instead.",
+    };
+    const t = (zh ? zhTxt : enTxt)[d];
+    if (t) return t;
+    return zh ? "没有取到参考文献列表。可尝试确认该条目有可读 PDF，或检查来源勾选。" : "No references found.";
   }
 
   async function onImport() {
@@ -367,6 +404,18 @@
       state.busy = false;
       if (btn) btn.disabled = false;
     }
+  }
+
+  /** 一键入库：把「不在库里的全部条目」勾上并立即导入（用户要的就是这个动作） */
+  async function onImportAll() {
+    if (state.busy) return;
+    if (!state.records.length) { setStatus(zh ? "还没有结果：先点「从当前文献导入参考文献」或「联合检索 / 解析」" : "No results yet"); return; }
+    const picked = state.records.filter((r) => !(r.dup && r.dup.dup));
+    if (!picked.length) { setStatus(zh ? "这些条目都已经在库里了" : "All already in library"); return; }
+    state.checked = new Set();
+    state.records.forEach((r, i) => { if (!(r.dup && r.dup.dup)) state.checked.add(i); });
+    renderList();
+    await onImport();
   }
 
   function extOf(fmt) {
@@ -426,6 +475,7 @@
       setStatus((zh ? "已移除 " : "Removed ") + (before - state.records.length) + (zh ? " 条已在库的条目" : " duplicates"));
     });
     on("pp-ri-import", onImport);
+    on("pp-ri-import-all", onImportAll);
     on("pp-ri-save", onSaveFile);
     on("pp-ri-copy", onCopy);
     on("pp-ri-close", () => window.close());
@@ -458,6 +508,8 @@
     if (cb2) cb2.textContent = zh ? "清空" : "Clear";
     const imp = $("pp-ri-import");
     if (imp) imp.textContent = zh ? "导入选中" : "Import selected";
+    const impAll = $("pp-ri-import-all");
+    if (impAll) impAll.textContent = zh ? "全部导入（跳过库中已有）" : "Import all (skip in-library)";
     const sv = $("pp-ri-save");
     if (sv) sv.textContent = zh ? "导出到文件" : "Export to file";
     const cp = $("pp-ri-copy");

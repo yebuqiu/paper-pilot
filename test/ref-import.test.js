@@ -67,6 +67,8 @@ function makeSandbox(extra) {
     get(k, d) { return PrefStore.has(k) ? PrefStore.get(k) : d; },
     set(k, v) { PrefStore.set(k, v); },
   };
+  // I18n 桩：ref-import 里若干处读 I18n.isZh（生产环境必有，测试里要有同名全局）
+  sandbox.I18n = { isZh: true, t: (k) => k };
   vm.createContext(sandbox);
   return sandbox;
 }
@@ -302,6 +304,191 @@ function testFormat() {
 }
 
 /* ============================================================
+ * A2. 题录（一行式参考文献串）解析 —— 「所有参考文献都能入库」的核心
+ *     夹具全部取自真实接口返回（Crossref reference / Europe PMC / PDF 正文）
+ * ============================================================ */
+
+function testBibliography() {
+  /* 1) 从整条题录里抠标题（真实样例，逐字钉死） */
+  const T = [
+    ['Abbott, B. P. et al. Observation of gravitational waves from a binary black hole merger. Phys. Rev. Lett. 116, 061102 (2016).',
+      'Observation of gravitational waves from a binary black hole merger'],
+    ['Chael, A. et al. High-resolution linear polarimetric imaging for the Event Horizon Telescope. Astrophys. J. 286, 11 (2016).',
+      'High-resolution linear polarimetric imaging for the Event Horizon Telescope'],
+    ['Dubois, P. F., Hinsen, K. & Hugunin, J. Numerical Python. Comput. Phys. 10, 262–267 (1996).',
+      'Numerical Python'],
+    ['Harris CR, Millman KJ, van der Walt SJ, et al. Array programming with NumPy. Nature 585, 357-362 (2020).',
+      'Array programming with NumPy'],
+    ['Pettitt J, Muller B, Stansfield I, Connolly B. Spliced leader trans-splicing in the nematode Trichinella spiralis uses highly polymorphic, noncanonical spliced leaders. RNA 14, 760-770 (2008).',
+      'Spliced leader trans-splicing in the nematode Trichinella spiralis uses highly polymorphic, noncanonical spliced leaders'],
+    ['张伟, 李娜. 抽动障碍的中医证候分布规律研究. 中医杂志, 2020, 61(3): 12-16.',
+      '抽动障碍的中医证候分布规律研究'],
+    ['张三, 李四, 王五. 小儿抽动障碍的中医辨治思路探讨. 中国针灸, 2019.',
+      '小儿抽动障碍的中医辨治思路探讨'],
+  ];
+  T.forEach(([inp, want], i) => eq(RF.titleFromUnstructured(inp), want, 'A2.1.' + (i + 1) + ' 题录抠标题：' + want.slice(0, 24)));
+
+  /* 2) 年份：不能被卷页里的数字骗了（"061102 (2016)"） */
+  eq(RF.yearFromReference('Abbott, B. P. et al. Observation of gravitational waves. Phys. Rev. Lett. 116, 061102 (2016).'), 2016, 'A2.2 年份取括号里的');
+  eq(RF.yearFromReference('Smith J. A study. J Test 12, 345-350, 1999.'), 1999, 'A2.3 无括号时取尾部的 4 位数');
+  eq(RF.yearFromReference('Smith J. A study. J Test 12, 061102.'), null, 'A2.4 ★ 卷页数字不被误当成年份');
+
+  /* 3) 作者抽取（真实样例） */
+  const A = [
+    ['Abbott, B. P. et al. Observation of gravitational waves. Phys. Rev. Lett. 116, 061102 (2016).', ['Abbott|B. P.']],
+    ['Pettitt J, Muller B, Stansfield I, Connolly B. Spliced leader trans-splicing in the nematode. RNA 14, 760-770 (2008).',
+      ['Pettitt|J.', 'Muller|B.', 'Stansfield|I.', 'Connolly|B.']],
+    ['Dubois, P. F., Hinsen, K. & Hugunin, J. Numerical Python. Comput. Phys. 10, 262–267 (1996).',
+      ['Dubois|P. F.', 'Hinsen|K.', 'Hugunin|J.']],
+    ['Beta B, Gamma C. The second paper of note. Science 2, 3-4 (2001).', ['Beta|B.', 'Gamma|C.']],
+    ['张伟, 李娜. 抽动障碍的中医证候分布规律研究. 中医杂志, 2020.', ['张伟', '李娜']],
+  ];
+  A.forEach(([inp, want], i) => {
+    const got = RF.authorsFromReferenceString(inp).map((a) => (a.literal ? a.literal : a.family + '|' + a.given));
+    eq(JSON.stringify(got), JSON.stringify(want), 'A2.5.' + (i + 1) + ' 题录抽作者');
+  });
+
+  /* 4) 中文作者段不得被当成标题（「张三, 李四, 王五」归一化后 8 字，长度门槛挡不住） */
+  ok(RF._looksLikeAuthors('张三, 李四, 王五'), 'A2.6 中文姓名列表判为作者段');
+  ok(!RF._looksLikeTitle('张三, 李四, 王五'), 'A2.7 中文姓名列表不判为标题');
+  ok(!RF._looksLikeAuthors('小儿抽动障碍的中医辨治思路探讨'), 'A2.8 单个长中文词不是作者段');
+
+  /* 5) 紧凑人名两种顺序都要认对 */
+  eq(RF.parseAuthorCompact('Pettitt J').family, 'Pettitt', 'A2.9 姓在前');
+  eq(RF.parseAuthorCompact('Pettitt J').given, 'J', 'A2.10 缩写在后');
+  eq(RF.parseAuthorCompact('BP Abbott').family, 'Abbott', 'A2.11 缩写在前 → 姓仍是 Abbott');
+  eq(RF.parseAuthorCompact('van der Walt SJ').family, 'van der Walt', 'A2.12 复姓（含小写冠词）');
+  eq(RF.parseAuthorCompact('张伟').literal, '张伟', 'A2.13 中文名走 literal');
+  eq(RF.parseAuthorStringList('Pettitt J, Muller B, Stansfield I').length, 3, 'A2.14 逗号分隔作者串');
+
+  /* 6) 参考文献段切分 */
+  const doc = 'Abstract\nxxx\n\nReferences\n'
+    + '[1] Alpha A. The first paper of note. Nature 1, 1-2 (2000).\n'
+    + '[2] Beta B, Gamma C. The second paper of note. Science 2, 3-4 (2001).\n'
+    + '[3] 张伟. 第三篇论文题名初探. 中医杂志, 2002.\n\n'
+    + 'Appendix\nzzz';
+  const sec = RF.splitBibliography(doc);
+  ok(!!sec, 'A2.15 找到参考文献段');
+  eq(sec.heading, 'References', 'A2.16 段标题');
+  const ents = RF.splitBibliographyEntries(sec.text);
+  eq(ents.length, 3, 'A2.17 编号式切出 3 条');
+  const recs = RF.recordsFromBibliographyEntries(ents);
+  eq(recs.length, 3, 'A2.18 三条都能成为记录');
+  eq(recs[1].title, 'The second paper of note', 'A2.19 第二条标题');
+  eq(recs[2].year, 2002, 'A2.20 第三条年份');
+  ok(recs.every((r) => r.source[0] === 'pdf'), 'A2.21 来源标记为 pdf');
+  ok(recs.every((r) => r.confidence === 'low'), 'A2.22 标为低可信（需用户自行确认）');
+  ok(!/Appendix/.test(sec.text), 'A2.23 切到 Appendix 之前为止');
+
+  /* 7) 中文参考文献段（无编号、一行一条） */
+  const doc2 = '正文……\n\n参考文献\n1. 陈明. 小儿抽动障碍辨治经验. 中医杂志, 2018, 59(4): 300-303.\n2. 刘红. 抽动障碍的中医研究进展. 辽宁中医杂志, 2020, 47(1): 1-4.';
+  const r2 = RF.recordsFromBibliographyEntries(RF.splitBibliographyEntries(RF.splitBibliography(doc2).text));
+  eq(r2.length, 2, 'A2.24 中文编号式切出 2 条');
+  eq(r2[0].title, '小儿抽动障碍辨治经验', 'A2.25 中文标题');
+  eq(r2[0].year, 2018, 'A2.26 中文年份');
+
+  /* 8) 有条目带 DOI 时优先用标识符 */
+  const withDoi = RF.recordsFromBibliographyEntries([
+    'Vaswani A, et al. Attention is all you need. NeurIPS 30, 5998-6008 (2017). doi:10.48550/arXiv.1706.03762',
+  ]);
+  eq(withDoi.length, 1, 'A2.27 带 DOI 的题录成一条');
+  eq(withDoi[0].doi, '10.48550/arxiv.1706.03762', 'A2.28 DOI 被抽出来（优先于标题猜测）');
+
+  /* 9) 既无标识符又抽不出标题 → 丢弃（不制造噪声） */
+  eq(RF.recordsFromBibliographyEntries(['12', 'x', '...']).length, 0, 'A2.29 垃圾行被丢弃');
+}
+
+/* A3. 参考文献列表四通道（夹具取自真实接口；网络层用 _getJSON 桩替换） */
+async function testRefListChannels() {
+  const cridx = {
+    message: {
+      reference: [
+        { key: 'k1', DOI: '10.1103/PhysRevLett.116.061102', 'first-page': '061102', volume: '116', author: 'BP Abbott', year: '2016', 'journal-title': 'Phys. Rev. Lett.', unstructured: 'Abbott, B. P. et al. Observation of gravitational waves from a binary black hole merger. Phys. Rev. Lett. 116, 061102 (2016).' },
+        { key: 'k2', unstructured: 'Chael, A. et al. High-resolution linear polarimetric imaging for the Event Horizon Telescope. Astrophys. J. 286, 11 (2016).' },
+      ],
+    },
+  };
+  const realGet = RS._getJSON;
+  RS._getJSON = async (url) => {
+    // ★ 注意返回的是**整个响应体**（含 message 包装），不是 message 本身
+    if (url.indexOf('/works/') >= 0 && url.indexOf('10.1038') >= 0 && url.indexOf('/works?') < 0) return cridx;
+    if (/\/works\/doi:/.test(url) && /referenced_works/.test(url)) {
+      return { id: 'https://openalex.org/W1', referenced_works: ['https://openalex.org/W1969761972', 'https://openalex.org/W1983157164'] };
+    }
+    if (/filter=openalex_id:/.test(url)) {
+      return { results: [FX.openalex, { doi: 'https://doi.org/10.1234/second', title: 'A second referenced work', publication_year: 1999, biblio: { volume: '5', first_page: '10', last_page: '20' }, authorships: [], primary_location: { source: { display_name: 'J. Test' } } }] };
+    }
+    if (/query=DOI%3A/.test(url)) return { resultList: { result: [{ id: '32887788', source: 'MED', pmid: '32887788', pmcid: 'PMC7477828', doi: '10.1038/s41586-020-2649-2' }] } };
+    if (/\/references\?format=json/.test(url)) {
+      return { referenceList: { reference: [
+        { source: 'MED', id: '18256244', citationType: 'JOURNAL ARTICLE', title: 'Spliced leader trans-splicing in the nematode Trichinella spiralis uses highly polymorphic, noncanonical spliced leaders.', authorString: 'Pettitt J, Muller B, Stansfield I, Connolly B.', journalAbbreviation: 'RNA', issue: '4', pubYear: 2008, volume: '14', pageInfo: '760-770' },
+        { source: 'MED', id: '20436464', citationType: 'JOURNAL ARTICLE', title: 'Transcript assembly and quantification by RNA-Seq.', authorString: 'Trapnell C, Williams BA.', journalAbbreviation: 'Nat Biotechnol', issue: '5', pubYear: 2010, volume: '28', pageInfo: '511-515' },
+      ] } };
+    }
+    if (/europepmc.*\/search\?query=Attention/.test(url)) {
+      return { resultList: { result: [{ id: '1', source: 'MED', pmid: '1', title: 'Attention is All you Need', authorString: 'Vaswani A, Shazeer N.', journalTitle: 'NeurIPS', pubYear: 2017, journalInfo: { volume: '30' }, pageInfo: '5998-6008' }] } };
+    }
+    return null;
+  };
+  try {
+    /* B11 Crossref 参考文献题录 */
+    const cr = await RS.crossrefReferenceList('10.1038/x');
+    eq(cr.length, 2, 'B11.1 Crossref 参考文献两条都保留');
+    eq(cr[0].doi, '10.1103/physrevlett.116.061102', 'B11.2 DOI 归一');
+    eq(cr[0].title, 'Observation of gravitational waves from a binary black hole merger', 'B11.3 标题从 unstructured 抠出');
+    eq(cr[0].volume, '116', 'B11.4 卷（出版社 deposit，最准）');
+    eq(cr[0].pages, '061102', 'B11.5 首页');
+    eq(cr[0].container, 'Phys. Rev. Lett.', 'B11.6 刊名');
+    eq(cr[0].year, 2016, 'B11.7 年份');
+    eq(cr[0].authors[0].family, 'Abbott', 'B11.8 作者');
+    ok(cr[1].doi === '', 'B11.9 无 DOI 的条目照样保留（不再被丢弃）');
+
+    /* B12 OpenAlex referenced_works → 批量取回 */
+    const oa = await RS.openalexReferenceList({ doi: '10.1/x' });
+    ok(oa.length >= 2, 'B12.1 OpenAlex 参考文献取回', oa.length);
+    eq(oa[0].source[0], 'openalex-ref', 'B12.2 来源标记');
+    eq(oa[1].volume, '5', 'B12.3 biblio.volume 解析');
+
+    /* B13 Europe PMC 参考文献（带标题） */
+    const ep = await RS.europepmcReferenceList({ doi: '10.1038/s41586-020-2649-2' });
+    eq(ep.length, 2, 'B13.1 Europe PMC 两条');
+    eq(ep[0].pmid, '18256244', 'B13.2 MEDLINE id → PMID');
+    eq(ep[0].authors.length, 4, 'B13.3 authorString 拆出 4 位作者');
+    eq(ep[0].container, 'RNA', 'B13.4 刊名缩写');
+    eq(ep[0].pages, '760-770', 'B13.5 页码');
+    eq(ep[0].year, 2008, 'B13.6 年份');
+    eq(ep[0].itemType, 'journalArticle', 'B13.7 citationType → 类型');
+
+    /* B14 Europe PMC 检索（并入联合检索） */
+    const eps = await RS.europepmcSearch('Attention is All you Need', 5);
+    eq(eps.length, 1, 'B14.1 检索命中');
+    eq(eps[0].title, 'Attention is All you Need', 'B14.2 标题');
+    eq(eps[0].volume, '30', 'B14.3 journalInfo.volume');
+
+    /* B15 S2 参考文献 + DOI 批量补全 */
+    const s2stub = {
+      paperById: async (id) => (id === 'DOI:10.1/x' ? { paperId: 'P1', title: 'Src' } : null),
+      searchByTitle: async () => [],
+      references: async () => [{ citedPaper: { title: 'Ref A', year: 2010, externalIds: { DOI: '10.1/a' }, citationCount: 3 } }],
+      batch: async (ids) => ids.map((id) => (/10\.1\/b/.test(id) ? { title: 'Resolved B', year: 2011, authors: [{ name: 'Li Si' }], externalIds: { DOI: '10.1/b' } } : null)),
+    };
+    const sb = sandbox.S2Client;
+    sandbox.S2Client = s2stub;
+    try {
+      const s2l = await RS.s2ReferenceList({ doi: '10.1/x', title: 'Src' }, 100);
+      eq(s2l.length, 1, 'B15.1 S2 参考文献');
+      eq(s2l[0].source[0], 's2-ref', 'B15.2 来源标记');
+      const batch = await RS.s2BatchByDois(['10.1/b', '10.1/notfound']);
+      eq(batch.length, 1, 'B15.3 批量补全只返回命中的');
+      eq(batch[0].title, 'Resolved B', 'B15.4 补出标题（否则列表里只有一串 DOI）');
+      eq(batch[0].authors[0].family, 'Si', 'B15.5 补出作者');
+    } finally { sandbox.S2Client = sb; }
+  } finally {
+    RS._getJSON = realGet;
+  }
+}
+
+/* ============================================================
  * B. RefSources 解析与联合检索
  * ============================================================ */
 
@@ -522,6 +709,128 @@ function testImportPure() {
   }
 }
 
+/* C11~C17 多源参考文献合并（「该文献引用的所有参考文献」都进得来） */
+async function testReferenceLists() {
+  const mk = (title, doi, src) => Object.assign(RF.empty(), { title, doi, source: [src] });
+  const orig = {
+    s2: RS.s2ReferenceList, cr: RS.crossrefReferenceList, oa: RS.openalexReferenceList,
+    ep: RS.europepmcReferenceList, batch: RS.s2BatchByDois, pdf: RI.pdfReferenceList,
+  };
+  try {
+    RS.s2ReferenceList = async () => [mk('Ref A', '10.1/a', 's2-ref'), mk('Ref Shared', '10.1/s', 's2-ref')];
+    RS.crossrefReferenceList = async () => [mk('Ref Shared', '10.1/s', 'crossref-ref'), mk('Ref B', '10.1/b', 'crossref-ref')];
+    RS.openalexReferenceList = async () => [mk('Ref C', '10.1/c', 'openalex-ref')];
+    RS.europepmcReferenceList = async () => { throw new Error('boom'); };
+    RS.s2BatchByDois = async () => [];
+    RI.pdfReferenceList = async () => ({ records: [mk('Ref D from PDF', '', 'pdf')], reason: '' });
+
+    const item = {
+      getField: (f) => ({ title: 'Src Paper', DOI: '10.1/src' }[f] || ''),
+      getDisplayTitle: () => 'Src Paper',
+    };
+    const r = await RI.fetchReferenceLists([item], { channels: ['s2', 'crossref', 'openalex', 'europepmc', 'pdf'] });
+
+    /* C11 多源并集 */
+    eq(r.records.length, 5, 'C11.1 四个通道 + PDF 的并集去重后 5 条',
+      r.records.map((x) => x.title));
+    eq(r.channels.s2, 2, 'C11.2 S2 命中 2');
+    eq(r.channels.crossref, 2, 'C11.3 Crossref 命中 2');
+    eq(r.channels.openalex, 1, 'C11.4 OpenAlex 命中 1');
+    eq(r.channels.pdf, 1, 'C11.5 PDF 段命中 1');
+    eq(r.channels.europepmc, 0, 'C11.6 失败的通道计 0（不静默）');
+    ok(r.errors.some((e) => e.channel === 'europepmc'), 'C11.7 失败写入 errors');
+    ok(r.merged >= 1, 'C11.8 有合并发生');
+    const shared = r.records.find((x) => x.doi === '10.1/s');
+    ok(shared && shared.source.length === 2, 'C11.9 ★ 两源同一条 → 合并为一条且来源合并', shared && shared.source);
+    ok(r.records.some((x) => x.source.indexOf('pdf') >= 0), 'C11.10 PDF 段条目在结果里');
+    ok(r.records[0].doi || r.records[0].title, 'C11.11 首条可读');
+    eq(r.perItem.length, 1, 'C11.12 perItem 统计');
+
+    /* C12 通道可关（未勾选的不发请求） */
+    let s2Called = false, pdfCalled = false;
+    RS.s2ReferenceList = async () => { s2Called = true; return []; };
+    RI.pdfReferenceList = async () => { pdfCalled = true; return { records: [], reason: 'no_section' }; };
+    const r2 = await RI.fetchReferenceLists([item], { channels: ['crossref'] });
+    ok(!s2Called, 'C12.1 未勾选的 S2 不发请求');
+    ok(!pdfCalled, 'C12.2 未勾选的 PDF 通道不发请求');
+    eq(r2.records.length, 2, 'C12.3 只跑 Crossref');
+
+    /* C13 多篇选中：几篇的参考文献一起并进来（旧实现只取第一篇） */
+    RS.s2ReferenceList = async (ids) => (ids.title === 'Src Paper' ? [mk('From 1', '10.1/p1', 's2-ref')] : [mk('From 2', '10.1/p2', 's2-ref')]);
+    RI.pdfReferenceList = async () => ({ records: [], reason: 'no_section' });
+    const item2 = { getField: (f) => ({ title: 'Second Paper', DOI: '10.2/src' }[f] || ''), getDisplayTitle: () => 'Second Paper' };
+    const r3 = await RI.fetchReferenceLists([item, item2], { channels: ['s2'] });
+    eq(r3.records.length, 2, 'C13.1 两篇的参考文献都被收集');
+    eq(r3.perItem.length, 2, 'C13.2 perItem 两篇');
+
+    /* C14 条目标识符抽取（DOI 在 extra/url 里也要认得） */
+    const it3 = {
+      getField: (f) => ({
+        title: 'T', extra: 'PMID: 32887788  PMCID: PMC7477828  arXiv: 1706.03762',
+        url: 'https://doi.org/10.1038/s41586-020-2649-2',
+      }[f] || ''),
+    };
+    const ids = RI.itemIdentifiers(it3);
+    eq(ids.doi, '10.1038/s41586-020-2649-2', 'C14.1 从 url 抠出 DOI');
+    eq(ids.pmid, '32887788', 'C14.2 PMID');
+    eq(ids.pmcid, 'PMC7477828', 'C14.3 PMCID');
+    eq(ids.arxivId, '1706.03762', 'C14.4 arXiv');
+
+    /* C15 PDF 通道：必须用 noTruncate 读全文（参考文献段在文末，截断就没了） */
+    let sawOpts = null;
+    const chatStub = {
+      getFullText: async (it, o) => { sawOpts = o; return 'Abstract\nzz\n\n参考文献\n1. 陈明. 小儿抽动障碍辨治经验. 中医杂志, 2018, 59(4): 300-303.\n2. 刘红. 抽动障碍的中医研究进展. 辽宁中医杂志, 2020, 47(1): 1-4.'; },
+    };
+    const oldChat = sandbox.AIChat;
+    sandbox.AIChat = chatStub;
+    try {
+      const pr = await orig.pdf(item);
+      eq(pr.records.length, 2, 'C15.1 PDF 参考文献段解析出 2 条');
+      eq(pr.records[0].title, '小儿抽动障碍辨治经验', 'C15.2 中文题录标题');
+      ok(sawOpts && sawOpts.noTruncate === true, 'C15.3 ★ 读全文时传了 noTruncate（否则文末的参考文献段被截掉）');
+      // 没有参考文献段时给出明确原因，而不是静默空结果
+      sandbox.AIChat = { getFullText: async () => 'No bibliography here.\nJust body text.' };
+      const pr2 = await orig.pdf(item);
+      eq(pr2.reason, 'no_section', 'C15.4 无参考文献段时回报原因');
+      sandbox.AIChat = { getFullText: async () => null };
+      const pr3 = await orig.pdf(item);
+      eq(pr3.reason, 'no_text', 'C15.5 无全文时回报原因');
+    } finally { sandbox.AIChat = oldChat; }
+    /* C16 条目没记 DOI 时，先用标题把它认出来（否则四条通道都没入口） */
+    let sawIds = null;
+    RS.openalexSearch = async () => [Object.assign(RF.empty(), { title: 'Src Paper', doi: '10.9/found', source: ['openalex'] })];
+    RS.openalexReferenceList = async (ids) => { sawIds = ids; return [mk('Found Ref', '10.1/z', 'openalex-ref')]; };
+    const noDoiItem = { getField: (f) => ({ title: 'Src Paper' }[f] || ''), getDisplayTitle: () => 'Src Paper' };
+    const r4 = await RI.fetchReferenceLists([noDoiItem], { channels: ['openalex'], resolveByTitle: true });
+    eq(r4.records.length, 1, 'C16.1 按标题定位后拿到参考文献');
+    ok(sawIds && sawIds.doi === '10.9/found', 'C16.2 ★ 定位到的 DOI 被传下去（否则通道根本没入口）', sawIds);
+    ok(r4.matchedByTitle === true, 'C16.3 回报「已按标题定位」');
+
+    /* C17 抓不到时给出可执行诊断（而不是让用户对着空列表猜） */
+    RS.openalexSearch = async () => [];          // 标题也匹配不上
+    RS.openalexReferenceList = async () => [];   // 通道返回空
+    RI.pdfReferenceList = async () => ({ records: [], reason: 'no_text' });
+    const d1 = await RI.fetchReferenceLists([noDoiItem], { channels: ['openalex', 'pdf'] });
+    eq(d1.diagnosis, 'no_identifier', 'C17.1 无标识符 → no_identifier');
+    const doiItem = { getField: (f) => ({ title: 'T', DOI: '10.1/src' }[f] || ''), getDisplayTitle: () => 'T' };
+    RS.crossrefReferenceList = async () => [];
+    const d2 = await RI.fetchReferenceLists([doiItem], { channels: ['crossref', 'pdf'] });
+    eq(d2.diagnosis, 'scanned_pdf', 'C17.2 有标识符 + PDF 无文本层 → scanned_pdf');
+    RI.pdfReferenceList = async () => ({ records: [], reason: 'no_section' });
+    const d3 = await RI.fetchReferenceLists([doiItem], { channels: ['crossref', 'pdf'] });
+    eq(d3.diagnosis, 'no_bib_section', 'C17.3 PDF 有文本但无参考文献段 → no_bib_section');
+    RI.pdfReferenceList = async () => ({ records: [], reason: '' });
+    const d4 = await RI.fetchReferenceLists([doiItem], { channels: ['crossref', 'pdf'] });
+    eq(d4.diagnosis, 'not_indexed', 'C17.4 库确实没收录 → not_indexed');
+    const d5 = await RI.fetchReferenceLists([doiItem], { channels: ['crossref'] });
+    eq(d5.diagnosis, 'not_indexed', 'C17.5 未开 PDF 通道时也能给出诊断');
+  } finally {
+    RS.s2ReferenceList = orig.s2; RS.crossrefReferenceList = orig.cr;
+    RS.openalexReferenceList = orig.oa; RS.europepmcReferenceList = orig.ep;
+    RS.s2BatchByDois = orig.batch; RI.pdfReferenceList = orig.pdf;
+  }
+}
+
 /* C10~C12 内置解析器通道的兜底（需要 async，单列一个函数） */
 async function testTranslatorFallback() {
   // 沙箱里的 Zotero 是深 Proxy：翻译器不会真的产生 itemDone，
@@ -622,8 +931,10 @@ function bootDialog(apiOver) {
   const calls = { imported: [], searched: [], saved: null, copied: null };
   const api = Object.assign({
     sources: () => [{ id: 'crossref', label: 'Crossref', hint: 'h' }, { id: 'openalex', label: 'OpenAlex', hint: 'h' },
-      { id: 'pubmed', label: 'PubMed', hint: 'h' }, { id: 'arxiv', label: 'arXiv', hint: 'h' }, { id: 's2', label: 'Semantic Scholar', hint: 'h' }],
-    defaultSources: () => ['crossref', 'openalex', 'pubmed', 'arxiv', 's2'],
+      { id: 'pubmed', label: 'PubMed', hint: 'h' }, { id: 'europepmc', label: 'Europe PMC', hint: 'h' },
+      { id: 'arxiv', label: 'arXiv', hint: 'h' }, { id: 's2', label: 'Semantic Scholar', hint: 'h' },
+      { id: 'pdf', label: 'PDF 参考文献段', hint: 'h' }],
+    defaultSources: () => ['crossref', 'openalex', 'pubmed', 'europepmc', 'arxiv', 's2', 'pdf'],
     isZh: () => true,
     parseInput: () => [{ kind: 'doi', value: '10.1/x' }],
     parseBibtex: () => [],
@@ -662,7 +973,7 @@ async function testDialog() {
   const app = bootDialog();
   const srcBox = app.registry.get('pp-ri-sources');
   const cbs = srcBox.getElementsByTagName('input');
-  eq(cbs.length, 5, 'D1.1 五个来源复选框');
+  eq(cbs.length, 7, 'D1.1 七个来源复选框（含 Europe PMC 与 PDF 段落）');
   ok(cbs.every((c) => c.checked), 'D1.2 默认全部勾选');
   eq(app.registry.get('pp-ri-search').textContent, '联合检索 / 解析', 'D1.3 主按钮文案');
 
@@ -737,13 +1048,46 @@ async function testDialog() {
   await app4.registry.get('pp-ri-copy').click();
   eq(app4.calls.copied, 'EXPORT:ris:1', 'D7.3 复制跟随格式下拉');
 
-  /* D8 「从当前文献导入参考文献」复用同一列表 */
+  /* D8 「从当前文献导入参考文献」复用同一列表，并把勾选的来源作为通道传下去 */
+  let sawOpts = null;
   const app5 = bootDialog({
-    fetchReferences: async () => ({ paper: { title: 'Transformer 综述' }, records: [recA] }),
+    fetchReferences: async (o) => {
+      sawOpts = o;
+      return { paper: { title: 'Transformer 综述' }, itemCount: 1, records: [recA], channels: { s2: 2, crossref: 57, openalex: 51, europepmc: 3, pdf: 0 }, merged: 4, truncated: 0 };
+    },
   });
   await app5.registry.get('pp-ri-refs-btn').click();
   eq(app5.registry.get('pp-ri-list').children.length, 1, 'D8.1 参考文献进入同一列表');
   has(app5.registry.get('pp-ri-sub').textContent, 'Transformer 综述', 'D8.2 显示来源文献标题');
+  ok(sawOpts && Array.isArray(sawOpts.channels) && sawOpts.channels.indexOf('europepmc') >= 0
+    && sawOpts.channels.indexOf('pdf') >= 0, 'D8.3 ★ 勾选的来源作为通道参数传入（含 PDF 段）', sawOpts && sawOpts.channels);
+  has(app5.registry.get('pp-ri-sub').textContent, 'Crossref 57', 'D8.4 来源命中数写进状态行（用户据此判断为什么少了）');
+  has(app5.registry.get('pp-ri-sub').textContent, '去重合并 4', 'D8.5 合并数写进状态行');
+  eq(app5.registry.get('pp-ri-status').textContent.indexOf('已抓取 1'), 0, 'D8.6 抓取完成提示');
+
+  /* D8b 「全部导入」＝ 一键把不在库里的全勾上并导入 */
+  const appAll = bootDialog({
+    fetchReferences: async () => ({
+      paper: { title: 'S' }, itemCount: 1, records: [recA, recDup],
+      channels: { s2: 2 }, merged: 0, truncated: 0,
+    }),
+    markDuplicates: async (recs) => {
+      for (const r of recs) r.dup = r.doi === '10.1/b' ? { dup: true, by: 'doi', item: null } : { dup: false, by: '', item: null };
+      return recs;
+    },
+  });
+  appAll.registry.get('pp-ri-opt-exclude').checked = false;   // 保留重复条目在列表里
+  await appAll.registry.get('pp-ri-refs-btn').click();
+  eq(appAll.registry.get('pp-ri-list').children.length, 2, 'D8b.1 两条都在列表');
+  await appAll.registry.get('pp-ri-import-all').click();
+  const impAll = appAll.calls.imported[appAll.calls.imported.length - 1];
+  eq(impAll.recs.length, 1, 'D8b.2 ★ 全部导入只提交不在库里的那一条');
+  eq(impAll.recs[0].doi, '10.1/a', 'D8b.3 提交的是非重复条目');
+  eq(appAll.registry.get('pp-ri-import-all').textContent.indexOf('全部导入'), 0, 'D8b.4 按钮文案');
+  // 空列表时给提示而不是静默
+  const appEmpty = bootDialog();
+  await appEmpty.registry.get('pp-ri-import-all').click();
+  has(appEmpty.registry.get('pp-ri-status').textContent, '还没有结果', 'D8b.5 无结果时点全部导入给提示');
 
   /* D9 来源一个都不勾 → 明确拒绝而不是静默失败 */
   const app6 = bootDialog();
@@ -763,8 +1107,11 @@ async function testDialog() {
 
 (async function main() {
   testFormat();
+  testBibliography();
+  await testRefListChannels();
   await testSources();
   testImportPure();
+  await testReferenceLists();
   await testTranslatorFallback();
   await testDialog();
   console.log('参考文献一键入库：通过 ' + pass + ' 项' + (fails.length ? '，失败 ' + fails.length + ' 项' : ''));

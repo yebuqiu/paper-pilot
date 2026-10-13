@@ -63,9 +63,9 @@ const ok = (cond, name) => {
   if (!cond) failed++;
 };
 
-// ① 注册表规模：0.28 的 40 个右键命令一条不减（0.31.0 新增 ai-chat 顶层直达 → 41）
+// ① 注册表规模：0.28 的 40 个右键命令一条不减（0.31.0 +ai-chat → 41；0.34.0 +pdf-inline → 42）
 const reg = Menus.ITEM_REGISTRY;
-ok(reg.length === 41, "注册表恰好 41 条（实测 " + reg.length + "）");
+ok(reg.length === 42, "注册表恰好 42 条（实测 " + reg.length + "）");
 
 // ② id 唯一 + group 合法
 const ids = reg.map((i) => i.id);

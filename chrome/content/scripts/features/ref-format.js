@@ -503,6 +503,275 @@ var RefFormat = {
     return { records: list, merged };
   },
 
+  /** 从「一行式题录」里抠标题（纯函数）。
+   *  为什么需要它：三家源的参考文献条目大多只能拿到**整条字符串**
+   *  （Crossref 的 `unstructured`、PDF 里的参考文献段、Europe PMC 的部分条目），
+   *  而标题是判重与检索的唯一抓手——抠不出来这条文献就只能当噪声丢掉。
+   *  实测样例（test/ref-import.test.js 逐条钉死）：
+   *    "Abbott, B. P. et al. Observation of gravitational waves from a binary
+   *     black hole merger. Phys. Rev. Lett. 116, 061102 (2016)."
+   *      → Observation of gravitational waves from a binary black hole merger
+   *    "Dubois, P. F., Hinsen, K. & Hugunin, J. Numerical Python. Comput. Phys. 10, 262–267 (1996)."
+   *      → Numerical Python
+   *    "张伟, 李娜. 抽动障碍的中医证候分布规律研究. 中医杂志, 2020, 61(3): 12-16."
+   *      → 抽动障碍的中医证候分布规律研究
+   *  返回 "" 表示抠不出可信标题（调用方应回落到原始串或丢弃，**不要瞎猜**）。 */
+  titleFromUnstructured(s) {
+    let t = String(s == null ? "" : s)
+      .replace(/<\/?[a-z][^>]*>/gi, " ")
+      .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+      .replace(/\s+/g, " ").trim();
+    if (!t) return "";
+
+    // 1) 切掉尾部的年份与随后的卷期页（(2016) / [2016] / , 2016.）
+    t = t.replace(/[,\s]*[([［]\s*\d{4}[a-z]?\s*[)\]］]\s*\.?\s*$/, "").trim();
+    t = t.replace(/[\s,，]*\d{4}[a-z]?\s*\.?\s*$/, "").trim();
+
+    // 2) "et al." 之后就是标题 —— 最可靠的一种切法，先切掉（省得作者段混进分段）
+    if (/\bet\s+al\.?\s/i.test(t)) t = t.replace(/^.*?\bet\s+al\.?\s+/i, "").trim();
+
+    // 3) 按句末切段，逐段判定「像作者」还是「像标题」，取第一个像标题的。
+    //    ★ 比「按正则剥作者前缀」稳：作者段的写法太多（倒装、缩写带点/不带点、
+    //    单姓多缩写、& 或 and 连接…），而「标题段」的特征（词数、缩写占比、
+    //    是否以逗号收尾）反而是稳定的——用正向特征筛选，不用穷举反向形态。
+    const segs = t.split(/\.\s+|\.(?=[A-Z\u4e00-\u9fff])|\u3002\s*/).map((x) => x.replace(/[,，;；\s]+$/, "").trim()).filter(Boolean);
+    const hit = segs.find((seg) => this._looksLikeTitle(seg));
+    return hit ? hit.replace(/[.,;:]\s*$/, "").trim() : "";
+  },
+
+  /** 从「一行式题录」里抽作者（纯函数，保守策略：抽不出就返回空，绝不猜）。
+   *  能拿到的形态（实测）：
+   *    "Abbott, B. P. et al. …"                → [{family:Abbott, given:"B. P."}]
+   *    "Pettitt J, Muller B, Stansfield I, …"  → 4 位（姓在前、缩写在后）
+   *    "Dubois, P. F., Hinsen, K. & Hugunin, J. Numerical Python. …" → 3 位
+   *    "张伟, 李娜. …"                          → 退化为 literal（中文不切姓） */
+  authorsFromReferenceString(s, max) {
+    const str = String(s || "").trim();
+    if (!str) return [];
+    const cap = max || 12;
+    let head = "";
+    const etAl = str.match(/^([\s\S]*?)\bet\s+al\.?/i);
+    if (etAl) {
+      head = etAl[1];
+    } else {
+      // 没有 et al.：作者段 = **第一个「像标题」的段之前**的全部内容。
+      // ★ 不能用「第一段像作者就取第一段」——缩写自带点号（"Dubois, P. F." 就是一个段），
+      //   那样会把多作者截成一位。定位标题段再往前切才稳。
+      const segs = str.split(/\.\s+|\.(?=[A-Z\u4e00-\u9fff])|\u3002\s*/)
+        .map((x) => x.replace(/[,，;；\s]+$/, "").trim()).filter(Boolean);
+      const ti = segs.findIndex((seg) => this._looksLikeTitle(seg));
+      if (ti > 0) head = segs.slice(0, ti).join(" ");
+    }
+    head = head.replace(/[\s,;&，、]+$/, "").trim();
+    if (!head) return [];
+    // 中文姓名列表（每段 2–4 汉字）→ 一律 literal，不做姓/名切分
+    if (/^[\u4e00-\u9fff]{2,4}(?:\s*[,，、]\s*[\u4e00-\u9fff]{2,4})*$/.test(head)) {
+      return head.split(/[,，、]/).map((x) => x.trim()).filter(Boolean).slice(0, cap)
+        .map((n) => ({ family: "", given: "", literal: n }));
+    }
+    const isInit = (t) => /^(?:[A-Z]\.?|[A-Z]{2,3})$/.test(t);
+    const toks = head.replace(/&/g, " ").split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean)
+      .filter((t) => !/^(?:and|et|al|jr|sr|ii|iii)$/i.test(t));
+    const out = [];
+    let i = 0;
+    while (i < toks.length && out.length < cap) {
+      const fam = toks[i];
+      if (/^\d/.test(fam)) { i++; continue; }
+      let j = i + 1;
+      const inits = [];
+      while (j < toks.length && isInit(toks[j])) { inits.push(toks[j]); j++; }
+      if (inits.length) {
+        // 分段切分时会吃掉缩写后的点号（"Dubois, P. F." → 段尾 ". " 被分割符消耗），
+        // 这里补回来，否则作者名会写成 "P F" 而不是 "P. F."
+        const given = inits.map((x) => (/^[A-Z]$/.test(x) ? x + "." : x)).join(" ");
+        out.push({ family: fam, given, literal: "" });
+        i = j;
+      } else i++;
+    }
+    return out;
+  },
+
+  /** 段是否像「作者列表」（内部工具，纯函数） */
+  _looksLikeAuthors(seg) {
+    const raw = String(seg || "");
+    if (!raw) return false;
+    // 中文姓名列表：「张三, 李四, 王五」——每段 2–4 个汉字、以逗号/顿号分隔。
+    // ★ 必须在这里挡住：中文作者段本身就是「多个 2–4 字短词」，很容易被当成标题
+    //（「张三, 李四, 王五」归一化后 8 个字，长度门槛挡不住它）。
+    const cjkPieces = raw.split(/[,，、]/).map((x) => x.trim()).filter(Boolean);
+    if (cjkPieces.length >= 2 && cjkPieces.every((p) => /^[\u4e00-\u9fff]{2,4}$/.test(p))) return true;
+    const toks = raw.split(/\s+/).map((x) => x.replace(/^[,&.\s]+|[,&.\s]+$/g, "")).filter(Boolean);
+    if (!toks.length) return false;
+    let initials = 0;
+    for (const x of toks) {
+      if (/^(?:[A-Z]\.?|[A-Z]{2,3}|&|and|et|al)$/.test(x)) initials++;
+    }
+    if (/[,&]$/.test(raw)) initials++;                     // 以逗号/& 收尾 → 后面还有作者
+    if (initials / toks.length >= 0.4) return true;
+    // 「姓, 缩写」出现两处以上（倒装形态）
+    if ((raw.match(/[A-Za-z\u00c0-\u024f'\u2019-]+\s*,\s*(?:[A-Z]\.?\s*){1,3}/g) || []).length >= 2) return true;
+    return false;
+  },
+
+  /** 段是否像「标题」（内部工具，纯函数） */
+  _looksLikeTitle(seg) {
+    const s = String(seg || "").trim();
+    if (!s) return false;
+    const cjk = /[\u4e00-\u9fff]/.test(s);
+    // 中文标题天然短（「抽动障碍的中医证候研究」11 字），门槛按语种分档
+    const minLen = cjk ? 6 : 10;
+    if (s.length < minLen) return false;
+    if (/^\d/.test(s)) return false;                       // 卷期页/年份开头
+    if (this._looksLikeAuthors(s)) return false;
+    // 刊名缩写串（"Phys. Rev. Lett" → "Rev"/"Lett" 这类已被长度门槛挡掉，这里兜长缩写）
+    if (!cjk && s.split(/\s+/).length <= 3 && /^[A-Z]/.test(s) && /[A-Z]\.\s*[A-Z]/.test(s)) return false;
+    const norm = this.normTitle(s);
+    if (norm.length < (cjk ? 6 : 8)) return false;
+    return true;
+  },
+
+  /** 剥掉题录开头的作者段（内部工具，纯函数）——仅用于「et al.」这类无歧义形态 */
+  _stripAuthorPrefix(t) {
+    let out = String(t || "").trim();
+    if (/\bet\s+al\.?\s/i.test(out)) out = out.replace(/^.*?\bet\s+al\.?\s+/i, "").trim();
+    return out;
+  },
+
+  /** 紧凑人名（PubMed / Crossref 参考文献的写法）→ {family, given}
+   *  两种顺序都要认：PubMed 是「姓 缩写」（van der Walt SJ），
+   *  Crossref 的 reference.author 是「缩写 姓」（BP Abbott）——搞反会让整库作者倒过来。 */
+  parseAuthorCompact(name) {
+    const s = String(name || "").trim().replace(/[.,;]+$/, "").replace(/\s+/g, " ");
+    if (!s) return null;
+    if (/[\u4e00-\u9fff]/.test(s)) return { family: "", given: "", literal: s };
+    const isInit = (x) => /^(?:[A-Z]\.?|[A-Z]{2,3})$/.test(x);
+    const toks = s.split(" ").filter(Boolean);
+    if (toks.length === 1) return { family: toks[0], given: "", literal: "" };
+    // 名在前：首 token 是缩写、末 token 不是 → family = 末 token
+    if (isInit(toks[0]) && !isInit(toks[toks.length - 1])) {
+      return { family: toks[toks.length - 1], given: toks.slice(0, -1).join(" "), literal: "" };
+    }
+    // 姓在前：从尾部吃掉所有缩写 token
+    let i = toks.length;
+    while (i > 1 && isInit(toks[i - 1])) i--;
+    if (i === toks.length) return this.parseAuthor(s); // 没有缩写可吃 → 交给通用人名解析
+    return { family: toks.slice(0, i).join(" "), given: toks.slice(i).join(" "), literal: "" };
+  },
+
+  /** 逗号分隔的作者串 → 作者数组（Europe PMC 的 authorString 形态） */
+  parseAuthorStringList(str, max) {
+    const out = [];
+    for (const piece of String(str || "").split(/\s*[,;]\s*/)) {
+      const p = this.parseAuthorCompact(piece);
+      if (p && (p.family || p.literal)) out.push(p);
+      if (out.length >= (max || 50)) break;
+    }
+    return out;
+  },
+
+  /** 题录串里的年份（纯函数）。★ 不能直接用 yearOf：它匹配任意 4 位数字，
+   *  "…Phys. Rev. Lett. 116, 061102 (2016)." 会先命中 "061102" 里的 "0611" → 年份变成 611。
+   *  这里要求 ① 优先取括号里的；② 否则取**被非数字包夹**且落在 1500–2099 的 4 位数。 */
+  yearFromReference(s) {
+    const str = String(s || "");
+    const inParen = str.match(/[([［]\s*(\d{4})[a-z]?\s*[)\]］]/);
+    if (inParen) return Number(inParen[1]);
+    const m = str.match(/(?:^|[^\d])((?:1[5-9]|20)\d{2})(?![\d])/);
+    return m ? Number(m[1]) : null;
+  },
+
+  /* ================= 参考文献段（PDF 文本）解析 ================= */
+
+  BIB_HEADING: /^\s*(?:\d{1,2}\s*[.、]?\s*)?(?:references|reference|bibliography|literature\s+cited|works\s+cited|参考文献|引用文献|主要参考文献|文献)\s*[:：]?\s*$/i,
+  BIB_STOP: /^\s*(?:\d{1,2}\s*[.、]?\s*)?(?:appendix|appendices|supplementary(?:\s+material)?|acknowledg(?:e?ments?|ements?)|author\s+contributions?|conflicts?\s+of\s+interest|致\s*谢|附\s*录|附录|补充材料|作者贡献|利益冲突)\s*[:：]?\s*$/i,
+
+  /** 从整篇文本里切出参考文献段。返回 {heading, text, index} 或 null。
+   *  取**最后**一个标题（有些排版在正文里也会出现 "References" 小标题）。 */
+  splitBibliography(fullText) {
+    const text = String(fullText || "");
+    if (!text) return null;
+    const lines = text.split(/\r?\n/);
+    let start = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (this.BIB_HEADING.test(lines[i])) start = i;
+    }
+    if (start < 0) return null;
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+      if (this.BIB_STOP.test(lines[i])) { end = i; break; }
+    }
+    const body = lines.slice(start + 1, end).join("\n").trim();
+    if (!body) return null;
+    return { heading: lines[start].trim(), text: body, index: start };
+  },
+
+  /** 参考文献段 → 条目数组（纯函数）。
+   *  切分策略按「有编号 → 按编号；无编号 → 一行一条（把续行并回上一条）」。 */
+  splitBibliographyEntries(section) {
+    const text = String(section || "").trim();
+    if (!text) return [];
+    // ① 编号式：[12] / 12. / 12) / 12、
+    const numbered = text.split(/(?:^|\n)\s*(?:\[(\d{1,3})\]|(\d{1,3})\s*[.)、])\s+/);
+    if ((text.match(/(?:^|\n)\s*(?:\[\d{1,3}\]|\d{1,3}\s*[.)、])\s+/g) || []).length >= 3) {
+      const out = [];
+      for (let i = 1; i < numbered.length; i += 3) {
+        const body = numbered[i + 2] || "";
+        const v = body.replace(/\s*\n\s*/g, " ").trim();
+        if (v.length >= 12) out.push(v);
+      }
+      if (out.length >= 3) return out;
+    }
+    // ② 一行一条；把「以大写/中文续写」的续行并回上一条
+    const out = [];
+    let cur = "";
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.replace(/\s+$/, "").trim();
+      if (!line) continue;
+      if (!cur) { cur = line; continue; }
+      // 续行特征：行首是小写字母或标点，或上一行没有句末标点
+      const continues = /^[a-z(（]/.test(line) || !/[.。;；]$/.test(cur);
+      if (continues && line.length < 120) cur += " " + line;
+      else { if (cur.length >= 12) out.push(cur); cur = line; }
+    }
+    if (cur.length >= 12) out.push(cur);
+    return out;
+  },
+
+  /** 参考文献条目文本数组 → 规范记录（能抽到 DOI/PMID/arXiv 就用标识符，否则尽力抽标题） */
+  recordsFromBibliographyEntries(entries, opts) {
+    const o = opts || {};
+    const out = [];
+    const seen = new Set();
+    for (const raw of entries || []) {
+      const s = String(raw || "").trim();
+      if (!s) continue;
+      const ids = this.extractIdentifiers(s);
+      const rec = this.empty();
+      rec.source = [o.source || "pdf"];
+      rec.reasons = [o.reason || "PDF 参考文献段"];
+      rec.confidence = "low";
+      const hard = ids.filter((x) => x.kind !== "title" && x.kind !== "url");
+      for (const x of hard) {
+        if (x.kind === "doi" && !rec.doi) rec.doi = this.normDOI(x.value);
+        else if (x.kind === "pmid" && !rec.pmid) rec.pmid = this.normPmid(x.value);
+        else if (x.kind === "pmcid" && !rec.pmcid) rec.pmcid = x.value.toUpperCase();
+        else if (x.kind === "arxiv" && !rec.arxivId) rec.arxivId = this.normArxiv(x.value);
+        else if (x.kind === "isbn" && !rec.isbn) rec.isbn = this.normIsbn(x.value);
+      }
+      const title = this.titleFromUnstructured(s);
+      if (title) rec.title = title;
+      else if (!rec.doi && !rec.pmid && !rec.arxivId) continue; // 既无标识符又抽不出标题 → 丢弃（不制造噪声）
+      rec.year = this.yearFromReference(s);
+      if (!rec.title) rec.title = String(s).slice(0, 200); // 有标识符时用原文兜底展示
+      rec.raw = s;
+      const key = this.recKey(rec) || this.normTitle(rec.title);
+      if (key && seen.has(key)) continue;
+      if (key) seen.add(key);
+      out.push(rec);
+    }
+    return out;
+  },
+
   /* ================= 导出：BibTeX / RIS(EndNote) / CSL-JSON / EndNote XML ================= */
 
   /** BibTeX 特殊字符转义（含 LaTeX 保留字与 & % _ #） */

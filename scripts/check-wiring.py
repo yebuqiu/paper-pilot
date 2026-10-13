@@ -950,7 +950,7 @@ for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
-ok('"version": "0.33.0"' in MANIFEST, "20.12 manifest 版本 0.33.0")
+ok('"version": "0.34.0"' in MANIFEST, "20.12 manifest 版本 0.34.0")
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
@@ -1199,8 +1199,8 @@ ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
 for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
     ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
 _item_reg_src = menus_js.split("GROUPS:")[0]
-ok(_item_reg_src.count("labelKey:") == 41,
-   "23.7 ★ 注册表恰好 41 条命令（实测 %d，功能一项不减）" % _item_reg_src.count("labelKey:"))
+ok(_item_reg_src.count("labelKey:") == 42,
+   "23.7 ★ 注册表恰好 42 条命令（实测 %d，功能一项不减）" % _item_reg_src.count("labelKey:"))
 ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
@@ -1443,7 +1443,129 @@ ok('WINDOW_NAME: "paperpilot-ref-import"' in ri_mod
    and "openDialog(this.DLOG_URL, this.WINDOW_NAME" in ri_mod,
    "26.26 openDialog 用窗口名，与 windowtype 分开")
 
-# ---------- 输出 ----------
+# ---- 26.27~26.38 「该文献引用的参考文献要都能进来」这一轮的补强 ----
+# 用户实测反馈：选中的文献没有把该文章引用的参考文献都一键入库。三个原因：
+#   ① 参考文献表只取自 Semantic Scholar 一家 → 它没收录/没匹配上的一律看不到；
+#   ② 只取「选中条目里的第一篇」（items[0]）→ 多选时后面的文献全丢；
+#   ③ 抓完还要手动逐个勾选 → 不叫「一键」。
+ok("fetchReferenceLists" in ri_mod, "26.27 多源参考文献列表入口 fetchReferenceLists 存在")
+ok('["s2", () =>' in ri_mod and '["crossref", () =>' in ri_mod
+   and '["openalex", () =>' in ri_mod and '["europepmc", () =>' in ri_mod
+   and '["pdf", async () =>' in ri_mod,
+   "26.28 ★ 参考文献走五通道（S2 / Crossref / OpenAlex / Europe PMC / PDF 段落）")
+ok("crossrefReferenceList" in ri_src and "openalexReferenceList" in ri_src
+   and "europepmcReferenceList" in ri_src and "s2ReferenceList" in ri_src,
+   "26.29 四个取数函数都在 RefSources 里（单一真源）")
+ok("referenced_works" in ri_src and "openalex_id:" in ri_src,
+   "26.30 OpenAlex 走 referenced_works + openalex_id 批量（2 次请求拿整份参考文献表）")
+ok("s2BatchByDois" in ri_src and "S2Client.batch(" in ri_src,
+   "26.31 DOI 批量补全走 S2 /paper/batch（参考文献表里只有 DOI 的条目能补出标题作者）")
+ok('noTruncate: true' in ri_mod,
+   "26.32 ★ PDF 通道传 noTruncate（参考文献段在文末，默认截断会正好切掉它）")
+ok(".slice(0, o.maxItems || 8)" in ri_mod or "maxItems" in ri_mod,
+   "26.33 ★ 支持**多篇**选中（不再只取 items[0]）")
+ok("onImportAll" in ri_dialog_js and 'on("pp-ri-import-all", onImportAll)' in ri_dialog_js,
+   "26.34 ★ 对话框有「全部导入」一键入口")
+ok("channelText" in ri_dialog_js and "channels: channels" in ri_dialog_js,
+   "26.35 抓取时把勾选的来源当通道传下去，并把各源命中数写进状态行")
+ok("splitBibliography" in ri_fmt
+   and "splitBibliographyEntries" in ri_fmt and "recordsFromBibliographyEntries" in ri_fmt,
+   "26.36 参考文献段解析（切段/切条目/成记录）在 RefFormat 里")
+ok("titleFromUnstructured" in ri_fmt and "authorsFromReferenceString" in ri_fmt
+   and "yearFromReference" in ri_fmt and "_looksLikeAuthors" in ri_fmt,
+   "26.37 ★ 一行式题录的标题/作者/年份抽取（无 DOI 的参考文献也能入库）")
+ok("refsOnly: true" in ri_src and "SEARCHABLE" in ri_src,
+   "26.38 新来源 europepmc/pdf 已注册；PDF 标 refsOnly（不参与联合检索）")
+ok("test/ref-import.test.js" in _pf4 and "A2.29" in io.open(os.path.join(ROOT, "test", "ref-import.test.js"), encoding="utf-8").read(),
+   "26.39 测试覆盖题录解析（A2.x）与新通道")
+ok("resolveItemIdentifiers" in ri_src and "resolveByTitle" in ri_mod,
+   "26.40 ★ 条目没记 DOI 时先用标题定位（否则四条通道都没入口）")
+ok("diagnosis" in ri_mod and "diagnosisText" in ri_dialog_js,
+   "26.41 ★ 抓不到时给出可执行诊断（no_identifier / scanned_pdf / no_bib_section / not_indexed）")
+
+# ---------- 27. PDF 原位对照翻译（插件 0.34.0） ----------
+# 起因：用户要求「在**原版 PDF 的对应位置**按原始排版逐段对照」——不是另开窗口罗列。
+# 做法是把每段译文按**原文段落坐标**叠加回 pdf.js 页面。这类改造的静默失败点：
+#   ① 装配晚于依赖（PdfText / TranslateSvc）→ ReferenceError，只写一行 boot 日志；
+#   ② 依赖 pdf.js 私有坐标契约（自己解析 PDF）→ 版本一变就错位；
+#   ③ 缩放/懒加载后不重铺 → 用户滚两页就发现「后面没有译文」，且没人报错；
+#   ④ 公式/页码当正文翻 → 原页出现垃圾译文；
+#   ⑤ 停止/卸载不清层 → 残留覆盖物，用户关掉插件也去不掉。
+PI_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "pdf-inline.js")
+pi_js = io.open(PI_JS, encoding="utf-8").read() if os.path.exists(PI_JS) else ""
+
+ok(os.path.exists(PI_JS), "27.1 PdfInline 模块存在（features/pdf-inline.js）")
+ok('"features/pdf-inline.js"' in mainjs, "27.2 main.js 装配清单含 features/pdf-inline.js")
+_mj2 = mainjs.split("\n")
+
+
+def _mj_line(marker):
+    for i, l in enumerate(_mj2):
+        if marker in l:
+            return i
+    return -1
+
+
+ok(0 <= _mj_line('"ai/pdf-text.js"') < _mj_line('"features/pdf-inline.js"'),
+   "27.3 ★ 装配序：PdfInline 在 ai/pdf-text.js 之后（复用 viewerOf/classify 单一真源）")
+ok(0 <= _mj_line('"ai/translate.js"') < _mj_line('"features/pdf-inline.js"'),
+   "27.4 ★ 装配序：PdfInline 在 ai/translate.js 之后（翻译一律走 TranslateSvc）")
+ok("this.pdfInline = PdfInline;" in mainjs, "27.5 main.js 把 PdfInline 挂到 Zotero.PaperPilot")
+ok("PdfInline.register(id);" in mainjs, "27.6 main.js 启动时注册（阅读器工具栏按钮）")
+ok("PdfInline.unregister();" in mainjs, "27.7 main.js 关闭时注销（摘除注入物）")
+
+# 官方扩展位 + 同步 append（与主题按钮同一纪律）
+ok('Zotero.Reader.registerEventListener("renderToolbar"' in pi_js,
+   "27.8 走官方 renderToolbar 扩展位（不做 DOM 手术）")
+ok("typeof append !== \"function\"" in pi_js, "27.9 append 回调存在性检查（只允许同步调用）")
+
+# 坐标来源：pdf.js 已渲染的 textLayer（不自己解析 PDF）+ 复用 PdfText.viewerOf
+ok('querySelector(".textLayer")' in pi_js, "27.10 ★ 段落坐标读 pdf.js textLayer（不自造 PDF 解析）")
+ok("getBoundingClientRect()" in pi_js, "27.11 用真实 rect 换算页内坐标（与缩放/DPR 解耦）")
+ok("PdfText.viewerOf(reader)" in pi_js, "27.12 复用 PdfText.viewerOf 拿 viewer（单一真源）")
+ok("PdfText.classify" in pi_js, "27.13 复用 PdfText.classify 分类（公式/图注/垃圾行同一口径）")
+ok('b.kind === "formula"' in pi_js and 'if (b.kind === "formula") continue;' in pi_js,
+   "27.14 ★ 公式段落不翻译、不叠加（原文原样保留）")
+
+# 懒加载与缩放：事件驱动重铺 + 几何签名判废
+ok('eventBus.on("textlayerrendered"' in pi_js and 'eventBus.on("pagerendered"' in pi_js,
+   "27.15 ★ 监听 textlayerrendered/pagerendered（懒加载与缩放重建后自动补铺）")
+ok("function pageSignature" in pi_js, "27.16 几何签名检测坐标失效（缩放后重铺而非错位）")
+ok("function recount" in pi_js, "27.17 计数派生而非累加（重铺不虚高进度）")
+
+# 清理纪律
+ok("states.clear();" in pi_js and "btn.remove();" in pi_js,
+   "27.18 unregister 摘除按钮与全部 reader 状态（宿主回到原生）")
+ok("clearPage(pageEl)" in pi_js, "27.19 每页注入前先清旧层（幂等）")
+ok("stop(reader" in pi_js and "markSourceSpans(pageEl, false)" in pi_js,
+   "27.20 停止时清层并还原原文标记")
+
+# 入口：菜单 + 工具栏按钮 + 设置面板
+menus27 = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "menus.js"), encoding="utf-8").read()
+ok('id: "pdf-inline"' in menus27, "27.21 菜单注册表含 pdf-inline")
+ok("PdfInline.startForSelected()" in menus27, "27.22 菜单命令指向 PdfInline.startForSelected()")
+ok("menuPdfInline" in utils_js, "27.23 文案表含 menuPdfInline")
+ok("paperpilot-inline-reader-button" in pi_js, "27.24 阅读器工具栏按钮 id 固定（供清理与测试定位）")
+
+for _k in ["pdfInlineMode", "pdfInlineFontScale", "pdfInlineSelectable", "pdfInlineGapMs"]:
+    ok(("paperpilot.%s" % _k) in prefsdef, "27.25 prefs.js 含 %s 默认值" % _k)
+for _id in ["pp-pi-mode", "pp-pi-scale", "pp-pi-gap", "pp-pi-selectable"]:
+    ok(_id in xhtml_ids, "27.26 prefs.xhtml 含 #%s" % _id)
+_pi_used = set(re.findall(r'\$\("(pp-pi-[A-Za-z0-9_-]+)"\)', trp_js))
+ok(_pi_used, "27.27 prefs-translate.js 接线原位翻译设置（%s）" % (", ".join(sorted(_pi_used)) or "无"))
+ok("pdfInline" in trp_js and "piRefresh" in trp_js, "27.28 设置改动即时 refresh 已打开的阅读器")
+
+# 纪律：不直连网络/AI（翻译一律经 TranslateSvc）
+pi_code = re.sub(r"/\*[\s\S]*?\*/", "", pi_js)
+pi_code = re.sub(r"(?m)//.*$", "", pi_code)
+ok(not re.search(r"Zotero\.HTTP|fetch\s*\(", pi_code),
+   "27.29 不直连网络（去掉注释后无 Zotero.HTTP/fetch）")
+ok("TranslateSvc.translate(" in pi_js, "27.30 翻译走 TranslateSvc（多引擎 + 回退 + 术语表）")
+ok("pdf-inline.test.js" in _pf3, "27.31 preflight 含原位对照翻译测试")
+ok("pdfInlineSelfTest" in prefsdef and "pdfInline selfTest:" in mainjs,
+   "27.32 自检开关（真实 PDF 上验段落抽取与卡片落点）")
+
+
 print("=" * 60)
 for p in passes:
     print("  OK  " + p)

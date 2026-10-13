@@ -125,6 +125,9 @@ Zotero.PaperPilot = {
       "features/pdf-theme.js",
       // 0.25.1 主题切换按钮：界面主题（主窗口左上角）+ PDF 阅读主题（阅读器工具栏），二者分开
       "features/theme-toggle.js",
+      // 0.34.0 PDF 原位对照翻译：读 pdf.js textLayer 坐标 → 译文按段叠加回原页位置。
+      // 依赖 ai/pdf-text.js（viewerOf/classify 单一真源）与 ai/translate.js，故排在其后
+      "features/pdf-inline.js",
       "columns/rank-column.js",
       "columns/citation-column.js",
       "panels/ai-chat-pane.js",
@@ -234,6 +237,8 @@ Zotero.PaperPilot = {
     this.pdfTheme = PdfTheme;
     // 0.25.1 主题切换按钮：界面主题（主窗口）+ PDF 阅读主题（阅读器）
     this.themeToggle = ThemeToggle;
+    // 0.34.0 PDF 原位对照翻译（阅读器工具栏按钮 + 菜单入口经此调起）
+    this.pdfInline = PdfInline;
     // 0.21.0 多篇 PDF 并排对比（菜单/功能中心经此调起；窗口脚本经 window.arguments 拿引用）
     this.pdfCompare = PdfCompare;
 
@@ -409,6 +414,13 @@ Zotero.PaperPilot = {
     } catch (e) {
       await this._diag("theme toggle FAILED: " + (e && (e.stack || e.message) || e));
     }
+    // 0.34.0 PDF 原位对照翻译：阅读器工具栏按钮（同一个 renderToolbar 扩展位）
+    try {
+      PdfInline.register(id);
+      await this._diag("pdf inline translate registered");
+    } catch (e) {
+      await this._diag("pdf inline translate FAILED: " + (e && (e.stack || e.message) || e));
+    }
 
     // 阅读器划词浮窗
     try {
@@ -507,6 +519,20 @@ Zotero.PaperPilot = {
         await this._diag("compare self-test scheduled");
       } catch (e) {
         await this._diag("compare self-test FAILED: " + (e && (e.stack || e.message) || e));
+      }
+    }
+
+    // 0.34.0：PDF 原位对照翻译自检（pref pdfInlineSelfTest，默认关）。
+    // 段落抽取错误 / 译文卡错位这类问题只有真实 PDF 才暴露（迷你 DOM 覆盖不到 pdf.js
+    // 的真实 textLayer），自检把「每页段落数 / 卡片数 / 首卡落点」写进 boot 日志。
+    if (Prefs.get("pdfInlineSelfTest", false)) {
+      try {
+        this.pdfInline.selfTest()
+          .then((r) => this._diag("pdfInline selfTest: " + JSON.stringify(r)))
+          .catch((e) => this._diag("pdfInline selfTest rejected: " + (e && e.message)));
+        await this._diag("pdfInline self-test scheduled");
+      } catch (e) {
+        await this._diag("pdfInline self-test FAILED: " + (e && (e.stack || e.message) || e));
       }
     }
 
@@ -637,6 +663,7 @@ Zotero.PaperPilot = {
     }
     try { Menus.destroy(); } catch (e) { Zotero.logError(e); }
     try { ThemeToggle.unregister(); } catch (e) { Zotero.logError(e); }
+    try { PdfInline.unregister(); } catch (e) { Zotero.logError(e); }
     try { UiTheme.unregister(); } catch (e) { Zotero.logError(e); }
     try { PdfTheme.unregister(); } catch (e) { Zotero.logError(e); }
     try { RuleTag.unregister(); } catch (e) { Zotero.logError(e); }

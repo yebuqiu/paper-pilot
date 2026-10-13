@@ -126,6 +126,10 @@ var I18n = (() => {
     noteBilingualTitle: zh ? "全文对照翻译" : "Bilingual Translation",
     // ---- 0.25.2 全文对照翻译 · 双栏对照窗口 ----
     menuBilingualView: zh ? "全文对照翻译（左右双栏窗口）" : "Bilingual Full-text Translation (side-by-side window)",
+    // ---- 0.34.0 PDF 原位对照翻译（译文按段叠加回原页位置） ----
+    menuPdfInline: zh ? "PDF 原位对照翻译（译文叠加在原页位置）" : "Inline PDF Translation (in-place overlay)",
+    piStarted: zh ? "原位对照翻译已开启：译文按段叠加在原文位置" : "Inline translation started",
+    piNoEngine: zh ? "翻译引擎不可用，请先在设置里选择可用引擎" : "No translation engine available",
     blSrc: zh ? "原文" : "Source",
     blDst: zh ? "译文" : "Translation",
     blLayout: zh ? "布局" : "Layout",

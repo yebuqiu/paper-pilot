@@ -30,16 +30,23 @@ var RefSources = {
   CROSSREF: "https://api.crossref.org",
   OPENALEX: "https://api.openalex.org",
   EUTILS: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils",
+  EUROPEPMC: "https://www.ebi.ac.uk/europepmc/webservices/rest",
   DOI_RESOLVER: "https://doi.org",
 
-  /** 可勾选的源（顺序即 UI 呈现顺序；默认全开） */
+  /** 可勾选的源（顺序即 UI 呈现顺序）。
+   *  `refsOnly` 的源不参与「联合检索」——PDF 没有检索接口，只用来解析参考文献段。 */
   SOURCES: [
     { id: "crossref", label: "Crossref", hint: "期刊卷期页最全" },
     { id: "openalex", label: "OpenAlex", hint: "覆盖最广、可从标题反查 DOI" },
     { id: "pubmed", label: "PubMed", hint: "生物医学" },
+    { id: "europepmc", label: "Europe PMC", hint: "PubMed 全量 + 参考文献列表" },
     { id: "arxiv", label: "arXiv", hint: "预印本" },
     { id: "s2", label: "Semantic Scholar", hint: "引用量与开放获取 PDF" },
+    { id: "pdf", label: "PDF 参考文献段", hint: "从本机 PDF 正文解析（中文文献的唯一兜底）", refsOnly: true },
   ],
+
+  /** 可跑「联合检索」的源（排除只做参考文献段的 PDF） */
+  SEARCHABLE: ["crossref", "openalex", "pubmed", "europepmc", "arxiv", "s2"],
 
   /* ================= 网络：限速 + 缓存 ================= */
 
@@ -48,6 +55,7 @@ var RefSources = {
     "api.crossref.org": 600,
     "api.openalex.org": 220,
     "eutils.ncbi.nlm.nih.gov": 400,
+    "www.ebi.ac.uk": 300,
     "export.arxiv.org": 3000,
     "api.semanticscholar.org": 1100,
     "doi.org": 700,
@@ -330,6 +338,258 @@ var RefSources = {
     if (p.openAccessPdf && p.openAccessPdf.url) rec.oaUrl = p.openAccessPdf.url;
     rec.reasons.push("Semantic Scholar");
     return RefFormat.isBlank(rec) ? null : rec;
+  },
+
+  /** Crossref 的 `message.reference[]` 单条 → rec。
+   *  这是**出版社自己 deposit 的参考文献题录**：卷/期/首页/刊名/年都在里面，
+   *  比任何二次抓取都准；缺的通常只有标题（要靠 unstructured 抠）。 */
+  fromCrossrefReference(r) {
+    if (!r) return null;
+    const rec = RefFormat.empty();
+    rec.source = ["crossref-ref"];
+    rec.reasons = ["Crossref 参考文献"];
+    rec.confidence = "medium";
+    rec.doi = RefFormat.normDOI(r.DOI || "");
+    rec.title = String(r["article-title"] || r["volume-title"] || r["unstructured-title"] || "").trim();
+    const unstructured = String(r.unstructured || "");
+    if (!rec.title && unstructured) {
+      rec.title = RefFormat.titleFromUnstructured(unstructured);
+      if (!rec.title) rec.confidence = "low";
+    }
+    if (!rec.title && !rec.doi && !unstructured) return null;
+    if (!rec.title) rec.title = unstructured.slice(0, 200);
+    rec.authors = RefFormat.authorsFromReferenceString(unstructured, 12);
+    rec.container = String(r["journal-title"] || "").trim();
+    rec.volume = String(r.volume || "").trim();
+    rec.pages = String(r["first-page"] || "").trim();
+    rec.year = RefFormat.yearFromReference(r.year || unstructured);
+    if (rec.year) rec.date = String(rec.year);
+    rec.raw = unstructured;
+    rec.itemType = RefFormat.itemTypeFromSource("crossref", r["article-title"] ? "journal-article" : "journal-article");
+    return RefFormat.isBlank(rec) ? null : rec;
+  },
+
+  /** Europe PMC 检索结果（resultType=core/lite）→ rec */
+  fromEuropepmcResult(r) {
+    if (!r) return null;
+    const rec = RefFormat.empty();
+    rec.source = ["europepmc"];
+    rec.title = String(r.title || "").replace(/<[^>]+>/g, "").replace(/\.$/, "");
+    rec.authors = RefFormat.parseAuthorStringList(r.authorString || "", 60);
+    rec.pmid = RefFormat.normPmid(r.pmid || (/^\d+$/.test(String(r.id || "")) && r.source === "MED" ? r.id : ""));
+    rec.pmcid = String(r.pmcid || "").toUpperCase();
+    rec.doi = RefFormat.normDOI(r.doi || "");
+    rec.container = String(r.journalTitle || (r.journalInfo && r.journalInfo.journal && r.journalInfo.journal.title) || "").trim();
+    const ji = r.journalInfo || {};
+    rec.volume = String(ji.volume || "").trim();
+    rec.issue = String(ji.issue || "").trim();
+    rec.pages = String(r.pageInfo || "").trim();
+    rec.year = RefFormat.yearOf(r.pubYear || (ji.yearOfPublication ? String(ji.yearOfPublication) : ""));
+    if (rec.year) rec.date = String(rec.year);
+    rec.abstract = String(r.abstractText || "").replace(/<[^>]+>/g, "");
+    rec.itemType = RefFormat.itemTypeFromSource("pubmed", (r.pubTypeList && r.pubTypeList.pubType || []).join(" ") || r.pubType || "");
+    rec.url = rec.pmid ? "https://pubmed.ncbi.nlm.nih.gov/" + rec.pmid + "/" : (rec.doi ? "https://doi.org/" + rec.doi : "");
+    rec.reasons.push("Europe PMC");
+    return RefFormat.isBlank(rec) ? null : rec;
+  },
+
+  /** Europe PMC 的 `referenceList.reference[]` 单条 → rec（有标题！生物医学方向最全） */
+  fromEuropepmcReference(r) {
+    if (!r) return null;
+    const rec = RefFormat.empty();
+    rec.source = ["europepmc-ref"];
+    rec.reasons = ["Europe PMC 参考文献"];
+    rec.confidence = "medium";
+    rec.title = String(r.title || "").replace(/<[^>]+>/g, "").replace(/\.$/, "");
+    rec.authors = RefFormat.parseAuthorStringList(r.authorString || "", 60);
+    rec.doi = RefFormat.normDOI(r.doi || "");
+    if (r.source === "MED" && /^\d{6,9}$/.test(String(r.id || ""))) rec.pmid = String(r.id);
+    rec.pmcid = String(r.pmcid || "").toUpperCase();
+    rec.container = String(r.journalAbbreviation || r.journalTitle || "").trim();
+    rec.volume = String(r.volume || "").trim();
+    rec.issue = String(r.issue || "").trim();
+    rec.pages = String(r.pageInfo || "").trim();
+    rec.year = RefFormat.yearOf(r.pubYear);
+    if (rec.year) rec.date = String(rec.year);
+    const ct = String(r.citationType || "").toUpperCase();
+    rec.itemType = /BOOK/.test(ct) && /CHAPTER/.test(ct) ? "bookSection" : (/BOOK/.test(ct) ? "book" : "journalArticle");
+    if (!rec.title && !rec.doi && !rec.pmid) return null;
+    if (!rec.title) rec.title = String(r.id || "").slice(0, 120);
+    return RefFormat.isBlank(rec) ? null : rec;
+  },
+
+  /* ================= 参考文献列表（四通道 + PDF） ================= */
+
+  /** Crossref message.reference[] → recs（同时缓存整条 message，避免重复请求） */
+  async crossrefWork(doi) {
+    const d = RefFormat.normDOI(doi);
+    if (!d) return null;
+    const j = await this._getJSON(this.CROSSREF + "/works/" + encodeURIComponent(d) + "?mailto=" + encodeURIComponent(this._mailto()));
+    return (j && j.message) || null;
+  },
+
+  /** 出版社 deposit 的参考文献题录（卷期页最全） */
+  async crossrefReferenceList(doi) {
+    const m = await this.crossrefWork(doi);
+    if (!m) return [];
+    return (m.reference || [])
+      .filter((r) => r && (r.DOI || r["article-title"] || r.unstructured || r["volume-title"]))
+      .map((r) => this.fromCrossrefReference(r))
+      .filter(Boolean);
+  },
+
+  /** OpenAlex：referenced_works（ID 列表）→ 按 openalex_id 批量取回题录。
+   *  两次请求就能拿到整份参考文献表，是覆盖率最高、成本最低的一条通道。 */
+  async openalexReferenceList(ids) {
+    const o = ids || {};
+    const doi = RefFormat.normDOI(o.doi || "");
+    const workUrl = doi
+      ? this.OPENALEX + "/works/doi:" + encodeURIComponent(doi) + "?select=id,referenced_works&mailto=" + encodeURIComponent(this._mailto())
+      : (o.openalexId ? this.OPENALEX + "/works/" + o.openalexId + "?select=id,referenced_works&mailto=" + encodeURIComponent(this._mailto()) : "");
+    if (!workUrl) return [];
+    const work = await this._getJSON(workUrl);
+    const refs = (work && work.referenced_works) || [];
+    if (!refs.length) return [];
+    // "https://openalex.org/W123" → "W123"
+    const shortIds = refs.map((u) => String(u).split("/").pop()).filter(Boolean).slice(0, 300);
+    const out = [];
+    for (let i = 0; i < shortIds.length; i += 50) {
+      const chunk = shortIds.slice(i, i + 50);
+      const url = this.OPENALEX + "/works?filter=openalex_id:" + encodeURIComponent(chunk.join("|"))
+        + "&per-page=50&select=doi,title,publication_year,type,biblio,authorships,primary_location,ids"
+        + "&mailto=" + encodeURIComponent(this._mailto());
+      const j = await this._getJSON(url);
+      for (const w of ((j && j.results) || [])) {
+        const rec = this.fromOpenAlex(w);
+        if (rec) { rec.source = ["openalex-ref"]; rec.reasons = ["OpenAlex 参考文献"]; rec.confidence = "high"; out.push(rec); }
+      }
+    }
+    return out;
+  },
+
+  /** Europe PMC 参考文献（生物医学方向最全，且**带标题**）。
+   *  先按 DOI/PMID/PMCID 找到 MED/PMC 标识，再取 references 端点。 */
+  async europepmcReferenceList(ids) {
+    const o = ids || {};
+    let source = "", id = "";
+    const pmid = RefFormat.normPmid(o.pmid || "");
+    const pmcid = String(o.pmcid || "").toUpperCase();
+    if (pmid) { source = "MED"; id = pmid; }
+    else if (pmcid) { source = "PMC"; id = pmcid; }
+    else if (o.doi) {
+      const j = await this._getJSON(this.EUROPEPMC + "/search?query=" + encodeURIComponent('DOI:"' + RefFormat.normDOI(o.doi) + '"')
+        + "&format=json&resultType=lite&pageSize=1");
+      const r = (((j || {}).resultList || {}).result || [])[0];
+      if (r) { source = r.pmcid ? "PMC" : "MED"; id = r.pmcid || r.pmid || (/^\d+$/.test(String(r.id || "")) ? r.id : ""); }
+    }
+    if (!source || !id) return [];
+    const url = this.EUROPEPMC + "/" + source + "/" + encodeURIComponent(id)
+      + "/references?format=json&pageSize=100&page=1";
+    const j = await this._getJSON(url);
+    const list = (((j || {}).referenceList || {}).reference) || [];
+    return list.map((r) => this.fromEuropepmcReference(r)).filter(Boolean);
+  },
+
+  /** Semantic Scholar 参考文献（按 DOI/arXiv/标题先定位 paperId） */
+  async s2ReferenceList(ids, limit) {
+    if (typeof S2Client === "undefined" || !S2Client) return [];
+    const o = ids || {};
+    const F = "title,year,venue,externalIds,citationCount";
+    let paper = null;
+    const doi = RefFormat.normDOI(o.doi || "");
+    const want = RefFormat.normTitle(o.title || "");
+    if (doi) {
+      try { paper = await S2Client.paperById("DOI:" + doi, F); } catch (e) { paper = null; }
+      if (paper && want && RefFormat.normTitle(paper.title) !== want) paper = null; // DOI 错配 → 回退
+    }
+    if (!paper && o.arxivId) {
+      try { paper = await S2Client.paperById("ARXIV:" + RefFormat.normArxiv(o.arxivId), F); } catch (e) { paper = null; }
+    }
+    if (!paper && o.pmid) {
+      try { paper = await S2Client.paperById("PMID:" + RefFormat.normPmid(o.pmid), F); } catch (e) { paper = null; }
+    }
+    if (!paper && o.title) {
+      try {
+        const cands = await S2Client.searchByTitle(o.title, 5, F);
+        paper = (cands || []).find((p) => RefFormat.normTitle(p.title) === want) || null;
+      } catch (e) { paper = null; }
+    }
+    if (!paper || !paper.paperId) return [];
+    const raw = await S2Client.references(paper.paperId,
+      "title,year,venue,abstract,externalIds,authors,citationCount,publicationTypes,journal", limit || 500);
+    return (raw || []).map((r) => {
+      const p = r && r.citedPaper;
+      if (!p) return null;
+      const rec = this.fromS2(p);
+      if (rec) { rec.source = ["s2-ref"]; rec.reasons = ["Semantic Scholar 参考文献"]; }
+      return rec;
+    }).filter(Boolean);
+  },
+
+  /** DOI 批量补全：走 S2 的 /paper/batch（一次最多 500 条）。
+   *  参考文献表里大量条目只有 DOI（Crossref 只给 DOI + 卷页），标题/作者/年份都得靠它补齐。 */
+  async s2BatchByDois(dois) {
+    if (typeof S2Client === "undefined" || !S2Client) return [];
+    const list = [...new Set((dois || []).map((d) => RefFormat.normDOI(d)).filter(Boolean))];
+    const out = [];
+    const F = "title,year,venue,abstract,externalIds,authors,citationCount,publicationTypes,journal,url,openAccessPdf";
+    for (let i = 0; i < list.length; i += 100) {
+      const chunk = list.slice(i, i + 100);
+      let papers = [];
+      try { papers = await S2Client.batch(chunk.map((d) => "DOI:" + d), F); } catch (e) { papers = []; }
+      for (let k = 0; k < chunk.length; k++) {
+        const p = papers && papers[k];
+        if (!p) continue;
+        const rec = this.fromS2(p);
+        if (!rec) continue;
+        if (!rec.doi) rec.doi = chunk[k];
+        out.push(rec);
+      }
+      if (i + 100 < list.length) await new Promise((r) => setTimeout(r, 1200)); // S2 无 key 限速
+    }
+    return out;
+  },
+
+  /** Europe PMC 检索（并入联合检索：PubMed 全量镜像，命中率比 eutils 更宽） */
+  async europepmcSearch(query, limit) {
+    const url = this.EUROPEPMC + "/search?query=" + encodeURIComponent(query)
+      + "&format=json&resultType=core&pageSize=" + Math.max(1, Math.min(25, limit || 10));
+    const j = await this._getJSON(url);
+    return ((((j || {}).resultList || {}).result || [])).map((r) => this.fromEuropepmcResult(r)).filter(Boolean);
+  },
+
+  /**
+   * 条目没有 DOI/PMID 时，用**标题**先在各库里把它认出来，回填标识符。
+   * 为什么必须有这一步：中文指南/期刊论文常常没记 DOI，而参考文献列表接口全都
+   * 以 DOI/PMID 为入口 —— 不先定位到标识符，后面四条通道一个都跑不起来。
+   * 只在标题**真实一致**（titleMatch，≥0.9）时才采纳，绝不靠相似度硬凑。
+   */
+  async resolveItemIdentifiers(ids, opts) {
+    const o = opts || {};
+    const cur = Object.assign({}, ids || {});
+    if (cur.doi || cur.pmid || cur.pmcid || cur.arxivId) return { ids: cur, matched: false };
+    if (!cur.title) return { ids: cur, matched: false };
+    const srcs = o.sources || this.SEARCHABLE;
+    let best = null;
+    const tries = [
+      () => (srcs.indexOf("openalex") >= 0 ? this.openalexSearch(cur.title, 5) : []),
+      () => (srcs.indexOf("crossref") >= 0 ? this.crossrefSearch(cur.title, 5) : []),
+      () => (srcs.indexOf("s2") >= 0 ? this.s2Search(cur.title, 5) : []),
+      () => (srcs.indexOf("europepmc") >= 0 ? this.europepmcSearch(cur.title, 5) : []),
+    ];
+    for (const fn of tries) {
+      let cands = [];
+      try { cands = (await fn()) || []; } catch (e) { cands = []; }
+      const hit = cands.find((r) => r && RefFormat.titleMatch(r.title, cur.title, 0.9));
+      if (hit) { best = hit; break; }
+    }
+    if (!best) return { ids: cur, matched: false };
+    if (best.doi) cur.doi = RefFormat.normDOI(best.doi);
+    if (best.pmid) cur.pmid = RefFormat.normPmid(best.pmid);
+    if (best.pmcid) cur.pmcid = String(best.pmcid).toUpperCase();
+    if (best.arxivId) cur.arxivId = RefFormat.normArxiv(best.arxivId);
+    cur.matchedTitle = best.title || "";
+    return { ids: cur, matched: !!(cur.doi || cur.pmid || cur.pmcid || cur.arxivId) };
   },
 
   /* ================= 各源取数 ================= */
@@ -620,6 +880,7 @@ var RefSources = {
       ["crossref", () => this.crossrefSearch(q, Math.max(3, limit))],
       ["openalex", () => this.openalexSearch(q, Math.max(3, limit))],
       ["pubmed", () => this.pubmedSearch(q, Math.max(3, limit))],
+      ["europepmc", () => this.europepmcSearch(q, Math.max(3, limit))],
       ["arxiv", () => this.arxivSearch(q, Math.max(3, limit))],
       ["s2", () => this.s2Search(q, Math.max(3, limit))],
     ];

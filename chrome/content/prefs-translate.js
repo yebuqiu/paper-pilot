@@ -151,6 +151,26 @@
     if (cx) cx.checked = prefBool("bilingualContext", true);
     const fp = $("pp-tr-formula");
     if (fp) fp.checked = prefBool("translateFormulaProtect", true);
+    // 0.34.0 PDF 原位对照翻译（读的是字符串型 pref，prefBool 只管布尔）
+    const pim = $("pp-pi-mode");
+    if (pim) {
+      pim.value = String(prefStr("pdfInlineMode", "off") || "off");
+      if (["off", "overlay", "bilingual"].indexOf(pim.value) < 0) pim.value = "off";
+    }
+    const pis = $("pp-pi-scale");
+    if (pis) pis.value = String(prefStr("pdfInlineFontScale", "1") || "1");
+    const pig = $("pp-pi-gap");
+    if (pig) pig.value = String(prefStr("pdfInlineGapMs", "120") || "120");
+    const pise = $("pp-pi-selectable");
+    if (pise) pise.checked = prefBool("pdfInlineSelectable", false);
+  }
+
+  /** 读取扩展字符串 pref（默认值在 prefs.js 声明，这里只兜 undefined） */
+  function prefStr(key, dflt) {
+    try {
+      const v = Zotero.Prefs.get("extensions.zotero.paperpilot." + key, true);
+      return v === undefined || v === null ? dflt : String(v);
+    } catch (e) { return dflt; }
   }
 
   /** 读取扩展布尔 pref（默认值在 prefs.js 声明，这里只兜 undefined） */
@@ -575,6 +595,48 @@
         Zotero.Prefs.set("extensions.zotero.paperpilot.translateFormulaProtect",
           !!$("pp-tr-formula").checked);
       } catch (e) { /* ignore */ }
+    });
+
+    // 0.34.0 PDF 原位对照翻译：改完即时生效（refresh 会重铺所有活跃阅读器）
+    const piRefresh = () => {
+      try {
+        const pi = PP().pdfInline;
+        if (pi && pi.refresh) pi.refresh();
+      } catch (e) { /* ignore */ }
+    };
+    bind("pp-pi-mode", "change", () => {
+      let v = String($("pp-pi-mode").value || "off");
+      if (["off", "overlay", "bilingual"].indexOf(v) < 0) v = "off";
+      try { Zotero.Prefs.set("extensions.zotero.paperpilot.pdfInlineMode", v); } catch (e) { /* ignore */ }
+      piRefresh();
+      setMsg(v === "off"
+        ? (zh ? "已关闭原位对照翻译（阅读器工具栏按钮仍可按需开启）" : "Inline translation off")
+        : (zh ? "已开启：打开 PDF 后译文将按段叠加在原页位置" : "Inline translation enabled"),
+        "var(--pp-success)");
+    });
+    bind("pp-pi-scale", "change", () => {
+      const n = Number($("pp-pi-scale").value);
+      const v = isFinite(n) && n > 0 ? Math.min(1.6, Math.max(0.7, n)) : 1;
+      try {
+        Zotero.Prefs.set("extensions.zotero.paperpilot.pdfInlineFontScale", String(v));
+      } catch (e) { /* ignore */ }
+      if ($("pp-pi-scale")) $("pp-pi-scale").value = String(v);
+      piRefresh();
+    });
+    bind("pp-pi-gap", "change", () => {
+      const n = Number($("pp-pi-gap").value);
+      const v = isFinite(n) && n >= 0 ? Math.min(5000, Math.round(n)) : 120;
+      try {
+        Zotero.Prefs.set("extensions.zotero.paperpilot.pdfInlineGapMs", String(v));
+      } catch (e) { /* ignore */ }
+      if ($("pp-pi-gap")) $("pp-pi-gap").value = String(v);
+    });
+    bind("pp-pi-selectable", "change", () => {
+      try {
+        Zotero.Prefs.set("extensions.zotero.paperpilot.pdfInlineSelectable",
+          !!$("pp-pi-selectable").checked);
+      } catch (e) { /* ignore */ }
+      piRefresh();
     });
 
     try { renderAll(); } catch (e) { /* 渲染失败不影响面板其余部分 */ }

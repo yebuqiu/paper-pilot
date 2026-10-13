@@ -492,55 +492,180 @@ var RefImport = {
 
   /* ================= 从当前条目导入其参考文献（替代旧流程） ================= */
 
+  _fieldOf(item, f) {
+    try { return item.getField(f) || ""; } catch (e) { return ""; }
+  },
+
+  /** 条目的检索标识（DOI 优先，其次 PMID/PMCID/arXiv，都没有才靠标题） */
+  itemIdentifiers(item) {
+    const extra = this._fieldOf(item, "extra");
+    const url = this._fieldOf(item, "url");
+    const blob = extra + " " + url + " " + this._fieldOf(item, "archiveLocation");
+    let doi = RefFormat.normDOI(this._fieldOf(item, "DOI"));
+    if (!doi) {
+      const m = blob.match(/10\.\d{4,9}\/[^\s"'<>）)】\]]+/);
+      if (m) doi = RefFormat.normDOI(m[0]);
+    }
+    const pmidM = /(?:PMID|pubmed)[:\s/]*(\d{6,9})/i.exec(blob);
+    const pmcidM = /(PMC\d{6,8})/i.exec(blob);
+    return {
+      doi,
+      pmid: pmidM ? pmidM[1] : "",
+      pmcid: pmcidm(pmcidM),
+      arxivId: RefFormat.normArxiv(this._fieldOf(item, "archiveID")) || RefFormat.normArxiv(blob),
+      title: this._fieldOf(item, "title"),
+    };
+    function pmcidm(m) { return m ? m[1].toUpperCase() : ""; }
+  },
+
+  /** PDF 参考文献段通道：从本机 PDF 全文里切参考文献段并解析。
+   *  这是**中文文献与未被任何库收录文献的唯一兜底**（S2/Crossref/OpenAlex 对
+   *  知网系刊物覆盖很差，但 PDF 就在用户硬盘上）。 */
+  async pdfReferenceList(item) {
+    if (typeof AIChat === "undefined" || !AIChat || !AIChat.getFullText) return { records: [], reason: "no_fulltext_api" };
+    let text = null;
+    try {
+      // ★ 必须 noTruncate：参考文献段在文章**末尾**，按默认 16k 截断会正好把它切掉
+      text = await AIChat.getFullText(item, { noTruncate: true });
+    } catch (e) { return { records: [], reason: "read_failed" }; }
+    if (!text) return { records: [], reason: "no_text" };
+    const sec = RefFormat.splitBibliography(text);
+    if (!sec) return { records: [], reason: "no_section" };
+    const entries = RefFormat.splitBibliographyEntries(sec.text).slice(0, 400);
+    const records = RefFormat.recordsFromBibliographyEntries(entries, { source: "pdf", reason: "PDF 参考文献段" });
+    return { records, reason: "", entries: entries.length };
+  },
+
   /**
-   * 取「选中条目的参考文献」列表（S2 references 仍然是最省事的免费来源：
-   * 一次请求就能拿到上百条带作者/摘要/DOI 的题录），但**不再按 DOI 丢弃**，
-   * 改用多键判重；无 DOI 的照常入库（标题+年份+作者已足够定位一篇文献）。
+   * 取「选中条目的参考文献」列表 —— **多源联合**，这是「让该文章引用的参考文献
+   * 都能一键入库」的关键：任何单一来源的参考文献表都是残缺的
+   * （S2 只收录它匹配上的、Crossref 取决于出版社有没有 deposit、
+   *  OpenAlex 覆盖面广但缺卷期、Europe PMC 只覆盖生物医学、PDF 段最全但需解析）。
+   *  四张表 + PDF 段落合并去重后，覆盖率显著高于任何单源。
+   *
+   * @param {Array} items Zotero 条目数组（支持多篇一起取）
+   * @param {{channels?:Array<string>, limit?:number, max?:number, enrichDois?:boolean}} [opts]
+   * @returns {Promise<{records:Array, channels:object, errors:Array, perItem:Array, merged:number}>}
    */
-  async fetchReferences(item, opts) {
+  async fetchReferenceLists(items, opts) {
     const o = opts || {};
-    const zh = I18n.isZh;
-    const title = this._fieldOf(item, "title");
-    const want = RefFormat.normTitle(title);
-    const doi = RefFormat.normDOI(this._fieldOf(item, "DOI"));
-    if (typeof S2Client === "undefined" || !S2Client) throw new Error(zh ? "Semantic Scholar 客户端不可用" : "S2 client unavailable");
+    const zh = (typeof I18n !== "undefined" && I18n) ? I18n.isZh : true;
+    const list = (items || []).filter(Boolean);
+    const channels = {};
+    const errors = [];
+    const perItem = [];
+    const all = [];
+    const pdfReasons = [];
+    const want = (id) => !o.channels || o.channels.indexOf(id) >= 0;
 
-    let paper = null;
-    if (doi) {
-      try { paper = await S2Client.paperById("DOI:" + doi, "title,year,venue,externalIds,citationCount"); } catch (e) { /* 落标题检索 */ }
-      if (paper && want && RefFormat.normTitle(paper.title) !== want) paper = null; // DOI 错配 → 回退
+    for (const item of list) {
+      const itemTitle = this._fieldOf(item, "title") || (item.getDisplayTitle ? item.getDisplayTitle() : "");
+      let ids = this.itemIdentifiers(item);
+      const counts = {};
+      // 没记 DOI/PMID 时先用标题把这篇文献认出来 —— 四条参考文献通道都以标识符为入口
+      let matchedByTitle = false;
+      if (!ids.doi && !ids.pmid && !ids.pmcid && !ids.arxivId && ids.title && o.resolveByTitle !== false) {
+        try {
+          const rz = await RefSources.resolveItemIdentifiers(ids, { sources: this._channelsToSources(o.channels) });
+          ids = rz.ids;
+          matchedByTitle = rz.matched;
+        } catch (e) { /* 定位失败就继续（PDF 通道仍可能救回来） */ }
+      }
+      const runs = [
+        ["s2", () => RefSources.s2ReferenceList(ids, o.limit || 500)],
+        ["crossref", () => (ids.doi ? RefSources.crossrefReferenceList(ids.doi) : [])],
+        ["openalex", () => RefSources.openalexReferenceList(ids)],
+        ["europepmc", () => RefSources.europepmcReferenceList(ids)],
+        ["pdf", async () => {
+          const r = await this.pdfReferenceList(item);
+          pdfReasons.push(r.reason || "");
+          return r.records;
+        }],
+      ];
+      for (const [name, fn] of runs) {
+        if (!want(name)) continue;
+        try {
+          const got = (await fn()) || [];
+          counts[name] = got.length;
+          channels[name] = (channels[name] || 0) + got.length;
+          for (const r of got) { if (r) { r.fromItem = itemTitle; all.push(r); } }
+        } catch (e) {
+          counts[name] = 0;
+          channels[name] = channels[name] || 0;
+          errors.push({ channel: name, item: itemTitle, message: (e && (e.message || String(e))) || "failed" });
+        }
+      }
+      perItem.push({ item: itemTitle, identifiers: ids, counts, matchedByTitle });
     }
-    if (!paper && title) {
-      const cands = await S2Client.searchByTitle(title, 5, "title,year,venue,externalIds,citationCount");
-      paper = cands.find((p) => RefFormat.normTitle(p.title) === want) || null;
-    }
-    if (!paper || !paper.paperId) throw new Error(zh ? "Semantic Scholar 查无此文" : "Not found on Semantic Scholar");
 
-    const raw = await S2Client.references(paper.paperId,
-      "title,year,venue,abstract,externalIds,authors,citationCount", o.limit || 200);
-    const recs = [];
-    for (const r of raw || []) {
-      const p = r && r.citedPaper;
-      if (!p) continue;
-      const rec = RefSources.fromS2({
-        title: p.title, year: p.year, venue: p.venue, abstract: p.abstract,
-        externalIds: p.externalIds, authors: p.authors, citationCount: p.citationCount,
-        publicationTypes: [], journal: p.journal,
-      });
-      if (rec) { rec.source = ["s2"]; rec.reasons = ["Semantic Scholar · 参考文献"]; recs.push(rec); }
+    const deduped = RefFormat.dedupeRecords(all);
+    let records = deduped.records;
+
+    // DOI 批量补全（S2 /paper/batch，一次 100 条）：参考文献表里大量条目只有 DOI
+    // 与卷页、没有标题/作者。补齐后列表可读、入库字段也完整。
+    if (o.enrichDois !== false) {
+      const dois = records.filter((r) => r.doi && !r.title).map((r) => r.doi);
+      if (dois.length) {
+        const extra = await RefSources.s2BatchByDois(dois).catch(() => []);
+        if (extra.length) {
+          const before = records;
+          const merged = RefFormat.dedupeRecords(before.concat(extra)).records;
+          records = merged;
+        }
+      }
     }
-    // 参考文献列表可能很大：先按「有没有强标识符 + 引用量」粗排，让最有价值的排前面
-    recs.sort((a, b) => {
+
+    // 排序：有强标识符的在前，其次按「来源数（多源命中更可信）→ 是否有标题」
+    records.sort((a, b) => {
       const ka = (a.doi || a.pmid || a.arxivId) ? 1 : 0;
       const kb = (b.doi || b.pmid || b.arxivId) ? 1 : 0;
       if (ka !== kb) return kb - ka;
+      const sa = (a.source || []).length, sb = (b.source || []).length;
+      if (sa !== sb) return sb - sa;
+      const ta = a.title ? 1 : 0, tb = b.title ? 1 : 0;
+      if (ta !== tb) return tb - ta;
       return (b.citationCount || 0) - (a.citationCount || 0);
     });
-    return { paper, records: recs.slice(0, o.max || 200) };
+
+    const cap = o.max || 500;
+    const channelsUsed = o.channels || Object.keys(channels);
+    // 一条都没抓到 → 给出**可执行的**诊断码，而不是让用户对着空列表猜
+    //（这一条来自真机反馈：中文指南 + 无文本层 PDF 时四个通道必然全空，
+    //  界面必须说清楚是「条目缺标识符」「PDF 是扫描件」还是「库确实没收录」）
+    let diagnosis = "";
+    if (!records.length) {
+      const hasId = perItem.some((p) => p.identifiers.doi || p.identifiers.pmid || p.identifiers.pmcid || p.identifiers.arxivId);
+      const pdfTried = channelsUsed.indexOf("pdf") >= 0;
+      const pdfNoText = pdfReasons.some((r) => r === "no_text" || r === "read_failed" || r === "no_fulltext_api");
+      const pdfNoSection = pdfReasons.some((r) => r === "no_section");
+      if (!hasId) diagnosis = "no_identifier";
+      else if (pdfTried && pdfNoText) diagnosis = "scanned_pdf";
+      else if (pdfTried && pdfNoSection) diagnosis = "no_bib_section";
+      else diagnosis = "not_indexed";
+    }
+    return {
+      records: records.slice(0, cap),
+      channels,
+      errors,
+      perItem,
+      merged: deduped.merged,
+      total: records.length,
+      truncated: Math.max(0, records.length - cap),
+      diagnosis,
+      matchedByTitle: perItem.some((p) => p.matchedByTitle),
+    };
   },
 
-  _fieldOf(item, f) {
-    try { return item.getField(f) || ""; } catch (e) { return ""; }
+  /** 参考文献通道 id → 可用于「按标题定位」的检索源（pdf 不参与检索） */
+  _channelsToSources(channels) {
+    const list = (channels || []).filter((c) => c !== "pdf");
+    return list.length ? list : RefSources.SEARCHABLE;
+  },
+
+  /** 单条兼容入口（旧调用方） */
+  async fetchReferences(item, opts) {
+    const r = await this.fetchReferenceLists([item], opts || {});
+    return { paper: { title: this._fieldOf(item, "title") }, records: r.records, channels: r.channels, errors: r.errors };
   },
 
   /** 菜单入口：从当前选中条目导入其参考文献（打开统一对话框的 refs 模式） */
@@ -600,11 +725,23 @@ var RefImport = {
       markDuplicates: (records) => this.markDuplicates(records),
       libraryCount: async () => (await this.libraryIndex()).items.length,
       fetchReferences: async (opts) => {
+        const o = opts || {};
         const zp = Zotero.getActiveZoteroPane();
-        const item = ItemSel.regularOnly(zp ? (zp.getSelectedItems() || []) : [])[0];
-        if (!item) throw new Error(I18n.isZh ? "主窗口没有选中任何条目" : "No item selected in the main window");
-        const r = await this.fetchReferences(item, opts || {});
-        return { paper: { title: (r.paper && r.paper.title) || this._fieldOf(item, "title") }, records: r.records };
+        // ★ 支持**多篇**：选中几篇就取几篇的参考文献并合并
+        //（旧实现只取 [0]，用户选了三篇却只拿到第一篇的参考文献）
+        const items = ItemSel.regularOnly(zp ? (zp.getSelectedItems() || []) : []).slice(0, o.maxItems || 8);
+        if (!items.length) throw new Error(I18n.isZh ? "主窗口没有选中任何条目" : "No item selected in the main window");
+        const r = await this.fetchReferenceLists(items, o);
+        return {
+          paper: { title: items.length === 1 ? this._fieldOf(items[0], "title") : "" },
+          itemCount: items.length,
+          items: r.perItem,
+          records: r.records,
+          channels: r.channels,
+          errors: r.errors,
+          merged: r.merged,
+          truncated: r.truncated,
+        };
       },
       importRecords: (records, opts) => {
         const zp = Zotero.getActiveZoteroPane();

@@ -83,6 +83,19 @@ pref("extensions.zotero.paperpilot.bilingualStructExtract", true);
 pref("extensions.zotero.paperpilot.bilingualContext", true);
 // 行内公式保护（默认开，仅非 llm 引擎启用）：高置信数学片段占位符化，译后原样还原
 pref("extensions.zotero.paperpilot.translateFormulaProtect", true);
+// 0.34.0 PDF 原位对照翻译（阅读器内把译文按**原文段落坐标**叠加回原页，保留原始排版）：
+// 模式 overlay（译文覆盖原文、原文淡显）/ bilingual（原文清晰 + 半透明译文卡）/ off
+pref("extensions.zotero.paperpilot.pdfInlineMode", "off");
+// 译文卡字号比例（字符串存法同 aiTemperature，代码里 Number() 解析；0.7–1.6）
+pref("extensions.zotero.paperpilot.pdfInlineFontScale", "1");
+// 译文卡可选中（默认关：卡片 pointer-events:none，不干扰 pdf.js 划词选择）
+pref("extensions.zotero.paperpilot.pdfInlineSelectable", false);
+// 段间节流（毫秒；免费引擎限流友好，0 = 不等待）
+pref("extensions.zotero.paperpilot.pdfInlineGapMs", 120);
+// 自检开关（默认关）：置 true 后下次启动自动拿库里第一个 PDF 开一次原位对照，
+// 把每页段落数/卡片数/首卡落点写进 paperpilot-boot.log —— 「段落抽取错/卡片错位」
+// 只有真实 PDF 才暴露；验完请改回 false
+pref("extensions.zotero.paperpilot.pdfInlineSelfTest", false);
 pref("extensions.zotero.paperpilot.noteTemplatesCustom", "");
 pref("extensions.zotero.paperpilot.attachNamePattern", "{author} - {year} - {title}");
 pref("extensions.zotero.paperpilot.unpaywallEmail", "");
