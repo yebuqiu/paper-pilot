@@ -34,6 +34,27 @@
 
   const PASSWORD_KEYS = { key: 1, apiKey: 1, secretKey: 1, token: 1, appkey: 1 };
 
+  /* ---------- 折叠式布局（0.31.0）----------
+   * 16 个引擎全平铺，每行还带密钥表单与说明 → "界面过于杂乱"。
+   * 默认只列「常用」（当前活动 + 回退链成员 + 内置常用清单，去重后最多 6 个），
+   * 其余收进可展开区域（展开后按类别分组）。展开状态存模块变量，
+   * 这样任何一次 renderAll 重建列表后仍保持用户的展开/收起选择。
+   */
+  const COMMON_ENGINES = ["llm", "edge", "google", "microsoft", "deepl"];
+  const COMMON_MAX = 6;
+  let showAllEngines = false;
+  let lastCommonIds = [];
+
+  /** 常用引擎 id 列表：活动引擎 → 回退链顺序 → 内置常用清单 */
+  function commonIds(ov, S) {
+    const out = [];
+    const push = (id) => { if (id && S.get(id) && out.indexOf(id) < 0) out.push(id); };
+    push(ov.active);
+    for (const id of (ov.cfg.fallback || [])) push(id);
+    for (const id of COMMON_ENGINES) push(id);
+    return out.slice(0, COMMON_MAX);
+  }
+
   function setMsg(text, color) {
     const box = $("pp-tr-test-result");
     if (!box) return;
@@ -118,9 +139,9 @@
   }
 
   /* ---------- 引擎行 ---------- */
-  function buildEngineRow(s) {
+  function buildEngineRow(s, compact) {
     const S = T();
-    const row = el("div", { class: "pp-ch-row" });
+    const row = el("div", { class: "pp-ch-row", "data-engine": s.id });
 
     const left = el("div", { style: "flex:1;min-width:0;" });
     const head = el("div", { class: "pp-ch-head" });
@@ -192,8 +213,9 @@
       left.appendChild(wrap);
     }
 
-    // 引擎说明（额度 / 免密钥 / 申请方式）：0.31.0 起由引擎自身声明，界面直接展示
-    if (s.hint) {
+    // 引擎说明（额度 / 免密钥 / 申请方式）：由引擎自身声明，界面直接展示。
+    // compact（展开区里的行）只在"要填密钥/是实验性"时展示说明，避免展开后一屏全是字。
+    if (s.hint && (!compact || s.needsSecret || s.experimental)) {
       left.appendChild(el("div", {
         class: "pp-hint",
         style: "margin-top:5px;line-height:1.5;",
@@ -202,8 +224,11 @@
 
     row.appendChild(left);
 
-    // 操作按钮
-    const acts = el("div", { style: "display:flex;gap:6px;flex:none;align-items:flex-start;flex-wrap:wrap;max-width:220px;justify-content:flex-end;" });
+    // 右侧：操作按钮 + **行内测试结果**（反馈就在刚点的按钮下面，不再跑到卡片底部）
+    const right = el("div", {
+      style: "display:flex;flex-direction:column;gap:4px;flex:none;align-items:flex-end;max-width:240px;",
+    });
+    const acts = el("div", { style: "display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;" });
     const mkBtn = (label, title) => el("button", { class: "pp-btn pp-btn-sm", title: title || "" }, label);
     if (!s.enabled) {
       const b = mkBtn(zh ? "设为当前" : "Set active", zh ? "用作主翻译引擎" : "Use as primary engine");
@@ -228,7 +253,11 @@
     });
     acts.appendChild(bFb);
     const bTest = mkBtn(zh ? "测试" : "Test", zh ? "真实调用一次，返回耗时与译文" : "Real call: latency + result");
-    bTest.addEventListener("click", () => onTest(s.id, bTest));
+    const rowMsg = el("div", {
+      class: "pp-tr-rowmsg",
+      style: "font-size:11px;line-height:1.45;text-align:right;word-break:break-word;min-height:0;",
+    }, "");
+    bTest.addEventListener("click", () => onTest(s.id, bTest, rowMsg));
     acts.appendChild(bTest);
     if (s.docs) {
       const bDoc = mkBtn(zh ? "文档" : "Docs", s.docs);
@@ -237,7 +266,9 @@
       });
       acts.appendChild(bDoc);
     }
-    row.appendChild(acts);
+    right.appendChild(acts);
+    right.appendChild(rowMsg);
+    row.appendChild(right);
     return row;
   }
 
@@ -246,8 +277,12 @@
     const S = T();
     if (!box || !S) return;
     while (box.firstChild) box.removeChild(box.firstChild);
+
     const ov = S.overview();
-    // 按「免配置 / 需地址 / 需密钥 / AI」分组（0.31.0）：用户一眼看出哪些开箱即用
+    const total = ov.services.length;
+    const common = commonIds(ov, S);
+    lastCommonIds = common;
+
     const groups = [
       { key: "plain", label: zh ? "完全免配置（开箱即用）" : "Zero-config" },
       { key: "free-url", label: zh ? "免费 · 需填自建/公共地址" : "Free · needs a URL" },
@@ -256,11 +291,49 @@
     ];
     const catOf = (s) => (s.isLLM ? "ai"
       : (s.needsSecret ? (s.group === "free" ? "free-url" : "key") : "plain"));
+
+    // 标题行 + 展开/收起
+    const head = el("div", {
+      class: "pp-tr-listhead",
+      style: "display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap;",
+    });
+    head.appendChild(el("span", { class: "pp-sub-title" }, showAllEngines
+      ? (zh ? "全部引擎（" + total + " 个）" : "All engines (" + total + ")")
+      : (zh ? "常用引擎（" + common.length + " 个）" : "Common (" + common.length + ")")));
+    const toggle = el("button", { class: "pp-btn pp-btn-sm pp-tr-toggle" },
+      showAllEngines
+        ? (zh ? "收起，只看常用 ▴" : "Collapse ▴")
+        : (zh ? "展开全部 " + total + " 个 ▾" : "Show all " + total + " ▾"));
+    toggle.style.marginLeft = "auto";
+    toggle.addEventListener("click", () => {
+      showAllEngines = !showAllEngines;
+      renderList();
+    });
+    head.appendChild(toggle);
+    box.appendChild(head);
+
+    if (!showAllEngines) {
+      for (const id of common) {
+        const s = ov.services.find((x) => x.id === id);
+        if (s) box.appendChild(buildEngineRow(s, false));
+      }
+      const rest = total - common.length;
+      if (rest > 0) {
+        box.appendChild(el("div", { class: "pp-hint pp-tr-more", style: "margin-top:6px;" },
+          (zh ? "已收起 " + rest + " 个引擎 —— 点右上「展开全部」查看（免配置 / 自备密钥 / 自建地址都在里面）。"
+            : rest + " more engines hidden — click “Show all”.")));
+      }
+      return;
+    }
+
     for (const g of groups) {
       const list = ov.services.filter((s) => catOf(s) === g.key);
       if (!list.length) continue;
-      box.appendChild(el("div", { class: "pp-sub-title", style: "margin-top:9px;" }, g.label));
-      for (const s of list) box.appendChild(buildEngineRow(s));
+      // 活动引擎排在该组最前，便于对照
+      list.sort((a, b) => (a.enabled ? -1 : b.enabled ? 1 : 0));
+      box.appendChild(el("div", { class: "pp-sub-title", style: "margin-top:9px;" },
+        g.label + "（" + list.length + "）"));
+      for (const s of list) box.appendChild(buildEngineRow(s, true));
     }
   }
 
@@ -305,26 +378,42 @@
     }
   }
 
-  async function onTest(id, btn) {
+  /**
+   * 「测试」：真实调用一次引擎。
+   * ⚠️ 0.31.0 修的坑：此前结果只写进卡片底部那个**共用**结果区，而它在十几行引擎之后 ——
+   * 用户点了按钮，反馈出现在屏幕外，按钮又飞快复原，观感就是"测试没反应"。
+   * 现在双写：**行内即时反馈**（就在按钮下方）+ 底部汇总（多引擎对比时仍有用）。
+   * 失败一律给出可读原因（缺密钥 / 取 token 失败 / HTTP 状态 / 超时…），不静默。
+   */
+  async function onTest(id, btn, msgEl) {
     const S = T();
-    btn.disabled = true;
-    const old = btn.textContent;
-    btn.textContent = "…";
-    setMsg((zh ? "测试中（真实调用一次）：" : "Testing: ") + id, "var(--pp-muted)");
+    if (!S) return;
+    const old = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "…"; }
+    const nm = (S.get(id) || {}).name || id;
+    const say = (text, color) => {
+      if (msgEl) { msgEl.textContent = text; msgEl.style.color = color; }
+      setMsg(text, color);
+    };
+    say((zh ? "测试中（真实调用一次）：" : "Testing: ") + nm, "var(--pp-muted)");
     try {
       const r = await S.testEngine(id);
       if (r.ok) {
-        const txt = String(r.text || "").slice(0, 60);
-        setMsg("✓ " + id + (zh ? " 正常，延迟 " : " OK, ") + r.latencyMs + "ms" +
+        const txt = String(r.text || "").replace(/\s+/g, " ").slice(0, 40);
+        say("✓ " + r.latencyMs + "ms · 「" + txt + "」", "var(--pp-success)");
+        setMsg("✓ " + nm + (zh ? " 正常，延迟 " : " OK, ") + r.latencyMs + "ms" +
           (zh ? "，译文「" : ", result “") + txt + "」", "var(--pp-success)");
       } else {
-        setMsg("✗ " + id + (zh ? " 失败：" : " failed: ") + r.error, "var(--pp-danger)");
+        const err = r.error || (zh ? "未知错误" : "unknown error");
+        say("✗ " + (zh ? "失败：" : "Failed: ") + err, "var(--pp-danger)");
+        setMsg("✗ " + nm + (zh ? " 失败：" : " failed: ") + err, "var(--pp-danger)");
       }
     } catch (e) {
-      setMsg("✗ " + id + "： " + ((e && e.message) || e), "var(--pp-danger)");
+      const m = (e && e.message) || String(e);
+      say("✗ " + (zh ? "异常：" : "Error: ") + m, "var(--pp-danger)");
+      setMsg("✗ " + nm + "：" + m, "var(--pp-danger)");
     } finally {
-      btn.disabled = false;
-      btn.textContent = old;
+      if (btn) { btn.disabled = false; btn.textContent = old; }
     }
   }
 

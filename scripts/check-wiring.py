@@ -950,7 +950,7 @@ for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
-ok('"version": "0.31.0"' in MANIFEST, "20.12 manifest 版本 0.31.0")
+ok('"version": "0.32.0"' in MANIFEST, "20.12 manifest 版本 0.32.0")
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
@@ -1164,6 +1164,24 @@ ok("catOf" in trp_js and "完全免配置" in trp_js and "需自备密钥" in tr
    "22.56 引擎列表按「免配置 / 需地址 / 需密钥 / AI」分组")
 ok("数据去向" in prefs_xhtml and "不出本机" in prefs_xhtml,
    "22.57 ★ 界面明确提示数据去向（免密钥引擎会把文本发给第三方）")
+
+# ---- 22.58~22.66：0.31.0 界面改版（折叠式布局 + 测试按钮反馈修复）----
+# 起因：16 个引擎平铺 + 每行密钥表单/说明 → "界面过于杂乱"；
+#      而「测试」按钮的结果只写进卡片底部那个共用结果区，它在十几行之后 ——
+#      用户点了按钮，反馈出现在屏幕外、按钮又飞快复原，观感就是"测试没反应"。
+ok("COMMON_ENGINES" in trp_js and "COMMON_MAX" in trp_js, "22.58 定义「常用引擎」集合与上限")
+ok("let showAllEngines = false;" in trp_js, "22.59 ★ 默认收起（只显示常用引擎）")
+ok("function commonIds(" in trp_js and "commonIds(ov, S)" in trp_js,
+   "22.60 常用集合 = 活动引擎 + 回退链 + 内置常用（去重后限上限）")
+ok('showAllEngines = !showAllEngines;' in trp_js and "renderList();" in trp_js,
+   "22.61 展开/收起按钮只重建列表（不整卡重渲染）")
+ok("展开全部 " in trp_js and "收起，只看常用" in trp_js, "22.62 按钮文案含引擎总数与当前状态")
+ok("pp-tr-more" in trp_js, "22.63 收起时提示「已收起 N 个」")
+ok("onTest(s.id, bTest, rowMsg)" in trp_js, "22.64 ★ 测试结果写到**该行内**的元素上")
+ok('class: "pp-tr-rowmsg"' in trp_js, "22.65 引擎行带行内结果位")
+ok("msgEl.textContent = text" in trp_js and "setMsg(text, color);" in trp_js,
+   "22.66 行内与底部双写（反馈不再跑到屏幕外）")
+ok("test/prefs-translate.test.js" in _pf3, "22.67 preflight 含翻译设置面板测试")
 
 # ---------- 23. 菜单瘦身（插件 0.29.0）----------
 # 改动面：menus.js 注册表化 + classic 回退、prefs.js 三个菜单 pref、
