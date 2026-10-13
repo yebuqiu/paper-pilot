@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE window>
+<!-- PaperPilot · 参考文献一键入库（0.33.0 重写）
+     一个窗口覆盖三种来源：
+       ① 粘贴 DOI / 标题 / 链接 / PMID / arXiv 号 / 整段 BibTeX（可多行）
+       ② 五个在线库「联合检索」（Crossref / OpenAlex / PubMed / arXiv / Semantic Scholar）
+       ③ 当前选中条目自己的参考文献列表（原「参考文献一键入库」入口，已修复无 DOI 被丢弃的问题）
+     窗口脚本 ref-import.js 运行在独立 chrome 作用域：**不发网络、不调 AI**，
+     全部经 window.arguments[0].api 注入的回调完成（便于测试与排障）。 -->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="PaperPilot · 参考文献一键入库"
+        windowtype="paperpilot:ref-import"
+        width="900" height="700">
+  <script src="chrome://paperpilot/content/ref-import.js"/>
+
+  <vbox flex="1" style="padding:10px;gap:8px;">
+    <!-- 标题行 -->
+    <hbox style="align-items:center;gap:8px;">
+      <label id="pp-ri-head" value="参考文献一键入库" style="font-weight:bold;font-size:1.1em;"/>
+      <spacer flex="1"/>
+      <html:button id="pp-ri-refs-btn">从当前文献导入参考文献</html:button>
+    </hbox>
+    <label id="pp-ri-sub" value=""
+           style="color:var(--fill-secondary,#666);white-space:normal;"/>
+
+    <!-- 输入区 -->
+    <vbox style="border:1px solid var(--fill-tertiary,#999);border-radius:4px;padding:8px;gap:6px;">
+      <html:textarea id="pp-ri-input" rows="4"
+        style="width:100%;box-sizing:border-box;font-family:inherit;background:var(--material-surface,#fff);color:var(--fill-primary,#222);border:1px solid var(--fill-tertiary,#999);border-radius:3px;padding:6px;resize:vertical;"></html:textarea>
+      <hbox id="pp-ri-sources" style="gap:10px;flex-wrap:wrap;align-items:center;"></hbox>
+      <hbox style="gap:12px;flex-wrap:wrap;align-items:center;">
+        <html:label style="display:inline-flex;align-items:center;gap:4px;">
+          <html:input id="pp-ri-opt-exclude" type="checkbox" checked="checked"/>排除库中已有
+        </html:label>
+        <html:label style="display:inline-flex;align-items:center;gap:4px;">
+          <html:input id="pp-ri-opt-ai" type="checkbox"/>AI 补全元数据
+        </html:label>
+        <html:label style="display:inline-flex;align-items:center;gap:4px;">
+          <html:input id="pp-ri-opt-enrich" type="checkbox"/>逐条多源补全（慢）
+        </html:label>
+        <html:label style="display:inline-flex;align-items:center;gap:4px;">
+          <html:input id="pp-ri-opt-translator" type="checkbox"/>用 Zotero 内置 BibTeX 解析器入库
+        </html:label>
+        <label value="上限" style="color:var(--fill-secondary,#666);"/>
+        <html:input id="pp-ri-limit" type="text" value="10"
+          style="width:52px;background:var(--material-surface,#fff);color:var(--fill-primary,#222);border:1px solid var(--fill-tertiary,#999);border-radius:3px;padding:2px 4px;"/>
+      </hbox>
+      <hbox style="gap:8px;align-items:center;">
+        <html:button id="pp-ri-search" style="font-weight:bold;">联合检索 / 解析</html:button>
+        <html:button id="pp-ri-investigate">AI 调研</html:button>
+        <html:button id="pp-ri-clear">清空</html:button>
+        <html:span id="pp-ri-status" style="color:var(--fill-secondary,#666);"></html:span>
+      </hbox>
+    </vbox>
+
+    <!-- 结果区 -->
+    <hbox style="align-items:center;gap:8px;">
+      <html:button id="pp-ri-selectall">全选</html:button>
+      <html:button id="pp-ri-selectnone">清空勾选</html:button>
+      <html:button id="pp-ri-dropdup">去掉已在库的</html:button>
+      <spacer flex="1"/>
+      <html:span id="pp-ri-count" style="color:var(--fill-secondary,#666);"></html:span>
+    </hbox>
+    <vbox id="pp-ri-list" flex="1"
+      style="overflow-y:auto;border:1px solid var(--fill-tertiary,#999);border-radius:4px;padding:6px;background:var(--material-surface,#fff);color:var(--fill-primary,#222);gap:6px;"/>
+
+    <!-- 底部操作条 -->
+    <hbox style="gap:8px;align-items:center;">
+      <label value="导出格式" style="color:var(--fill-secondary,#666);"/>
+      <html:select id="pp-ri-format"
+        style="background:var(--material-surface,#fff);color:var(--fill-primary,#222);border:1px solid var(--fill-tertiary,#999);border-radius:3px;padding:2px;">
+        <html:option value="bibtex">BibTeX (.bib)</html:option>
+        <html:option value="ris">EndNote / RIS (.ris)</html:option>
+        <html:option value="endnote-xml">EndNote XML (.xml)</html:option>
+        <html:option value="csl">CSL-JSON (.json)</html:option>
+      </html:select>
+      <html:button id="pp-ri-save">导出到文件</html:button>
+      <html:button id="pp-ri-copy">复制</html:button>
+      <spacer flex="1"/>
+      <html:button id="pp-ri-import" style="font-weight:bold;">导入选中</html:button>
+      <html:button id="pp-ri-close">关闭</html:button>
+    </hbox>
+  </vbox>
+</window>

@@ -33,8 +33,9 @@
   let fontSize = FONT_DEF;
   let layout = "auto";                                  // auto | two | single
   let busy = false;
-  const pairs = [];                                     // { src, dst, srcEl, dstEl }
+  const pairs = [];                                     // { src, dst, kind, page, srcEl, dstEl }
   let total = 0, done = 0;
+  let snapshotMeta = null;                               // 0.33.0：{via, dropped}（结构化路径时填充）
 
   /* ---------------- 小工具 ---------------- */
 
@@ -84,6 +85,15 @@
       "#pp-bl-grid[data-cols='single'] .pp-bl-cell.src { border-right: none; }",
       ".pp-bl-cell.dst.pending { color: var(--fill-secondary, #888); }",
       ".pp-bl-cell.dst.failed { color: #c0392b; }",
+      // 0.33.0 结构化单元样式：公式等宽直出、图注弱化、页码徽标可点击
+      ".pp-bl-cell.formula { font-family: ui-monospace, Consolas, monospace;",
+      "  font-size: .92em; color: var(--fill-secondary, #666); background: rgba(127,127,127,.05); }",
+      ".pp-bl-cell.caption { font-size: .95em; color: var(--fill-secondary, #555); }",
+      ".pp-bl-page { display: inline-block; margin: 0 6px 2px 0; padding: 0 6px;",
+      "  border: 1px solid " + line + "; border-radius: 8px; font-size: 10px;",
+      "  line-height: 1.6; color: var(--fill-secondary, #888); cursor: pointer;",
+      "  vertical-align: 1px; user-select: none; }",
+      ".pp-bl-page:hover { color: var(--color-accent, #2563eb); border-color: currentColor; }",
       // 表头：吸附在滚动容器顶部
       ".pp-bl-head { position: sticky; top: 0; z-index: 2; padding: 6px 14px;",
       "  font-size: 11.5px; font-weight: 700; letter-spacing: .04em;",
@@ -149,7 +159,7 @@
         if (HEAD_IDS.indexOf(n.id) < 0) g.removeChild(n);
       }
     }
-    pairs.length = 0; total = 0; done = 0;
+    pairs.length = 0; total = 0; done = 0; snapshotMeta = null;
     updateProgress();
   }
 
@@ -177,11 +187,25 @@
     if (sc) sc.scrollTop = Number(sc.scrollHeight) || 0;
   }
 
-  /** 追加一段：返回同一行里的左(原文)/右(译文)两个单元格 */
-  function addPair(src) {
-    const rec = { src: src, dst: "", srcEl: null, dstEl: null };
-    rec.srcEl = htmlEl("div", "pp-bl-cell src", src);
-    rec.dstEl = htmlEl("div", "pp-bl-cell dst pending", tx("blPending", "翻译中…", "Translating…"));
+  /** 追加一段：返回同一行里的左(原文)/右(译文)两个单元格。
+   *  unit（0.33.0 可空，兼容旧载荷）：{kind: body|caption|formula, page} ——
+   *  formula 单元左右两格都标 formula 类（等宽直出）；page>0 时原文格带可点击页码徽标。 */
+  function addPair(src, unit) {
+    const u = unit || {};
+    const kind = u.kind === "formula" || u.kind === "caption" ? u.kind : "";
+    const rec = { src: src, dst: "", kind: u.kind || "body", page: u.page || 0, srcEl: null, dstEl: null };
+    rec.srcEl = htmlEl("div", "pp-bl-cell src" + (kind ? " " + kind : ""), src);
+    // 页码徽标：点击 → 阅读器跳到该页（段落级定位）
+    if (u.page && typeof A.locate === "function") {
+      const badge = htmlEl("span", "pp-bl-page", "p." + u.page);
+      badge.title = tx("blGotoPage", "在阅读器中定位到本页", "Locate this page in the reader");
+      badge.addEventListener("click", () => {
+        try { A.locate(u.page); } catch (e) { /* ignore */ }
+      });
+      rec.srcEl.insertBefore(badge, rec.srcEl.firstChild || null);
+    }
+    rec.dstEl = htmlEl("div", "pp-bl-cell dst pending",
+      u.kind === "formula" ? src : tx("blPending", "翻译中…", "Translating…"));
     const g = $("pp-bl-grid");
     if (g) { g.appendChild(rec.srcEl); g.appendChild(rec.dstEl); }
     pairs.push(rec);
@@ -203,53 +227,78 @@
     setText("pp-bl-title", A.title || "");
     setStatus(tx("blReading", "读取全文…", "Reading full text…"));
 
-    let full = "";
+    // 0.33.0 优先走结构化单元（公式直出 / 页码徽标 / 垃圾行已滤）；
+    // 拿不到（旧载荷、提取失败、用户关掉结构化提取）→ 回落旧的扁平切块路径
+    let units = null;
+    let meta = null;
     try {
-      full = await A.getFullText();
-    } catch (e) {
-      full = "";
-    }
-    if (!full) {
-      showEmpty(tx("blNoText",
-        "未能取得全文：该条目可能没有可解析文本的 PDF（或无 PDF 附件、扫描件需先 OCR）。",
-        "No extractable full text: the item may have no PDF or only a scanned PDF (OCR required)."));
-      setStatus("");
-      setBusyUI(false);
-      return;
+      if (typeof A.getBlocks === "function") {
+        const r = await A.getBlocks();
+        if (r && Array.isArray(r.units) && r.units.length) { units = r.units; meta = r; }
+      }
+    } catch (e) { units = null; }
+    snapshotMeta = meta ? { via: meta.via || "", dropped: meta.dropped || 0 } : null;
+
+    if (!units) {
+      let full = "";
+      try {
+        full = await A.getFullText();
+      } catch (e) {
+        full = "";
+      }
+      if (!full) {
+        showEmpty(tx("blNoText",
+          "未能取得全文：该条目可能没有可解析文本的 PDF（或无 PDF 附件、扫描件需先 OCR）。",
+          "No extractable full text: the item may have no PDF or only a scanned PDF (OCR required)."));
+        setStatus("");
+        setBusyUI(false);
+        return;
+      }
+      let chunks = [];
+      try {
+        chunks = (typeof A.chunkText === "function" ? A.chunkText(full) : [String(full)]) || [];
+      } catch (e) {
+        chunks = [];
+      }
+      if (!chunks.length) {
+        showEmpty(tx("blNoText", "未能取得全文（分段结果为空）。", "No extractable full text."));
+        setStatus("");
+        setBusyUI(false);
+        return;
+      }
+      units = chunks.map((c) => ({ text: String(c), kind: "body", page: 0 }));
     }
 
-    let chunks = [];
-    try {
-      chunks = (typeof A.chunkText === "function" ? A.chunkText(full) : [String(full)]) || [];
-    } catch (e) {
-      chunks = [];
-    }
-    if (!chunks.length) {
-      showEmpty(tx("blNoText", "未能取得全文（分段结果为空）。", "No extractable full text."));
-      setStatus("");
-      setBusyUI(false);
-      return;
-    }
-
-    total = chunks.length;
+    total = units.length;
     updateProgress();
     setStatus(tx("blTranslating", "翻译中", "Translating") + " 0/" + total);
 
-    for (let i = 0; i < chunks.length; i++) {
+    let prev = "";
+    for (let i = 0; i < units.length; i++) {
+      const u = units[i] || {};
+      const text = String(u.text == null ? "" : u.text);
       const stick = nearBottom();
-      const rec = addPair(chunks[i]);
+      const rec = addPair(text, u);
       if (stick) scrollToBottom();
-      try {
-        const tgt = await A.translateChunk(chunks[i]);
-        rec.dst = String(tgt == null ? "" : tgt).trim() || tx("blEmptyCell", "（空）", "(empty)");
-        rec.dstEl.setAttribute("class", "pp-bl-cell dst");
-        rec.dstEl.textContent = rec.dst;
-      } catch (e) {
-        // 单段失败只标记这一段，继续翻后面的（整篇中断对长文太不友好）
-        rec.dst = "";
-        rec.dstEl.setAttribute("class", "pp-bl-cell dst failed");
-        rec.dstEl.textContent = tx("blFail", "翻译失败：", "Failed: ") +
-          String((e && e.message) || e).slice(0, 140);
+      if (u.kind === "formula") {
+        // 公式：不送翻、不占预算，右侧原样直出
+        rec.dst = text;
+        rec.dstEl.setAttribute("class", "pp-bl-cell dst formula");
+        rec.dstEl.textContent = text;
+      } else {
+        try {
+          const tgt = await A.translateChunk(text, { kind: u.kind || "body", page: u.page || 0, prev, title: A.title || "" });
+          rec.dst = String(tgt == null ? "" : tgt).trim() || tx("blEmptyCell", "（空）", "(empty)");
+          rec.dstEl.setAttribute("class", "pp-bl-cell dst" + (u.kind === "caption" ? " caption" : ""));
+          rec.dstEl.textContent = rec.dst;
+          prev = rec.dst;
+        } catch (e) {
+          // 单段失败只标记这一段，继续翻后面的（整篇中断对长文太不友好）
+          rec.dst = "";
+          rec.dstEl.setAttribute("class", "pp-bl-cell dst failed");
+          rec.dstEl.textContent = tx("blFail", "翻译失败：", "Failed: ") +
+            String((e && e.message) || e).slice(0, 140);
+        }
       }
       done = i + 1;
       updateProgress();
@@ -257,7 +306,12 @@
       if (done < total) await sleep(CHUNK_GAP_MS);
     }
 
-    setStatus(tx("blDone", "完成：", "Done: ") + done + (zh() ? " 段" : " chunks"));
+    let tail = "";
+    if (meta && meta.dropped > 0) {
+      tail = tx("blDropped", "（已滤去页眉页脚/图表碎片 ", "(") + meta.dropped +
+        tx("blDropped2", " 行）", " junk lines)");
+    }
+    setStatus(tx("blDone", "完成：", "Done: ") + done + (zh() ? " 段" : " chunks") + tail);
     setBusyUI(false);
   }
 
@@ -274,7 +328,7 @@
     if (busy) { setStatus(tx("blBusy", "翻译还没结束，请稍候…", "Still translating — please wait…")); return; }
     const payload = pairs
       .filter((p) => p.dst && p.dst !== tx("blEmptyCell", "（空）", "(empty)"))
-      .map((p) => ({ src: String(p.src).replace(/\s+/g, " ").trim(), dst: p.dst }));
+      .map((p) => ({ src: String(p.src).replace(/\s+/g, " ").trim(), dst: p.dst, kind: p.kind }));
     if (!payload.length) { setStatus(tx("blNothingCopy", "还没有译文可复制", "Nothing to export yet")); return; }
     setStatus(tx("blNoteBusy", "正在生成双语笔记…", "Creating note…"));
     try {
@@ -350,6 +404,9 @@
       cols: effectiveCols(),
       fontSize: fontSize,
       busy: busy,
+      // 0.33.0：结构化单元路径的来源（reader=阅读器逐页 / flat=全文索引 / 空=旧扁平切块）
+      via: (snapshotMeta && snapshotMeta.via) || "",
+      dropped: (snapshotMeta && snapshotMeta.dropped) || 0,
     };
   };
 

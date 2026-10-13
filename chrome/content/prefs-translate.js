@@ -136,6 +136,58 @@
     if (tt) tt.value = String(c.totalMs || 0);
     const cd = $("pp-tr-cooldown");
     if (cd) cd.value = String(Math.round((c.cooldownMs || 0) / 1000));
+    // 0.33.0 术语表与全文翻译优化（三个开关直接走 Zotero.Prefs 布尔默认值）
+    const gl = $("pp-tr-glossary");
+    if (gl) {
+      gl.value = String((function () {
+        try { return Zotero.Prefs.get("extensions.zotero.paperpilot.translateGlossary", true) || ""; }
+        catch (e) { return ""; }
+      })());
+      renderGlossaryMsg(gl.value);
+    }
+    const st = $("pp-tr-bl-struct");
+    if (st) st.checked = prefBool("bilingualStructExtract", true);
+    const cx = $("pp-tr-bl-context");
+    if (cx) cx.checked = prefBool("bilingualContext", true);
+    const fp = $("pp-tr-formula");
+    if (fp) fp.checked = prefBool("translateFormulaProtect", true);
+  }
+
+  /** 读取扩展布尔 pref（默认值在 prefs.js 声明，这里只兜 undefined） */
+  function prefBool(key, dflt) {
+    try {
+      const v = Zotero.Prefs.get("extensions.zotero.paperpilot." + key, true);
+      return v === undefined || v === null ? dflt : !!v;
+    } catch (e) { return dflt; }
+  }
+
+  /** 术语表输入反馈：解析条数实时显示在文本框下方（行内反馈，别让用户猜是否生效） */
+  function renderGlossaryMsg(raw) {
+    const msg = $("pp-tr-glossary-msg");
+    if (!msg) return;
+    const S = T();
+    let n = 0;
+    let bad = 0;
+    if (S && S.parseGlossary) {
+      try { n = S.parseGlossary(raw).length; } catch (e) { n = 0; }
+    }
+    // 无法解析出术语的非空行 = 写法提示（不含注释行）
+    for (const line of String(raw || "").split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.charAt(0) === "#" || t.slice(0, 2) === "//") continue;
+      if (!/=>|=|\t/.test(t)) bad++;
+    }
+    msg.style.color = "var(--pp-muted)";
+    if (!String(raw || "").trim()) {
+      msg.textContent = zh ? "尚未配置术语表" : "No glossary yet";
+    } else if (bad) {
+      msg.style.color = "var(--pp-warn)";
+      msg.textContent = zh
+        ? "已解析 " + n + " 条；" + bad + " 行缺少「=」分隔符（# 开头的行为注释）"
+        : n + " parsed; " + bad + " line(s) missing '=' separator";
+    } else {
+      msg.textContent = zh ? "已解析 " + n + " 条术语" : n + " term(s) parsed";
+    }
   }
 
   /* ---------- 引擎行 ---------- */
@@ -493,6 +545,37 @@
       renderKnobs();
     });
     bind("pp-tr-local-scan", "click", onLocalScan);
+
+    // 0.33.0 术语表与全文翻译优化：术语表存 translateGlossary（改完即时生效——
+    // 翻译侧每次调用都重新解析；缓存键含术语表指纹，不吃旧缓存）
+    bind("pp-tr-glossary", "change", () => {
+      const v = String($("pp-tr-glossary").value || "");
+      try {
+        Zotero.Prefs.set("extensions.zotero.paperpilot.translateGlossary", v);
+      } catch (e) { /* ignore */ }
+      try { if (T() && T().clearCache) T().clearCache(); } catch (e) { /* ignore */ }
+      renderGlossaryMsg(v);
+      setMsg(zh ? "已保存术语表（下次翻译即生效）" : "Glossary saved (effective immediately)",
+        "var(--pp-success)");
+    });
+    bind("pp-tr-bl-struct", "change", () => {
+      try {
+        Zotero.Prefs.set("extensions.zotero.paperpilot.bilingualStructExtract",
+          !!$("pp-tr-bl-struct").checked);
+      } catch (e) { /* ignore */ }
+    });
+    bind("pp-tr-bl-context", "change", () => {
+      try {
+        Zotero.Prefs.set("extensions.zotero.paperpilot.bilingualContext",
+          !!$("pp-tr-bl-context").checked);
+      } catch (e) { /* ignore */ }
+    });
+    bind("pp-tr-formula", "change", () => {
+      try {
+        Zotero.Prefs.set("extensions.zotero.paperpilot.translateFormulaProtect",
+          !!$("pp-tr-formula").checked);
+      } catch (e) { /* ignore */ }
+    });
 
     try { renderAll(); } catch (e) { /* 渲染失败不影响面板其余部分 */ }
   }

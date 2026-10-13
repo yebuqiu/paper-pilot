@@ -250,8 +250,10 @@ paper-pilot/
 │   ├── workbench.xhtml/js    工作台 2.0（独立窗口）
 │   ├── hub.xhtml/js          功能中心（统一导航）
 │   ├── compare / discovery / automation / lib-ask / mcp /
-│   │   meta-rules / note-graph / paste-check / tag-preview / refs-picker
+│   │   meta-rules / note-graph / paste-check / tag-preview / ref-import
 │   │                         ·xhtml + ·js 各功能独立窗口/对话框
+│   │                         （ref-import = 参考文献一键入库，0.33.0 重写；
+│   │                           旧 refs-picker 已移除）
 │   ├── data/journal-rank.json  分区列离线兜底数据
 │   ├── icons/                图标（icon.png / chat.svg）
 │   └── scripts/

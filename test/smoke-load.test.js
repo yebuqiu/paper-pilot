@@ -57,6 +57,7 @@ console.log("加载模块 " + files.length + " 个，失败 " + failed + " 个")
 const expect = ["Prefs", "I18n", "MdLite", "Notes", "ItemSel", "TagCurator", "AttachDoctor", "LibSearch",
   "SmartCleanup", "RuleTag", "Automation", "AutoRead", "TagCurator", "LibSearch", "NoteGraph", "ReadingStats", "AttachDoctor", "AIChat", "AIClient", "Menus", "ReadingState", "UiTheme", "PdfCompare", "MetaRules", "Discovery", "MCP", "SciHub", "OAFetch",
   "TranslateSvc", "TranslatePane", "ChatFloat",
+  "RefFormat", "RefSources", "RefImport",
   "ArxivErrors", "ArxivDates", "ArxivQuery", "ArxivCategories", "ArxivAtom", "ArxivAnalyze", "ArxivRateLimiter", "ArxivFetch"];
 const missing = expect.filter((k) => !sandbox[k]);
 console.log("关键全局缺失:", missing.length ? missing : "无 ✓");
@@ -87,4 +88,13 @@ const selfTest = sandbox.ArxivFetch.selfTest();
 console.log("ArxivFetch.selfTest:", selfTest.indexOf("ok ") === 0 ? "✓ " + selfTest : "✗ " + selfTest);
 console.log("MCP 工具数:", sandbox.MCP.TOOLS.length === 8 ? "✓ 8" : "✗ " + sandbox.MCP.TOOLS.length);
 console.log("I18n 新条目:", sandbox.I18n.t("menuLibAsk"), "|", sandbox.I18n.t("menuDiscovery"), "|", sandbox.I18n.t("menuMetaRules"), "|", sandbox.I18n.t("menuMcp"));
+// 0.33.0 参考文献一键入库：纯函数层与条目构建在加载后必须立即可用
+// （这三件事任何一个坏掉，用户视角都是「点了没反应」，所以计入失败）
+const _rf = sandbox.RefFormat;
+const _ri = sandbox.RefImport;
+const _refOk = _rf.normDOI("https://doi.org/10.1038/X.") === "10.1038/x"
+  && _rf.extractIdentifiers("arXiv:2101.00001").some((x) => x.kind === "arxiv")
+  && _ri.buildItem(Object.assign(_rf.empty(), { title: "T", itemType: "journalArticle", container: "J" })).fields.publicationTitle === "J";
+console.log("RefFormat/RefImport 就绪:", _refOk ? "✓" : "✗");
+if (!_refOk) failed++;
 process.exit(failed || missing.length ? 1 : 0);

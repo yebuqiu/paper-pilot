@@ -1,7 +1,7 @@
 /* PaperPilot 主入口：装配各模块
  * 由 bootstrap.js 通过 Services.scriptloader 加载，共享 bootstrap 作用域
  */
-/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, _ppDiag */
+/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, _ppDiag */
 
 Zotero.PaperPilot = {
   id: null,
@@ -55,6 +55,9 @@ Zotero.PaperPilot = {
       "ai/account.js",
       "ai/channels.js",
       "ai/client.js",
+      // 0.33.0 PDF 文本结构化分析：段落块 / 公式与图注识别 / 垃圾行过滤 / 阅读器逐页取文。
+      // 必须排在 translate.js 与 bilingual-translate.js 之前（对照翻译消费它）
+      "ai/pdf-text.js",
       // 0.28.0 多引擎翻译：注册表 + 统一调用层（独立于 AI 大模型）
       // 须排在 client.js 之后（llm 引擎要调 AIClient）、chat.js 与各 features 之前
       "ai/translate.js",
@@ -69,6 +72,12 @@ Zotero.PaperPilot = {
       "features/pdf-compare.js",
       "features/rule-tag.js",
       "features/citation-trace.js",
+      // 0.33.0 参考文献一键入库重写：格式层（纯函数）→ 多源元数据层 → 编排层。
+      // 顺序即依赖顺序，不能调换：ref-import 同时消费 RefFormat 与 RefSources，
+      // 而 RefSources 复用 citation-column（CitationColumn）与 arxiv 生成物（懒调用，故只需先加载）。
+      "features/ref-format.js",
+      "features/ref-sources.js",
+      "features/ref-import.js",
       "features/fake-check.js",
       "features/smart-cleanup.js",
       "features/meta-enrich.js",
@@ -145,6 +154,8 @@ Zotero.PaperPilot = {
     this.channels = Channels;
     // 0.28.0 多引擎翻译：设置面板脚本经此访问引擎注册表与配置
     this.translateSvc = TranslateSvc;
+    // 0.33.0 PDF 文本结构化分析（对照翻译消费；排障/测试经此访问）
+    this.pdfText = PdfText;
     // 0.29.0 菜单瘦身：设置面板脚本经此读取菜单注册表与 i18n（单一真源，
     // 面板里的分组/直达项定制直接遍历 Menus.ITEM_REGISTRY / GROUPS 渲染）
     this.menus = Menus;
@@ -154,6 +165,8 @@ Zotero.PaperPilot = {
     this.s2 = S2Client;
     this.ruleTag = RuleTag;
     this.citationTrace = CitationTrace;
+    // 0.33.0 参考文献一键入库（菜单/功能中心/对话框经此访问；对话框经 windowApi 注入回调）
+    this.refImport = RefImport;
     this.fakeCheck = FakeCheck;
     this.smartCleanup = SmartCleanup;
     this.metaEnrich = MetaEnrich;

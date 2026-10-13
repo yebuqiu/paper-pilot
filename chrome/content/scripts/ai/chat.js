@@ -59,8 +59,10 @@ var AIChat = {
     throw new Error("当前 Zotero 版本没有可用的全文读取接口");
   },
 
-  /** 提取 PDF 全文（Zotero 内置全文索引），按当前 pref 截断 */
-  async getFullText(item) {
+  /** 提取 PDF 全文（Zotero 内置全文索引），按当前 pref 截断。
+   *  0.33.0：opts.noTruncate = true 时不截断（全文对照翻译需要整篇；
+   *  默认行为不变——AI 问答等场景仍按 aiFullTextMaxChars 截断）。 */
+  async getFullText(item, opts) {
     const att = await this.getPdfAttachment(item);
     if (!att) return null;
 
@@ -81,6 +83,7 @@ var AIChat = {
       this._textCache.set(att.id, raw);
     }
     if (!raw) return null;
+    if (opts && opts.noTruncate) return raw;
 
     const max = Number(Prefs.get("aiFullTextMaxChars", 16000)) || 16000;
     if (raw.length > max) {

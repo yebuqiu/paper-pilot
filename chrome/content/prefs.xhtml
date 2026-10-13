@@ -376,6 +376,29 @@
       </html:div>
       <html:div class="pp-hint" style="margin-top:10px;">🔒 数据去向：免密钥引擎会把待译文本发往对应服务商（Google / 微软 / 腾讯 / 有道等）；「AI 大模型」引擎发往你在「AI 模型通道」里配置的通道；自建引擎（LibreTranslate / Lingva / DLX）与本地 Ollama 不出本机。未发表的稿件建议优先走自建或本地通道。</html:div>
       <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">术语表与全文翻译优化</html:div>
+        <html:div class="pp-sub-desc">术语表：每行一条「原文 = 译文」（也可用 =&gt; 或 TAB 分隔；# 与 // 开头为注释）。翻译时注入 AI 大模型的提示词，保证专业术语全文一致——仅对「AI 大模型」引擎生效，Google / DeepL 等专用引擎没有指令通道、无法使用术语约束。</html:div>
+        <html:div class="pp-field">
+          <html:textarea id="pp-tr-glossary" class="pp-input" rows="5" wrap="off"
+            placeholder="# 例：transformer = Transformer&#10;# 例：graph neural network = 图神经网络&#10;# 例：large language model => 大语言模型"></html:textarea>
+          <html:div id="pp-tr-glossary-msg" class="pp-hint" style="min-height:14px;"></html:div>
+        </html:div>
+        <html:div class="pp-grid3" style="margin-top:6px;">
+          <html:label class="pp-check">
+            <html:input type="checkbox" id="pp-tr-bl-struct"/>
+            <html:span>全文对照：结构化提取（公式原样保留、图表注单列、过滤页眉页脚与图表碎片行）</html:span>
+          </html:label>
+          <html:label class="pp-check">
+            <html:input type="checkbox" id="pp-tr-bl-context"/>
+            <html:span>全文对照：上下文感知（带上文档标题与上一段译文，术语与行文更一致；仅 AI 引擎）</html:span>
+          </html:label>
+          <html:label class="pp-check">
+            <html:input type="checkbox" id="pp-tr-formula"/>
+            <html:span>行内公式保护（非 AI 引擎：高置信公式片段占位不翻译，译后原样还原）</html:span>
+          </html:label>
+        </html:div>
+      </html:div>
+      <html:div class="pp-sub" style="margin-top:12px;">
         <html:div class="pp-sub-title">全部引擎</html:div>
         <html:div class="pp-sub-desc">「设为当前」= 用作主翻译引擎；「纳入回退」= 主引擎失败时依次尝试；带 🔑 的引擎需填写密钥后可用</html:div>
         <vbox id="pp-tr-list" class="pp-ch-list" style="gap:6px;"></vbox>

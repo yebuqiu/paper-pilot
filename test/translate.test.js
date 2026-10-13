@@ -679,6 +679,142 @@ ok(T.googleTk('a') !== T.googleTk('b'), '⑥ Google tk 随文本变化');
   ok(T.ready('libretranslate'), '⑩ 填入地址后该引擎立即可用');
   T.setSecret('libretranslate', '');
 
+  /* ==================== ⑪ 术语表 / 上下文感知 / 行内公式保护（0.33.0） ==================== */
+
+  // ---- 术语表解析（纯函数） ----
+  eq(T.parseGlossary('').length, 0, '⑪ 空输入 → 空术语表');
+  eq(T.parseGlossary('# 注释\n// 也是注释\ntransformer = Transformer').length, 1,
+    '⑪ 注释行被跳过');
+  eq(T.parseGlossary('graph neural network => 图神经网络')[0].s, 'graph neural network',
+    '⑪ => 分隔符解析出原文');
+  eq(T.parseGlossary('graph neural network => 图神经网络')[0].t, '图神经网络',
+    '⑪ => 分隔符解析出译文');
+  eq(T.parseGlossary('large language model\t大语言模型')[0].t, '大语言模型',
+    '⑪ TAB 分隔同样支持');
+  eq(T.parseGlossary('same = same').length, 0, '⑪ 原文=译文（无意义）被丢弃');
+  eq(T.parseGlossary('JSON 数组：见下行').length, 0, '⑪ 无分隔符的行不产出术语');
+  eq(T.parseGlossary('[{"s":"a","t":"b"},["c","d"]]')[1].t, 'd', '⑪ JSON 数组双形态兼容');
+  eq(T.glossaryBlock([{ s: 'k8s', t: 'Kubernetes' }]), '- k8s → Kubernetes',
+    '⑪ 术语块拼装成提示词行');
+  eq(T.glossaryBlock([]), '', '⑪ 空表 → 空块（提示词零开销）');
+  // 指纹：区分术语表版本（缓存键依赖）
+  const fp1 = T.glossaryFingerprint([{ s: 'a', t: 'b' }]);
+  const fp2 = T.glossaryFingerprint([{ s: 'a', t: 'b' }]);
+  const fp3 = T.glossaryFingerprint([{ s: 'a', t: 'c' }]);
+  ok(fp1 && fp1 === fp2, '⑪ 指纹稳定（同表同值）');
+  ok(fp1 !== fp3, '⑪ 改术语表 → 指纹变化（缓存随之失效）');
+  eq(T.glossaryFingerprint([]), '', '⑪ 空表指纹为空串');
+
+  // ---- glossary() 读 pref ----
+  Prefs.set('translateGlossary', 'transformer = Transformer\nLLM = 大语言模型');
+  eq(T.glossary().length, 2, '⑪ glossary() 从 pref 读取并解析');
+  Prefs.set('translateGlossary', '');
+
+  // ---- 术语表进缓存键：改术语表不吃旧缓存 ----
+  resetHttp();
+  setCfg({ active: 'googleapi' });
+  Prefs.set('translateGlossary', 'transformer = Transformer');
+  plan('translate.googleapis.com', {
+    res: () => [[['cached-with-glossary-A', 'src']]],
+  });
+  let rG1 = await T.translate('Hello glossary cache');
+  ok(rG1.ok && rG1.text === 'cached-with-glossary-A', '⑪ 第一次翻译产生缓存');
+  ok(rG1.cached === false, '⑪ 第一次是真请求');
+  Prefs.set('translateGlossary', 'transformer = Transformer 变体');
+  resetHttpOnly();
+  plan('translate.googleapis.com', {
+    res: () => [[['fresh-after-glossary-edit', 'src']]],
+  });
+  let rG2 = await T.translate('Hello glossary cache');
+  eq(rG2.text, 'fresh-after-glossary-edit', '⑪ ★ 术语表变化后不吃旧缓存（指纹进缓存键）');
+  Prefs.set('translateGlossary', '');
+  resetHttp();
+
+  // ---- llm prompt：术语表 + 上下文 + 公式保持指令 ----
+  setCfg({ active: 'llm' });
+  Prefs.set('translateGlossary', 'transformer = Transformer');
+  let capturedMsgs = null;
+  sandbox.AIClient.chat = async (msgs) => { capturedMsgs = msgs; return 'ok 译文'; };
+  let rLlm = await T.translate('The transformer model.', {
+    to: 'zh-CN',
+    context: { title: 'Attention Is All You Need', prev: '上一段译文示例' },
+  });
+  ok(rLlm.ok, '⑪ llm 翻译成功（上下文路径）');
+  ok(capturedMsgs && capturedMsgs[1].content.indexOf('transformer → Transformer') >= 0,
+    '⑪ ★ llm prompt 含术语表');
+  ok(capturedMsgs[1].content.indexOf('Attention Is All You Need') >= 0,
+    '⑪ llm prompt 含文档标题（上下文）');
+  ok(capturedMsgs[1].content.indexOf('上一段译文示例') >= 0,
+    '⑪ llm prompt 含上一段译文（上下文感知）');
+  ok(/公式/.test(capturedMsgs[1].content), '⑪ llm prompt 含公式保持指令');
+  Prefs.set('translateGlossary', '');
+  sandbox.AIClient.chat = async () => 'LLM 译文'; // 还原桩，避免影响后续用例
+
+  // ---- 行内公式掩码（纯函数） ----
+  const masked = T.maskInlineFormulas('The loss is $L = \\alpha x^2$ in all cases.');
+  eq(masked.count, 1, '⑪ $...$ 定界公式被掩码');
+  ok(/⟦PPF0⟧/.test(masked.text), '⑪ 掩码产出占位符 ⟦PPF0⟧');
+  ok(masked.text.indexOf('The loss is') === 0, '⑪ 掩码不伤正文前缀');
+  ok(masked.text.indexOf('in all cases.') >= 0, '⑪ 掩码不伤正文后缀');
+  eq(T.unmaskFormulas(masked.text, masked.map), 'The loss is $L = \\alpha x^2$ in all cases.',
+    '⑪ 掩码 → 还原 往返一致');
+  eq(T.unmaskFormulas('⟦ PPF : 0 ⟧', masked.map), '$L = \\alpha x^2$',
+    '⑪ 还原容忍引擎插入的空白');
+  eq(T.unmaskFormulas('译文丢了占位符', masked.map), '译文丢了占位符',
+    '⑪ 占位符不在译文里则原样返回（不会拼错内容）');
+
+  const masked2 = T.maskInlineFormulas('where x 1 + x 2 = y 3 + z 4 holds for all inputs');
+  eq(masked2.count, 1, '⑪ 连续数学 token 串被掩码');
+  ok(masked2.text.indexOf('⟦PPF0⟧') >= 0 && masked2.text.indexOf('where') === 0 &&
+    masked2.text.indexOf('holds for all inputs') > 0, '⑪ token 串掩码保留前后正文');
+
+  const masked3 = T.maskInlineFormulas('The quick brown fox jumps over the lazy dog.');
+  eq(masked3.count, 0, '⑪ 正常英文句子零误伤');
+  eq(masked3.text, 'The quick brown fox jumps over the lazy dog.', '⑪ 零掩码时文本原样');
+
+  // ---- 非 llm 引擎集成：掩码 → 引擎 → 还原 ----
+  resetHttp();
+  setCfg({ active: 'googleapi' });
+  Prefs.set('translateFormulaProtect', true);
+  plan('translate.googleapis.com', {
+    res: (url) => {
+      const q = decodeURIComponent((url.match(/&q=([^&]+)/) || [])[1] || '');
+      return [[[ 'ECHO:' + q, 'src' ]]];
+    },
+  });
+  let rMask = await T.translate('The loss is $L = \\alpha x^2$ in all cases.');
+  ok(rMask.ok, '⑪ 非 llm 引擎翻译成功（掩码路径）');
+  eq(rMask.text, 'ECHO:The loss is $L = \\alpha x^2$ in all cases.',
+    '⑪ 译文里的公式已被还原（占位符不外露）');
+  {
+    const sentUrl = httpCalls.length ? httpCalls[httpCalls.length - 1].url : '';
+    ok(decodeURIComponent(sentUrl).indexOf('⟦PPF0⟧') >= 0,
+      '⑪ ★ 引擎实际收到的是占位符（公式没被送翻）');
+  }
+  // 引擎若把占位符原样吐回 → 还原成原公式
+  resetHttpOnly();
+  plan('translate.googleapis.com', {
+    res: (url) => {
+      const q = decodeURIComponent((url.match(/&q=([^&]+)/) || [])[1] || '');
+      return [[[ '损失为 ' + q + '（还原前）', 'src' ]]];
+    },
+  });
+  let rMask2 = await T.translate('Loss value $L = \\alpha$ here.', { noCache: true });
+  eq(rMask2.text, '损失为 Loss value $L = \\alpha$ here.（还原前）', '⑪ ★ 掩码在引擎返回后被原样还原');
+  Prefs.set('translateFormulaProtect', false);
+  resetHttpOnly();
+  plan('translate.googleapis.com', {
+    res: (url) => {
+      const q = decodeURIComponent((url.match(/&q=([^&]+)/) || [])[1] || '');
+      return [[[ 'RAW:' + q, 'src' ]]];
+    },
+  });
+  let rNoMask = await T.translate('Loss value $L = \\alpha$ here.', { noCache: true });
+  eq(rNoMask.text, 'RAW:Loss value $L = \\alpha$ here.',
+    '⑪ 关闭公式保护 → 原文直送引擎（开关生效）');
+  Prefs.set('translateFormulaProtect', true);
+  resetHttp();
+
   /* ---------------- 输出 ---------------- */
   console.log('='.repeat(60));
   if (fails.length) {

@@ -72,6 +72,17 @@ pref("extensions.zotero.paperpilot.bilingualChunkChars", 1200);
 // 0.25.2 新增：全文对照翻译·双栏对照窗口（正文字号 px 11–28；布局 auto|two|single）
 pref("extensions.zotero.paperpilot.bilingualViewFontSize", 15);
 pref("extensions.zotero.paperpilot.bilingualViewLayout", "auto");
+// 0.33.0 全文对照翻译深度优化（复杂 PDF）：
+// 术语表：每行「原文 = 译文」（支持 => 与 TAB 分隔，# 与 // 为注释；另兼容 JSON 数组）。
+// 注入 AI 大模型提示词保证术语全文一致；专用引擎（Google/DeepL…）无指令通道，不生效
+pref("extensions.zotero.paperpilot.translateGlossary", "");
+// 结构化提取（默认开）：阅读器逐页取文优先、全文索引兜底 → 段落块（body/caption/formula）；
+// 公式原样直出不送翻、图表注单列、页眉页脚/页码/DOI/坐标轴刻度等高置信垃圾行过滤
+pref("extensions.zotero.paperpilot.bilingualStructExtract", true);
+// 上下文感知翻译（默认开，仅 llm 引擎消费）：文档标题 + 上一段译文作为上下文
+pref("extensions.zotero.paperpilot.bilingualContext", true);
+// 行内公式保护（默认开，仅非 llm 引擎启用）：高置信数学片段占位符化，译后原样还原
+pref("extensions.zotero.paperpilot.translateFormulaProtect", true);
 pref("extensions.zotero.paperpilot.noteTemplatesCustom", "");
 pref("extensions.zotero.paperpilot.attachNamePattern", "{author} - {year} - {title}");
 pref("extensions.zotero.paperpilot.unpaywallEmail", "");
@@ -197,3 +208,9 @@ pref("extensions.zotero.paperpilot.chatFloatPos", "");
 pref("extensions.zotero.paperpilot.chatFloatSize", "");
 pref("extensions.zotero.paperpilot.chatFloatDock", "");
 pref("extensions.zotero.paperpilot.chatFloatOpacity", "1");
+// 0.33.0 参考文献一键入库：启用的检索来源（逗号分隔 crossref/openalex/pubmed/arxiv/s2；
+// 留空 = 全部启用）。关掉某个源可显著加快检索，代价是命中率下降。
+pref("extensions.zotero.paperpilot.refImportSources", "");
+// 0.33.0：Crossref / OpenAlex 的「礼貌池」联系邮箱（填了会获得更高的限速配额，
+// 建议填真实邮箱；留空走内置占位值，功能不受影响）
+pref("extensions.zotero.paperpilot.refImportMailto", "");

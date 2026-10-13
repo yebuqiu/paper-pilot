@@ -53,6 +53,13 @@ class El {
   }
   removeAttribute(k) { if (k === 'class') this.className = ''; else delete this._attrs[k]; }
   appendChild(c) { c.parentNode = this; this.children.push(c); return c; }
+  insertBefore(node, ref) {
+    node.parentNode = this;
+    const i = ref ? this.children.indexOf(ref) : -1;
+    if (i < 0) this.children.push(node);
+    else this.children.splice(i, 0, node);
+    return node;
+  }
   removeChild(c) { c.parentNode = null; this.children = this.children.filter((x) => x !== c); return c; }
   addEventListener(ev, fn) { (this.handlers[ev] = this.handlers[ev] || []).push(fn); }
   removeEventListener(ev, fn) {
@@ -63,8 +70,10 @@ class El {
   focus() {}
   set textContent(v) { this._text = v == null ? '' : String(v); this.children = []; }
   get textContent() {
-    if (this.children.length) return this.children.map((c) => c.textContent).join('');
-    return this._text;
+    const kids = this.children.length ? this.children.map((c) => c.textContent).join('') : '';
+    // 真实 DOM 里 textContent 是「文本节点 + 子节点」的拼接；设 textContent 后再
+    // insertBefore 徽标，文本节点仍在——迷你 DOM 用 _text 保留它，别丢正文
+    return this._text ? this._text + kids : kids;
   }
   get childNodes() { return this.children; }
   get firstChild() { return this.children.length ? this.children[0] : null; }
@@ -292,6 +301,111 @@ async function main() {
   await waitFor(() => w5.win.ppBilingualSnapshot().busy === false);
   eq(w5.win.ppBilingualSnapshot().done, 3, '12.1 单段失败仍跑完剩余段落');
   has(w5.registry.get('pp-bl-grid').textContent, '翻译失败', '12.2 失败段有可见标记');
+
+  /* ---- 13. 0.33.0 结构化单元：公式直出 / 页码徽标定位 / kind 信息回传 ---- */
+  {
+    const located = [];
+    const info = [];
+    const bl = makePayload({
+      getBlocks: async () => ({
+        units: [
+          { text: '正文第一段。', kind: 'body', page: 1 },
+          { text: 'E = mc^2', kind: 'formula', page: 1 },
+          { text: 'Figure 1. An example figure.', kind: 'caption', page: 2 },
+          { text: '正文第二段。', kind: 'body', page: 2 },
+        ],
+        via: 'reader',
+        dropped: 5,
+      }),
+      locate: (p) => { located.push(p); return true; },
+    });
+    bl.payload.translateChunk = async (c, i) => {
+      info.push(i || null);
+      return '译[' + c + ']';
+    };
+    const w6 = boot(bl.payload);
+    await waitFor(() => w6.win.ppBilingualSnapshot().busy === false);
+    const snap = w6.win.ppBilingualSnapshot();
+
+    eq(snap.done, 4, '13.1 四个单元全部完成');
+    eq(snap.via, 'reader', '13.2 快照回报来源 reader');
+    eq(snap.dropped, 5, '13.3 快照回报被滤行数');
+    // 公式不送翻：translateChunk 只被调 3 次（body×2 + caption×1）
+    eq(info.length, 3, '13.4 ★ 公式单元不送翻译（只翻了 3 段）');
+    eq(info[0] && info[0].kind, 'body', '13.5 kind 信息随翻译回传（body）');
+    eq(info[1] && info[1].kind, 'caption', '13.6 kind 信息随翻译回传（caption）');
+    ok(info.every((x) => x && typeof x.title === 'string'), '13.7 上下文含文档标题');
+
+    const grid6 = w6.registry.get('pp-bl-grid');
+    const cells6 = grid6.children.filter((c) => c.id !== 'pp-bl-head-src' && c.id !== 'pp-bl-head-dst');
+    eq(cells6.length, 8, '13.8 四单元 → 8 个单元格');
+    // 公式行：右格 = 原文、class 带 formula
+    has(cells6[2].textContent, 'E = mc^2', '13.9 公式原文直出');
+    has(cells6[3].textContent, 'E = mc^2', '13.10 ★ 公式右格原样保留（未送翻）');
+    ok(String(cells6[3].className).indexOf('formula') >= 0, '13.11 公式格带 formula 类');
+    // 页码徽标：page>0 的单元原文格里有 .pp-bl-page，点击触发 locate
+    const badges = cells6[0].byClass('pp-bl-page');
+    eq(badges.length, 1, '13.12 带页码单元有页码徽标');
+    badges[0].click();
+    eq(JSON.stringify(located), '[1]', '13.13 ★ 点击徽标触发段落级定位（page=1）');
+    const badges2 = cells6[4].byClass('pp-bl-page');
+    badges2[0].click();
+    eq(JSON.stringify(located), '[1,2]', '13.14 第二段徽标定位到 page=2');
+    // caption 单元照常翻译
+    eq(cells6[5].textContent, '译[Figure 1. An example figure.]', '13.15 图注照常翻译');
+    ok(String(cells6[5].className).indexOf('caption') >= 0, '13.16 图注译文格带 caption 类');
+    // 完成状态含被滤行数说明
+    has(w6.registry.get('pp-bl-status').textContent, '已滤去', '13.17 状态行回报过滤数量');
+
+    // 导出笔记：窗口把全部对（含 kind）交给 makeNote；公式对由模块侧 _noteMd 剔除
+    w6.registry.get('pp-bl-note').click();
+    await waitFor(() => bl.calls.notes.length === 1);
+    const notePairs = bl.calls.notes[0];
+    eq(notePairs.length, 4, '13.18 makeNote 收到全部 4 对（含公式，带 kind 标记）');
+    ok(notePairs.some((p) => p.kind === 'formula'), '13.19 公式对带 kind=formula（供过滤）');
+    eq(notePairs[2].kind, 'caption', '13.20 caption 对 kind 正确回传');
+    // 模块侧 _noteMd 过滤公式对（笔记是「对照译文」，公式无译文可对照）
+    {
+      const BL_SRC = fs.readFileSync(path.join(ROOT, 'chrome/content/scripts/features/bilingual-translate.js'), 'utf8');
+      const sb2 = { console, I18n: { isZh: true, t: (k) => k }, setTimeout, Promise, Math, Date, JSON };
+      sb2.globalThis = sb2;
+      vm.createContext(sb2);
+      vm.runInContext(BL_SRC, sb2, { filename: 'bilingual-translate.js' });
+      const md = sb2.BilingualTranslate._noteMd(notePairs, '中文');
+      ok(md.indexOf('E = mc^2') < 0, '13.21 ★ _noteMd 剔除公式对（笔记中无公式）');
+      ok(md.indexOf('正文第一段。') >= 0 && md.indexOf('译[正文第一段。]') >= 0,
+        '13.22 正文对照对保留');
+    }
+  }
+
+  /* ---- 14. getBlocks 缺失 / 抛异常 / 返回空 → 回落旧扁平路径 ---- */
+  {
+    const bl2 = makePayload(); // 无 getBlocks → 旧路径
+    const w7 = boot(bl2.payload);
+    await waitFor(() => w7.win.ppBilingualSnapshot().busy === false);
+    eq(w7.win.ppBilingualSnapshot().via, '', '14.1 旧路径 via 为空');
+    eq(w7.win.ppBilingualSnapshot().done, 3, '14.2 旧路径照常三段');
+    eq(bl2.calls.full, 1, '14.3 旧路径仍走 getFullText');
+  }
+  {
+    const bl3 = makePayload({ getBlocks: async () => { throw new Error('boom'); } });
+    const w8 = boot(bl3.payload);
+    await waitFor(() => w8.win.ppBilingualSnapshot().busy === false);
+    eq(w8.win.ppBilingualSnapshot().done, 3, '14.4 getBlocks 抛异常 → 回落旧路径仍三段');
+    eq(bl3.calls.full, 1, '14.5 异常后仍取到全文（不静默空白）');
+  }
+  {
+    const bl4 = makePayload({ getBlocks: async () => null });
+    const w9 = boot(bl4.payload);
+    await waitFor(() => w9.win.ppBilingualSnapshot().busy === false);
+    eq(w9.win.ppBilingualSnapshot().done, 3, '14.6 getBlocks 返回 null → 回落旧路径');
+  }
+  {
+    const bl5 = makePayload({ getBlocks: async () => ({ units: [], dropped: 0 }) });
+    const w10 = boot(bl5.payload);
+    await waitFor(() => w10.win.ppBilingualSnapshot().busy === false);
+    eq(w10.win.ppBilingualSnapshot().done, 3, '14.7 空单元数组 → 回落旧路径（不当空文档处理）');
+  }
 
   /* ---------------- 输出 ---------------- */
   console.log('='.repeat(60));

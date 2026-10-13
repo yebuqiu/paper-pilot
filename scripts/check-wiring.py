@@ -950,7 +950,7 @@ for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
-ok('"version": "0.32.0"' in MANIFEST, "20.12 manifest 版本 0.32.0")
+ok('"version": "0.33.0"' in MANIFEST, "20.12 manifest 版本 0.33.0")
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
@@ -1266,6 +1266,182 @@ ok("BilingualTranslate.openViewer(" in pane_js, "24.17 「双栏窗口」复用�
 ok("AIClient.chat(" not in pane_js, "24.18 面板不直连 AIClient（一律经 TranslateSvc/AIChat）")
 ok("TranslateSvc.translate(" in pane_js, "24.19 翻译经 TranslateSvc（多引擎 + 回退）")
 ok("test/translate-pane.test.js" in _pf3, "24.20 preflight 含翻译面板测试")
+
+# ---------- 25. 复杂 PDF 全文翻译优化（插件 0.33.0） ----------
+# 起因：全文对照翻译此前直接把全文索引的扁平文本按字符切块送翻，学术论文的三类
+# 静默劣化没人看得见——公式被改写、图表轴标签混进正文、页眉页脚每页重复烧预算。
+# 本批次加 PdfText（结构化分析）+ 术语表/上下文（TranslateSvc）+ 窗口 blocks 渲染，
+# 四类典型静默失败都要钉死：
+#   ① 新模块没进装配清单或排到消费者之后 → ReferenceError，只写一行 boot 日志；
+#   ② 窗口 blocks 路径写歪 → 退回旧路径，功能"看起来还在"但结构化白做；
+#   ③ 术语表改了不吃新缓存（缓存键没带指纹）→ 用户以为术语表无效；
+#   ④ 新 pref 没默认值 / 设置面板引用了不存在的元素 id → 静默 undefined。
+PDFT_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "pdf-text.js")
+pdft_js = io.open(PDFT_JS, encoding="utf-8").read() if os.path.exists(PDFT_JS) else ""
+
+ok(os.path.exists(PDFT_JS), "25.1 PdfText 模块存在（chrome/content/scripts/ai/pdf-text.js）")
+ok('"ai/pdf-text.js"' in mainjs, "25.2 main.js 装配清单含 ai/pdf-text.js")
+# 装配顺序：PdfText 必须在 translate.js（无依赖）与 bilingual-translate.js（消费）之前
+_mj_lines = mainjs.split("\n")
+def _line_of(marker):
+    for i, l in enumerate(_mj_lines):
+        if marker in l:
+            return i
+    return -1
+ok(0 <= _line_of('"ai/pdf-text.js"') < _line_of('"ai/translate.js"'),
+   "25.3 ★ PdfText 装配先于 translate.js（后者无依赖，但保持确定性顺序）")
+ok(0 <= _line_of('"ai/pdf-text.js"') < _line_of('"features/bilingual-translate.js"'),
+   "25.4 ★ PdfText 装配先于 bilingual-translate.js（消费者）")
+ok("this.pdfText = PdfText;" in mainjs, "25.5 main.js 把 PdfText 挂到 Zotero.PaperPilot")
+
+# 词法判定与分类顺序（误判公式/垃圾 = 丢内容）
+ok("function isCaptionLine" in pdft_js and "function isFormulaText" in pdft_js
+   and "function looksLikeJunkLine" in pdft_js, "25.6 三类词法判定齐全（caption/formula/junk）")
+ok("function classify" in pdft_js, "25.7 有统一分类入口")
+# ★ formula 必须先于 junk 判定：短公式长得像轴标签碎片，顺序错了会把公式当垃圾丢
+_cl_block = pdft_js.split("function classify")[1].split("\n  }")[0] if "function classify" in pdft_js else ""
+ok(_cl_block.index("isFormulaText") < _cl_block.index("looksLikeJunkLine"),
+   "25.8 ★ classify 顺序 = caption → formula → junk（公式优先，宁可保留不误删）")
+ok("function charsToParagraphs" in pdft_js, "25.9 阅读器字符流段落装配存在")
+ok("function blocksToUnits" in pdft_js, "25.10 blocks → 翻译单元合并存在")
+ok("kind === \"formula\"" in pdft_js, "25.11 单元带 formula kind（上层据此直出不送翻）")
+
+# 双栏翻译模块：结构化提取 + 定位 + 回退
+ok("PdfText.blocksFromReader" in bl_mod and "PdfText.analyzeText" in bl_mod
+   and "PdfText.blocksToUnits" in bl_mod, "25.12 对照翻译消费 PdfText（reader 优先 + 扁平兜底 + 单元合并）")
+ok("bilingualStructExtract" in bl_mod, "25.13 结构化提取受 pref 控制（可关闭回旧行为）")
+ok("PdfText.locatePage" in bl_mod, "25.14 段落级定位经 PdfText.locatePage（复用 compare.js 页跳转打法）")
+ok("getBlocks:" in bl_mod and "locate:" in bl_mod, "25.15 窗口载荷注入 getBlocks 与 locate 回调")
+ok("context: o.context || null" in tr_js, "25.16 TranslateSvc 上下文经 makeCtx 透传（llm 消费）")
+ok("bilingualContext" in bl_mod, "25.17 上下文感知受 pref 控制")
+
+# 术语表（缓存键指纹 + 两处 prompt 注入 + 界面）
+ok("function parseGlossary" in tr_js and "function glossaryBlock" in tr_js
+   and "function glossaryFingerprint" in tr_js, "25.18 术语表三件套（解析/提示块/指纹）")
+ok("glossaryFingerprint();" in tr_js, "25.19 ★ translate() 以术语表指纹参与缓存键（改表不吃旧缓存）")
+ok("glossaryBlock(gl)" in tr_js, "25.20 llm 引擎 prompt 注入术语块")
+ok("glossaryBlock()" in rp_js, "25.21 划词浮窗 LLM 翻译注入术语块（浮窗走 AIClient 直连，不经 _runEngine）")
+ok("prefBool(\"bilingualStructExtract\"" in trp_js or "translateGlossary" in trp_js,
+   "25.22 设置面板接线术语表/结构化开关")
+
+# 行内公式保护（非 llm 引擎掩码）
+ok("function maskInlineFormulas" in tr_js and "function unmaskFormulas" in tr_js,
+   "25.23 行内公式掩码/还原存在（纯函数）")
+ok("maskInlineFormulas(ctx.text)" in tr_js, "25.24 ★ 非 llm 引擎发送前掩码")
+ok("unmaskFormulas(out, fMap)" in tr_js, "25.25 引擎返回后还原")
+ok("maskInlineFormulas, unmaskFormulas," in tr_js, "25.26 掩码函数已导出（可单测）")
+
+# pref 默认值 + 设置面板元素
+for _k in ["translateGlossary", "bilingualStructExtract", "bilingualContext",
+           "translateFormulaProtect"]:
+    ok(("paperpilot.%s" % _k) in prefsdef, "25.27 prefs.js 含 %s 默认值" % _k)
+for _id in ["pp-tr-glossary", "pp-tr-glossary-msg", "pp-tr-bl-struct",
+            "pp-tr-bl-context", "pp-tr-formula"]:
+    ok(_id in xhtml_ids, "25.28 prefs.xhtml 含 #%s" % _id)
+
+# 门禁：两套测试都进 preflight
+ok("pdf-text.test.js" in _pf3, "25.29 preflight 含 PDF 文本分析测试")
+ok("bilingual-view.test.js" in _pf3, "25.30 preflight 含双栏窗口 blocks 渲染测试")
+# 窗口脚本仍然只有一处 scrollTop 赋值（本批次不允许引入第二处）。
+# ⚠️ §22 已把 bl_js 重赋为 bilingual-translate.js —— 这里必须按路径重读窗口脚本
+_blv_src = io.open(BL_VIEW_JS, encoding="utf-8").read()
+ok(len(re.findall(r"scrollTop\s*=", _blv_src)) == 1,
+   "25.31 ★ 双栏窗口仍只有一处 scrollTop 赋值（定位经回调回插件侧，窗口不自滚）")
+
+
+# ---------- 26. 参考文献一键入库（插件 0.33.0 重写） ----------
+# 起因：旧实现（citation-trace.js 的 importForSelected）有三处硬伤——
+#   ① `return d && !doiSet.has(d)` 把**所有没有 DOI 的参考文献直接丢弃**，用户看到的是
+#      「参考文献均已在本地文库（或缺 DOI 无法可靠入库）」，功能等于不可用；
+#   ② 只按 DOI 判重 → 库里已有的靠标题/arXiv/PMID 匹配不上，一键入库变一键造重复；
+#   ③ 不分 itemType 地 setField("publicationTitle") 等字段 → 会议论文/书章/预印本被建成
+#      期刊论文且字段静默丢失。
+# 重写为三层（ref-format 纯函数 / ref-sources 多源 / ref-import 编排）+ 独立对话框。
+# 这里守住的都是「点了没反应」类静默失败的接线：
+RI_DIALOG_JS = os.path.join(ROOT, "chrome", "content", "ref-import.js")
+RI_DIALOG_XHTML = os.path.join(ROOT, "chrome", "content", "ref-import.xhtml")
+RI_MOD = os.path.join(ROOT, "chrome", "content", "scripts", "features", "ref-import.js")
+ri_dialog_js = io.open(RI_DIALOG_JS, encoding="utf-8").read()
+ri_dialog_xhtml = io.open(RI_DIALOG_XHTML, encoding="utf-8").read()
+ri_mod = io.open(RI_MOD, encoding="utf-8").read()
+ri_fmt = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "ref-format.js"),
+                 encoding="utf-8").read()
+ri_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "ref-sources.js"),
+                 encoding="utf-8").read()
+ri_ct = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "citation-trace.js"),
+                encoding="utf-8").read()
+
+# 25.1~25.4 装配：三层按依赖序加载 + 暴露给窗口/菜单
+_ri_i_fmt = mainjs.find('"features/ref-format.js"')
+_ri_i_src = mainjs.find('"features/ref-sources.js"')
+_ri_i_imp = mainjs.find('"features/ref-import.js"')
+ok(_ri_i_fmt > 0 and _ri_i_src > _ri_i_fmt and _ri_i_imp > _ri_i_src,
+   "26.1 main.js 按依赖序装配 ref-format → ref-sources → ref-import")
+ok("this.refImport = RefImport;" in mainjs, "26.2 main.js 把 RefImport 挂到 Zotero.PaperPilot")
+
+# 25.5~25.7 入口：注册表、classic 菜单、功能中心三处都必须走新对话框
+ok('run: () => RefImport.openDialog()' in menus_js, "26.3 注册表 ref-import 入口指向新对话框")
+ok(menus_js.count("RefImport.openDialog()") >= 2, "26.4 classic 平铺菜单同样指向新对话框（两处）")
+ok("PP.refImport.openDialog()" in hub_js, "26.5 功能中心卡片指向新对话框")
+
+# 25.8 旧实现已删除：不能再有「无 DOI 即丢弃」的过滤与 refs-picker 依赖
+ok("return d && !doiSet.has(d)" not in ri_ct, "26.6 ★ 旧「无 DOI 即丢弃」的过滤已从 citation-trace 删除")
+ok("refs-picker" not in ri_ct, "26.7 citation-trace 不再依赖 refs-picker")
+ok(not os.path.exists(os.path.join(ROOT, "chrome", "content", "refs-picker.xhtml")),
+   "26.8 refs-picker 旧对话框已移除（唯一消费方已改走 ref-import）")
+ok("importForSelected" in ri_ct and "RefImport.importForSelected()" in ri_ct,
+   "26.9 citation-trace.importForSelected 保留为委托入口（兼容旧调用方）")
+
+# 25.10~25.13 修复点的静态存在性：多键判重 / 无 DOI 也入库 / 字段按类型白名单 / 多源联合检索
+ok("pmids" in ri_mod and "arxiv" in ri_mod and "isbns" in ri_mod and "titles" in ri_mod,
+   "26.10 ★ 库内索引含 DOI/PMID/arXiv/ISBN/标题 五把键（旧实现只有 DOI 一把）")
+ok("FIELD_PLAN" in ri_mod and "conferencePaper" in ri_mod and "bookSection" in ri_mod
+   and "preprint" in ri_mod, "26.11 ★ 按 itemType 白名单映射字段（期刊/会议/书章/预印本各一套）")
+ok("SOURCES" in ri_src and ri_src.count('id: "') >= 5, "26.12 ★ 五个免密钥数据源已注册")
+ok("dedupeRecords" in ri_src and "_score" in ri_src and "源一致" in ri_src,
+   "26.13 ★ 联合检索按「多源一致命中」打分（准确率机制）")
+ok("aiComplete" in ri_mod and "aiInvestigate" in ri_mod, "26.14 AI 补全与 AI 调研均已实现")
+ok("toBibtex" in ri_fmt and "toRIS" in ri_fmt and "toEndNoteXML" in ri_fmt and "toCSLAll" in ri_fmt,
+   "26.15 ★ 导出支持 BibTeX / EndNote(RIS) / EndNote XML / CSL-JSON")
+
+# 25.16~25.19 对话框：windowtype / 脚本引用 id 全部存在 / 不直连网络 / API 一一对应
+ok('windowtype="paperpilot:ref-import"' in ri_dialog_xhtml,
+   "26.16 对话框 windowtype 为 paperpilot:ref-import")
+_ri_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', ri_dialog_xhtml))
+# 对话框脚本里的 $("…") 与 getElementById("…") 都必须在 xhtml 里存在
+_ri_refs = set(re.findall(r'\$\(\s*"([A-Za-z0-9_-]+)"\s*\)', ri_dialog_js))
+_ri_refs |= set(re.findall(r'getElementById\(\s*"([A-Za-z0-9_-]+)"', ri_dialog_js))
+_ri_missing = sorted(i for i in _ri_refs if i not in _ri_ids)
+ok(not _ri_missing, "26.17 对话框脚本引用的元素 id 都存在 → 缺失: %s" % (_ri_missing or "无"))
+
+_ri_code = re.sub(r"/\*[\s\S]*?\*/", "", ri_dialog_js)
+_ri_code = re.sub(r"(?m)//.*$", "", _ri_code)
+ok(not re.search(r"Zotero\.HTTP|AIClient\s*\.|\bAIChat\b|fetch\s*\(", _ri_code),
+   "26.18 ★ 对话框脚本不直连网络/AI（一律经注入的 api）")
+
+# 对话框调用的每个 api.xxx，编排层的 windowApi() 都必须真的提供（漏一个 = 按钮点了没反应）
+_ri_api_calls = set(re.findall(r"\bapi\.([A-Za-z_]\w*)", ri_dialog_js))
+_ri_api_calls = {c for c in _ri_api_calls if c not in ("isZh",)}
+_ri_api_defined = set(re.findall(r"(?m)^\s{6}([A-Za-z_]\w*)\s*[:(]", ri_mod))
+_ri_api_missing = sorted(c for c in _ri_api_calls if c not in _ri_api_defined)
+ok(not _ri_api_missing,
+   "26.19 ★ 对话框用到的 api 方法都已注入 → 缺失: %s" % (_ri_api_missing or "无"))
+
+# 25.20~25.22 主题作用域 / 文案 / 默认值 / 门禁
+ok("paperpilot:ref-import" in uitheme_js, "26.20 新对话框纳入 ui-theme 主题作用域")
+ok("menuRefImport" in utils_js, "26.21 文案表保留 menuRefImport")
+ok("refImportSources" in prefsdef, "26.22 prefs.js 有 refImportSources 默认值")
+ok("refImportMailto" in prefsdef, "26.23 prefs.js 有 refImportMailto 默认值")
+_pf4 = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
+ok("test/ref-import.test.js" in _pf4, "26.24 preflight 含参考文献入库测试")
+# 单实例枚举必须用 windowtype（写成窗口名 → 每点一次菜单就开一个新窗口，
+# 这类错误静态单测看不出来，只有真机连点两次才会发现）
+ok('WINDOW_TYPE: "paperpilot:ref-import"' in ri_mod
+   and "getEnumerator(this.WINDOW_TYPE)" in ri_mod,
+   "26.25 ★ 单实例枚举用 windowtype（不是窗口名）")
+ok('WINDOW_NAME: "paperpilot-ref-import"' in ri_mod
+   and "openDialog(this.DLOG_URL, this.WINDOW_NAME" in ri_mod,
+   "26.26 openDialog 用窗口名，与 windowtype 分开")
 
 # ---------- 输出 ----------
 print("=" * 60)

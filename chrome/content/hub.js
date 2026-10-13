@@ -61,7 +61,7 @@
           { t: zh ? "AI 文献矩阵" : "Literature matrix", d: zh ? "按维度抽取生成对比表格笔记" : "Dimension comparison table", run: () => PP.matrix.forSelected() },
           { t: zh ? "AI 文献综述" : "Literature review", d: zh ? "多篇生成带引用编号的综述段落" : "Review with citation numbers", run: () => PP.reviewGen.forSelected() },
           { t: zh ? "引文追溯" : "Citation trace", d: zh ? "参考文献/施引文献分析笔记" : "References & citing papers note", run: () => PP.citationTrace.runForSelected() },
-          { t: zh ? "参考文献一键入库" : "Import references", d: zh ? "把当前文献的参考文献批量添加进库" : "Batch import references", run: () => PP.citationTrace.importForSelected() },
+          { t: zh ? "参考文献一键入库" : "Import references", d: zh ? "粘贴 DOI/标题/链接/PMID/arXiv/BibTeX 或联合检索五个在线库；自动判重、AI 补全元数据，可导出 BibTeX/EndNote（窗口内还能一键导入当前文献的全部参考文献）" : "Paste DOI/title/URL/PMID/arXiv/BibTeX or joint-search 5 online databases; auto-dedupe + AI metadata completion + BibTeX/EndNote export", run: () => PP.refImport.openDialog() },
           { t: zh ? "分类条目统计" : "Collection stats", d: zh ? "当前分类的条目/附件/标签统计" : "Stats for current collection", run: () => PP.collectionStats.showForSelectedCollection() },
           { t: zh ? "文献统计图谱" : "Library report", d: zh ? "年份/期刊/作者/标签分布 HTML 报告" : "HTML report with charts", run: () => PP.libGraph.run() },
           { t: zh ? "阅读报告（日历热力图）" : "Reading report", d: zh ? "近 30 天阅读时长、日历热力图与时长最多的文献（打开 PDF 时自动每分钟累计）" : "Reading time with calendar heatmap", run: () => PP.readingStats.run() },

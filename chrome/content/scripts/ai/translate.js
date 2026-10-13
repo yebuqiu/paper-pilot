@@ -95,6 +95,163 @@ var TranslateSvc = (function () {
   function langLabel(code) { return langMeta(code).label; }
   function langName(code) { return langMeta(code).name; }
 
+  /* ==================== 术语表（pref translateGlossary，0.33.0） ====================
+   * 让专业术语全文一致：用户在设置面板按行维护「原文 = 译文」，翻译时注入
+   * AI 大模型的提示词（LLM 才能理解术语约束；专用引擎无法注入，界面已注明）。
+   * 纯函数 parseGlossary 支持三种写法：`原文 = 译文` / `原文 => 译文` / TAB 分隔，
+   * 另兼容 JSON 数组（[{s,t}] 或 [[s,t]]）；# 与 // 开头的行为注释。
+   */
+  function parseGlossary(raw) {
+    const src = String(raw == null ? "" : raw).trim();
+    if (!src) return [];
+    // JSON 数组（程序化写入/导入的形态）
+    if (src.charAt(0) === "[") {
+      try {
+        const arr = JSON.parse(src);
+        const out = [];
+        for (const it of (Array.isArray(arr) ? arr : [])) {
+          const s = it && (it.s || it[0]);
+          const t = it && (it.t || it[1]);
+          if (s && t && s !== t) out.push({ s: String(s), t: String(t) });
+        }
+        return out;
+      } catch (e) { /* 非法 JSON → 按行解析 */ }
+    }
+    const out = [];
+    for (let line of src.split(/\r?\n/)) {
+      line = line.trim();
+      if (!line || line.charAt(0) === "#" || line.slice(0, 2) === "//") continue;
+      const m = /^(.+?)\s*(?:=>|=)\s*(.+)$/.exec(line.replace(/\t+/g, " => "));
+      if (!m) continue;
+      const s = m[1].trim();
+      const t = m[2].trim();
+      if (s && t && s !== t) out.push({ s, t });
+    }
+    return out;
+  }
+
+  /** 读取用户术语表 */
+  function glossary() {
+    let raw = "";
+    try { raw = Prefs.get("translateGlossary", "") || ""; } catch (e) { /* ignore */ }
+    return parseGlossary(raw);
+  }
+
+  /** 术语表 → 提示词块（空表返回空串；上限 60 条防爆词） */
+  function glossaryBlock(list) {
+    const l = Array.isArray(list) ? list : glossary();
+    if (!l.length) return "";
+    return l.slice(0, 60).map((g) => "- " + g.s + " → " + g.t).join("\n");
+  }
+
+  /** 术语表指纹（FNV-1a）：术语表变了，缓存键跟着变 —— 否则改完术语表还吃旧缓存。 */
+  function glossaryFingerprint(list) {
+    const l = Array.isArray(list) ? list : glossary();
+    if (!l.length) return "";
+    const s = l.map((g) => g.s + "=" + g.t).join("|");
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = (h * 16777619) >>> 0;
+    }
+    return h.toString(36);
+  }
+
+  /* ==================== 行内公式保护（0.33.0，非 LLM 引擎） ====================
+   * 专用引擎（Google/DeepL/百度…）没有"保持公式原样"的指令通道，正文的行内公式
+   * 常被改写得面目全非（下标被吞、希腊字母被音译）。做法：翻译前把高置信的
+   * 数学片段换成占位符 ⟦PPF:n⟧，引擎一般会原样保留；译后再换回原文。
+   *   - 高置信 = ① $...$ 定界（LaTeX 习惯）；② 连续 ≥6 个「数学 token」
+   *     （数字 / 单字母变量 / 数学与希腊符号 / LaTeX 命令）以运算符或空白胶合的串。
+   *   - 宁缺毋滥：正常英文句子的 token 大多是多字母实词，不会被误伤。
+   *   - LLM 引擎不掩码：提示词里直接要求公式保持原样（掩码反而浪费一次复原）。
+   */
+  function _mathyToken(w) {
+    if (!w) return false;
+    if (/^\$[^$]{1,120}\$$/.test(w)) return true;
+    if (/^\\[A-Za-z]{2,}/.test(w)) return true;               // \frac 等
+    if (/^[0-9]+(\.[0-9]+)?$/.test(w)) return true;            // 数字（含小数）
+    if (/^[0-9]+(\.[0-9]+)?[a-zA-Z]{1,2}$/.test(w)) return true; // 10ms、3D 这类也按数字算
+    if (/^[A-Za-z]$/.test(w)) return true;                      // 单字母变量
+    if (/^[α-ωΑ-Ω∑∫∂∇√∞≈≠≤≥±×÷→↔⇒∈∀∃∪∩⊂⊃⊕⊗∝°′″]+$/.test(w)) return true; // 符号/希腊
+    return false;
+  }
+  /** 去掉两端的标点胶水（", x_2," 分类时按 x_2 算，原文保留标点） */
+  function _stripGlue(w) {
+    return String(w || "").replace(/^[\s,.;:()\[\]{}]+|[\s,.;:()\[\]{}]+$/g, "");
+  }
+
+  /** 掩码行内公式。@returns {{text, map: string[], count}} */
+  function maskInlineFormulas(text) {
+    const s = String(text == null ? "" : text);
+    const map = [];
+    if (!s) return { text: s, map, count: 0 };
+    const ph = (orig) => {
+      map.push(orig);
+      return "\u27E6PPF" + (map.length - 1) + "\u27E7";
+    };
+    // ① $...$ 定界
+    let t = s.replace(/\$\$?[^$]{2,160}?\$\$?/g, (m) => ph(m));
+    // ② 连续数学 token 串
+    const parts = t.match(/\S+|\s+/g) || [];
+    const out = [];
+    let i = 0;
+    while (i < parts.length) {
+      const p = parts[i];
+      if (!p || /^\s+$/.test(p)) { out.push(p || ""); i++; continue; }
+      if (!_mathyToken(_stripGlue(p))) {
+        // 纯运算符 token（= + - ≥ …）可与左侧串合并，但不能起头
+        if (out.length && /^[+\-*/^_=<>≤≥≈×÷→]+$/.test(p) && i + 1 < parts.length &&
+            _mathyToken(_stripGlue(parts[i + 1] || ""))) {
+          // 交给下一轮与右串合并，这里先落位
+          out.push(p); i++; continue;
+        }
+        out.push(p); i++; continue;
+      }
+      // 收集一段连续数学串（中间允许空白；串长有上限，防误吞整段）
+      let j = i + 1;
+      let mathy = 1;
+      const MAXRUN = 48;
+      while (j < parts.length && mathy < MAXRUN) {
+        const q = parts[j];
+        if (/^\s+$/.test(q)) {
+          const nxt = parts[j + 1];
+          if (nxt && (_mathyToken(_stripGlue(nxt)) || /^[+\-*/^_=<>≤≥≈×÷→]+$/.test(nxt))) {
+            j += 2; mathy++; continue; // 跳过空白并吞掉下一个 token
+          }
+          break;
+        }
+        if (/^[+\-*/^_=<>≤≥≈×÷→]+$/.test(q) || _mathyToken(_stripGlue(q))) {
+          j++; mathy++; continue;
+        }
+        break;
+      }
+      if (mathy >= 6) {
+        out.push(ph(parts.slice(i, j).join("")));
+        i = j;
+      } else {
+        out.push(p);
+        i++;
+      }
+    }
+    t = out.join("");
+    return { text: t, map, count: map.length };
+  }
+
+  /** 掩码还原（占位符不在译文里则什么都不做，不会拼错内容） */
+  function unmaskFormulas(text, map) {
+    const m = Array.isArray(map) ? map : [];
+    return String(text == null ? "" : text).replace(/\u27E6\s*PPF\s*:?\s*(\d+)\s*\u27E7/g,
+      (whole, idx) => {
+        const v = m[Number(idx)];
+        return v !== undefined ? v : whole;
+      });
+  }
+
+  function _formulaProtect() {
+    try { return Prefs.get("translateFormulaProtect", true) !== false; } catch (e) { return true; }
+  }
+
   /* ==================== 编码 / 摘要工具（纯函数，可单测） ==================== */
 
   /** 字符串 → UTF-8 字节数组 */
@@ -937,6 +1094,8 @@ var TranslateSvc = (function () {
       secret: rawSecret,
       parts: parseSecret(id, rawSecret),
       pre: o.pre || null,
+      // 0.33.0 上下文感知（仅 llm 引擎消费）：{title?, prev?}
+      context: o.context || null,
       timeoutMs: Number(o.timeoutMs) > 0 ? Number(o.timeoutMs) : c.timeoutMs,
     };
   }
@@ -960,8 +1119,9 @@ var TranslateSvc = (function () {
   const cache = new Map();
   const CACHE_LIMIT = 200;
 
-  function _cacheKey(id, from, to, text) {
-    return id + "|" + from + "|" + to + "|" + text;
+  /** 缓存键含术语表指纹：改术语表后不吃旧缓存（LLM 引擎才有差异，但键统一无害） */
+  function _cacheKey(id, from, to, gfp, text) {
+    return id + "|" + from + "|" + to + "|" + (gfp || "") + "|" + text;
   }
   function _cacheGet(k) { return cache.has(k) ? cache.get(k) : undefined; }
   function _cacheSet(k, v) {
@@ -1186,12 +1346,22 @@ var TranslateSvc = (function () {
 
     if (svc.llm) {
       // 大模型引擎：走当前 AI 通道（划词浮窗的流式路径不在这里，见 reader-popup.js）
+      // 0.33.0：术语表 + 上下文感知 + 公式保持指令（术语约束只有 LLM 能理解）
+      const gl = glossary();
+      const cx = ctx.context || {};
+      let prompt = "请将以下内容翻译成" + langName(ctx.to) +
+        "，忠实原文，专业术语保留英文并用括号标注。" +
+        "数学公式与数学表达式保持原样，不要翻译或改写其中的符号、上下标与变量。";
+      if (cx.title) prompt += "\n本文档标题：《" + String(cx.title).slice(0, 200) + "》。";
+      if (cx.prev) {
+        prompt += "\n上一段的译文（请保持术语与行文风格一致）：\n" + String(cx.prev).slice(0, 600);
+      }
+      const gb = glossaryBlock(gl);
+      if (gb) prompt += "\n术语表（以下术语必须按给定译法翻译，并保持全文一致）：\n" + gb;
+      prompt += "\n纯文本输出，禁止使用任何 Markdown 标记；只输出译文，不要任何解释。\n\n" + ctx.text;
       const msgs = [
         { role: "system", content: (Prefs.get("aiSystemPrompt", "") || "") },
-        { role: "user", content:
-          "请将以下内容翻译成" + langName(ctx.to) +
-          "，忠实原文，专业术语保留英文并用括号标注。" +
-          "纯文本输出，禁止使用任何 Markdown 标记；只输出译文，不要任何解释。\n\n" + ctx.text },
+        { role: "user", content: prompt },
       ];
       const out = await AIClient.chat(msgs);
       return String(out == null ? "" : out).trim();
@@ -1204,21 +1374,33 @@ var TranslateSvc = (function () {
       ctx = Object.assign({}, ctx, { pre: await svc.prepare(ctx) });
     }
 
-    const seg = _segmentsFor(svc, ctx.text);
-    if (seg.parts.length <= 1) return await _callOnce(svc, ctx, timeoutMs);
+    // 0.33.0 行内公式保护：高置信数学片段换成占位符，译后还原（LLM 走提示词不掩码）
+    let fMap = null;
+    if (ctx.text && _formulaProtect()) {
+      const m = maskInlineFormulas(ctx.text);
+      if (m.count) {
+        fMap = m.map;
+        ctx = Object.assign({}, ctx, { text: m.text });
+      }
+    }
 
-    if (seg.parts.length > SEG_MAX) {
+    const seg = _segmentsFor(svc, ctx.text);
+    let out;
+    if (seg.parts.length <= 1) {
+      out = await _callOnce(svc, ctx, timeoutMs);
+    } else if (seg.parts.length > SEG_MAX) {
       throw new Error("文本过长：「" + svc.name + "」按单次上限需切成 " + seg.parts.length +
         " 段（上限 " + SEG_MAX + " 段）。请改用其他引擎，或调大「全文对照翻译分段字符数」");
+    } else {
+      const outs = [];
+      for (let i = 0; i < seg.parts.length; i++) {
+        outs.push(await _callOnce(svc, Object.assign({}, ctx, { text: seg.parts[i] }), timeoutMs));
+        if (i < seg.parts.length - 1) await new Promise((r) => setTimeout(r, 120));
+      }
+      out = outs[0];
+      for (let i = 1; i < outs.length; i++) out += (seg.seps[i - 1] || "") + outs[i];
     }
-    const outs = [];
-    for (let i = 0; i < seg.parts.length; i++) {
-      outs.push(await _callOnce(svc, Object.assign({}, ctx, { text: seg.parts[i] }), timeoutMs));
-      if (i < seg.parts.length - 1) await new Promise((r) => setTimeout(r, 120));
-    }
-    let joined = outs[0];
-    for (let i = 1; i < outs.length; i++) joined += (seg.seps[i - 1] || "") + outs[i];
-    return joined;
+    return fMap ? unmaskFormulas(out, fMap) : out;
   }
 
   /**
@@ -1241,7 +1423,9 @@ var TranslateSvc = (function () {
   /**
    * 翻译入口。
    * @param text 原文
-   * @param o { to?, from?, engine?, secret?, noFallback?, noCache?, timeoutMs? }
+   * @param o { to?, from?, engine?, secret?, noFallback?, noCache?, timeoutMs?,
+   *            context? {title?, prev?} —— 0.33.0 上下文感知（仅 llm 引擎消费：
+   *            title=文档标题，prev=上一段译文，用于保持术语与行文一致） }
    * @returns {Promise<{ok, text?, engine?, engineName?, fallback?, cached?, tried, error?}>}
    *   tried: [{engine, error}] —— 失败过的引擎，供 UI 展示与排障
    */
@@ -1273,12 +1457,14 @@ var TranslateSvc = (function () {
 
     const started = Date.now();
     const nameOf = (id) => { const s = get(id); return s ? s.name : id; };
+    // 0.33.0：术语表指纹进缓存键（上下文刻意不进——滚动上下文会让缓存形同虚设）
+    const gfp = glossaryFingerprint();
 
     for (let i = 0; i < chain.length; i++) {
       const id = chain[i];
       const svc = get(id);
       const useCache = c.cache && !o.noCache;
-      const key = _cacheKey(id, from, to, clean);
+      const key = _cacheKey(id, from, to, gfp, clean);
       if (useCache) {
         const hit = _cacheGet(key);
         if (hit !== undefined) {
@@ -1307,7 +1493,8 @@ var TranslateSvc = (function () {
       if (c.totalMs > 0) budget = Math.min(budget, Math.max(3000, c.totalMs - spent));
 
       try {
-        const ctx = makeCtx(id, { text: clean, from, to, secret: o.secret, timeoutMs: budget });
+        const ctx = makeCtx(id, { text: clean, from, to, secret: o.secret,
+          context: o.context || null, timeoutMs: budget });
         const out = await _runEngine(id, ctx, budget);
         if (useCache) _cacheSet(key, out);
         if (i > 0) clearCooldown(id); // 顶上来了说明已恢复
@@ -1472,6 +1659,10 @@ var TranslateSvc = (function () {
     makeCtx, buildEndpoint, extractResult,
     // 长文本分段（测试用）：splitText 是纯函数；segmentsFor 是"按引擎上限分段"的入口
     splitText: _splitText, segmentsFor: _segmentsFor, SEG_MAX,
+    // 术语表（0.33.0，纯函数可单测）
+    parseGlossary, glossary, glossaryBlock, glossaryFingerprint,
+    // 行内公式保护（0.33.0，纯函数可单测；仅非 LLM 引擎启用）
+    maskInlineFormulas, unmaskFormulas,
     // 算法（测试用）
     googleTk, sha1Bytes, hmacSha1, base64, encodeRFC5987, utf8Bytes,
     // 配置

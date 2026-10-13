@@ -114,9 +114,19 @@ var ReaderPopup = {
       ? TranslateSvc.targetName()
       : (Prefs.get("readerPopupTargetLang", "中文") || "中文");
     if (mode === "translate") {
+      // 0.33.0：术语表注入（用户在 设置 → 翻译引擎 → 术语表 维护；空表零开销）
+      let gloss = "";
+      try {
+        if (typeof TranslateSvc !== "undefined" && TranslateSvc && TranslateSvc.glossaryBlock) {
+          const gb = TranslateSvc.glossaryBlock();
+          if (gb) {
+            gloss = (I18n.isZh ? "\n\n术语表（以下术语必须按给定译法翻译）：\n" : "\n\nGlossary (translate as specified):\n") + gb;
+          }
+        }
+      } catch (e) { /* 术语表失败不影响翻译 */ }
       return (I18n.isZh
-        ? `请将以下内容翻译成${lang}，忠实原文，专业术语保留英文并用括号标注，只输出译文：\n\n`
-        : `Translate the following into ${lang}, keep English terms in parentheses, output translation only:\n\n`) + text +
+        ? `请将以下内容翻译成${lang}，忠实原文，专业术语保留英文并用括号标注，数学公式与表达式保持原样不要改写，只输出译文：\n\n`
+        : `Translate the following into ${lang}, keep English terms in parentheses, keep math formulas verbatim, output translation only:\n\n`) + text + gloss +
         (I18n.isZh
           ? "\n\n要求：纯文本输出，禁止使用任何 Markdown 标记（如 **、#、- 列表、表格），直接给译文正文。"
           : "\n\nPlain text only — no Markdown formatting (no **, #, bullets or tables).");

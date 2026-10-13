@@ -143,128 +143,15 @@ var CitationTrace = {
     pw.startCloseTimer(3000);
   },
 
-  /** 拆分 "First M. Last" → Zotero creator */
-  _splitName(name) {
-    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-    if (!parts.length) return null;
-    if (parts.length === 1) return { lastName: parts[0], firstName: "", creatorType: "author" };
-    return { lastName: parts[parts.length - 1], firstName: parts.slice(0, -1).join(" "), creatorType: "author" };
-  },
-
-  /** 菜单入口（0.8.0）：拉参考文献 → 勾选 → 批量入库（进当前选中分类） */
-  async importForSelected() {
-    const zh = I18n.isZh;
-    const zp = Zotero.getActiveZoteroPane();
-    if (!zp) return;
-    const item = ItemSel.regularOnly(zp.getSelectedItems() || [])[0];
-    if (!item) {
-      ItemSel.alertEmpty();
-      return;
+  /** 菜单入口（0.8.0 起，0.33.0 改为委托）：
+   *  「参考文献一键入库」已由 RefImport 重写（多源检索 / 多键判重 / AI 补全 / 导出），
+   *  这里保留同名入口仅为兼容旧调用方与外部脚本，实际打开的是统一对话框的「参考文献」模式。
+   *  ★ 旧实现（无 DOI 即丢弃、只按 DOI 判重、全部建成 journalArticle）已删除，
+   *  不要再在此处新增导入逻辑——导入相关的单一真源是 features/ref-import.js。 */
+  importForSelected() {
+    if (typeof RefImport === "undefined" || !RefImport) {
+      return Promise.reject(new Error("RefImport 未加载"));
     }
-    const win = Zotero.getMainWindow();
-    const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
-    pw.show();
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
-      zh ? "正在拉取参考文献…" : "Fetching references…");
-    progress.setProgress(30);
-
-    // 1. 解析 + 拉参考文献（富字段，含作者/摘要供入库）
-    let paper, refs;
-    try {
-      const title = this._get(item, "title");
-      const want = CitationColumn.normalizeTitle(title);
-      const doi = CitationColumn.normalizeDOI(this._get(item, "DOI"));
-      if (doi) {
-        try { paper = await S2Client.paperById("DOI:" + doi, "title,year,venue,externalIds,citationCount"); } catch (e) { /* 落标题检索 */ }
-        if (paper && want && CitationColumn.normalizeTitle(paper.title) !== want) paper = null; // 错配回退
-      }
-      if (!paper && title) {
-        const cands = await S2Client.searchByTitle(title, 5, "title,year,venue,externalIds,citationCount");
-        paper = cands.find((p) => CitationColumn.normalizeTitle(p.title) === want);
-      }
-      if (!paper || !paper.paperId) throw new Error(zh ? "Semantic Scholar 查无此文" : "Not found on S2");
-      refs = (await S2Client.references(paper.paperId,
-        "title,year,venue,abstract,externalIds,authors,citationCount", 200))
-        .map((r) => r.citedPaper).filter(Boolean);
-    } catch (e) {
-      progress.setError();
-      progress.setText(String(e && e.message || e).slice(0, 80));
-      pw.startCloseTimer(3000);
-      return;
-    }
-
-    // 2. 过滤已在库，按被引量降序
-    const doiSet = await this._libraryDOIs();
-    const fresh = refs.filter((p) => {
-      const d = CitationColumn.normalizeDOI((p.externalIds && p.externalIds.DOI) || "");
-      return d && !doiSet.has(d);
-    }).sort((a, b) => (b.citationCount || 0) - (a.citationCount || 0)).slice(0, 100);
-    progress.setProgress(100);
-    pw.startCloseTimer(100);
-    if (!fresh.length) {
-      Services.prompt.alert(win, "PaperPilot",
-        zh ? "参考文献均已在本地文库（或缺 DOI 无法可靠入库）。" : "All references already in library (or lack DOI).");
-      return;
-    }
-
-    // 3. 勾选对话框
-    const io = {
-      refs: fresh.map((p) => ({
-        title: p.title, year: p.year, venue: p.venue, citationCount: p.citationCount,
-        doi: CitationColumn.normalizeDOI((p.externalIds && p.externalIds.DOI) || ""),
-      })),
-      paperTitle: this._get(item, "title") || paper.title || "",
-      total: refs.length,
-      selected: null,
-    };
-    win.openDialog(
-      "chrome://paperpilot/content/refs-picker.xhtml",
-      "paperpilot-refs-picker",
-      "chrome,modal,centerscreen,resizable",
-      io
-    );
-    if (!io.selected || !io.selected.length) return;
-
-    // 4. 批量创建条目（进当前选中分类）
-    let col = null;
-    try { col = zp.getSelectedCollections && zp.getSelectedCollections()[0]; } catch (e) { /* Z10 */ }
-    const pw2 = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw2.changeHeadline("PaperPilot");
-    pw2.show();
-    let ok = 0, fail = 0;
-    for (const idx of io.selected) {
-      const p = fresh[idx];
-      const prog = new pw2.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
-        (p.title || "").slice(0, 60));
-      try {
-        const ni = new Zotero.Item("journalArticle");
-        ni.libraryID = item.libraryID;
-        ni.setField("title", p.title || "");
-        const d = CitationColumn.normalizeDOI((p.externalIds && p.externalIds.DOI) || "");
-        if (d) ni.setField("DOI", d);
-        if (p.year) ni.setField("date", String(p.year));
-        if (p.venue) ni.setField("publicationTitle", p.venue);
-        if (p.abstract) ni.setField("abstractNote", p.abstract);
-        if (Array.isArray(p.authors) && p.authors.length) {
-          const creators = p.authors.map((a) => this._splitName(a && a.name)).filter(Boolean);
-          if (creators.length) ni.setCreators(creators);
-        }
-        if (col) ni.addToCollection(col.id);
-        await ni.saveTx();
-        ok++;
-        prog.setProgress(100);
-      } catch (e) {
-        fail++;
-        prog.setError();
-        Zotero.logError(e);
-      }
-    }
-    const sum = new pw2.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
-      (zh ? "已入库 " : "Imported ") + ok + (zh ? " 篇" : "") +
-      (fail ? (zh ? "，失败 " : ", failed ") + fail : "") +
-      (col ? (zh ? " → 分类「" : " → \"") + col.name + "」" : ""));
-    sum.setProgress(100);
-    pw2.startCloseTimer(3000);
+    return RefImport.importForSelected();
   },
 };
