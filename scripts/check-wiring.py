@@ -953,7 +953,7 @@ for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
-ok('"version": "0.37.1"' in MANIFEST, "20.12 manifest 版本 0.37.1")
+ok('"version": "0.37.2"' in MANIFEST, "20.12 manifest 版本 0.37.2")
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
@@ -1744,6 +1744,45 @@ ok("ProgressWindow" in un_js, "29.13 用 Zotero 原生通知（与插件其它�
 ok("updateNoticeEnabled" in prefsdef,
    "29.14 prefs.js 含 updateNoticeEnabled 默认值")
 ok("update-notice.test.js" in _pf3, "29.15 preflight 含更新提示测试")
+
+
+# ---------- 30. XHTML 的 XML 合法性（插件 0.37.2） ----------
+# 起因：prefs.xhtml 里一个 `&nbsp;`（XML 只预定义 amp/lt/gt/quot/apos）导致**整个设置面板
+# 解析失败 → 面板空白**，而且日志里没有任何提示，用户只能报「设置界面不显示插件设置」。
+# 这类错误必须在构建期挡住：这里对每个 xhtml 做「XML 可解析 + 无未定义实体」双检，
+# 并在 main.js 侧要求注册面板前预解析一次（失败写 boot 日志），把静默故障变可见。
+_XHTML_DIR = os.path.join(ROOT, "chrome", "content")
+_xhtml_files = sorted(f for f in os.listdir(_XHTML_DIR) if f.endswith(".xhtml"))
+ok(len(_xhtml_files) >= 15, "30.1 找到 %d 个 xhtml 窗口文件" % len(_xhtml_files))
+_bad_xml = []
+_bad_ent = []
+_ALLOWED_ENT = {"amp", "lt", "gt", "quot", "apos"}
+for _f in _xhtml_files:
+    _p = os.path.join(_XHTML_DIR, _f)
+    _src = io.open(_p, encoding="utf-8").read()
+    try:
+        import xml.etree.ElementTree as _ET
+        _ET.fromstring(_src)
+    except Exception as _e:
+        _bad_xml.append("%s: %s" % (_f, _e))
+    for _i, _line in enumerate(_src.split("\n"), 1):
+        for _m in re.finditer(r"&([a-zA-Z][a-zA-Z0-9]*);", _line):
+            if _m.group(1) not in _ALLOWED_ENT:
+                _bad_ent.append("%s:%d %s" % (_f, _i, _m.group(0)))
+ok(not _bad_xml, "30.2 ★ 所有 xhtml 都能被 XML 解析 → %s" % (_bad_xml or "全部通过"))
+ok(not _bad_ent, "30.3 ★ 无未定义实体（&nbsp; 在 XML 里非法，会让整个面板空白）→ %s"
+   % (_bad_ent or "无"))
+ok("prefs.xhtml" in " ".join(_xhtml_files) and "&nbsp;" not in
+   io.open(os.path.join(_XHTML_DIR, "prefs.xhtml"), encoding="utf-8").read(),
+   "30.4 设置面板 prefs.xhtml 无 &nbsp;（曾因此整面板空白）")
+ok('&html:label class="pp-label">&#160;<' in io.open(
+    os.path.join(_XHTML_DIR, "prefs.xhtml"), encoding="utf-8").read()
+   or "&#160;" in io.open(os.path.join(_XHTML_DIR, "prefs.xhtml"), encoding="utf-8").read(),
+   "30.5 占位空白用数字实体 &#160;（XML 合法）")
+ok("prefs.xhtml 有 XML 未定义实体" in mainjs and "prefs.xhtml ok（" in mainjs,
+   "30.6 ★ 启动时自查 prefs.xhtml（零依赖实体扫描，不用 DOMParser），异常写 boot 日志")
+ok("new DOMParser()" not in mainjs,
+   "30.7 不用 DOMParser（bootstrap 作用域实测不可用，会让自查本身静默失败）")
 
 
 print("=" * 60)

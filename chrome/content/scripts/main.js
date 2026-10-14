@@ -311,6 +311,26 @@ Zotero.PaperPilot = {
     // 且传 pluginID 给 openPreferences 无法定位面板——Z10 preferences.js 实证）
     // 0.15.0：stylesheets = 设置面板主题样式（prefs.css，随系统明暗切换；
     // 官方推荐通道，避免在 fragment 里内嵌 <html:style>）
+    // 0.37.2：★ 注册前先把 prefs.xhtml 读出来自查一遍。fragment 解析失败时 Zotero 的表现是
+    // **设置面板整块空白**、日志里也没有明显报错（曾因一个 `&nbsp;` 让面板空白了三个版本），
+    // 所以这里主动校验，把原因写进 boot 日志。
+    // 注：**不用 DOMParser** —— 它在 bootstrap 作用域不一定可用（实测第一次就静默失败），
+    // 这里用零依赖的「未定义实体扫描」（正是本次故障的类型）+ 括号配对粗检。
+    try {
+      // 用 fetch 读包内资源：Zotero.File.getContentsAsync 不支持 jar:/chrome:// 形式的 URL
+      // （实测抛 NS_ERROR_FAILURE [nsIURI.username]）
+      const pRes = await fetch(rootURI + "chrome/content/prefs.xhtml");
+      const pStr = String(await pRes.text());
+      const pBad = pStr.match(/&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)[a-zA-Z][a-zA-Z0-9]*;/g) || [];
+      if (pBad.length) {
+        await this._diag("prefs.xhtml 有 XML 未定义实体（设置面板会整块空白！）: " +
+          pBad.slice(0, 5).join(" "));
+      } else {
+        await this._diag("prefs.xhtml ok（" + pStr.length + " 字节，无未定义实体）");
+      }
+    } catch (e) {
+      await this._diag("prefs.xhtml 读取失败: " + (e && (e.message || e)));
+    }
     try {
       this._paneID = await Zotero.PreferencePanes.register({
         pluginID: id,
