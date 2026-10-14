@@ -63,9 +63,9 @@ const ok = (cond, name) => {
   if (!cond) failed++;
 };
 
-// ① 注册表规模：0.28 的 40 个右键命令一条不减（0.31.0 +ai-chat → 41；0.34.0 +pdf-inline → 42）
+// ① 注册表规模：0.28 的 40 个右键命令一条不减（0.31.0 +ai-chat → 41；0.36.0 撤 pdf-inline → 41）
 const reg = Menus.ITEM_REGISTRY;
-ok(reg.length === 42, "注册表恰好 42 条（实测 " + reg.length + "）");
+ok(reg.length === 41, "注册表恰好 41 条（实测 " + reg.length + "）");
 
 // ② id 唯一 + group 合法
 const ids = reg.map((i) => i.id);
@@ -108,8 +108,9 @@ ok(noState.length === 1 && noState[0].id === "ai-summary",
 const menusSrc = fs.readFileSync(path.join(ROOT, "chrome/content/scripts/menus.js"), "utf8");
 ok("_buildClassicItemMenu" in Menus && "_buildClassicTools" in Menus, "classic 回退构建器存在");
 ok(menusSrc.includes('"classic"'), "menuMode=classic 分支存在");
-// 0.25.2 双栏对照窗口的两个既有出口（check-wiring 17.17/17.18 同款锚点）
-ok(menusSrc.includes("openViewerForSelected"), "注册表保留双栏对照窗口入口");
+// 0.36.0：主入口改为「左原右译」对照窗口；旧「文本双栏」出口仍在模块里（备用）
+ok(menusSrc.includes("PdfDual.openForSelected"), "注册表主入口指向左原右译对照窗口（0.36.0）");
+ok(!menusSrc.includes("startForSelected"), "页内叠加入口已从菜单撤掉（0.36.0）");
 ok(menusSrc.includes("BilingualTranslate.runForSelected()"), "注册表保留 AI 双语笔记出口");
 
 // pref 观察者：三个菜单 pref 键名正确

@@ -263,7 +263,8 @@ paper-pilot/
 │       ├── ai/               账号 / 模型通道 / LLM 客户端(SSE) / 问答 / Prompt / 自动标签 / S2
 │       │                     ＋ pdf-text.js（PDF 文本结构化分析：段落块/公式与图注识别/垃圾行过滤）
 │       ├── features/         40+ 功能模块（各为一个全局 var 对象）
-│       │                     ＋ pdf-inline.js = PDF 原位对照翻译（译文按段落坐标叠加回原页）
+│       │                     ＋ pdf-inline.js = 页内叠加内核（译文按段落坐标注入页面）
+│       │                     ＋ pdf-dual.js = PDF 左原右译双栏窗口（右栏 = 同一 PDF 的 mono 译文视图）
 │       ├── columns/          期刊分区列 / 被引量列
 │       └── panels/           侧栏 section（AI 问答 / PDF 速览）
 │

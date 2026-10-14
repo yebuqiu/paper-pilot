@@ -715,11 +715,14 @@ ok(len(re.findall(r"scrollTop\s*=", bl_js)) == 1,
    "17.16 只有一处 scrollTop 赋值（没有两栏互相追的同步逻辑）")
 
 # 17.17~17.22 入口接线：三处指向双栏窗口，且原「双语笔记」出口保留
-ok("openViewerForSelected" in menus_js, "17.17 右键菜单接了双栏对照窗口")
+ok("PdfDual.openForSelected" in menus_js,
+   "17.17 右键菜单主入口指向左原右译对照窗口（PdfDual，0.36.0）")
 ok("BilingualTranslate.runForSelected()" in menus_js, "17.18 右键菜单仍保留原「AI 双语笔记」出口")
-ok("openViewerForSelected" in wb_js, "17.19 工作台「全文对照翻译」chip 指向双栏窗口")
-ok("openViewerForSelected" in hub_js, "17.20 功能中心卡片指向双栏窗口")
+ok("pdfDual.openForSelected" in wb_js, "17.19 工作台「全文对照翻译」chip 指向左原右译窗口")
+ok("pdfDual.openForSelected" in hub_js, "17.20 功能中心卡片指向左原右译窗口")
 ok("runForSelected()" in bl_mod, "17.21 原笔记流程仍在（未删）")
+ok("openViewerForSelected" in bl_mod,
+   "17.21b 旧「文本双栏」出口仍在模块里（0.36.0 起不再挂菜单，保留备用）")
 ok("_noteMd(" in bl_mod, "17.22 笔记正文由共用函数生成（窗口导出与笔记出口零漂移）")
 
 # 17.23~17.25 pref 默认值 + 设置面板可配
@@ -950,7 +953,7 @@ for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
-ok('"version": "0.34.0"' in MANIFEST, "20.12 manifest 版本 0.34.0")
+ok('"version": "0.36.0"' in MANIFEST, "20.12 manifest 版本 0.36.0")
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
@@ -1199,8 +1202,8 @@ ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
 for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
     ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
 _item_reg_src = menus_js.split("GROUPS:")[0]
-ok(_item_reg_src.count("labelKey:") == 42,
-   "23.7 ★ 注册表恰好 42 条命令（实测 %d，功能一项不减）" % _item_reg_src.count("labelKey:"))
+ok(_item_reg_src.count("labelKey:") == 41,
+   "23.7 ★ 注册表恰好 41 条命令（实测 %d，功能一项不减；0.36.0 撤 pdf-inline 页内入口）" % _item_reg_src.count("labelKey:"))
 ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
@@ -1262,7 +1265,8 @@ ok(_i_cap > 0 and _i_gate > 0 and _i_cap < _i_gate,
 # 单一真源：分段与笔记正文复用全文对照翻译的实现，避免两处格式漂移
 ok("BilingualTranslate._chunk(" in pane_js, "24.15 分段复用 BilingualTranslate._chunk（不重造）")
 ok("BilingualTranslate._noteMd(" in pane_js, "24.16 笔记正文复用 BilingualTranslate._noteMd（格式零漂移）")
-ok("BilingualTranslate.openViewer(" in pane_js, "24.17 「双栏窗口」复用既有对照窗口")
+ok("pdfDual.openForItem(" in pane_js,
+   "24.17 侧栏「双栏窗口」按钮走左原右译窗口（PdfDual，0.36.0）")
 ok("AIClient.chat(" not in pane_js, "24.18 面板不直连 AIClient（一律经 TranslateSvc/AIChat）")
 ok("TranslateSvc.translate(" in pane_js, "24.19 翻译经 TranslateSvc（多引擎 + 回退）")
 ok("test/translate-pane.test.js" in _pf3, "24.20 preflight 含翻译面板测试")
@@ -1483,6 +1487,29 @@ ok("resolveItemIdentifiers" in ri_src and "resolveByTitle" in ri_mod,
 ok("diagnosis" in ri_mod and "diagnosisText" in ri_dialog_js,
    "26.41 ★ 抓不到时给出可执行诊断（no_identifier / scanned_pdf / no_bib_section / not_indexed）")
 
+# ---- 26.42~26.50 中文文献路线（GB/T 7714 + 知网） ----
+# 真机背景：用户库里大量中文临床指南，S2/Crossref/OpenAlex 基本不收录其参考文献表，
+# 且样本 PDF 无文本层（扫描件）。所以必须补两条中文路径：
+#   ① 粘贴 GB/T 7714 题录（用户从知网复制的就是这形态）——纯解析，100% 可靠；
+#   ② 知网通道——能拿到最全的中文参考文献表，但会走风控，故**默认关闭**。
+ok("parseChineseReference" in ri_fmt and "parseGBTSource" in ri_fmt and "gbtTypeCode" in ri_fmt,
+   "26.42 ★ GB/T 7714 中文题录解析（[J]/[M]/[D]/[S]/[EB-OL] 类型码 + 卷(期):页）")
+ok("GBT_TYPES" in ri_fmt and '"journalArticle"' in ri_fmt and '"thesis"' in ri_fmt,
+   "26.43 类型码映射表在（含 thesis/report/webpage）")
+ok('id: "cnki"' in ri_src and "cnkiReferenceList" in ri_src and "extractReferencesFromCNKIHTML" in ri_src,
+   "26.44 知网参考文献通道已实现")
+ok("defaultOff: true" in ri_src and "filter((s) => !s.defaultOff)" in ri_src,
+   "26.45 ★ 知网默认关闭（风控：不能让用户莫名其妙被拦）")
+ok("CNFetch._searchCNKI" in ri_src and "CNFetch._seedCNKI" in ri_src,
+   "26.46 知网通道复用既有 CNFetch 会话/检索（不重复实现）")
+ok('"need_verify"' in ri_src and '"need_login"' in ri_src and '"no_hit"' in ri_src,
+   "26.47 风控/登录/未命中都显式回报原因")
+ok("cnki_verify" in ri_mod and "cnki_login" in ri_dialog_js and "cnki_no_hit" in ri_dialog_js,
+   "26.48 ★ 诊断文案指路（去过滑块 / 先登录 / 换粘贴题录）")
+ok('"kns.cnki.net": 3000' in ri_src, "26.49 知网限速 3s/次（别把风控招来）")
+ok("A4.13" in io.open(os.path.join(ROOT, "test", "ref-import.test.js"), encoding="utf-8").read(),
+   "26.50 测试覆盖知网区块抽取与失败原因（A4/A5）")
+
 # ---------- 27. PDF 原位对照翻译（插件 0.34.0） ----------
 # 起因：用户要求「在**原版 PDF 的对应位置**按原始排版逐段对照」——不是另开窗口罗列。
 # 做法是把每段译文按**原文段落坐标**叠加回 pdf.js 页面。这类改造的静默失败点：
@@ -1515,9 +1542,10 @@ ok("PdfInline.register(id);" in mainjs, "27.6 main.js 启动时注册（阅读�
 ok("PdfInline.unregister();" in mainjs, "27.7 main.js 关闭时注销（摘除注入物）")
 
 # 官方扩展位 + 同步 append（与主题按钮同一纪律）
-ok('Zotero.Reader.registerEventListener("renderToolbar"' in pi_js,
-   "27.8 走官方 renderToolbar 扩展位（不做 DOM 手术）")
-ok("typeof append !== \"function\"" in pi_js, "27.9 append 回调存在性检查（只允许同步调用）")
+ok('Zotero.Reader.registerEventListener("renderToolbar"' not in pi_js.split("function register")[1].split("function unregister")[0],
+   "27.8 ★ 0.36.0 起不再注入阅读器工具栏（页内形态撤掉，改由 PdfDual 双栏窗口承载）")
+ok("attach: start" in pi_js and "extractBlocks, stateMode" in pi_js,
+   "27.9 导出 attach/extractBlocks/stateMode 供 PdfDual 右栏复用（内核 API）")
 
 # 坐标来源：pdf.js 已渲染的 textLayer（不自己解析 PDF）+ 复用 PdfText.viewerOf
 ok('querySelector(".textLayer")' in pi_js, "27.10 ★ 段落坐标读 pdf.js textLayer（不自造 PDF 解析）")
@@ -1542,17 +1570,18 @@ ok("stop(reader" in pi_js and "markSourceSpans(pageEl, false)" in pi_js,
 
 # 入口：菜单 + 工具栏按钮 + 设置面板
 menus27 = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "menus.js"), encoding="utf-8").read()
-ok('id: "pdf-inline"' in menus27, "27.21 菜单注册表含 pdf-inline")
-ok("PdfInline.startForSelected()" in menus27, "27.22 菜单命令指向 PdfInline.startForSelected()")
+ok('id: "pdf-inline"' not in menus27, "27.21 菜单里已无 pdf-inline 页内入口（0.36.0 撤掉）")
+ok("PdfInline.startForSelected" not in menus27, "27.22 菜单不再指向页内叠加")
 ok("menuPdfInline" in utils_js, "27.23 文案表含 menuPdfInline")
 ok("paperpilot-inline-reader-button" in pi_js, "27.24 阅读器工具栏按钮 id 固定（供清理与测试定位）")
 
 for _k in ["pdfInlineMode", "pdfInlineFontScale", "pdfInlineSelectable", "pdfInlineGapMs"]:
     ok(("paperpilot.%s" % _k) in prefsdef, "27.25 prefs.js 含 %s 默认值" % _k)
-for _id in ["pp-pi-mode", "pp-pi-scale", "pp-pi-gap", "pp-pi-selectable"]:
+# 0.36.0：设置面板暴露的是「左原右译」的四项（pp-pd-*）；内核 pref 不再直接暴露
+for _id in ["pp-pd-rightmode", "pp-pd-scale", "pp-pd-sync", "pp-pd-zoom"]:
     ok(_id in xhtml_ids, "27.26 prefs.xhtml 含 #%s" % _id)
-_pi_used = set(re.findall(r'\$\("(pp-pi-[A-Za-z0-9_-]+)"\)', trp_js))
-ok(_pi_used, "27.27 prefs-translate.js 接线原位翻译设置（%s）" % (", ".join(sorted(_pi_used)) or "无"))
+_pi_used = set(re.findall(r'\$\("(pp-pd-[A-Za-z0-9_-]+)"\)', trp_js))
+ok(_pi_used, "27.27 prefs-translate.js 接线对照翻译设置（%s）" % (", ".join(sorted(_pi_used)) or "无"))
 ok("pdfInline" in trp_js and "piRefresh" in trp_js, "27.28 设置改动即时 refresh 已打开的阅读器")
 
 # 纪律：不直连网络/AI（翻译一律经 TranslateSvc）
@@ -1564,6 +1593,106 @@ ok("TranslateSvc.translate(" in pi_js, "27.30 翻译走 TranslateSvc（多引擎
 ok("pdf-inline.test.js" in _pf3, "27.31 preflight 含原位对照翻译测试")
 ok("pdfInlineSelfTest" in prefsdef and "pdfInline selfTest:" in mainjs,
    "27.32 自检开关（真实 PDF 上验段落抽取与卡片落点）")
+
+
+# ---------- 28. PDF 对照翻译 · 左原右译双栏窗口（插件 0.36.0） ----------
+# 起因：用户要的是「左栏原版 PDF / 右栏同一页译文」的双栏对照（PDF2zh 那种形态），
+# 而不是阅读器内的整页叠加。右栏用**同一个 PDF** 的第二个预览 + 内核的 mono 模式
+# （译文按原文段落坐标替换文字、图表与公式图形保留）⇒ 版面/分页天然一致。
+# 这类改造的静默失败点：
+#   ① 窗口脚本直连 AIClient/TranslateSvc（作用域里根本没有）→ 翻译永远不动；
+#   ② 预览就绪判据写错（只看 readyState）→ about:blank 被当就绪，右栏空白且不报错；
+#   ③ `reader._open()` 吞异常返回 false 而不判返回值 → 失败与空白无法区分；
+#   ④ 同步滚动的「布尔 guard + rAF」在窗口被遮挡时永久卡死（compare.js 实踩）；
+#   ⑤ 预览 scrollMode 落到 3（单页）→ 两栏都不能滚，用户只看到第一页。
+PD_MOD = os.path.join(ROOT, "chrome", "content", "scripts", "features", "pdf-dual.js")
+PD_XHTML = os.path.join(ROOT, "chrome", "content", "pdf-dual.xhtml")
+PD_VIEW = os.path.join(ROOT, "chrome", "content", "pdf-dual-view.js")
+pd_mod = io.open(PD_MOD, encoding="utf-8").read() if os.path.exists(PD_MOD) else ""
+pd_xhtml = io.open(PD_XHTML, encoding="utf-8").read() if os.path.exists(PD_XHTML) else ""
+pd_view = io.open(PD_VIEW, encoding="utf-8").read() if os.path.exists(PD_VIEW) else ""
+
+ok(os.path.exists(PD_MOD) and os.path.exists(PD_XHTML) and os.path.exists(PD_VIEW),
+   "28.1 三件套齐全（pdf-dual.js / pdf-dual.xhtml / pdf-dual-view.js）")
+ok('"features/pdf-dual.js"' in mainjs, "28.2 main.js 装配清单含 features/pdf-dual.js")
+_mj3 = mainjs.split("\n")
+
+
+def _mj3_line(marker):
+    for i, l in enumerate(_mj3):
+        if marker in l:
+            return i
+    return -1
+
+
+ok(0 <= _mj3_line('"features/pdf-inline.js"') < _mj3_line('"features/pdf-dual.js"'),
+   "28.3 ★ 装配序：PdfDual 在内核 pdf-inline.js 之后（右栏复用其 attach）")
+ok("this.pdfDual = PdfDual;" in mainjs, "28.4 main.js 把 PdfDual 挂到 Zotero.PaperPilot")
+ok("this.pdfDual.selfTest()" in mainjs and "pdfDualSelfTest" in prefsdef,
+   "28.5 自检开关（真实 PDF 上验左右 pane 挂载与右栏落卡）")
+
+# 窗口骨架与元素守卫
+ok('windowtype="paperpilot:pdf-dual"' in pd_xhtml, "28.6 窗口 windowtype=paperpilot:pdf-dual")
+ok("chrome://paperpilot/content/pdf-dual-view.js" in pd_xhtml, "28.7 窗口挂了窗口脚本")
+ok('id="pp-pd-left-browser"' in pd_xhtml and 'id="pp-pd-right-browser"' in pd_xhtml,
+   "28.8 ★ 左右各一个 reader browser（左原版 / 右译文）")
+ok('class="reader"' in pd_xhtml and "<splitter" in pd_xhtml,
+   "28.9 browser 用宿主 reader 类 + 分隔条（可拖拽分栏）")
+_pd_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', pd_xhtml))
+_pd_refs = set(re.findall(r'\$\(\s*"([A-Za-z0-9_-]+)"\s*\)', pd_view))
+_pd_missing = sorted(i for i in _pd_refs if i not in _pd_ids)
+ok(not _pd_missing, "28.10 窗口脚本引用的元素 id 都存在于 pdf-dual.xhtml → 缺失: %s" % (_pd_missing or "无"))
+
+# 窗口脚本纪律：不直连 AI/网络，翻译经注入回调
+pd_code = re.sub(r"/\*[\s\S]*?\*/", "", pd_view)
+pd_code = re.sub(r"(?m)//.*$", "", pd_code)
+ok(not re.search(r"AIClient\s*\.|\bAIChat\b|TranslateSvc\s*\.|Zotero\.HTTP|fetch\s*\(", pd_code),
+   "28.11 ★ 窗口脚本不直连 AI/翻译/网络（一律回插件作用域）")
+for _cb in ["A.onPanesReady(", "A.exportNote(", "A.setFontScale(", "A.retranslate(", "A.onUnload("]:
+    ok(_cb in pd_view, "28.12 窗口经注入回调调用 %s" % _cb)
+for _cb in ["onPanesReady:", "exportNote:", "setFontScale:", "retranslate:", "onUnload:"]:
+    ok(_cb in pd_mod, "28.13 模块侧注入 %s" % _cb)
+
+# 复用内核：右栏 = 同一 PDF 的 mono 译文视图
+ok("PdfInline.attach(" in pd_mod, "28.14 ★ 右栏复用内核 PdfInline.attach（不重造提取/翻译）")
+ok("mode: this._rightMode()" in pd_mod and '"mono"' in pd_mod,
+   "28.15 右栏默认 mono（译文替换原文文字、图表与公式保留）")
+ok("PdfInline._textCache" in pd_mod and "PdfInline.refresh()" in pd_mod,
+   "28.16 重新翻译 = 清内核缓存 + 重铺")
+ok("BilingualTranslate._noteMd(" in pd_mod, "28.17 导出笔记复用 _noteMd（格式零漂移）")
+
+# 预览挂载的三条硬约束（compare.js 结论）
+ok("typeof uw.createReader === \"function\"" in pd_view,
+   "28.18 ★ 就绪判据 = createReader 是函数（不看 readyState，about:blank 会骗人）")
+ok("opened === false" in pd_view, "28.19 ★ 判 reader._open() 返回值（它吞异常后 return false）")
+ok("scrollMode = 0" in pd_view and "overflow:auto !important" in pd_view,
+   "28.20 ★ 强制连续垂直（scrollMode=0）+ 解禁 #viewerContainer 的 overflow")
+
+# 同步滚动：页 + 页内比例 + 待吞计数（禁用布尔 guard + rAF）
+ok("function currentPosition" in pd_view and "function gotoPosition" in pd_view,
+   "28.21 同步滚动按「页号 + 页内比例」定位（几何二分）")
+ok("pendingLeft" in pd_view and "pendingRight" in pd_view and "SYNC_GUARD_MS" in pd_view,
+   "28.22 ★ 待吞计数 guard + 兜底清零（不用布尔+rAF：窗口被遮挡时会永久卡死）")
+ok('addEventListener("scroll"' in pd_view, "28.23 两栏滚动双向联动")
+
+# 入口接线（四处）
+ok("PdfDual.openForSelected" in menus_js, "28.24 右键菜单指向 PdfDual")
+ok("pdfDual.openForSelected" in wb_js, "28.25 工作台 chip 指向 PdfDual")
+ok("pdfDual.openForSelected" in hub_js, "28.26 功能中心卡片指向 PdfDual")
+pane_js2 = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "panels", "translate-pane.js"),
+                   encoding="utf-8").read()
+ok("pdfDual.openForItem(" in pane_js2, "28.27 阅读器侧栏翻译面板指向 PdfDual")
+ok("WINDOW_TYPE: \"paperpilot:pdf-dual\"" in pd_mod and "getEnumerator(this.WINDOW_TYPE)" in pd_mod,
+   "28.28 单实例复用（按常量枚举，名字不会写歪）")
+
+# pref 默认值与设置面板
+for _k in ["pdfDualSyncScroll", "pdfDualSyncZoom", "pdfDualRightMode", "pdfDualSelfTest"]:
+    ok(("paperpilot.%s" % _k) in prefsdef, "28.29 prefs.js 含 %s 默认值" % _k)
+_utils_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "core", "utils.js"),
+                     encoding="utf-8").read()
+ok("menuPdfDual" in _utils_src and "pdSync" in _utils_src,
+   "28.31 文案表含 menuPdfDual 与窗口文案键（pd*）")
+ok("pdf-dual.test.js" in _pf3, "28.32 preflight 含左原右译窗口测试")
 
 
 print("=" * 60)

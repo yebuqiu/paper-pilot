@@ -43,6 +43,9 @@ var RefSources = {
     { id: "arxiv", label: "arXiv", hint: "预印本" },
     { id: "s2", label: "Semantic Scholar", hint: "引用量与开放获取 PDF" },
     { id: "pdf", label: "PDF 参考文献段", hint: "从本机 PDF 正文解析（中文文献的唯一兜底）", refsOnly: true },
+    // 知网：中文期刊/临床指南的参考文献表只有它最全，但**必须能访问知网**且可能触发风控，
+    // 所以默认关闭（defaultOff），由用户在来源里显式勾选。
+    { id: "cnki", label: "知网 CNKI", hint: "中文期刊/指南的参考文献表（实验性，需能访问知网且通常需过验证）", refsOnly: true, defaultOff: true },
   ],
 
   /** 可跑「联合检索」的源（排除只做参考文献段的 PDF） */
@@ -59,6 +62,7 @@ var RefSources = {
     "export.arxiv.org": 3000,
     "api.semanticscholar.org": 1100,
     "doi.org": 700,
+    "kns.cnki.net": 3000,
   },
 
   _cache: new Map(),      // url(+accept) -> { t, data, text }
@@ -550,8 +554,82 @@ var RefSources = {
     return out;
   },
 
-  /** Europe PMC 检索（并入联合检索：PubMed 全量镜像，命中率比 eutils 更宽） */
-  async europepmcSearch(query, limit) {
+  /**
+   * 从知网详情页 HTML 里抠出「参考文献」区块（容错，纯函数）。
+   * ★ 为什么不写精确 CSS 选择器：知网页面结构经常改，而「参考文献」这个标题与
+   *   区块边界是**语义稳定**的。所以只做两件事：定位标题 → 切到下一个章节标题为止；
+   *   剩下的交给已通过测试的题录解析（GB/T 7714 / 一行一条）。
+   * ★ 风控与登录页必须**显式识别**：否则用户只会看到「取不到参考文献」而不知道该去验证。
+   * @returns {{entries?:Array<string>, text?:string, reason?:string}}
+   */
+  extractReferencesFromCNKIHTML(html) {
+    const raw = String(html || "");
+    if (!raw) return { reason: "empty" };
+    if (/login\.cnki\.net|中国知网\s*-\s*登录|请先登录|机构登录/i.test(raw)) return { reason: "need_login" };
+    if (!/参考文献/.test(raw) && /(滑动验证|安全验证|验证码|verify-container|人机验证)/i.test(raw)) return { reason: "need_verify" };
+    const i = raw.indexOf("参考文献");
+    if (i < 0) return { reason: "no_section" };
+    const STOPS = ["引证文献", "二级参考文献", "共引文献", "同被引文献", "相似文献", "读者推荐",
+      "相关文献", "参考文献格式", "Abstract", "Keywords", "参考文献"];
+    let rest = raw.slice(i + 4);
+    let cut = rest.length;
+    for (const st of STOPS) {
+      const j = rest.indexOf(st);
+      if (j >= 0 && j < cut) cut = j;
+    }
+    let body = rest.slice(0, cut);
+    // 块级标签换成换行：知网的参考文献常是 <li>/<dd>/<tr>，直接去标签会把多条粘成一行
+    body = body.replace(/<\/(?:li|p|dd|dt|tr|div|h[1-6])>/gi, "\n")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">")
+      .replace(/[ \t\u00a0]+/g, " ")
+      .split(/\n/).map((x) => x.trim()).filter(Boolean).join("\n");
+    if (!body) return { reason: "no_section" };
+    return { entries: RefFormat.splitBibliographyEntries(body), text: body };
+  },
+
+  /**
+   * 知网参考文献（实验性；默认关闭，需用户在来源里显式勾选）。
+   * 中文期刊与临床指南的参考文献表几乎只有知网有，而它的开放接口都以 DOI 为准
+   * ——这就是「中文文献一条参考文献都抓不到」的根因。
+   * 借用仓库既有的 CNFetch 会话/检索/风控检测能力（不重复实现一套知网访问），
+   * 每一步失败都回报**可执行原因**：need_verify（去过滑块）/ need_login（需机构权限）/
+   * no_hit（知网没这篇）/ no_section（页面里没有参考文献区块）。
+   */
+  async cnkiReferenceList(ids) {
+    const out = { records: [], reason: "" };
+    if (typeof CNFetch === "undefined" || !CNFetch || typeof CNFetch._searchCNKI !== "function") {
+      out.reason = "no_cnki_api";
+      return out;
+    }
+    if (!ids || !ids.title) { out.reason = "no_title"; return out; }
+    try { if (CNFetch._seedCNKI) await CNFetch._seedCNKI(); } catch (e) { /* 无会话也能试 */ }
+    let found;
+    try { found = await CNFetch._searchCNKI(ids.title, ids.creator || ""); }
+    catch (e) { out.reason = "search_failed"; return out; }
+    if (!found) { out.reason = "search_failed"; return out; }
+    if (found.captcha) { out.reason = "need_verify"; out.captcha = found.captcha; return out; }
+    if (found.maybeBlocked) { out.reason = "maybe_blocked"; return out; }
+    const pick = (found.results || []).find((r) => CNFetch._isTitleMatch && CNFetch._isTitleMatch(r.articleTitle, ids.title));
+    if (!pick) { out.reason = "no_hit"; return out; }
+    const url = pick.url || (pick.filename
+      ? "https://kns.cnki.net/kcms/detail/detail.aspx?dbcode=" + encodeURIComponent(pick.dbname || "CJFD")
+        + "&filename=" + encodeURIComponent(pick.filename)
+      : "");
+    if (!url) { out.reason = "no_url"; return out; }
+    const page = await this._get(url, { accept: "text/html", ttl: 30 * 60 * 1000, timeout: 20000 });
+    if (!page.text) { out.reason = page.error || "fetch_failed"; return out; }
+    const ex = this.extractReferencesFromCNKIHTML(page.text);
+    if (ex.reason) { out.reason = ex.reason; return out; }
+    const recs = RefFormat.recordsFromBibliographyEntries(ex.entries, { source: "cnki", reason: "知网参考文献" });
+    out.records = recs;
+    out.url = url;
+    if (!recs.length) out.reason = "no_section";
+    return out;
+  },
+
+  /** Europe PMC 检索（并入联合检索：PubMed 全量镜像，命中率比 eutils 更宽） */  async europepmcSearch(query, limit) {
     const url = this.EUROPEPMC + "/search?query=" + encodeURIComponent(query)
       + "&format=json&resultType=core&pageSize=" + Math.max(1, Math.min(25, limit || 10));
     const j = await this._getJSON(url);
@@ -596,7 +674,8 @@ var RefSources = {
 
   _sel() {
     const v = String(Prefs.get("refImportSources", "") || "");
-    if (!v) return this.SOURCES.map((s) => s.id);
+    // 未配置时，defaultOff 的源（知网）**默认不启用**——它会走风控、可能要求过滑块
+    if (!v) return this.SOURCES.filter((s) => !s.defaultOff).map((s) => s.id);
     return v.split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean);
   },
 

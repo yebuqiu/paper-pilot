@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE window>
+<!-- PaperPilot PDF 对照翻译 · 左原右译双栏窗口（0.36.0）
+
+     布局：**左栏 = 原版 PDF 页面**（pdf.js 正常渲染，一个 reader 预览实例）；
+           **右栏 = 同一 PDF 的译文版页面**（同一个 PDF、同一缩放；原文文字被译文卡
+           按**原文段落坐标**原位替换，图表与公式图形原样保留）——两栏逐页、逐段位置对应。
+
+     为什么右栏也用同一个 PDF 而不是「另生成一份译文 PDF」：
+       ① 版面/分页/图形天然一致，不需要重排引擎（也不需要 Python/PDF 生成链）；
+       ② 坐标来自 pdf.js 已渲染的 textLayer（真实 rect），与缩放/DPR 解耦；
+       ③ 与左栏同缩放 + 同页高 ⇒ 同步滚动只需「页号 + 页内比例」映射，误差不累积。
+
+     分工（改代码前必读）：
+       · 本文件与 pdf-dual-view.js 只做：两个 browser 的 reader 预览挂载、就绪判定、
+         滚动/缩放同步、工具栏与状态显示。**不碰翻译**（窗口作用域没有 AIClient/AIChat/
+         TranslateSvc —— 一律经 window.arguments[0] 的回调回插件作用域执行）。
+       · 译文卡片的提取/翻译/注入由插件侧的 PdfInline 内核完成（右栏 = 它的 mono 模式）。
+
+     ⚠️ pdf.js 预览的三个坑（照 compare.js 的既有结论，勿重复踩）：
+       ① 预览打开后 scrollMode 会落到 3（单页模式）→「不能滚」，必须强制 0（连续垂直）；
+       ② ReaderPreview 把 #viewerContainer 设成 overflow:hidden → 必须注入 CSS 解禁；
+       ③ `reader._open()` 吞异常后 return false → 必须判返回值，否则失败与空白无法区分。 -->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="PaperPilot PDF 对照翻译（左原右译）"
+        windowtype="paperpilot:pdf-dual"
+        width="1440" height="900"
+        persist="screenX screenY width height sizemode">
+  <script src="chrome://paperpilot/content/pdf-dual-view.js"/>
+
+  <vbox flex="1" style="min-height:0;">
+    <!-- 工具栏 -->
+    <hbox id="pp-pd-toolbar" align="center"
+          style="gap:8px;padding:6px 8px;flex-wrap:wrap;
+                 border-bottom:1px solid var(--material-border,#ccc);
+                 background:var(--material-toolbar,#f6f6f6);">
+      <html:span id="pp-pd-title"
+                 style="flex:1;min-width:120px;font-size:12.5px;font-weight:700;
+                        color:var(--fill-primary,#222);overflow:hidden;
+                        text-overflow:ellipsis;white-space:nowrap;"></html:span>
+
+      <html:span style="width:1px;height:16px;background:var(--material-border,#ccc);"></html:span>
+
+      <html:label id="pp-pd-sync-label" class="pp-pd-check"
+                  style="display:inline-flex;align-items:center;gap:4px;font-size:12px;
+                         color:var(--fill-secondary,#555);white-space:nowrap;">
+        <html:input type="checkbox" id="pp-pd-sync"/>
+        <html:span id="pp-pd-sync-text"></html:span>
+      </html:label>
+
+      <html:span style="width:1px;height:16px;background:var(--material-border,#ccc);"></html:span>
+
+      <html:span id="pp-pd-font-label"
+                 style="font-size:12px;color:var(--fill-secondary,#555);white-space:nowrap;"></html:span>
+      <html:button id="pp-pd-font-dec" style="font-size:12px;padding:1px 9px;">A−</html:button>
+      <html:span id="pp-pd-font-val"
+                 style="font-size:12px;color:var(--fill-secondary,#666);min-width:34px;
+                        text-align:center;white-space:nowrap;"></html:span>
+      <html:button id="pp-pd-font-inc" style="font-size:12px;padding:1px 9px;">A+</html:button>
+
+      <html:span style="width:1px;height:16px;background:var(--material-border,#ccc);"></html:span>
+
+      <html:button id="pp-pd-retranslate" style="font-size:12px;padding:1px 9px;"></html:button>
+      <html:button id="pp-pd-note" style="font-size:12px;padding:1px 9px;"></html:button>
+      <html:button id="pp-pd-close" style="font-size:12px;padding:1px 9px;margin-left:auto;">✕</html:button>
+
+      <html:span id="pp-pd-count"
+                 style="font-size:12px;color:var(--fill-secondary,#666);min-width:62px;
+                        text-align:right;white-space:nowrap;"></html:span>
+    </hbox>
+
+    <!-- 进度条（3px） -->
+    <html:div id="pp-pd-progress"
+              style="flex:0 0 auto;height:3px;background:transparent;overflow:hidden;">
+      <html:div id="pp-pd-progress-bar"
+                style="height:100%;width:0;background:var(--color-accent,#2563eb);
+                       transition:width .2s ease;"></html:div>
+    </html:div>
+
+    <!-- 主体：左原版 PDF / 右译文版 PDF（各挂一个 reader 预览） -->
+    <hbox flex="1" style="min-height:0;">
+      <vbox id="pp-pd-left" flex="1" style="min-width:0;min-height:0;">
+        <!-- ★ browser 必须显式给 src（reader.html 不会自己加载）+ type=content；
+             否则 contentWindow.wrappedJSObject.createReader 永远不存在 → 预览一直不挂载
+             （compare.js 动态建 browser 时同样带这三个属性，0.36.0 首轮自检实踩） -->
+        <browser id="pp-pd-left-browser" class="reader"
+                 type="content" primary="true" transparent="transparent"
+                 src="resource://zotero/reader/reader.html" flex="1"
+                 style="min-width:0;min-height:0;"/>
+      </vbox>
+      <splitter id="pp-pd-splitter" resizebefore="closest" resizeafter="closest"/>
+      <vbox id="pp-pd-right" flex="1" style="min-width:0;min-height:0;">
+        <browser id="pp-pd-right-browser" class="reader"
+                 type="content" primary="true" transparent="transparent"
+                 src="resource://zotero/reader/reader.html" flex="1"
+                 style="min-width:0;min-height:0;"/>
+      </vbox>
+    </hbox>
+
+    <!-- 状态条 -->
+    <hbox align="center"
+          style="flex:0 0 auto;gap:8px;padding:3px 8px;
+                 border-top:1px solid var(--material-border,#ccc);
+                 background:var(--material-toolbar,#f6f6f6);">
+      <html:span id="pp-pd-status"
+                 style="flex:1;min-width:0;font-size:11.5px;
+                        color:var(--fill-secondary,#666);overflow:hidden;
+                        text-overflow:ellipsis;white-space:nowrap;"></html:span>
+    </hbox>
+  </vbox>
+</window>

@@ -514,6 +514,8 @@ var RefImport = {
       pmcid: pmcidm(pmcidM),
       arxivId: RefFormat.normArxiv(this._fieldOf(item, "archiveID")) || RefFormat.normArxiv(blob),
       title: this._fieldOf(item, "title"),
+      // 知网检索用「题名 + 作者」最准（只给题名容易撞同名文章）
+      creator: this._fieldOf(item, "firstCreator"),
     };
     function pmcidm(m) { return m ? m[1].toUpperCase() : ""; }
   },
@@ -556,6 +558,7 @@ var RefImport = {
     const perItem = [];
     const all = [];
     const pdfReasons = [];
+    const cnkiReasons = [];
     const want = (id) => !o.channels || o.channels.indexOf(id) >= 0;
 
     for (const item of list) {
@@ -579,6 +582,12 @@ var RefImport = {
         ["pdf", async () => {
           const r = await this.pdfReferenceList(item);
           pdfReasons.push(r.reason || "");
+          return r.records;
+        }],
+        // 知网：中文期刊/指南参考文献的最后一道门。默认不勾选（风控 + 需知网可达）
+        ["cnki", async () => {
+          const r = await RefSources.cnkiReferenceList(ids);
+          cnkiReasons.push(r.reason || "");
           return r.records;
         }],
       ];
@@ -636,9 +645,14 @@ var RefImport = {
     if (!records.length) {
       const hasId = perItem.some((p) => p.identifiers.doi || p.identifiers.pmid || p.identifiers.pmcid || p.identifiers.arxivId);
       const pdfTried = channelsUsed.indexOf("pdf") >= 0;
+      const cnkiTried = channelsUsed.indexOf("cnki") >= 0;
       const pdfNoText = pdfReasons.some((r) => r === "no_text" || r === "read_failed" || r === "no_fulltext_api");
       const pdfNoSection = pdfReasons.some((r) => r === "no_section");
       if (!hasId) diagnosis = "no_identifier";
+      // 用户显式勾了知网却被风控/权限挡住 → 告诉他去哪儿处理（比"没收录"有用得多）
+      else if (cnkiReasons.some((r) => r === "need_verify" || r === "maybe_blocked")) diagnosis = "cnki_verify";
+      else if (cnkiReasons.some((r) => r === "need_login")) diagnosis = "cnki_login";
+      else if (cnkiReasons.some((r) => r === "no_hit") && cnkiTried) diagnosis = "cnki_no_hit";
       else if (pdfTried && pdfNoText) diagnosis = "scanned_pdf";
       else if (pdfTried && pdfNoSection) diagnosis = "no_bib_section";
       else diagnosis = "not_indexed";
@@ -658,7 +672,7 @@ var RefImport = {
 
   /** 参考文献通道 id → 可用于「按标题定位」的检索源（pdf 不参与检索） */
   _channelsToSources(channels) {
-    const list = (channels || []).filter((c) => c !== "pdf");
+    const list = (channels || []).filter((c) => c !== "pdf" && c !== "cnki");
     return list.length ? list : RefSources.SEARCHABLE;
   },
 

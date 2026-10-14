@@ -34,11 +34,10 @@ var Menus = {
     { id: "collect-annot", group: "ai", labelKey: "menuCollectAnnot", run: () => Menus.annotationTask(false) },
     { id: "ai-annot", group: "ai", labelKey: "menuAiAnnot", run: () => Menus.annotationTask(true) },
     // 笔记与输出
-    { id: "bilingual-view", group: "notes", labelKey: "menuBilingualView",
-      run: () => BilingualTranslate.openViewerForSelected() },
-    // 0.34.0 PDF 原位对照翻译：译文按原文段落坐标叠加回原页（不动排版，非另开窗口）
-    { id: "pdf-inline", group: "notes", labelKey: "menuPdfInline",
-      run: () => PdfInline.startForSelected() },
+    // 0.36.0：主入口改为「左原右译」双栏窗口（左=原版 PDF 页面 / 右=同一页译文，
+    // 译文按原文段落坐标原位替换、图形与公式保留）。旧「文本双栏窗口」保留为备用出口。
+    { id: "bilingual-view", group: "notes", labelKey: "menuPdfDual",
+      run: () => PdfDual.openForSelected() },
     { id: "bilingual", group: "notes", labelKey: "menuBilingual",
       run: () => BilingualTranslate.runForSelected() },
     { id: "review", group: "notes", labelKey: "menuReview", run: () => ReviewGen.forSelected() },
@@ -402,12 +401,9 @@ var Menus = {
       () => SmartCleanup.run());
     // ---- 0.11.0 新增 ----
     popup.appendChild(this._xul(doc, "menuseparator"));
-    // 0.25.2：主入口改为左右双栏对照窗口；原「AI 双语笔记」保留（出口不变）
-    this._menuItem(doc, popup, "paperpilot-itemmenu-bilingual-view", "menuBilingualView",
-      () => BilingualTranslate.openViewerForSelected());
-    // 0.34.0：PDF 原位对照翻译（译文叠加在原页位置，保留原始排版）
-    this._menuItem(doc, popup, "paperpilot-itemmenu-pdf-inline", "menuPdfInline",
-      () => PdfInline.startForSelected());
+    // 0.25.2 引入双栏出口；0.36.0 主入口改为「左原 PDF / 右译文」的对照窗口
+    this._menuItem(doc, popup, "paperpilot-itemmenu-bilingual-view", "menuPdfDual",
+      () => PdfDual.openForSelected());
     this._menuItem(doc, popup, "paperpilot-itemmenu-bilingual", "menuBilingual",
       () => BilingualTranslate.runForSelected());
     this._menuItem(doc, popup, "paperpilot-itemmenu-review", "menuReview",

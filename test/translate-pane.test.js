@@ -136,7 +136,12 @@ const Zotero = {
       return { status: 200, response: hit.res, responseText: hit.text };
     },
   },
-  PaperPilot: { openHub: () => { calls.hub = (calls.hub || 0) + 1; }, _paneID: 'paperpilot-prefs' },
+  PaperPilot: {
+    openHub: () => { calls.hub = (calls.hub || 0) + 1; },
+    _paneID: 'paperpilot-prefs',
+    // 0.36.0：侧栏「双栏窗口」按钮改走左原右译窗口（PdfDual.openForItem）
+    pdfDual: { openForItem: (item) => { calls.twoCol++; calls.twoColItem = item && item.id; } },
+  },
   logError() {},
 };
 
@@ -177,7 +182,8 @@ sandbox.BilingualTranslate = {
   _chunkChars: () => 1200,
   _noteMd: (pairs) => pairs.map((p) => '> ' + p.src + '\n\n' + p.dst).join('\n\n---\n\n'),
   _targetLang: () => '中文',
-  openViewer: (item) => { calls.twoCol++; calls.twoColItem = item && item.id; },
+  // 旧「文本双栏」出口（0.36.0 起不再由侧栏按钮调用，保留桩以便回归）
+  openViewer: (item) => { calls.legacyTwoCol = item && item.id; },
 };
 // 桩：Notes（utils.js 已定义真实对象，这里只替换落笔记的动作）
 let noteArgs = null;

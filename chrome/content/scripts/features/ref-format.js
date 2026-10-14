@@ -174,7 +174,8 @@ var RefFormat = {
     if (this.looksLikeBibtex(raw)) { push("bibtex", raw); return out; }
 
     // 先挖超链接（保留给「链接」入口；DOI 链接同时也会被 DOI 规则吃掉）
-    for (const m of raw.match(/https?:\/\/[^\s<>"'）)】\]]+/gi) || []) push("url", m);
+    // URL 尾部常跟句读（"见 https://x.com/a, 2021."），不剥掉会把标点带进字段
+    for (const m of raw.match(/https?:\/\/[^\s<>"'）)】\]]+/gi) || []) push("url", m.replace(/[.,;:、，。；：]+$/, ""));
 
     for (const m of raw.match(/\b10\.\d{4,9}\/[^\s"'<>）)】\]]+/gi) || []) {
       push("doi", this.normDOI(m));
@@ -561,6 +562,12 @@ var RefFormat = {
         .map((x) => x.replace(/[,，;；\s]+$/, "").trim()).filter(Boolean);
       const ti = segs.findIndex((seg) => this._looksLikeTitle(seg));
       if (ti > 0) head = segs.slice(0, ti).join(" ");
+      else if (ti < 0) {
+        // 整串就是作者段（调用方已把题名切走，例如 GB/T 7714 解析）——
+        // 仅当它确实「像作者段」时才认，避免把一句标题当成人名。
+        const cand = str.replace(/[.。\s]+$/, "").trim();
+        if (this._looksLikeAuthors(cand) || /^[\u4e00-\u9fff]{2,4}(?:\s*[,，、]\s*[\u4e00-\u9fff]{2,4})*$/.test(cand)) head = cand;
+      }
     }
     head = head.replace(/[\s,;&，、]+$/, "").trim();
     if (!head) return [];
@@ -569,24 +576,38 @@ var RefFormat = {
       return head.split(/[,，、]/).map((x) => x.trim()).filter(Boolean).slice(0, cap)
         .map((n) => ({ family: "", given: "", literal: n }));
     }
-    const isInit = (t) => /^(?:[A-Z]\.?|[A-Z]{2,3})$/.test(t);
-    const toks = head.replace(/&/g, " ").split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean)
-      .filter((t) => !/^(?:and|et|al|jr|sr|ii|iii)$/i.test(t));
+    // ★ 先按逗号/& 切块，再判断每块是「新作者」还是「上一位的缩写」。
+    //   为什么不能直接按空白分词：PubMed/GB/T 形态是「姓 缩写, 姓 缩写」（块内是完整作者），
+    //   而倒装形态是「姓, 缩写缩写, 姓, 缩写」（缩写自成一块）。两种混在同一个串里，
+    //   只有保留逗号边界才能都认对——否则 "SMITH J, DOE A" 会被读成 SMITH 的名是 "J. DOE A."。
+    const initOnly = (piece) => {
+      const toks = piece.split(/\s+/).filter(Boolean);
+      if (!toks.length || toks.length > 2) return false;
+      return toks.every((t) => /^[A-Z]\.?$/.test(t)) || (toks.length === 1 && /^[A-Z]{2,3}$/.test(toks[0]));
+    };
+    const pieces = head.split(/\s*[,，;；]\s*|\s+&\s+|\s+and\s+/i)
+      .map((x) => x.trim()).filter(Boolean)
+      .filter((x) => !/^(?:and|et|al|jr|sr|ii|iii)$/i.test(x));
     const out = [];
-    let i = 0;
-    while (i < toks.length && out.length < cap) {
-      const fam = toks[i];
-      if (/^\d/.test(fam)) { i++; continue; }
-      let j = i + 1;
-      const inits = [];
-      while (j < toks.length && isInit(toks[j])) { inits.push(toks[j]); j++; }
-      if (inits.length) {
-        // 分段切分时会吃掉缩写后的点号（"Dubois, P. F." → 段尾 ". " 被分割符消耗），
-        // 这里补回来，否则作者名会写成 "P F" 而不是 "P. F."
-        const given = inits.map((x) => (/^[A-Z]$/.test(x) ? x + "." : x)).join(" ");
-        out.push({ family: fam, given, literal: "" });
-        i = j;
-      } else i++;
+    let pendingGiven = "";
+    for (const piece of pieces) {
+      if (out.length >= cap) break;
+      if (/^\d/.test(piece)) continue;
+      if (initOnly(piece)) {
+        // 缩写块：并到上一位作者的名上；若还没有作者，先暂存（名在前形态）
+        const g = piece.split(/\s+/).map((t) => (/^[A-Z]$/.test(t) ? t + "." : t)).join(" ");
+        if (out.length) {
+          const last = out[out.length - 1];
+          last.given = (last.given ? last.given + " " : "") + g;
+        } else {
+          pendingGiven = (pendingGiven ? pendingGiven + " " : "") + g;
+        }
+        continue;
+      }
+      const a = this.parseAuthorCompact(piece);
+      if (!a || !(a.family || a.literal)) continue;
+      if (pendingGiven && !a.literal && !a.given) { a.given = pendingGiven; pendingGiven = ""; }
+      out.push({ family: a.family || "", given: a.given || "", literal: a.literal || "" });
     }
     return out;
   },
@@ -674,10 +695,16 @@ var RefFormat = {
    *  这里要求 ① 优先取括号里的；② 否则取**被非数字包夹**且落在 1500–2099 的 4 位数。 */
   yearFromReference(s) {
     const str = String(s || "");
-    const inParen = str.match(/[([［]\s*(\d{4})[a-z]?\s*[)\]］]/);
-    if (inParen) return Number(inParen[1]);
+    const ok = (y) => y >= 1500 && y <= 2099;
+    // 括号优先，但**必须落年份区间**——"…Nature, 2017, 550(7676): …" 里 "(7676)" 是期号，
+    // 不校验区间就会把年份写成 7676（实踩）。
+    const inParen = str.match(/[([［]\s*(\d{4})[a-z]?\s*[)\]］]/g) || [];
+    for (const p of inParen) {
+      const y = Number((p.match(/\d{4}/) || [""])[0]);
+      if (ok(y)) return y;
+    }
     const m = str.match(/(?:^|[^\d])((?:1[5-9]|20)\d{2})(?![\d])/);
-    return m ? Number(m[1]) : null;
+    return m && ok(Number(m[1])) ? Number(m[1]) : null;
   },
 
   /* ================= 参考文献段（PDF 文本）解析 ================= */
@@ -746,10 +773,21 @@ var RefFormat = {
       const s = String(raw || "").trim();
       if (!s) continue;
       const ids = this.extractIdentifiers(s);
-      const rec = this.empty();
-      rec.source = [o.source || "pdf"];
-      rec.reasons = [o.reason || "PDF 参考文献段"];
-      rec.confidence = "low";
+      let rec = null;
+      // ① 带 GB/T 7714 类型码（[J]/[M]/[D]…）的中文题录走专用解析 —— 类型、卷期页、
+      //    出版社都能拿到，比通用「抠标题」准得多。这正是用户从知网复制参考文献的形态。
+      if (this.gbtTypeCode(s)) {
+        rec = this.parseChineseReference(s);
+        // ★ 格式是 GB/T，但**来源**由调用方决定（知网/PDF/粘贴）——混用会让「来源」徽章说错话
+        if (rec && o.source) { rec.source = [o.source]; rec.reasons = [o.reason || "GB/T 7714 题录"]; }
+      }
+      // ② 否则走通用题录解析
+      if (!rec) {
+        rec = this.empty();
+        rec.source = [o.source || "pdf"];
+        rec.reasons = [o.reason || "PDF 参考文献段"];
+        rec.confidence = "low";
+      }
       const hard = ids.filter((x) => x.kind !== "title" && x.kind !== "url");
       for (const x of hard) {
         if (x.kind === "doi" && !rec.doi) rec.doi = this.normDOI(x.value);
@@ -758,16 +796,149 @@ var RefFormat = {
         else if (x.kind === "arxiv" && !rec.arxivId) rec.arxivId = this.normArxiv(x.value);
         else if (x.kind === "isbn" && !rec.isbn) rec.isbn = this.normIsbn(x.value);
       }
-      const title = this.titleFromUnstructured(s);
-      if (title) rec.title = title;
-      else if (!rec.doi && !rec.pmid && !rec.arxivId) continue; // 既无标识符又抽不出标题 → 丢弃（不制造噪声）
-      rec.year = this.yearFromReference(s);
+      if (!rec.title) {
+        const title = this.titleFromUnstructured(s);
+        if (title) rec.title = title;
+        else if (!rec.doi && !rec.pmid && !rec.arxivId) continue; // 既无标识符又抽不出标题 → 丢弃（不制造噪声）
+      }
+      if (!rec.year) {
+        rec.year = this.yearFromReference(s);
+        if (rec.year) rec.date = rec.date || String(rec.year);
+      }
       if (!rec.title) rec.title = String(s).slice(0, 200); // 有标识符时用原文兜底展示
-      rec.raw = s;
+      rec.raw = rec.raw || s;
       const key = this.recKey(rec) || this.normTitle(rec.title);
       if (key && seen.has(key)) continue;
       if (key) seen.add(key);
       out.push(rec);
+    }
+    return out;
+  },
+
+  /* ================= 中文题录（GB/T 7714）================= */
+
+  /** 文献类型标识 → Zotero 条目类型。
+   *  知网/万方「参考文献」列表复制出来的就是这套格式，类型码是**最可靠的类型判据**
+   *  （比按刊名猜类型准得多）。 */
+  GBT_TYPES: {
+    J: "journalArticle", M: "book", C: "conferencePaper", G: "document",
+    D: "thesis", R: "report", S: "report", N: "newspaperArticle",
+    P: "patent", DB: "dataset", CP: "conferencePaper", EB: "webpage",
+    A: "journalArticle", Z: "document",
+  },
+
+  /** GB/T 7714 类型码（[J] / [J/OL] / [EB/OL] / [M] …）；找不到返回 null */
+  gbtTypeCode(s) {
+    const m = String(s || "").match(/\[\s*([A-Z]{1,3})\s*(?:\/\s*([A-Z]{2})\s*)?\]/);
+    return m ? { code: m[1].toUpperCase(), carrier: (m[2] || "").toUpperCase(), index: m.index, raw: m[0] } : null;
+  },
+
+  /**
+   * 解析一条 GB/T 7714 题录（中文参考文献列表的单条）。
+   * 形如（实测/标准样例）：
+   *   [1] 张伟, 李娜. 抽动障碍的中医证候分布规律研究[J]. 中医杂志, 2020, 61(3): 12-16.
+   *   [2] 陈明. 小儿抽动障碍辨治经验[J/OL]. 中医杂志, 2018, 59(4): 300-303.
+   *   [3] 王五. 中医儿科学[M]. 北京: 人民卫生出版社, 2015: 88-90.
+   *   [4] 李四. 抽动障碍中医证候研究[D]. 北京: 北京中医药大学, 2019.
+   *   [5] SMITH J, DOE A. Attention is all you need[J]. Nature, 2017, 550(7676): 354-358.
+   *   [6] 国家中医药管理局. 中医儿科临床诊疗指南·儿童多动症(修订)[S]. 2020.
+   * 返回 rec 或 null（不是 GBT 格式就别用它，交给通用题录解析）。
+   */
+  parseChineseReference(s) {
+    let text = String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+    // 去序号：[1] / 1. / １.
+    text = text.replace(/^\s*[\[［【]?\s*\d{1,4}\s*[\]］】]?\s*[.、]?\s*/, "").trim();
+    const t = this.gbtTypeCode(text);
+    if (!t) return null;
+    const code = /^(EB|DB|CP)$/.test(t.code) ? (t.code === "EB" ? "EB" : t.code) : t.code;
+    const before = text.slice(0, t.index).trim();
+    const after = text.slice(t.index + t.raw.length).replace(/^[.。:：\s]+/, "").trim();
+    if (!before) return null;
+
+    const rec = this.empty();
+    rec.source = ["gbt"];
+    rec.reasons = ["GB/T 7714 题录"];
+    rec.confidence = "medium";
+    rec.itemType = this.GBT_TYPES[code] || "journalArticle";
+    rec.raw = String(s || "").trim();
+
+    // 题名切分：取**最后一个「句点 + 空白」**处切开，右侧即题名（左侧是作者段）。
+    // ★ 必须要求句点后跟空白：缩写like "U.S. economy" 的句点后面没有空白，
+    //   按任意句点切会把英文标题切碎（实踩）；中文题录始终是「姓名. 题名」带空格。
+    let title = "", authorsText = "";
+    const cuts = [];
+    for (let i = 0; i < before.length - 1; i++) {
+      if ((before[i] === "." || before[i] === "。") && /\s/.test(before[i + 1])) cuts.push(i);
+    }
+    for (const i of cuts.reverse()) {
+      const rest = before.slice(i + 1).trim();
+      if (rest.length >= 4) { title = rest; authorsText = before.slice(0, i).trim(); break; }
+    }
+    if (!title) { title = before.trim(); authorsText = ""; }
+    rec.title = title.replace(/[.,;:，。；：]\s*$/, "").trim();
+    if (authorsText) rec.authors = this.authorsFromReferenceString(authorsText, 20);
+
+    // 出处：年份 / 卷(期) / 页码 / 刊名或出版社
+    const src = this.parseGBTSource(after, rec.itemType);
+    rec.container = src.container;
+    rec.volume = src.volume;
+    rec.issue = src.issue;
+    rec.pages = src.pages;
+    rec.publisher = src.publisher;
+    rec.place = src.place;
+    rec.year = src.year;
+    if (rec.year) rec.date = rec.date || String(rec.year);
+    // 文中自带的 DOI/URL 顺手取出来（"…[J]. 期刊, 2020. DOI:10.1/x." 这种）
+    const ids = this.extractIdentifiers(after + " " + before);
+    for (const x of ids) {
+      if (x.kind === "doi" && !rec.doi) rec.doi = this.normDOI(x.value);
+      else if (x.kind === "pmid" && !rec.pmid) rec.pmid = this.normPmid(x.value);
+      else if (x.kind === "arxiv" && !rec.arxivId) rec.arxivId = this.normArxiv(x.value);
+      else if (x.kind === "url" && !rec.url) rec.url = x.value;
+    }
+    if (rec.itemType === "journalArticle" && !rec.container && !rec.volume && !rec.pages && !rec.doi) {
+      rec.confidence = "low";
+    }
+    return this.isBlank(rec) ? null : rec;
+  },
+
+  /** GB/T 7714 的「出处」段 → {container, volume, issue, pages, publisher, place, year} */
+  parseGBTSource(after, itemType) {
+    const out = { container: "", volume: "", issue: "", pages: "", publisher: "", place: "", year: null };
+    let s = String(after || "").replace(/[.。]\s*$/, "").trim();
+    if (!s) return out;
+    // 去掉尾部的中图分类号/文献标识等尾巴
+    s = s.replace(/\s*(?:DOI|doi)\s*[:：]\s*10\.[^\s]*/, (m) => " " + m).trim();
+    out.year = this.yearFromReference(s);
+    // 页码：最后一个冒号后的数字串（"12-16" / "88-90" / "e12345"）
+    const pm = s.match(/[:：]\s*([A-Za-z]?\d+(?:\s*[-–—~]\s*\d+)?)\s*$/);
+    if (pm) out.pages = pm[1].replace(/\s*[-–—~]\s*/, "-");
+    // 卷(期) / (期)
+    const vi = s.match(/(\d+)\s*[（(]\s*(\d+)\s*[）)]/);
+    const ionly = s.match(/[（(]\s*(\d+)\s*[）)]/);
+    if (vi) { out.volume = vi[1]; out.issue = vi[2]; }
+    else if (ionly) out.issue = ionly[1];
+    // 按 ", " / "：" 切段：[刊名/地点, 出版社, 年, 卷(期): 页]
+    const parts = s.split(/[,，]/).map((x) => x.replace(/[.。]\s*$/, "").trim()).filter(Boolean);
+    if (itemType === "book" || itemType === "thesis" || itemType === "report") {
+      // "北京: 人民卫生出版社, 2015: 88-90" → 地点: 出版社
+      const first = parts[0] || "";
+      const colon = first.split(/[:：]/);
+      if (colon.length >= 2) {
+        out.place = colon[0].trim();
+        out.publisher = colon.slice(1).join(":").replace(/\s*[:：]\s*[\d-]*\s*$/, "").trim();
+      } else {
+        out.publisher = first;
+      }
+      const rest = parts.slice(1).join(" ");
+      const rest2 = rest.split(/[:：]/)[0] || "";
+      if (!out.publisher && rest2) out.publisher = rest2.replace(/\d{4}.*$/, "").trim();
+      // 去掉误并进来的年份/页码
+      out.publisher = out.publisher.replace(/\s*\d{4}\s*.*$/, "").replace(/\s*[:：]\s*[\d-]+\s*$/, "").trim();
+    } else {
+      out.container = (parts[0] || "").replace(/\s*[:：]\s*[\d-]+\s*$/, "").trim();
+      // 刊名里带年份的情况（"中医杂志 2020 年第 61 卷" 之类）→ 剥掉尾部数字
+      out.container = out.container.replace(/\s+\d{4}\s*$/, "").trim();
     }
     return out;
   },

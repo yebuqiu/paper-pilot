@@ -183,7 +183,14 @@ var PdfInline = (function () {
 
   function mode() {
     const v = String((() => { try { return Prefs.get(PREF_MODE, "off"); } catch (e) { return "off"; } })() || "off");
-    return (v === "overlay" || v === "bilingual") ? v : "off";
+    return (v === "overlay" || v === "bilingual" || v === "mono") ? v : "off";
+  }
+
+  /** 生效模式：state 自带（PdfDual 右栏用 mono）优先，否则读 pref */
+  function stateMode(state) {
+    const m = state && state.mode;
+    if (m === "overlay" || m === "bilingual" || m === "mono") return m;
+    return mode();
   }
   function fontScale() {
     const n = Number((() => { try { return Prefs.get(PREF_SCALE, "1"); } catch (e) { return 1; } })());
@@ -214,11 +221,14 @@ var PdfInline = (function () {
 
   /* ==================== 样式（注入 viewer 文档） ==================== */
 
-  function ensureStyle(doc) {
-    if (doc.getElementById(STYLE_ID)) return;
+  function ensureStyle(doc, m) {
+    // 换模式要重建样式（原文淡化/隐藏的规则不同）
+    const old = doc.getElementById(STYLE_ID);
+    if (old) {
+      try { old.remove(); } catch (e) { /* ignore */ }
+    }
     const st = doc.createElementNS(HTML_NS, "style");
     st.id = STYLE_ID;
-    const m = mode();
     st.textContent = [
       "." + LAYER_CLS + "{position:absolute;inset:0;pointer-events:none;z-index:4;}",
       "." + CARD_CLS + "{position:absolute;box-sizing:border-box;overflow:hidden;",
@@ -226,15 +236,17 @@ var PdfInline = (function () {
       "  line-height:1.28;color:var(--fill-primary,#111);",
       "  background:var(--material-background,#fff);",
       "  -moz-window-dragging:no-drag;}",
-      // overlay：译文不透明盖住原文；bilingual：半透明，原文仍清晰可读
+      // overlay：译文不透明盖住原文；bilingual：半透明，原文仍清晰可读；mono：纯译文版页面
       "." + CARD_CLS + ".pp-pit-ov{box-shadow:0 0 0 .5px rgba(127,127,127,.35);}",
       "." + CARD_CLS + ".pp-pit-bi{background:color-mix(in srgb, var(--material-background,#fff) 82%, transparent);",
       "  box-shadow:0 0 0 .5px rgba(127,127,127,.22);}",
+      "." + CARD_CLS + ".pp-pit-mo{box-shadow:none;}",
       "." + CARD_CLS + ".pp-pit-pending{color:var(--fill-tertiary,#999);}",
       "." + CARD_CLS + ".pp-pit-fail{color:#c0392b;}",
       "." + SRC_CLS + "{transition:opacity .12s linear;}",
-      // 原文淡显只在 overlay 模式生效（bilingual 要保留完整原文）
+      // 原文处理：overlay 淡显 / mono 完全隐藏（右栏就是「译文版 PDF」，图形与公式保留）
       (m === "overlay" ? ".textLayer ." + SRC_CLS + "{opacity:.18;}\n" : ""),
+      (m === "mono" ? ".textLayer ." + SRC_CLS + "{opacity:0 !important;}\n" : ""),
       "." + LAYER_CLS + (selectable() ? "{pointer-events:auto;}" : "{}"),
     ].join("");
     (doc.head || doc.documentElement).appendChild(st);
@@ -320,7 +332,7 @@ var PdfInline = (function () {
   }
 
   /** 在页元素内注入译文层并渲染各段卡片 */
-  function renderBlocks(pageEl, blocks, doc) {
+  function renderBlocks(pageEl, blocks, doc, m) {
     clearPage(pageEl);
     if (!blocks || !blocks.length) return;
     const layer = doc.createElementNS(HTML_NS, "div");
@@ -328,7 +340,7 @@ var PdfInline = (function () {
     for (const b of blocks) {
       if (b.kind === "formula") continue;      // 公式保持原样，不叠加
       const card = doc.createElementNS(HTML_NS, "div");
-      const cls = CARD_CLS + (mode() === "bilingual" ? " pp-pit-bi" : " pp-pit-ov");
+      const cls = CARD_CLS + (m === "bilingual" ? " pp-pit-bi" : (m === "mono" ? " pp-pit-mo" : " pp-pit-ov"));
       card.setAttribute("class", cls + (b.dst == null ? " pp-pit-pending" : ""));
       card.setAttribute("data-pp-pit", "1");
       const pad = 2;
@@ -459,7 +471,7 @@ var PdfInline = (function () {
     }
   }
 
-  function paintBlock(b) {
+  function paintBlock(b, m) {
     const card = b.cardEl;
     if (!card) return;
     if (b.failed) {
@@ -467,7 +479,7 @@ var PdfInline = (function () {
       card.textContent = (I18n && I18n.isZh ? "翻译失败：" : "Failed: ") + String(b.failed).slice(0, 60);
       return;
     }
-    card.setAttribute("class", CARD_CLS + (mode() === "bilingual" ? " pp-pit-bi" : " pp-pit-ov"));
+    card.setAttribute("class", CARD_CLS + (m === "bilingual" ? " pp-pit-bi" : (m === "mono" ? " pp-pit-mo" : " pp-pit-ov")));
     card.textContent = b.dst == null ? "" : b.dst;
     try {
       const bh = parseFloat(card.style.minHeight || "0") || 0;
@@ -491,6 +503,10 @@ var PdfInline = (function () {
     }
     state.blockCount = total;
     state.doneCount = done;
+    if (state.onProgress) {
+      try { state.onProgress({ total, done, running: !!(state.queue && state.queue.running) }); }
+      catch (e) { /* 回调失败不影响翻译 */ }
+    }
   }
 
   async function processPage(state, pageEl) {
@@ -511,21 +527,22 @@ var PdfInline = (function () {
       return;
     }
     state.pages.set(pageNum, { sig });
+    const sm = stateMode(state);
     // 坐标可能已变（缩放）：旧层作废重建；原文标记一并重刷
     clearPage(pageEl);
-    markSourceSpans(pageEl, mode() === "overlay");
-    renderBlocks(pageEl, blocks, state.doc);
+    markSourceSpans(pageEl, sm === "overlay" || sm === "mono");
+    renderBlocks(pageEl, blocks, state.doc, sm);
     state.pageBlocks.set(pageNum, blocks);
     recount(state);
     updateButton(state);
     for (const b of blocks) {
       if (b.kind === "formula") continue;
       const hit = textCache.get(cacheKey(b.text));
-      if (hit !== undefined) { b.dst = hit; paintBlock(b); recount(state); continue; }
+      if (hit !== undefined) { b.dst = hit; paintBlock(b, sm); recount(state); continue; }
       enqueue(state, async () => {
         if (state.stopped) return;
         await translateBlock(state, b);
-        if (!state.stopped) paintBlock(b);
+        if (!state.stopped) paintBlock(b, stateMode(state));
         recount(state);
         updateButton(state);
       });
@@ -614,13 +631,14 @@ var PdfInline = (function () {
   }
 
   /** 开始（幂等）：注入样式 + 扫描已渲染页 + 挂事件与轮询兜底 */
-  function start(reader) {
+  function start(reader, opts) {
     const state = ensureState(reader);
     if (!state) return false;
-    if (mode() === "off") {
-      setPref(PREF_MODE, "overlay");
-    }
-    ensureStyle(state.doc);
+    const o = opts || {};
+    if (o.mode) state.mode = o.mode;                       // 调用方指定（PdfDual 右栏 = mono）
+    if (!state.mode && mode() === "off") setPref(PREF_MODE, "overlay");
+    if (o.onProgress) state.onProgress = o.onProgress;
+    ensureStyle(state.doc, stateMode(state));
     state.stopped = false;
     state.active = true;
     bindBus(state);
@@ -686,7 +704,9 @@ var PdfInline = (function () {
     state.noTextPages = [];
     recount(state);
     for (const pageEl of pageEls(state.doc)) markSourceSpans(pageEl, false);
-    if (mode() !== "off" && (!opts || opts.keepPref !== true)) setPref(PREF_MODE, "off");
+    if (!state.mode && mode() !== "off" && (!opts || opts.keepPref !== true)) setPref(PREF_MODE, "off");
+    state.mode = null;
+    state.onProgress = null;
     updateButton(state);
   }
 
@@ -897,17 +917,12 @@ var PdfInline = (function () {
     return startForItem(item);
   }
 
+  /** 0.36.0：**不再注入阅读器工具栏按钮**。
+   *  用户明确要的是「左原 PDF / 右译文」的双栏对照（见 PdfDual），页内叠加（overlay/mono）
+   *  降级为**内核能力**：由 PdfDual 的右栏复用（mono = 译文版页面）。
+   *  这里只保留 pluginID 记录与清理钩子，不再调 registerEventListener。 */
   function register(pluginID) {
-    if (_handler) return;
     _pluginID = pluginID || "paperpilot@dev.local";
-    if (!Zotero.Reader || typeof Zotero.Reader.registerEventListener !== "function") return;
-    _handler = (event) => onRenderToolbar(event);
-    try {
-      Zotero.Reader.registerEventListener("renderToolbar", _handler, _pluginID);
-    } catch (e) {
-      _handler = null;
-      try { Zotero.logError(e); } catch (_) { /* ignore */ }
-    }
   }
 
   function unregister() {
@@ -932,16 +947,17 @@ var PdfInline = (function () {
   function refresh() {
     for (const [reader, state] of states) {
       try {
-        if (mode() === "off") { stop(reader, { keepPref: true }); continue; }
+        const sm = stateMode(state);
+        if (!state.mode && sm === "off") { stop(reader, { keepPref: true }); continue; }
         if (!state.active) continue;
         removeStyle(state.doc);
-        ensureStyle(state.doc);
+        ensureStyle(state.doc, sm);
         clearAll(state);
         state.pages.clear();
         state.pageBlocks.clear();
         recount(state);
         for (const pageEl of pageEls(state.doc)) {
-          markSourceSpans(pageEl, mode() === "overlay");
+          markSourceSpans(pageEl, sm === "overlay" || sm === "mono");
           try { processPage(state, pageEl); } catch (e) { /* ignore */ }
         }
       } catch (e) { /* ignore */ }
@@ -1069,6 +1085,8 @@ var PdfInline = (function () {
     groupSpans, linesToBlocks, fitFontSize,
     // 运行时
     register, unregister, start, stop, startForItem, startForSelected, refresh, snapshot, selfTest,
+    // 0.36.0：供 PdfDual 复用（右栏 = 同一 PDF 的 mono 译文视图）
+    attach: start, extractBlocks, stateMode,
     // 供测试/排障读取内部状态
     _states: states, _textCache: textCache,
     _mode: mode, _fontScale: fontScale,

@@ -125,9 +125,13 @@ Zotero.PaperPilot = {
       "features/pdf-theme.js",
       // 0.25.1 主题切换按钮：界面主题（主窗口左上角）+ PDF 阅读主题（阅读器工具栏），二者分开
       "features/theme-toggle.js",
-      // 0.34.0 PDF 原位对照翻译：读 pdf.js textLayer 坐标 → 译文按段叠加回原页位置。
-      // 依赖 ai/pdf-text.js（viewerOf/classify 单一真源）与 ai/translate.js，故排在其后
+      // 0.34.0 PDF 页内叠加内核：读 pdf.js textLayer 坐标 → 译文按段叠加回原页位置。
+      // 依赖 ai/pdf-text.js（viewerOf/classify 单一真源）与 ai/translate.js，故排在其后。
+      // 0.36.0 起它降级为**内核**（不再注入阅读器工具栏），仍被下列模块复用。
       "features/pdf-inline.js",
+      // 0.36.0 PDF 对照翻译（左原右译双栏窗口）：右栏 = 同一 PDF 的 mono 译文视图，
+      // 复用 PdfInline 内核做提取/翻译/注入 → 必须排在 pdf-inline.js 之后
+      "features/pdf-dual.js",
       "columns/rank-column.js",
       "columns/citation-column.js",
       "panels/ai-chat-pane.js",
@@ -237,8 +241,10 @@ Zotero.PaperPilot = {
     this.pdfTheme = PdfTheme;
     // 0.25.1 主题切换按钮：界面主题（主窗口）+ PDF 阅读主题（阅读器）
     this.themeToggle = ThemeToggle;
-    // 0.34.0 PDF 原位对照翻译（阅读器工具栏按钮 + 菜单入口经此调起）
+    // 0.34.0/0.36.0 PDF 页内叠加内核（PdfDual 右栏经此复用；设置面板读它就绪状态）
     this.pdfInline = PdfInline;
+    // 0.36.0 PDF 对照翻译（左原右译双栏窗口；菜单/工作台/功能中心/翻译面板经此调起）
+    this.pdfDual = PdfDual;
     // 0.21.0 多篇 PDF 并排对比（菜单/功能中心经此调起；窗口脚本经 window.arguments 拿引用）
     this.pdfCompare = PdfCompare;
 
@@ -533,6 +539,19 @@ Zotero.PaperPilot = {
         await this._diag("pdfInline self-test scheduled");
       } catch (e) {
         await this._diag("pdfInline self-test FAILED: " + (e && (e.stack || e.message) || e));
+      }
+    }
+
+    // 0.36.0：左原右译双栏自检（pref pdfDualSelfTest，默认关）——真实 PDF 上验
+    // 「两个 pane 是否挂上、右栏段落/卡片数、同步滚动位置」，结果写进 boot 日志
+    if (Prefs.get("pdfDualSelfTest", false)) {
+      try {
+        this.pdfDual.selfTest()
+          .then((r) => this._diag("pdfDual selfTest: " + JSON.stringify(r)))
+          .catch((e) => this._diag("pdfDual selfTest rejected: " + (e && e.message)));
+        await this._diag("pdfDual self-test scheduled");
+      } catch (e) {
+        await this._diag("pdfDual self-test FAILED: " + (e && (e.stack || e.message) || e));
       }
     }
 

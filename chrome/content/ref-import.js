@@ -348,7 +348,7 @@
   /** 各来源命中数 → 一行可读文本（用户据此判断「为什么少了几条」） */
   function channelText(channels, merged, truncated) {
     const map = channels || {};
-    const names = { s2: "S2", crossref: "Crossref", openalex: "OpenAlex", europepmc: "EuropePMC", pdf: "PDF" };
+    const names = { s2: "S2", crossref: "Crossref", openalex: "OpenAlex", europepmc: "EuropePMC", pdf: "PDF", cnki: "知网" };
     const parts = Object.keys(names).filter((k) => map[k] != null).map((k) => names[k] + " " + map[k]);
     let s = parts.join(" · ");
     if (merged) s += (zh ? " ｜ 去重合并 " : " | merged ") + merged;
@@ -363,13 +363,19 @@
       no_identifier: "取不到参考文献列表：该条目没有 DOI/PMID，标题也没在任何在线库匹配上，无法定位它的参考文献表。建议先用「元数据治理 → 抓取中文元数据（知网）」把题录补全，或把题录粘贴到上面用「联合检索 / 解析」直接入库。",
       scanned_pdf: "取不到参考文献列表：在线库里查不到这篇文献，且本机 PDF 是**扫描件（无文本层）**，无法解析参考文献段。建议先对 PDF 做 OCR，或换一份可复制文本的版本。",
       no_bib_section: "取不到参考文献列表：本机 PDF 里没有找到「参考文献」段落（可能是标题写法特殊，或参考文献放在附录中）。",
-      not_indexed: "取不到参考文献列表：几个在线库都没有收录这篇文献、或未公开它的参考文献表（中文期刊/临床指南很常见）。可以试试把参考文献题录粘贴到上面用「联合检索 / 解析」。",
+      not_indexed: "取不到参考文献列表：几个在线库都没有收录这篇文献、或未公开它的参考文献表（中文期刊/临床指南很常见）。两条推荐路径：① 勾选「知网 CNKI」来源再试一次；② 把知网的参考文献题录粘贴到上面用「联合检索 / 解析」（支持 GB/T 7714 格式，会自动填类型/卷期页）。",
+      cnki_verify: "知网触发了风控（需要过一次滑块验证）。请在主窗口 工具 → PaperPilot → 知网验证 里完成验证（验证通过会自动续抓），然后回到这里再点一次「从当前文献导入参考文献」。",
+      cnki_login: "知网详情页要求机构/个人登录才能看到参考文献。请先在浏览器里登录知网（Zotero 与浏览器共享登录态），或改用「粘贴题录」这条路。",
+      cnki_no_hit: "知网里没搜到这篇文献（可能是题名与库中不一致）。可以先把条目题名补全，或直接把知网上的参考文献题录粘贴到上面。",
     };
     const enTxt = {
       no_identifier: "No references: this item has no DOI/PMID and its title didn't match any online record, so its reference list can't be located. Fill in the metadata (CNKI metadata tool) or paste the reference list above.",
       scanned_pdf: "No references: the paper isn't indexed online and the local PDF is a scan (no text layer). OCR the PDF or use a text-based copy.",
       no_bib_section: "No references: no bibliography section found in the local PDF.",
-      not_indexed: "No references: none of the online databases index this paper or expose its reference list. Paste the reference entries above and use Search/Resolve instead.",
+      not_indexed: "No references: none of the online databases index this paper or expose its reference list. Either enable the CNKI source and retry, or paste the reference entries above (GB/T 7714 is supported).",
+      cnki_verify: "CNKI triggered its risk control (slider verification needed). Run the CNKI verification from the main window's Tools menu, then retry.",
+      cnki_login: "CNKI requires an institutional/personal login to show the reference list. Log in to CNKI in your browser first, or paste the reference entries instead.",
+      cnki_no_hit: "CNKI didn't find this paper by its title. Fix the item title first, or paste the reference entries from CNKI above.",
     };
     const t = (zh ? zhTxt : enTxt)[d];
     if (t) return t;

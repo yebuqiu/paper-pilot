@@ -337,10 +337,10 @@ function testBibliography() {
   const A = [
     ['Abbott, B. P. et al. Observation of gravitational waves. Phys. Rev. Lett. 116, 061102 (2016).', ['Abbott|B. P.']],
     ['Pettitt J, Muller B, Stansfield I, Connolly B. Spliced leader trans-splicing in the nematode. RNA 14, 760-770 (2008).',
-      ['Pettitt|J.', 'Muller|B.', 'Stansfield|I.', 'Connolly|B.']],
+      ['Pettitt|J', 'Muller|B', 'Stansfield|I', 'Connolly|B']],
     ['Dubois, P. F., Hinsen, K. & Hugunin, J. Numerical Python. Comput. Phys. 10, 262–267 (1996).',
       ['Dubois|P. F.', 'Hinsen|K.', 'Hugunin|J.']],
-    ['Beta B, Gamma C. The second paper of note. Science 2, 3-4 (2001).', ['Beta|B.', 'Gamma|C.']],
+    ['Beta B, Gamma C. The second paper of note. Science 2, 3-4 (2001).', ['Beta|B', 'Gamma|C']],
     ['张伟, 李娜. 抽动障碍的中医证候分布规律研究. 中医杂志, 2020.', ['张伟', '李娜']],
   ];
   A.forEach(([inp, want], i) => {
@@ -396,6 +396,51 @@ function testBibliography() {
 
   /* 9) 既无标识符又抽不出标题 → 丢弃（不制造噪声） */
   eq(RF.recordsFromBibliographyEntries(['12', 'x', '...']).length, 0, 'A2.29 垃圾行被丢弃');
+
+  /* 10) GB/T 7714 中文题录 —— 用户从知网复制「参考文献」列表后的形态。
+   *     类型码 [J]/[M]/[D]/[S]/[EB/OL] 必须映射成对的 Zotero 类型，
+   *     卷(期):页 与出版社/地点也要提出来（否则入库后还得手工补）。 */
+  const GBT = [
+    ['[1] 张伟, 李娜. 抽动障碍的中医证候分布规律研究[J]. 中医杂志, 2020, 61(3): 12-16.',
+      { t: '抽动障碍的中医证候分布规律研究', it: 'journalArticle', c: '中医杂志', v: '61', i: '3', p: '12-16', y: 2020 }],
+    ['[2] 陈明. 小儿抽动障碍辨治经验[J/OL]. 中医杂志, 2018, 59(4): 300-303.',
+      { t: '小儿抽动障碍辨治经验', it: 'journalArticle', c: '中医杂志', v: '59', i: '4', p: '300-303', y: 2018 }],
+    ['[3] 王五. 中医儿科学[M]. 北京: 人民卫生出版社, 2015: 88-90.',
+      { t: '中医儿科学', it: 'book', pb: '人民卫生出版社', pl: '北京', p: '88-90', y: 2015 }],
+    ['[4] 李四. 抽动障碍中医证候研究[D]. 北京: 北京中医药大学, 2019.',
+      { t: '抽动障碍中医证候研究', it: 'thesis', pb: '北京中医药大学', y: 2019 }],
+    ['[5] SMITH J, DOE A. Attention is all you need[J]. Nature, 2017, 550(7676): 354-358.',
+      { t: 'Attention is all you need', it: 'journalArticle', c: 'Nature', v: '550', i: '7676', p: '354-358', y: 2017 }],
+    ['[6] 国家中医药管理局. 中医儿科临床诊疗指南·儿童多动症(修订)[S]. 2020.',
+      { t: '中医儿科临床诊疗指南·儿童多动症(修订)', it: 'report', y: 2020 }],
+    ['[7] 抽动障碍的中医研究进展[J]. 辽宁中医杂志, 2020(1): 1-4.',
+      { t: '抽动障碍的中医研究进展', it: 'journalArticle', c: '辽宁中医杂志', i: '1', p: '1-4', y: 2020 }],
+  ];
+  GBT.forEach(([inp, want], i) => {
+    const r = RF.parseChineseReference(inp);
+    ok(!!r, 'A2.30.' + (i + 1) + ' GB/T 题录可解析');
+    if (!r) return;
+    const got = { t: r.title, it: r.itemType, c: r.container, v: r.volume, i: r.issue, p: r.pages, y: r.year, pb: r.publisher, pl: r.place };
+    const mm = Object.keys(want).filter((k) => String(got[k] || '') !== String(want[k] || ''));
+    eq(mm.join(','), '', 'A2.30.' + (i + 1) + ' GB/T 字段：' + want.t.slice(0, 16));
+  });
+  const g1 = RF.parseChineseReference(GBT[0][0]);
+  eq(g1.authors.map((a) => a.literal).join(','), '张伟,李娜', 'A2.31 中文作者段 → literal（不切姓）');
+  const g5 = RF.parseChineseReference(GBT[4][0]);
+  eq(g5.authors.map((a) => a.family + '|' + a.given).join(','), 'SMITH|J,DOE|A',
+    'A2.32 ★ 全大写姓氏（SMITH J, DOE A）不被当成缩写吞掉');
+  eq(RF.yearFromReference('SMITH J. Attention[J]. Nature, 2017, 550(7676): 354-358.'), 2017,
+    'A2.33 ★ 期号 (7676) 不被当年份');
+  eq(RF.parseChineseReference('[8] 刘红. 某穴位刺激治疗研究[EB/OL]. https://example.com/x.html, 2021.').url,
+    'https://example.com/x.html', 'A2.34 URL 尾部的逗号/句点被剥掉');
+  eq(RF.parseChineseReference('[9] 张伟. 抽动障碍研究[J]. 中医杂志, 2019, 60(2): 100-105. DOI:10.1234/abc.').doi,
+    '10.1234/abc', 'A2.35 题录里的 DOI 被抽出来');
+  ok(RF.parseChineseReference('这就是一句普通的标题') === null, 'A2.36 非 GB/T 文本不误判');
+  // 与通用解析衔接：整段中文参考文献走 recordsFromBibliographyEntries 时自动走 GB/T 分支
+  const gbtRecs = RF.recordsFromBibliographyEntries([GBT[0][0], GBT[2][0]]);
+  eq(gbtRecs[0].itemType, 'journalArticle', 'A2.37 走 GB/T 分支（类型码生效）');
+  eq(gbtRecs[1].itemType, 'book', 'A2.38 书籍类型码生效');
+  eq(gbtRecs[1].publisher, '人民卫生出版社', 'A2.39 出版社提出来了');
 }
 
 /* A3. 参考文献列表四通道（夹具取自真实接口；网络层用 _getJSON 桩替换） */
@@ -485,6 +530,78 @@ async function testRefListChannels() {
     } finally { sandbox.S2Client = sb; }
   } finally {
     RS._getJSON = realGet;
+  }
+}
+
+/* A4. 知网参考文献区块抽取（容错解析；页面结构会变，所以只依赖语义边界） */
+function testCNKIExtract() {
+  const html = '<html><body><div class="abstract"><h6>摘要</h6>本文研究了……</div>'
+    + '<div class="references"><h6>参考文献</h6><ul>'
+    + '<li>[1] 张伟, 李娜. 抽动障碍的中医证候分布规律研究[J]. 中医杂志, 2020, 61(3): 12-16.</li>'
+    + '<li>[2] 陈明. 小儿抽动障碍辨治经验[J]. 中医杂志, 2018, 59(4): 300-303.</li>'
+    + '<li>[3] 王五. 中医儿科学[M]. 北京: 人民卫生出版社, 2015: 88-90.</li>'
+    + '</ul></div><div class="cited"><h6>引证文献</h6><ul><li>[4] 不应被当成引文条目</li></ul></div>'
+    + '</body></html>';
+  const ex = RS.extractReferencesFromCNKIHTML(html);
+  ok(!!ex.entries, 'A4.1 抽到参考文献区块');
+  eq(ex.entries.length, 3, 'A4.2 切出 3 条（<li> 之间正确断行）');
+  has(ex.text, '中医杂志', 'A4.3 内容保留');
+  ok(!/引证文献|不应被当成/.test(ex.text), 'A4.4 ★ 在「引证文献」处截断（不把别的区块当参考文献）');
+  const recs = RF.recordsFromBibliographyEntries(ex.entries, { source: 'cnki', reason: '知网参考文献' });
+  eq(recs.length, 3, 'A4.5 三条都成为记录');
+  eq(recs[0].title, '抽动障碍的中医证候分布规律研究', 'A4.6 标题');
+  eq(recs[2].itemType, 'book', 'A4.7 类型码 [M] → book');
+  ok(recs.every((r) => r.source[0] === 'cnki'), 'A4.8 来源标记 cnki');
+
+  /* 风控 / 登录 / 无区块 必须显式区分（否则用户不知道该去验证） */
+  eq(RS.extractReferencesFromCNKIHTML(html.replace('<h6>参考文献</h6>', '<h6>安全验证</h6><p>请完成滑动验证</p>')).reason,
+    'need_verify', 'A4.9 只看到验证页 → need_verify');
+  eq(RS.extractReferencesFromCNKIHTML('<html><title>中国知网-登录</title><form action="https://login.cnki.net/login/"></form></html>').reason,
+    'need_login', 'A4.10 登录页 → need_login');
+  eq(RS.extractReferencesFromCNKIHTML('<html><body>只有摘要与关键词，没有任何引文列表</body></html>').reason,
+    'no_section', 'A4.11 没有引文区块 → no_section');
+  eq(RS.extractReferencesFromCNKIHTML('').reason, 'empty', 'A4.12 空响应 → empty');
+  // 无编号、一行一条的知网形态
+  const flat = RS.extractReferencesFromCNKIHTML('<div>参考文献</div><div>张伟. 抽动障碍研究[J]. 中医杂志, 2019.</div><div>李娜. 儿童多动症研究[J]. 中医杂志, 2018.</div>');
+  eq(flat.entries.length, 2, 'A4.13 无编号（<div> 一行一条）也能切');
+}
+
+/* A5. 知网通道的失败原因回报（借 CNFetch 的真接口，用桩替换其检索/取页） */
+async function testCNKIChannel() {
+  const orig = { cnki: sandbox.CNFetch, get: RS._get };
+  const mkCnFetch = (search) => ({
+    _seedCNKI: async () => {},
+    _searchCNKI: search,
+    _isTitleMatch: (a, b) => String(a || '').replace(/\s+/g, '') === String(b || '').replace(/\s+/g, ''),
+  });
+  try {
+    /* 缺接口 */
+    sandbox.CNFetch = undefined;
+    eq((await RS.cnkiReferenceList({ title: 'T' })).reason, 'no_cnki_api', 'A5.1 没有 CNFetch → no_cnki_api');
+    /* 风控 */
+    sandbox.CNFetch = mkCnFetch(async () => ({ results: [], captcha: 'https://kns.cnki.net/verify' }));
+    eq((await RS.cnkiReferenceList({ title: 'T' })).reason, 'need_verify', 'A5.2 403 滑块 → need_verify');
+    /* 软拦 */
+    sandbox.CNFetch = mkCnFetch(async () => ({ results: [], maybeBlocked: true }));
+    eq((await RS.cnkiReferenceList({ title: 'T' })).reason, 'maybe_blocked', 'A5.3 200 软拦 → maybe_blocked');
+    /* 没命中 */
+    sandbox.CNFetch = mkCnFetch(async () => ({ results: [{ articleTitle: '别的文章', url: 'https://kns.cnki.net/x' }] }));
+    eq((await RS.cnkiReferenceList({ title: 'T' })).reason, 'no_hit', 'A5.4 知网没这篇 → no_hit');
+    /* 命中但详情页要登录 */
+    sandbox.CNFetch = mkCnFetch(async () => ({ results: [{ articleTitle: 'T', url: 'https://kns.cnki.net/kcms/detail/detail.aspx?filename=A' }] }));
+    RS._get = async () => ({ status: 200, text: '<html><title>中国知网-登录</title></html>' });
+    eq((await RS.cnkiReferenceList({ title: 'T' })).reason, 'need_login', 'A5.5 详情页要登录 → need_login');
+    /* 命中且有参考文献 */
+    RS._get = async () => ({ status: 200, text: '<div>参考文献</div><ul><li>[1] 张伟. 抽动障碍研究[J]. 中医杂志, 2019, 60(2): 100-105.</li><li>[2] 李娜. 儿童多动症辨治[J]. 中医杂志, 2018, 59(4): 300-303.</li></ul>' });
+    const r = await RS.cnkiReferenceList({ title: 'T', creator: '张伟' });
+    eq(r.records.length, 2, 'A5.6 拿到 2 条知网参考文献');
+    eq(r.records[0].title, '抽动障碍研究', 'A5.7 标题解析');
+    /* 详情页有内容但没有参考文献区块 */
+    RS._get = async () => ({ status: 200, text: '<div>摘要</div><p>没有参考文献</p>' });
+    eq((await RS.cnkiReferenceList({ title: 'T' })).reason, 'no_section', 'A5.8 没有参考文献区块 → no_section');
+  } finally {
+    sandbox.CNFetch = orig.cnki;
+    RS._get = orig.get;
   }
 }
 
@@ -824,6 +941,18 @@ async function testReferenceLists() {
     eq(d4.diagnosis, 'not_indexed', 'C17.4 库确实没收录 → not_indexed');
     const d5 = await RI.fetchReferenceLists([doiItem], { channels: ['crossref'] });
     eq(d5.diagnosis, 'not_indexed', 'C17.5 未开 PDF 通道时也能给出诊断');
+
+    /* C18 勾了知网却被风控 → 诊断必须指路（去「知网验证」过滑块），
+     *    而不是笼统说「没收录」——那会让用户以为这条路走不通。 */
+    const oldCnFetch2 = sandbox.CNFetch;
+    sandbox.CNFetch = { _seedCNKI: async () => {}, _searchCNKI: async () => ({ results: [], captcha: 'u' }), _isTitleMatch: () => true };
+    try {
+      const d6 = await RI.fetchReferenceLists([doiItem], { channels: ['crossref', 'cnki'] });
+      eq(d6.diagnosis, 'cnki_verify', 'C18.1 知网风控 → cnki_verify');
+      sandbox.CNFetch = { _seedCNKI: async () => {}, _searchCNKI: async () => ({ results: [{ articleTitle: '别的' }] }), _isTitleMatch: () => false };
+      const d7 = await RI.fetchReferenceLists([doiItem], { channels: ['crossref', 'cnki'] });
+      eq(d7.diagnosis, 'cnki_no_hit', 'C18.2 知网没这篇 → cnki_no_hit');
+    } finally { sandbox.CNFetch = oldCnFetch2; }
   } finally {
     RS.s2ReferenceList = orig.s2; RS.crossrefReferenceList = orig.cr;
     RS.openalexReferenceList = orig.oa; RS.europepmcReferenceList = orig.ep;
@@ -933,7 +1062,8 @@ function bootDialog(apiOver) {
     sources: () => [{ id: 'crossref', label: 'Crossref', hint: 'h' }, { id: 'openalex', label: 'OpenAlex', hint: 'h' },
       { id: 'pubmed', label: 'PubMed', hint: 'h' }, { id: 'europepmc', label: 'Europe PMC', hint: 'h' },
       { id: 'arxiv', label: 'arXiv', hint: 'h' }, { id: 's2', label: 'Semantic Scholar', hint: 'h' },
-      { id: 'pdf', label: 'PDF 参考文献段', hint: 'h' }],
+      { id: 'pdf', label: 'PDF 参考文献段', hint: 'h' },
+      { id: 'cnki', label: '知网 CNKI', hint: 'h' }],
     defaultSources: () => ['crossref', 'openalex', 'pubmed', 'europepmc', 'arxiv', 's2', 'pdf'],
     isZh: () => true,
     parseInput: () => [{ kind: 'doi', value: '10.1/x' }],
@@ -973,8 +1103,9 @@ async function testDialog() {
   const app = bootDialog();
   const srcBox = app.registry.get('pp-ri-sources');
   const cbs = srcBox.getElementsByTagName('input');
-  eq(cbs.length, 7, 'D1.1 七个来源复选框（含 Europe PMC 与 PDF 段落）');
-  ok(cbs.every((c) => c.checked), 'D1.2 默认全部勾选');
+  eq(cbs.length, 8, 'D1.1 八个来源复选框（含 Europe PMC / PDF 段落 / 知网）');
+  eq(cbs.filter((c) => c.checked).length, 7, 'D1.1b ★ 知网默认不勾选（会走风控，需用户显式开）');
+  eq(cbs.filter((c) => c.checked).length, 7, 'D1.2 默认勾选 7 个（知网除外）');
   eq(app.registry.get('pp-ri-search').textContent, '联合检索 / 解析', 'D1.3 主按钮文案');
 
   /* D2 空输入 → 给出提示，不发请求 */
@@ -1108,6 +1239,8 @@ async function testDialog() {
 (async function main() {
   testFormat();
   testBibliography();
+  testCNKIExtract();
+  await testCNKIChannel();
   await testRefListChannels();
   await testSources();
   testImportPure();

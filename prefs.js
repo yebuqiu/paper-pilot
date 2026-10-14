@@ -92,6 +92,16 @@ pref("extensions.zotero.paperpilot.pdfInlineFontScale", "1");
 pref("extensions.zotero.paperpilot.pdfInlineSelectable", false);
 // 段间节流（毫秒；免费引擎限流友好，0 = 不等待）
 pref("extensions.zotero.paperpilot.pdfInlineGapMs", 120);
+// 0.36.0 PDF 对照翻译（左原版 PDF / 右译文，双栏窗口）：
+// 同步滚动（页号 + 页内比例映射，默认开；关掉则两栏各自滚）
+pref("extensions.zotero.paperpilot.pdfDualSyncScroll", true);
+// 同步缩放（两侧同 scaleValue ⇒ 页高一致、位置映射无误差，默认开）
+pref("extensions.zotero.paperpilot.pdfDualSyncZoom", true);
+// 右栏形态：mono（译文替换原文文字、图表与公式保留）/ overlay（译文叠加 + 原文淡显）
+pref("extensions.zotero.paperpilot.pdfDualRightMode", "mono");
+// 自检开关（默认关）：置 true 后下次启动自动开一次对照窗口，把左右 pane 挂载情况与
+// 右栏每页段落/卡片数写进 paperpilot-boot.log；验完请改回 false
+pref("extensions.zotero.paperpilot.pdfDualSelfTest", false);
 // 自检开关（默认关）：置 true 后下次启动自动拿库里第一个 PDF 开一次原位对照，
 // 把每页段落数/卡片数/首卡落点写进 paperpilot-boot.log —— 「段落抽取错/卡片错位」
 // 只有真实 PDF 才暴露；验完请改回 false
@@ -221,8 +231,9 @@ pref("extensions.zotero.paperpilot.chatFloatPos", "");
 pref("extensions.zotero.paperpilot.chatFloatSize", "");
 pref("extensions.zotero.paperpilot.chatFloatDock", "");
 pref("extensions.zotero.paperpilot.chatFloatOpacity", "1");
-// 0.33.0 参考文献一键入库：启用的检索来源（逗号分隔 crossref/openalex/pubmed/arxiv/s2；
-// 留空 = 全部启用）。关掉某个源可显著加快检索，代价是命中率下降。
+// 0.33.0 参考文献一键入库：启用的检索来源（逗号分隔 crossref/openalex/pubmed/europepmc/arxiv/s2；
+// 留空 = 全部启用，但**知网 cnki 例外**——它会走风控，必须在对话框里显式勾选，
+// 或把 cnki 加进本 pref 才启用）。关掉某个源可显著加快检索，代价是命中率下降。
 pref("extensions.zotero.paperpilot.refImportSources", "");
 // 0.33.0：Crossref / OpenAlex 的「礼貌池」联系邮箱（填了会获得更高的限速配额，
 // 建议填真实邮箱；留空走内置占位值，功能不受影响）

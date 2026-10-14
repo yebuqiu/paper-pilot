@@ -252,7 +252,7 @@ var TranslatePane = {
     fullBox.appendChild(pairList);
     const fullActs = H("div", { style: "display:flex;align-items:center;gap:6px;flex-wrap:wrap;" });
     const twoColBtn = H("button", { class: "pp-tr-btn", style: this._btnCss(false), title: zh
-      ? "打开左右双栏对照窗口（可在窗口里调字号/布局）" : "Open the side-by-side window" }, I18n.t("tpOpenTwoCol"));
+      ? "打开「左原版 / 右译文」对照窗口（按原文段落位置逐段对照）" : "Open source | translation window" }, I18n.t("tpOpenTwoCol"));
     const noteBtn = H("button", { class: "pp-tr-btn", style: this._btnCss(false) },
       I18n.t("tpExportNote"));
     fullActs.appendChild(twoColBtn);
@@ -527,7 +527,8 @@ var TranslatePane = {
     const st = this._state(paneID);
     if (!st.item) return;
     try {
-      BilingualTranslate.openViewer(st.item);
+      const PP = Zotero.PaperPilot || {};
+      PP.pdfDual.openForItem(st.item);
     } catch (e) {
       this._toast(paneID, (I18n.isZh ? "打开双栏窗口失败：" : "Failed: ") + ((e && e.message) || e), true);
     }
