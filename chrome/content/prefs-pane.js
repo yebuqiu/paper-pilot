@@ -36,7 +36,18 @@
 
   function refreshEsStats() {
     try {
-      setText("pp-es-stats", (zh ? "缓存条目：" : "Cached: ") + rankColumn().esCacheSize());
+      const rc = rankColumn();
+      let msg = (zh ? "缓存条目：" : "Cached: ") + rc.esCacheSize();
+      // 0.41.0：内置官方 Key 仅「专业版 / 新用户试用期」可用。把「为什么没有在线数据」
+      // 直接写在状态行里，否则免费版用户只会看到分区列空白，误判成插件坏了。
+      const st = (typeof rc.esStatus === "function") ? rc.esStatus() : "ok";
+      if (st === "need_key") {
+        setText("pp-es-stats", msg + (zh ? " · 在线查询需专业版，或填写自己的 Key"
+                                         : " · Online lookup needs Pro or your own key"),
+          "var(--pp-warn)");
+        return;
+      }
+      setText("pp-es-stats", msg);
     } catch (e) { /* ignore */ }
   }
 

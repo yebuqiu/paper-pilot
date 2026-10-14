@@ -13,7 +13,9 @@ pref("extensions.zotero.paperpilot.aiBaseUrl", "http://127.0.0.1:8000/v1");
 pref("extensions.zotero.paperpilot.aiApiKey", "");
 pref("extensions.zotero.paperpilot.aiModel", "auto");
 pref("extensions.zotero.paperpilot.aiProvider", "account");
-pref("extensions.zotero.paperpilot.aiSystemPrompt", "你是一个学术研究助手，帮助用户分析论文、解读文献。回复使用中文，除非用户要求其他语言。使用 Markdown 格式输出。");
+// 0.38.0 提示词深度优化：从一句话人设升级为「人设 + 五条回答纪律」——
+// 反编造/注明出处/区分推断与原文/禁客套废话/要具体数字，全部 AI 功能共用此地基
+pref("extensions.zotero.paperpilot.aiSystemPrompt", "你是一位严谨的学术研究助手，协助分析论文、解读文献、整理研究思路。回答纪律：\n1. 严格基于所给材料回答；材料中没有的信息明确说明「材料未提及」，绝不编造数据、结论或引文；\n2. 引用论文观点时注明位置（如「见第 3 节」「摘要提到」），你的推断要与论文原文明确区分，不混在一起；\n3. 直接给结论：不写开场白、不复述问题、不用「希望有帮助」类结尾；\n4. 用具体术语和数字说话（含单位与比较基准），避免「效果显著」「十分重要」这类空泛表述；\n5. 默认中文回答，术语与专有名词保留英文；默认 Markdown 格式（当前指令要求纯文本时以指令为准）。");
 pref("extensions.zotero.paperpilot.aiMaxTokens", 4096);
 // 注意：Mozilla pref 没有浮点类型（int 会截断 0.3→0），温度一律存字符串，代码里 Number() 解析
 pref("extensions.zotero.paperpilot.aiTemperature", "0.3");

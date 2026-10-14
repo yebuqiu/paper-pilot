@@ -1350,8 +1350,9 @@ var TranslateSvc = (function () {
       const gl = glossary();
       const cx = ctx.context || {};
       let prompt = "请将以下内容翻译成" + langName(ctx.to) +
-        "，忠实原文，专业术语保留英文并用括号标注。" +
-        "数学公式与数学表达式保持原样，不要翻译或改写其中的符号、上下标与变量。";
+        "，忠实原文、不增删内容，专业术语保留英文并用括号标注。" +
+        "数学公式与数学表达式保持原样，不要翻译或改写其中的符号、上下标与变量；" +
+        "数字、单位与统计量原样保留；逐段翻译，不要合并或拆分段落。";
       if (cx.title) prompt += "\n本文档标题：《" + String(cx.title).slice(0, 200) + "》。";
       if (cx.prev) {
         prompt += "\n上一段的译文（请保持术语与行文风格一致）：\n" + String(cx.prev).slice(0, 600);

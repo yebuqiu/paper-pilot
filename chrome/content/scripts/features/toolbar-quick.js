@@ -128,7 +128,9 @@ var ToolbarQuick = {
     btn.setAttribute("class", "zotero-tb-button");
     btn.setAttribute("tabindex", "-1");
     btn.setAttribute("tooltiptext", I18n.t("quickBarTip"));
-    btn.style.listStyleImage = 'url("chrome://paperpilot/content/icons/icon.png")';
+    // 图标：16px 单色 SVG（context-fill + currentColor，同 theme.svg 规格）——
+    // 与原生按钮一致；不要用 icon.png（48px 位图会按原始尺寸撑大按钮）
+    btn.style.listStyleImage = 'url("chrome://paperpilot/content/icons/quick.svg")';
     btn.style.MozContextProperties = "fill"; // eslint-disable-line
     btn.style.fill = "currentColor";
 

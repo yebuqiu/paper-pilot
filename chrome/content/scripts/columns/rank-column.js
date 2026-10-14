@@ -44,9 +44,12 @@ var RankColumn = {
   /* easyScholar 状态 */
   ES_ENDPOINT: "https://www.easyscholar.cc/open/getPublicationRank",
 
-  /* 内置官方默认 SecretKey（0.15.0）：前期用户开箱即用。
-   * - 用户在设置中填了自定义 Key 时优先使用用户值（走用户自有额度）。
-   * - 此值随插件公开分发（用户主动决策共享），2026-10-02 实测有效（code:200）。
+  /* 内置官方默认 SecretKey（0.15.0）。
+   * - 用户填了自定义 Key 时优先使用用户值（走用户自有额度，且不受套餐限制）。
+   * - 0.41.0 起改为**仅「已登录 + 专业版 / 新用户试用期」**可用（见 _officialKeyAllowed）；
+   *   免费版（试用结束后）与未登录用户需自带 Key —— 在线数据停止更新，内置数据集仍兜底。
+   * - ⚠️ 此值随插件**明文分发**，且已在「已泄漏待轮换」清单里 ⇒ 它只是**产品层分层**，
+   *   不是安全边界；要真防提取必须改走服务端代理（docs/Pro专属功能候选与实现建议.md 方案 B）。
    */
   ES_OFFICIAL_KEY: "0ad3dcb704e74f6780c6f66d868d8a23",
 
@@ -128,9 +131,50 @@ var RankColumn = {
 
   /* ================= easyScholar 在线源 ================= */
 
+  /**
+   * 内置官方 Key 的使用资格（0.41.0）。规则：
+   *   · 自带 Key → 永远优先、不限套餐（免费版也能用，只是走自己的额度）；
+   *   · **已登录 +（专业版 或 新用户试用期内）** → 可用内置官方 Key（运营者替你垫付配额）；
+   *   · 未登录 / 试用结束后仍免费 → 不再使用内置 Key，须自带 Key。
+   *
+   * ★ 两条纪律：
+   *   1) **账号模块未加载、或套餐判定抛错时一律放行** —— 客户端不知道时绝不自作主张锁用户
+   *      （同「模型分级」的既有约定）。只有「已登录且明确判定为非 Pro 非试用」才拒绝。
+   *   2) 内置 Key 是 xpi 内的**明文常量**，这只是**产品层分层**、不是安全边界。
+   */
+  _officialKeyAllowed() {
+    try {
+      if (typeof Account === "undefined" || !Account) return true;
+      // 未登录：无法判定 Pro / 试用（试用也挂在账号的 createdAt 上）⇒ 须自带 Key
+      if (typeof Account.isLoggedIn === "function" && !Account.isLoggedIn()) return false;
+      if (typeof Account.isPro === "function" && Account.isPro()) return true;
+      if (typeof Account.ai !== "function") return true;
+      const a = Account.ai();
+      if (a && a.reason === "trial") return true;      // 新用户全模型试用期
+      if (!a || a.reason === "unknown") return true;   // 旧服务端：探测不到就不锁
+      return false;
+    } catch (e) {
+      return true;
+    }
+  },
+
   esKey() {
     const custom = String(Prefs.get("easyScholarKey", "") || "").trim();
-    return custom || String(this.ES_OFFICIAL_KEY || "").trim();
+    if (custom) return custom;
+    if (!this._officialKeyAllowed()) return "";
+    return String(this.ES_OFFICIAL_KEY || "").trim();
+  },
+
+  /**
+   * 在线源状态（供设置页给出**可执行**的指引，而不是让用户看到空白以为坏了）：
+   *   "ok" = 可用（自有 Key，或已获得内置 Key 资格）
+   *   "off" = 用户自己关了在线查询
+   *   "need_key" = 未登录 / 免费版试用结束 ⇒ 需要填写自己的 easyScholar Key
+   */
+  esStatus() {
+    if (!Prefs.get("easyScholarEnabled", true)) return "off";
+    if (this.esKey()) return "ok";
+    return "need_key";
   },
 
   _esEnabled() {

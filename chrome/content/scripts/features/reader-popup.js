@@ -131,9 +131,10 @@ var ReaderPopup = {
           ? "\n\n要求：纯文本输出，禁止使用任何 Markdown 标记（如 **、#、- 列表、表格），直接给译文正文。"
           : "\n\nPlain text only — no Markdown formatting (no **, #, bullets or tables).");
     }
+    // 0.38.0：解读升级两段式（这段在说什么 → 在论证中的作用），保持纯文本约束
     return (I18n.isZh
-      ? "请用中文简要解读以下摘自论文的内容（含义、在论文语境中的作用），100-200 字，纯文本分段输出，禁止使用任何 Markdown 标记：\n\n"
-      : "Briefly explain the following excerpt from a paper in Chinese (100-200 chars), plain text only, no Markdown:\n\n") + text;
+      ? "请用中文解读以下摘自论文的内容，分两段、共 100-200 字，纯文本分段输出，禁止使用任何 Markdown 标记：第一段说这段内容在讲什么（关键术语给一句话解释）；第二段说它在论文论证中的作用（承接什么问题、支撑什么结论）。\n\n"
+      : "Explain the following excerpt from a paper in Chinese, two short paragraphs (100-200 chars total), plain text only, no Markdown: first what it says (explain key terms in one phrase), then its role in the paper's argument (what it leads to and what it supports).\n\n") + text;
   },
 
   /** 打开 PaperPilot 设置面板（浮窗里「未就绪」提示的一键入口） */

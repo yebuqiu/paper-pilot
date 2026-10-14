@@ -1860,6 +1860,42 @@ ok("_quickItems" in _tq_js,
 ok("quickBarButtonEnabled" in prefs_xhtml,
    "32.11 prefs.xhtml 有快捷按钮开关（增强功能卡）")
 
+# ---------- 35. 0.38.0 提示词深度优化 + 快捷按钮图标 ----------
+# 图标：48px icon.png 会按原始尺寸撑大 28px 工具栏按钮 → 换 16px 单色 quick.svg
+QUICK_SVG = os.path.join(ROOT, "chrome", "content", "icons", "quick.svg")
+ok(os.path.exists(QUICK_SVG), "35.1 icons/quick.svg 存在")
+if os.path.exists(QUICK_SVG):
+    _qsvg = io.open(QUICK_SVG, encoding="utf-8").read()
+    ok('width="16" height="16"' in _qsvg and "context-fill" in _qsvg,
+       "35.2 quick.svg 是 16px context-fill 单色图标（与 theme.svg 同规格）")
+ok('icons/quick.svg")' in _tq_js and 'icons/icon.png")' not in _tq_js,
+   "35.3 toolbar-quick 引用 quick.svg（listStyleImage 不再用 48px icon.png）")
+# 提示词：根系统提示词的纪律条款 + 各任务提示词的证据要求
+ok("绝不编造" in prefsdef and "注明位置" in prefsdef,
+   "35.4 aiSystemPrompt 默认值含反编造与注明出处纪律")
+ok('"你是一位严谨的学术研究助手' in prefsdef and "回答纪律：" in prefsdef,
+   "35.5 aiSystemPrompt 是「人设+纪律」结构（非一句话人设）")
+PROMPTS_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "prompts.js")
+_prompts_js = io.open(PROMPTS_JS, encoding="utf-8").read()
+ok(_prompts_js.count('name: "') == 7,
+   "35.6 技能库内置恰 7 个（chat-float 快捷标签取前 8，防被截断）")
+ok("方法深挖" in _prompts_js and "下一步研究" in _prompts_js,
+   "35.6b 新技能「方法深挖」「下一步研究」在库")
+CHAT_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "chat.js")
+_chat_js = io.open(CHAT_JS, encoding="utf-8").read()
+ok("研究问题" in _chat_js and "结论与边界" in _chat_js and "只写论文里有的内容" in _chat_js,
+   "35.7 summarize 四要素结构化（问题/方法/结果/边界）+ 不补写纪律")
+TR_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "translate.js")
+_tr_js = io.open(TR_JS, encoding="utf-8").read()
+ok("术语表（以下术语必须按给定译法翻译" in _tr_js and "上一段的译文" in _tr_js,
+   "35.8 translate.js 术语表与上下文注入未随优化丢失")
+RP_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "reader-popup.js")
+_rp2 = io.open(RP_JS, encoding="utf-8").read()
+ok("禁止使用任何 Markdown 标记" in _rp2,
+   "35.9 划词浮窗纯文本禁令仍在（防 Markdown 标记泄漏到浮窗）")
+ok("论证中的作用" in _rp2,
+   "35.10 浮窗解读两段式（在讲什么 + 论证作用）")
+
 
 # ---------- 33. 对照翻译导出（0.39.0：双语 PDF 附件 / HTML / Markdown / Word） ----------
 
@@ -1895,6 +1931,28 @@ ok("modeSave" in _pe_js and "fp.open(" in _pe_js, "33.15 文本类导出用文�
 ok(os.path.exists(_pe_test), "33.16 导出单测存在（test/pdf-export.test.js）")
 ok("buildImagePdf" in (io.open(_pe_test, encoding="utf-8").read() if os.path.exists(_pe_test) else ""),
    "33.17 ★ 单测覆盖 PDF 生成器（xref / 流长度 / 流式偏移结构自校验）")
+
+# ---------- 34. 期刊分区列：内置 Key 的套餐门控（插件 0.41.0） ----------
+# 内置 easyScholar SecretKey 由运营者持有、消耗运营者配额。0.41.0 起改为
+# 「自带 Key 永远优先；已登录的 Pro / 试用期可用内置 Key；免费版与未登录须自带」。
+# 这里钉死三件事：判定同时看登录态与套餐、探测不到时放行、以及**内置 Key 不被绕过**。
+_rk_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "columns", "rank-column.js"),
+                 encoding="utf-8").read()
+ok("_officialKeyAllowed" in _rk_js, "34.1 分区列有内置 Key 的资格判定 _officialKeyAllowed()")
+ok("Account.isLoggedIn" in _rk_js and "Account.isPro" in _rk_js,
+   "34.2 ★ 门控同时看「已登录」与「专业版」（未登录不能白拿内置 Key）")
+ok('reason === "trial"' in _rk_js, "34.3 新用户试用期可用内置 Key")
+ok('reason === "unknown"' in _rk_js,
+   "34.4 ★ 旧服务端 / 探测不到 ⇒ 放行，不惩罚老用户（同模型分级纪律）")
+ok("esStatus" in _rk_js, "34.5 提供 esStatus() 供设置页给出可执行指引")
+_rek_refs = _rk_js.count("ES_OFFICIAL_KEY")
+ok(_rek_refs == 2,
+   "34.6 ★ 内置 Key 仅 2 处引用（常量定义 + esKey），别处直接引用＝绕过门控（实际 %d 处）" % _rek_refs)
+ok("esStatus" in io.open(os.path.join(ROOT, "chrome", "content", "prefs-pane.js"),
+                         encoding="utf-8").read(),
+   "34.7 设置页状态行展示门控状态（免费版不会只看到空白以为坏了）")
+ok(os.path.exists(os.path.join(ROOT, "test", "rank-gate.test.js")),
+   "34.8 门控单测存在（test/rank-gate.test.js）")
 
 print("=" * 60)
 for p in passes:
