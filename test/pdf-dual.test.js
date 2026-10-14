@@ -226,7 +226,7 @@ function waitFor(cond, timeoutMs) {
       let v = false;
       try { v = cond(); } catch (e) { v = false; }
       if (v) return resolve(true);
-      if (Date.now() - t0 > (timeoutMs || 4000)) return reject(new Error("waitFor timeout"));
+      if (Date.now() - t0 > (timeoutMs || 4000)) return reject(new Error("waitFor timeout: " + String(cond).slice(0, 140)));
       setTimeout(loop, 15);
     })();
   });
@@ -240,7 +240,7 @@ async function main() {
   const { payload, calls } = mkPayload();
   const { win, registry } = boot(payload);
   eq(win._closed, false, "1.1 窗口未关闭");
-  await waitFor(() => win.ppDualSnapshot().left && win.ppDualSnapshot().left.mounted, 5000);
+  await waitFor(() => win.ppDualReady(), 6000);
   const snap = win.ppDualSnapshot();
   ok(snap.left.mounted, "1.2 ★ 左栏挂载成功（原版 PDF）");
   ok(snap.right.mounted, "1.3 ★ 右栏挂载成功（译文版 PDF）");
@@ -269,7 +269,7 @@ async function main() {
     const v = mkViewer(3);         // 每页 800 高
     const { payload: p2, calls: c2 } = mkPayload();
     const w2 = boot(p2, { left: v, right: mkViewer(3) });
-    await waitFor(() => w2.win.ppDualSnapshot().left && w2.win.ppDualSnapshot().left.mounted);
+    await waitFor(() => w2.win.ppDualReady(), 6000);
     const util = w2.win.ppDualUtil;
     // 滚到「第 2 页内 50%」
     v.container.scrollTop = 800 + 400;
@@ -292,7 +292,7 @@ async function main() {
   {
     const { payload: p3 } = mkPayload();
     const w3 = boot(p3);
-    await waitFor(() => w3.win.ppDualSnapshot().left && w3.win.ppDualSnapshot().left.mounted);
+    await waitFor(() => w3.win.ppDualReady(), 6000);
     const util = w3.win.ppDualUtil;
     util.markPending("right");
     eq(util.__pending().right, 1, "5.1 markPending 记下待吞的滚动事件");
@@ -307,7 +307,7 @@ async function main() {
   {
     const { payload: p4, calls: c4 } = mkPayload();
     const w4 = boot(p4);
-    await waitFor(() => w4.win.ppDualSnapshot().left && w4.win.ppDualSnapshot().left.mounted);
+    await waitFor(() => w4.win.ppDualReady(), 6000);
     w4.registry.get("pp-pd-retranslate").click();
     eq(c4.retranslate, 1, "6.1 重新翻译回插件侧（清内核缓存 + 重铺）");
     w4.registry.get("pp-pd-note").click();
@@ -322,7 +322,7 @@ async function main() {
   {
     const { payload: p5 } = mkPayload();
     const w5 = boot(p5);
-    await waitFor(() => w5.win.ppDualSnapshot().left && w5.win.ppDualSnapshot().left.mounted);
+    await waitFor(() => w5.win.ppDualReady(), 6000);
     w5.win.ppDualProgress({ total: 4, done: 3, running: true });
     eq(w5.registry.get("pp-pd-count").textContent, "3 / 4", "7.1 计数显示 已译/总段");
     eq(w5.registry.get("pp-pd-progress-bar").style.width, "75%", "7.2 进度条 75%");
@@ -335,7 +335,7 @@ async function main() {
   {
     const { payload: p6, calls: c6 } = mkPayload();
     const w6 = boot(p6);
-    await waitFor(() => w6.win.ppDualSnapshot().left && w6.win.ppDualSnapshot().left.mounted);
+    await waitFor(() => w6.win.ppDualReady(), 6000);
     const { payload: p7, calls: c7 } = mkPayload({ title: "第二篇" });
     eq(w6.win.ppDualLoad(p7), true, "8.1 空闲时换篇成功");
     await waitFor(() => c7.panesReady.length === 1, 4000);
@@ -343,6 +343,32 @@ async function main() {
     eq(c6.panesReady.length >= 1, true, "8.3 上一个载荷的挂载已完成（顺序正常）");
     w6.win.fire("unload");
     eq(c7.unload >= 0, true, "8.4 卸载时通知插件侧清理（onUnload）");
+  }
+
+  /* ---- 10. 「翻译全文」按钮 + 页级进度 + 就绪信号（0.37.0） ---- */
+  {
+    const calls10 = [];
+    const { payload: p10 } = mkPayload({
+      translateAll: async () => { calls10.push("all"); return { pages: 6, blocks: 42, done: 42, skipped: 1 }; },
+    });
+    const w10 = boot(p10);
+    eq(w10.win.ppDualReady(), false, "10.1 未挂载完成时就绪信号为 false（只看 mounted 会假就绪）");
+    await waitFor(() => w10.win.ppDualReady(), 6000);
+    eq(w10.win.ppDualReady(), true, "10.2 挂载并初始化完成后就绪信号为 true");
+    eq(w10.registry.get("pp-pd-all").textContent, "翻译全文", "10.3 工具栏有「翻译全文」按钮");
+    w10.registry.get("pp-pd-all").click();
+    await waitFor(() => w10.registry.get("pp-pd-status").textContent.indexOf("整篇翻译完成") >= 0, 4000);
+    eq(calls10.length, 1, "10.4 点击回插件侧执行整篇翻译（逐页滚动触发渲染）");
+    const st10 = w10.registry.get("pp-pd-status").textContent;
+    ok(st10.indexOf("6") >= 0 && st10.indexOf("42") >= 0, "10.5 完成后状态行报「页数 / 段数」");
+    ok(st10.indexOf("跳过 1 页") >= 0, "10.6 无文本层被跳过的页数如实报出");
+    // 页级进度
+    w10.win.ppDualPhase({ page: 3, total: 10, phase: "page", blocks: 12 });
+    ok(w10.registry.get("pp-pd-status").textContent.indexOf("3/10") >= 0, "10.7 页级进度显示「第 3/10 页」");
+    ok(w10.registry.get("pp-pd-status").textContent.indexOf("12") >= 0, "10.8 同时显示累计段落数");
+    eq(w10.registry.get("pp-pd-progress-bar").style.width, "30%", "10.9 进度条按页推进（3/10）");
+    w10.win.ppDualPhase({ page: 4, total: 10, phase: "skip" });
+    ok(w10.registry.get("pp-pd-status").textContent.indexOf("跳过") >= 0, "10.10 跳过页给出可读提示");
   }
 
   /* ---- 9. 失败路径：_open 返回 false → 明确报错不静默 ---- */

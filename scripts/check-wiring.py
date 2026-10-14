@@ -953,7 +953,7 @@ for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
-ok('"version": "0.36.0"' in MANIFEST, "20.12 manifest 版本 0.36.0")
+ok('"version": "0.37.0"' in MANIFEST, "20.12 manifest 版本 0.37.0")
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
@@ -1693,6 +1693,24 @@ _utils_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "core", 
 ok("menuPdfDual" in _utils_src and "pdSync" in _utils_src,
    "28.31 文案表含 menuPdfDual 与窗口文案键（pd*）")
 ok("pdf-dual.test.js" in _pf3, "28.32 preflight 含左原右译窗口测试")
+
+# ---- 0.37.0：整篇翻译（逐页滚动触发渲染）+ 就绪信号 ----
+ok("translateAll" in pi_js and "viewer.currentPageNumber = i" in pi_js,
+   "28.33 ★ 整篇翻译靠**逐页滚动**触发 pdf.js 渲染（PDFPageView 的渲染入口全是私有的，只能滚）")
+ok("out.skipped++" in pi_js, "28.34 无文本层的页被跳过并计数（不自欺为「已翻译」）")
+ok("container.scrollTop = keep" in pi_js, "28.35 结束后滚回原位（不打扰用户当前阅读位置）")
+ok("translateAll: () => this.translateAll()" in pd_mod and "async translateAll(opts)" in pd_mod,
+   "28.36 窗口「翻译全文」按钮经回调走插件侧（窗口不直连内核）")
+ok("PdfInline.translateAll(" in pd_mod, "28.37 PdfDual 转发到内核 translateAll（翻译全文）")
+ok('id="pp-pd-all"' in pd_xhtml and 'pp-pd-all' in pd_view,
+   "28.38 工具栏「翻译全文」按钮存在且已接线")
+ok("window.ppDualPhase" in pd_view, "28.39 页级进度回调（第 X/Y 页 + 累计段数）")
+ok("window.ppDualReady" in pd_view, "28.40 ★ 就绪信号：挂载完成**且**初始化跑完（只看 mounted 会假就绪）")
+ok("ppDualReady" in io.open(os.path.join(ROOT, "test", "pdf-dual.test.js"), encoding="utf-8").read(),
+   "28.41 窗口测试等的是就绪信号（不是只等 mounted）")
+ok("translateAll" in io.open(os.path.join(ROOT, "test", "pdf-inline.test.js"),
+                             encoding="utf-8").read(),
+   "28.42 内核测试覆盖整篇翻译（遍历/跳过页/滚动复位/卡片落地）")
 
 
 print("=" * 60)

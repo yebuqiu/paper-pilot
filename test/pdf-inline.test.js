@@ -369,7 +369,50 @@ async function main() {
   PI.unregister();
   eq(doc.querySelectorAll('.pp-pit-card').length, 0, '4.28 unregister() 清掉全部译文卡');
 
-  /* ---------------- 输出 ---------------- */
+  /* ==================== ⑨ translateAll：整篇翻译（逐页滚动触发渲染） ==================== */
+{
+  PrefStore.clear();
+  PrefStore.set('pdfInlineMode', 'overlay');
+  PrefStore.set('pdfInlineGapMs', 0);
+  const doc = mkDoc();
+  // 3 页：第 2 页没有 textLayer（模拟扫描页 → 应被跳过并计数）
+  mkPage(doc, 1, [
+    // 两行间距 28 > 1.45×字号 → 判为**两段**（行距小于阈值会合成一段，属预期）
+    { text: 'Alpha paragraph one.', left: 50, top: 100, width: 200, height: 12, fontSize: 10 },
+    { text: 'Alpha paragraph two.', left: 50, top: 140, width: 200, height: 12, fontSize: 10 },
+  ]);
+  mkPage(doc, 2, null);
+  mkPage(doc, 3, [
+    { text: 'Gamma paragraph.', left: 50, top: 100, width: 200, height: 12, fontSize: 10 },
+  ]);
+  const container = doc.createElementNS('', 'div');
+  container.id = 'viewerContainer';
+  container.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 400 });
+  doc.documentElement.appendChild(container);
+  const viewer = { pagesCount: 3, currentPageNumber: 1 };
+  const app = { pdfDocument: {}, pdfViewer: viewer, eventBus: { on() {}, off() {} } };
+  const fakeWin = { document: doc, PDFViewerApplication: app };
+  const reader = { itemID: 9, _internalReader: { _primaryView: { _iframeWindow: fakeWin } } };
+  const progressCalls = [];
+  const res = await PI.translateAll(reader, {
+    waitTicks: 1, keepScroll: true,
+    onProgress: (p) => progressCalls.push(p),
+  });
+  eq(res.error, null, '⑨ translateAll 无错误');
+  eq(res.totalPages, 3, '⑨ 读到总页数');
+  eq(res.pages, 3, '⑨ 遍历到最后一页');
+  eq(res.skipped, 1, '⑨ ★ 无文本层的页被跳过并计数（不当成空内容）');
+  eq(res.blocks, 3, '⑨ 三页共 3 段（第 1 页 2 段 + 第 3 页 1 段）');
+  eq(res.done, 3, '⑨ 三段全部落定');
+  eq(progressCalls.length, 3, '⑨ 每页一次进度回调（含跳过页）');
+  ok(progressCalls.some((p) => p.phase === 'skip' && p.page === 2), '⑨ 跳过页的进度带 phase=skip');
+  eq(container.scrollTop, 0, '⑨ ★ 结束后滚回原位置（不打扰用户当前阅读位置）');
+  const cards = doc.querySelectorAll('.pp-pit-card');
+  eq(cards.length, 3, '⑨ 三页各段落都注入了译文卡（整篇一次铺好）');
+  PI.stop(reader, { keepPref: true });
+}
+
+/* ---------------- 输出 ---------------- */
   console.log('='.repeat(60));
   if (fails.length) {
     for (const f of fails) console.log('  ✗ ' + f);

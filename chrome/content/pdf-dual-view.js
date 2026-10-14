@@ -332,6 +332,25 @@
     const dec = $("pp-pd-font-dec"), inc = $("pp-pd-font-inc");
     if (dec) dec.addEventListener("click", () => setFontSize(fontSize - 0.1));
     if (inc) inc.addEventListener("click", () => setFontSize(fontSize + 0.1));
+    const all = $("pp-pd-all");
+    if (all) all.addEventListener("click", async () => {
+      if (busy) { setStatus(tx("pdBusy", "翻译进行中，请稍候…", "Still translating…")); return; }
+      busy = true;
+      setStatus(tx("pdAllStart", "整篇翻译：正在逐页渲染并翻译…", "Whole-doc: rendering and translating page by page…"));
+      try {
+        const r = await A.translateAll();
+        if (r && r.error) {
+          setStatus(tx("pdAllFail", "整篇翻译失败：", "Whole-doc failed: ") + r.error);
+        } else {
+          setStatus(tx("pdAllDone", "整篇翻译完成：", "Whole-doc done: ") +
+            (r ? (r.pages || 0) + (zh() ? " 页 / " : " pages / ") + (r.blocks || 0) + (zh() ? " 段" : " blocks") +
+              (r.skipped ? (zh() ? "（跳过 " + r.skipped + " 页：无文本层）" : " (" + r.skipped + " skipped)") : "") : ""));
+        }
+      } catch (e) {
+        setStatus(tx("pdAllFail", "整篇翻译失败：", "Whole-doc failed: ") + ((e && e.message) || e));
+      }
+      busy = false;
+    });
     const rt = $("pp-pd-retranslate");
     if (rt) rt.addEventListener("click", () => {
       if (busy) { setStatus(tx("pdBusy", "翻译进行中，请稍候…", "Still translating…")); return; }
@@ -358,6 +377,7 @@
   function setLabelAndText() {
     setText("pp-pd-sync-text", tx("pdSync", "同步滚动", "Sync scroll"));
     setText("pp-pd-font-label", tx("pdFont", "译文字号", "Font scale"));
+    setText("pp-pd-all", tx("pdAll", "翻译全文", "Translate whole doc"));
     setText("pp-pd-retranslate", tx("pdRetranslate", "重新翻译", "Re-translate"));
     setText("pp-pd-note", tx("pdNote", "导出双语笔记", "Export note"));
     setText("pp-pd-title", A.title || "");
@@ -397,6 +417,17 @@
       return;
     }
 
+    // 窗口/容器几何为 0 时 pdf.js 不渲染任何页（自检环境实测）→ 主动撑一次窗口；
+    // 真实用户侧也能兜住「窗口被系统压成 0 高 / 首帧未布局」的空白情况
+    try {
+      const c0 = panes.left.viewer.container;
+      if (!c0 || c0.clientHeight < 10) {
+        try { window.resizeTo(Math.max(1100, window.innerWidth || 1100), Math.max(760, window.innerHeight || 760)); }
+        catch (e) { /* ignore */ }
+        await sleep(300);
+      }
+    } catch (e) { /* ignore */ }
+
     bindScrollSync();
     bindZoomSync();
     setFontSize(A.fontScale || 1);
@@ -426,6 +457,33 @@
         setStatus(tx("pdTranslating", "翻译中", "Translating") + " " + done + "/" + total);
       }
     } catch (e) { /* ignore */ }
+  };
+
+  /** 整篇翻译的页级进度（由插件侧 translateAll 的 onProgress 转来） */
+  window.ppDualPhase = function (p) {
+    try {
+      const page = (p && p.page) || 0;
+      const total = (p && p.total) || 0;
+      const bar = $("pp-pd-progress-bar");
+      if (bar && total) bar.style.width = Math.round(page / total * 100) + "%";
+      if (p && p.phase === "skip") {
+        setStatus(tx("pdAllSkip", "整篇翻译：第 ", "Whole-doc: page ") + page + "/" + total +
+          (zh() ? " 页无文本层，跳过" : " has no text layer, skipped"));
+      } else {
+        setStatus(tx("pdAllPage", "整篇翻译：第 ", "Whole-doc: page ") + page + "/" + total +
+          (zh() ? " 页" : "") +
+          (p && p.blocks != null ? (zh() ? "（累计 " + p.blocks + " 段）" : " (" + p.blocks + " blocks)") : ""));
+      }
+    } catch (e) { /* ignore */ }
+  };
+
+  /** 就绪信号：两栏都已挂载**且**初始化已跑完（busy=false）。
+   *  外部（自检/测试/排障）等这一个条件即可 —— 只看 mounted 会在
+   *  bindScrollSync/setFontSize/onPanesReady 还没执行完时误判「可用」。 */
+  window.ppDualReady = function () {
+    try {
+      return !!(panes && panes.left && panes.left.viewer && panes.right && panes.right.viewer && !busy);
+    } catch (e) { return false; }
   };
 
   /** 换一篇（单实例复用；翻译中拒绝） */
@@ -468,18 +526,53 @@
       if (!pane) return null;
       let ready = null;
       try { ready = browserReady(pane.browser); } catch (e) { ready = null; }
+      // 尺寸：pdf.js 用「容器几何可见」决定渲染哪些页 —— clientHeight 为 0 时一页都不渲染
+      // （0.36.0 首轮自检「pageEls>0 但 withTextLayer=0」的症状就是它，排障先看这几个数）
+      let box = null;
+      try {
+        const c = pane.viewer && pane.viewer.container;
+        const pageEl = pane.viewer && pane.viewer.win.document.querySelector(".page[data-page-number]");
+        box = {
+          containerW: c ? c.clientWidth : null,
+          containerH: c ? c.clientHeight : null,
+          scrollTop: c ? Math.round(c.scrollTop) : null,
+          pageW: pageEl ? pageEl.offsetWidth : null,
+          pageH: pageEl ? pageEl.offsetHeight : null,
+        };
+      } catch (e) { box = null; }
       return {
         mounted: !!pane.viewer,
         pos: pane.viewer ? pos(pane) : null,
         error: pane.error || null,
         browserReady: ready,
         probe: probe(pane),
+        box,
       };
     };
+    let winBox = null;
+    try {
+      winBox = {
+        w: window.innerWidth,
+        h: window.innerHeight,
+        visibility: document.visibilityState,
+        hidden: document.hidden === true,
+      };
+    } catch (e) { winBox = null; }
+    let browserBox = null;
+    try {
+      const lb = panes && panes.left && panes.left.browser;
+      const rb = panes && panes.right && panes.right.browser;
+      browserBox = {
+        left: lb ? { w: lb.clientWidth, h: lb.clientHeight } : null,
+        right: rb ? { w: rb.clientWidth, h: rb.clientHeight } : null,
+      };
+    } catch (e) { browserBox = null; }
     return {
       title: A.title || "",
       fontSize,
       syncScroll: syncEnabled(),
+      win: winBox,
+      browsers: browserBox,
       left: paneInfo(panes && panes.left),
       right: paneInfo(panes && panes.right),
       rightReader: !!(panes && panes.right && panes.right.reader),

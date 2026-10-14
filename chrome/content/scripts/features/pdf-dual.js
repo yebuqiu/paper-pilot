@@ -134,7 +134,24 @@ var PdfDual = {
       exportNote: () => this.exportNote(item, title),
       retranslate: () => this.retranslate(),
       setFontScale: (v) => this.setFontScale(v),
+      translateAll: () => this.translateAll(),
     };
+  },
+
+  /**
+   * 整篇翻译（窗口「翻译全文」按钮）：逐页滚动触发 pdf.js 渲染 → 抽段落 → 翻译 → 落卡，
+   * 进度经 `win.ppDualPhase` 回传。用户左栏阅读位置不受影响（只滚右栏容器）。
+   */
+  async translateAll(opts) {
+    const r = this._rightReader;
+    if (!r) return { ok: false, error: "no-reader" };
+    const win = this._win;
+    const onProgress = (p) => {
+      try { if (win && typeof win.ppDualPhase === "function") win.ppDualPhase(p); }
+      catch (e) { /* ignore */ }
+    };
+    const res = await PdfInline.translateAll(r, Object.assign({ onProgress }, opts || {}));
+    return res;
   },
 
   _rightMode() {
@@ -311,6 +328,29 @@ var PdfDual = {
       }
       out.ok = !!(snap && snap.left && snap.left.mounted && snap.right && snap.right.mounted &&
         st && st.blockCount > 0);
+
+      // ---- 端到端验证：让内核「整篇翻译」（逐页滚动触发渲染 → 抽段 → 翻译 → 落卡）。
+      //  这是唯一不依赖窗口可见性的全量验证路径：即使自检环境里预览窗口被判为不可见
+      //  （容器 clientHeight 为 0 → pdf.js 一页都不渲染），逐页滚动仍能驱动渲染。
+      if (!out.ok) {
+        out.wholeDoc = await this.translateAll({ maxPages: 8, keepScroll: true });
+        const st3 = this._kernelState();
+        if (st3) {
+          out.wholeDocKernel = this._kernelSnapshot(st3);
+          out.wholeDocPages = [];
+          for (const [num, blocks] of st3.pageBlocks) {
+            const list = blocks || [];
+            out.wholeDocPages.push({
+              page: num,
+              blocks: list.filter((b) => b.kind !== "formula").length,
+              kinds: list.map((b) => b.kind).join(",").slice(0, 40),
+              cards: list.filter((b) => b.cardEl).length,
+            });
+            if (out.wholeDocPages.length >= 8) break;
+          }
+          out.ok = out.wholeDocKernel.blocks > 0;
+        }
+      }
 
       // ---- 回退验证（自检环境限制）：无头/后台窗口里 pdf.js 不渲染页面内容
       //   （探测显示两栏 pageEls>0 但 withTextLayer=0 —— 左栏原版同样如此），

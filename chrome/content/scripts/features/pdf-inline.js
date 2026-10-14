@@ -964,6 +964,102 @@ var PdfInline = (function () {
     }
   }
 
+  /**
+   * 整篇翻译（0.37.0）：后台**逐页滚动**触发 pdf.js 渲染 → 抽段落 → 翻译 → 落卡，
+   * 直到最后一页（或调用 stop）。
+   *
+   * 为什么必须「滚动」而不是「直接渲染」：pdf.js 的渲染入口（PDFPageView 的 draw/
+   * render）全是私有方法，外部拿不到；且只有**几何上可见**的页才会被 forceRendering
+   * 调度。所以「让每一页都被处理」的唯一可靠办法就是依次把它滚进视口。
+   * 滚的是**本 readear 自己的容器**（右栏译文栏），用户左栏的阅读位置不受影响；
+   * 完成后把右栏滚回原位。
+   *
+   * @param {Reader} reader
+   * @param {{maxPages?: number, onProgress?: Function, keepScroll?: boolean}} opts
+   * @returns {Promise<{pages:number, blocks:number, done:number, skipped:number}>}
+   */
+  async function translateAll(reader, opts) {
+    const o = opts || {};
+    const state = ensureState(reader);
+    const out = { pages: 0, blocks: 0, done: 0, skipped: 0, error: null };
+    if (!state) { out.error = "no-viewer"; return out; }
+    if (!state.active) start(reader, { mode: state.mode || mode() });
+    const sm = stateMode(state);
+    let viewer = null;
+    let container = null;
+    try {
+      viewer = state.app && state.app.pdfViewer;
+      container = state.doc.getElementById("viewerContainer");
+    } catch (e) { /* ignore */ }
+    if (!viewer || !container) { out.error = "no-pdf-viewer"; return out; }
+    const total = Number(viewer.pagesCount) || 0;
+    const limit = o.maxPages ? Math.min(total, o.maxPages) : total;
+    const keep = Number(container.scrollTop) || 0;
+    out.totalPages = total;
+
+    for (let i = 1; i <= limit; i++) {
+      if (state.stopped) break;
+      out.pages = i;
+      // ① 把该页滚进视口（触发 pdf.js 渲染，含 textLayer）
+      try { viewer.currentPageNumber = i; } catch (e) { /* ignore */ }
+      try {
+        const pe0 = state.doc.querySelector('.page[data-page-number="' + i + '"]');
+        if (pe0 && container) {
+          const top = pageOffsetTopIn(container, pe0);
+          if (top !== null) container.scrollTop = Math.max(0, Math.round(top) - 4);
+        }
+      } catch (e) { /* ignore */ }
+      // ② 等该页 textLayer 出现（pdf.js 渲染是异步的）；waitTicks 可调（测试/慢机器）
+      let pe = null;
+      let got = false;
+      const ticks = o.waitTicks ? Math.max(1, Number(o.waitTicks)) : 24;
+      for (let w = 0; w < ticks; w++) {
+        if (state.stopped) break;
+        try { pe = state.doc.querySelector('.page[data-page-number="' + i + '"]'); } catch (e) { pe = null; }
+        if (pe && pe.querySelector(".textLayer")) { got = true; break; }
+        await new Promise((r) => setTimeout(r, 160));
+      }
+      if (!got) { out.skipped++; if (o.onProgress) { try { o.onProgress({ page: i, total: limit, phase: "skip" }); } catch (e) { /* ignore */ } } continue; }
+      // ③ 抽段落 + 翻译（复用页处理；命中缓存时零请求）
+      try { await processPage(state, pe); } catch (e) { /* 单页失败不拖垮整篇 */ }
+      if (o.onProgress) {
+        try { o.onProgress({ page: i, total: limit, phase: "page", blocks: state.blockCount, done: state.doneCount }); }
+        catch (e) { /* ignore */ }
+      }
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    // 等翻译队列收敛：判据是「没有还没落定的段」（dst == null），
+    // 成功与**失败**都算落定 —— 引擎不可用时不能白等 60 秒（自检/用户都等不起）
+    const settled = () => {
+      for (const [, bs] of state.pageBlocks) {
+        for (const b of bs) {
+          if (b.kind === "formula") continue;
+          if (b.dst == null) return false;
+        }
+      }
+      return true;
+    };
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline && !state.stopped) {
+      if (settled()) break;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    out.blocks = state.blockCount;
+    out.done = state.doneCount;
+    out.mode = sm;
+    if (o.keepScroll !== false) {
+      try { container.scrollTop = keep; } catch (e) { /* ignore */ }
+    }
+    return out;
+  }
+
+  /** 页元素相对滚动容器的文档坐标（整篇翻译用；与 pdf-dual-view 的算法同源） */
+  function pageOffsetTopIn(container, el) {
+    try {
+      return (el.getBoundingClientRect().top - container.getBoundingClientRect().top) + container.scrollTop;
+    } catch (e) { return null; }
+  }
+
   /** 测试/排障快照 */
   function snapshot() {
     const out = [];
@@ -1087,6 +1183,8 @@ var PdfInline = (function () {
     register, unregister, start, stop, startForItem, startForSelected, refresh, snapshot, selfTest,
     // 0.36.0：供 PdfDual 复用（右栏 = 同一 PDF 的 mono 译文视图）
     attach: start, extractBlocks, stateMode,
+    // 0.37.0：整篇翻译（逐页滚动触发渲染 → 抽段 → 翻译 → 落卡）
+    translateAll,
     // 供测试/排障读取内部状态
     _states: states, _textCache: textCache,
     _mode: mode, _fontScale: fontScale,
