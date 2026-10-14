@@ -84,6 +84,9 @@ Zotero.PaperPilot = {
       "features/bilingual-translate.js",
       "features/cn-meta.js",
       "features/cn-translators.js",
+      // 0.42.0 中文文献 AI 增强四层（L1 规划 / L3 裁决 / L4 融合 / P3 兜底）。
+      // 必须排在 cn-fetch.js 之前（cn-fetch 消费 CNAI）
+      "features/cn-ai.js",
       "features/cn-fetch.js",
       "features/reading-state.js",
       "features/note-templates.js",

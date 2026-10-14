@@ -128,6 +128,7 @@ NODE_SUITES = [
     ("菜单注册表", "test/menu-registry.test.js"),
     ("参考文献入库", "test/ref-import.test.js"),
     ("Sci-Hub 补全文", "test/scihub-fetch.test.js"),
+    ("中文文献AI增强", "test/cn-ai.test.js"),
     ("期刊分区列门控", "test/rank-gate.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),
     ("全模块加载冒烟", "test/smoke-load.test.js"),

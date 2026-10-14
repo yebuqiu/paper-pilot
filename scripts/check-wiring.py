@@ -1954,6 +1954,56 @@ ok("esStatus" in io.open(os.path.join(ROOT, "chrome", "content", "prefs-pane.js"
 ok(os.path.exists(os.path.join(ROOT, "test", "rank-gate.test.js")),
    "34.8 门控单测存在（test/rank-gate.test.js）")
 
+# ---------- 35. 中文文献 AI 增强四层（插件 0.42.0，P1-P3） ----------
+# jasminum 分析落地（docs/jasminum-cnki-analysis-and-ai-proposal.md）：
+#   L1 检索词规划 / L3 语义裁决 / L4 元数据融合（GetExport 双通道）/ P3 兜底与自愈。
+# 核心纪律：协议层（签名/Cookie/检索参数）确定性代码，LLM 不碰；
+# AI 全部输出过 JSON 校验 + 字段白名单，兜底识别恒带 unverified 标记。
+_cn_ai = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "cn-ai.js"),
+                 encoding="utf-8").read()
+_cn_f = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "cn-fetch.js"),
+                encoding="utf-8").read()
+ok("fallbackPlan" in _cn_ai and "parsePlan" in _cn_ai and "buildPlannerMessages" in _cn_ai,
+   "35.1 L1 规划三件套（提示词/解析/启发式回退）在 CNAI 里")
+ok("parseJudgment" in _cn_ai and "decide" in _cn_ai and '"reject"' in _cn_ai,
+   "35.2 L3 裁决置信度分档（auto/confirm/reject/manual）在 CNAI 里")
+ok("fuseMeta" in _cn_ai and "数据库为准" in _cn_ai,
+   "35.3 L4 融合在 CNAI 里且注释钉死「数据库为准」纪律")
+ok("parseRecognized" in _cn_ai and "_unverified: true" in _cn_ai,
+   "35.4 ★ P3 兜底识别恒带 unverified 标记（未与数据库核对不得静默入库）")
+ok("parseRescueResults" in _cn_ai and "CNKI-LLM" in _cn_ai,
+   "35.5 P3 自愈解析在（来源标 CNKI-LLM 便于审计）")
+ok("_renderPagesPNG" in _cn_ai and "pdf-render-worker.js" in _cn_ai,
+   "35.6 视觉路径渲染走随包 worker（chrome://paperpilot/content/scripts/pdf-render-worker.js）")
+ok(os.path.exists(os.path.join(ROOT, "chrome", "content", "scripts", "pdf-render-worker.js")),
+   "35.7 pdf-render-worker.js 已随包（视觉路径缺它即静默 null）")
+ok('cnFetchAIVision", false' in prefsdef,
+   "35.8 ★ 视觉路径 pref 默认关（实验特性，先灰度）")
+ok('cnFetchAI", true' in prefsdef and 'cnFetchAIJudge", true' in prefsdef
+   and 'cnFetchCNKIExport", true' in prefsdef,
+   "35.9 AI 增强三开关 pref 默认值在 prefs.js")
+_mj_cn_ai = mainjs.find("features/cn-ai.js")
+_mj_cn_fetch = mainjs.find("features/cn-fetch.js")
+ok(_mj_cn_ai > 0 and 0 < _mj_cn_ai < _mj_cn_fetch,
+   "35.10 ★ main.js 中 cn-ai.js 必须排在 cn-fetch.js 之前（cn-fetch 消费 CNAI）")
+ok("_getExportEndNote" in _cn_f and "_parseEndNote" in _cn_f
+   and "dm8/API/GetExport" in _cn_f,
+   "35.11 P2 GetExport 双通道（导出接口反爬弱于详情页，是兜底也是补全）")
+ok("CNAI.fuseMeta(dbMeta, pick, plan)" in _cn_f,
+   "35.12 融合顺序 = EndNote 权威 > 搜索结果 > AI 规划（只填空）")
+ok("structureChanged" in _cn_f and "CNAI.rescue" in _cn_f,
+   "35.13 CNKI 结构改版 → rescue 自愈接线在 _fetchForItem 里")
+ok("pdfDown1" in _cn_f and "oversea.cnki.net" in _cn_f,
+   "35.14 PDF 直链兼容 oversea #pdfDown 锚点")
+ok("CNAI.judge" in _cn_f and "cnAIAutoThreshold" in _cn_f and "cnAIConfirmThreshold" in _cn_f,
+   "35.15 L3 裁决接入 _fetchForItem 且阈值走 pref")
+ok("CNAI.recognize(item)" in _cn_f and "AI-recognized, unverified" in _cn_f,
+   "35.16 ★ 检索全灭 → AI 兜底 + extra 写 unverified 标记")
+_pf5 = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
+ok("test/cn-ai.test.js" in _pf5, "35.17 preflight 含中文文献 AI 增强测试")
+ok(os.path.exists(os.path.join(ROOT, "test", "cn-ai.test.js")),
+   "35.18 cn-ai 单测存在（test/cn-ai.test.js）")
+
 print("=" * 60)
 for p in passes:
     print("  OK  " + p)

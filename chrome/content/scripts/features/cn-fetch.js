@@ -10,6 +10,14 @@
  *
  * 保护策略：仅在条目元数据不完整（标题=文件名 或 缺作者/期刊）时回填；
  * 字段级保护——已有值的字段（除标题=文件名场景）一律不覆盖。
+ *
+ * 0.42.0 AI 增强四层（docs/jasminum-cnki-analysis-and-ai-proposal.md 落地，P1-P3）：
+ *   L1 检索词规划（CNAI.plan）——多候选检索式替代单式启发式，AI 不可用回退旧行为；
+ *   L3 语义裁决（CNAI.judge/decide）——置信度分档：自动采用/带理由置顶/人工/全否决；
+ *   L4 元数据融合（GetExport EndNote 通道 + CNAI.fuseMeta）——数据库为准、其余只填空；
+ *   P3 兜底（CNAI.recognize/rescue）——检索全灭时 AI 直读 PDF（标 unverified）；
+ *      CNKI 结构改版时 LLM 从 HTML 提取结果行；PDF 直链兼容 oversea #pdfDown 锚点。
+ * 协议层（签名/Cookie/检索参数）仍是确定性代码，LLM 不碰。
  */
 /* global Zotero, Services, Components, IOUtils, PathUtils, Prefs, I18n, ItemSel, CNMeta, _ppDiag */
 
@@ -142,9 +150,12 @@ var CNFetch = {
   /**
    * PubScholar 搜索 → [{source, articleTitle, author, journal, year, volume, issue,
    * pages, doi, abstract, keywords, url, articleID}]（无结果返回 []）
+   * 0.42.0：queries 可外部传入（CNAI 规划的多候选检索式），缺省走内置启发式。
    */
-  async _searchPubScholar(title, author) {
-    const queries = this._buildQueries(title, author);
+  async _searchPubScholar(title, author, queries) {
+    if (!Array.isArray(queries) || !queries.length) {
+      queries = this._buildQueries(title, author);
+    }
     const target = author
       ? this._normalizeTitle(this._normalizeTitle(title).replace(new RegExp(this._escapeRe(author), "g"), " "))
       : this._normalizeTitle(title);
@@ -277,6 +288,12 @@ var CNFetch = {
       this._diag("cnki no-content (soft block or genuine empty)");
       return { results: [], maybeBlocked: true };
     }
+    // 0.42.0 结构改版特征：200、有实质内容、但固定选择器一行都匹配不到，
+    // 且没有 no-content 标记——大概率知网改版。附带截断 HTML 供 CNAI.rescue 自愈。
+    if (!rows.length && resp.responseText && resp.responseText.length > 1000) {
+      this._diag("cnki structure changed? rows=0 len=" + resp.responseText.length);
+      return { results: [], structureChanged: true, html: resp.responseText.slice(0, 20000) };
+    }
     const results = [];
     for (const r of rows) {
       const txt = (sel) => { const el = r.querySelector(sel); return el ? el.textContent.trim() : ""; };
@@ -304,10 +321,117 @@ var CNFetch = {
     return { results };
   },
 
+  // ================= CNKI GetExport 导出通道（0.42.0，P2 移植 jasminum 双通道） =================
+
+  /**
+   * 知网导出接口拿 EndNote 文本。导出接口反爬强度低于详情页，
+   * 是网页解析被验证码拦截时的兜底通道；同时它的字段（DOI/摘要/卷期页）
+   * 比搜索结果行完整得多，正常路径也用它补全。
+   * @returns {Promise<string>} EndNote tagged 文本（失败/被拦返回 ""）
+   */
+  async _getExportEndNote(exportID) {
+    if (!exportID) return "";
+    try {
+      const resp = await Zotero.HTTP.request(
+        "POST",
+        "https://kns.cnki.net/dm8/API/GetExport",
+        {
+          body: "filename=" + encodeURIComponent(exportID) +
+            "&uniplatform=NZKPT&displaymode=GBTREFER%2Celearning%2CEndNote",
+          headers: {
+            "Accept": "text/plain, */*; q=0.01",
+            "Accept-Language": "zh-CN,en-US;q=0.7,en;q=0.3",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Origin": "https://www.cnki.net",
+            "Referer": "https://kns.cnki.net/",
+          },
+          timeout: 10000,
+          successCodes: [200, 403],
+        },
+      );
+      if (resp.status !== 200) {
+        this._diag("getexport status " + resp.status);
+        return "";
+      }
+      const j = JSON.parse(resp.responseText);
+      if (!j || j.code != 1 || !Array.isArray(j.data)) return "";
+      const en = j.data.find((i) => i && i.key === "EndNote");
+      const v = en && en.value && en.value[0];
+      return v ? String(v).replace(/<br\s*\/?>/g, "\n") : "";
+    } catch (e) {
+      this._diag("getexport failed: " + (e && e.message));
+      return "";
+    }
+  },
+
+  /**
+   * 解析 EndNote tagged 文本（%0/%T/%A/%J/%D/%V/%N/%P/%R/%X/%K/%U）→ 标准结果字段。
+   * 纯函数（test/cn-ai.test.js 离线覆盖）；字段为空则不出现缺省值问题——
+   * 融合时由 CNAI.fuseMeta 只填空。
+   */
+  _parseEndNote(text) {
+    const meta = {
+      articleTitle: "", creators: [], author: "", journal: "", year: "", date: "",
+      volume: "", issue: "", pages: "", doi: "", abstract: "", keywords: [],
+      url: "", itemType: "journalArticle",
+    };
+    const typeMap = {
+      "Journal Article": "journalArticle",
+      "Thesis": "thesis",
+      "Conference Paper": "conferencePaper",
+      "Conference Proceedings": "conferencePaper",
+      "Newspaper Article": "newspaperArticle",
+    };
+    let curTag = "";
+    let curField = "";
+    const flush = () => {
+      const v = String(curField || "").replace(/\s+/g, " ").trim();
+      curField = "";
+      if (!curTag || !v) return;
+      switch (curTag) {
+        case "0":
+          if (typeMap[v]) meta.itemType = typeMap[v];
+          break;
+        case "T": meta.articleTitle = meta.articleTitle ? meta.articleTitle + " " + v : v; break;
+        case "A": meta.creators.push(v); break;
+        case "J": meta.journal = meta.journal || v; break;
+        case "D":
+          meta.date = v;
+          meta.year = (v.match(/\d{4}/) || [""])[0];
+          break;
+        case "V": meta.volume = meta.volume || v; break;
+        case "N": meta.issue = meta.issue || v; break;
+        case "P": meta.pages = meta.pages || v; break;
+        case "R": meta.doi = meta.doi || v; break;
+        case "X": meta.abstract = meta.abstract ? meta.abstract + " " + v : v; break;
+        case "K": meta.keywords.push(v); break;
+        case "U": meta.url = meta.url || v; break;
+        default: break;
+      }
+    };
+    for (const line of String(text || "").split(/\r?\n/)) {
+      const m = line.match(/^%([0-9A-Z])\s?(.*)$/);
+      if (m) {
+        flush();
+        curTag = m[1];
+        curField = m[2] || "";
+      } else if (curTag && line.trim()) {
+        curField += " " + line.trim(); // 摘要/标题跨行续行
+      }
+    }
+    flush();
+    meta.author = meta.creators.join(",");
+    return meta;
+  },
+
   // ================= 选择器 =================
 
-  /** 从结果集中挑一条：完全命中自动选；否则弹列表让用户选（返回 null=取消） */
-  _pickResult(results, targetTitle) {
+  /**
+   * 从结果集中挑一条：完全命中自动选；否则弹列表让用户选（返回 null=取消）。
+   * 0.42.0：recommend={index, reason}（CNAI 裁决 confirm 档）时把推荐项置顶并标注理由。
+   * 注意 recommend.index 的口径是 results.slice(0,10)——与 CNAI.judge 的候选列表一致。
+   */
+  _pickResult(results, targetTitle, recommend) {
     const exact = results.filter((r) => this._isTitleMatch(r.articleTitle, targetTitle));
     if (exact.length === 1) return exact[0];
     if (!results.length) return null;
@@ -315,8 +439,17 @@ var CNFetch = {
     if (!win) return null;
     // 候选排序：精确命中优先，其次按标题长度接近度
     const cand = (exact.length ? exact : results).slice(0, 10);
+    if (recommend && Number.isInteger(recommend.index) &&
+        cand[recommend.index] && !exact.length) {
+      const hit = cand.splice(recommend.index, 1)[0];
+      cand.unshift(hit);
+    }
     const io = { dataIn: null, dataOut: null };
-    const items = cand.map((r) =>
+    const items = cand.map((r, i) =>
+      (recommend && i === 0 && !exact.length
+        ? (I18n.isZh ? "★ AI 推荐" : "★ AI pick") +
+          (recommend.reason ? "（" + recommend.reason + "）" : "") + " "
+        : "") +
       "【" + r.source + "】" + r.articleTitle +
       (r.author ? " — " + String(r.author).split(",")[0] : "") +
       (r.journal ? " · " + r.journal : "") + (r.year ? " " + r.year : ""));
@@ -527,11 +660,15 @@ var CNFetch = {
       // 知网节超时验证页（translators_CN 同款检测）
       if (/知网节超时验证|>captcha</i.test(html)) return "captcha";
       const doc = new DOMParser().parseFromString(html, "text/html");
-      const a = doc.querySelector(".btn-dlpdf > a") || doc.querySelector("a.btn-dlpdf");
+      // 0.42.0：除新版 .btn-dlpdf 外，兼容 oversea/旧版详情页的 #pdfDown1/#pdfDown
+      // （jasminum 旧版 oversea.cnki.net 通道同款锚点）
+      const a = doc.querySelector(".btn-dlpdf > a") || doc.querySelector("a.btn-dlpdf") ||
+        doc.getElementById("pdfDown1") || doc.getElementById("pdfDown");
       const href = a && a.getAttribute("href");
       if (href) {
+        const host = u.includes("oversea") ? "https://oversea.cnki.net" : "https://kns.cnki.net";
         pdfUrl = href.startsWith("http") ? href
-          : "https://kns.cnki.net" + (href.startsWith("/") ? href : "/" + href);
+          : host + (href.startsWith("/") ? href : "/" + href);
         pageUrl = u;
         break;
       }
@@ -563,16 +700,27 @@ var CNFetch = {
     const { title, author } = this._searchTitleFor(item);
     if (!title || title.length < 4) return { status: "skip", detail: "no-title" };
 
+    // 0.42.0 L1 检索词规划（CNAI）：AI 不可用/失败时回退启发式，行为与旧版一致
+    let plan = null;
+    if (typeof CNAI !== "undefined" && CNAI) {
+      try { plan = await CNAI.plan(item, { title, author }); }
+      catch (e) { this._diag("plan error: " + (e && e.message)); }
+    }
+    const searchTitle = (plan && plan.title) || title;
+    const searchAuthor = (plan && plan.author) || author;
+    const queries = (plan && plan.queries && plan.queries.length)
+      ? plan.queries : this._buildQueries(title, author);
+
     // 搜索链：PubScholar → CNKI（可关；被风控时整批短路，避免反复触发）
     let results = [];
-    try { results = await this._searchPubScholar(title, author); } catch (e) {
+    try { results = await this._searchPubScholar(searchTitle, searchAuthor, queries); } catch (e) {
       this._diag("pubscholar chain error: " + (e && e.message));
     }
     let captcha = "";
-    const exactHit = results.some((r) => this._isTitleMatch(r.articleTitle, title));
+    const exactHit = results.some((r) => this._isTitleMatch(r.articleTitle, searchTitle));
     if (!exactHit && Prefs.get("cnFetchUseCNKI", true) && !this._batchBlocked) {
       await this._seedCNKI();
-      const r2 = await this._searchCNKI(title, author);
+      const r2 = await this._searchCNKI(searchTitle, searchAuthor);
       if (r2.captcha) {
         captcha = r2.captcha;
         this._batchBlocked = true;
@@ -584,6 +732,10 @@ var CNFetch = {
           this._batchBlocked = true;
           this._diag("cnki soft-blocked confirmed by probe");
         }
+      } else if (r2.structureChanged && typeof CNAI !== "undefined" && CNAI) {
+        // 0.42.0 P3 自愈：页面结构疑似改版 → LLM 从 HTML 提取结果行
+        const rescued = await CNAI.rescue(r2.html);
+        if (rescued.length) r2.results = rescued;
       }
       if (!this._batchBlocked && r2.results.length) {
         const seen = new Set(results.map((r) => this._compact(r.articleTitle)));
@@ -592,13 +744,76 @@ var CNFetch = {
         }
       }
     }
-    if (!results.length) {
-      return { status: "empty", detail: captcha ? "captcha" : "no-result", captcha };
-    }
 
     const upgradeTitle = /\.(pdf|caj|kdh|nh|teb)$/i.test((item.getField("title") || "").trim());
-    let pick = this._pickResult(results, title);
+
+    // 0.42.0 L3 语义裁决：多候选且无唯一精确命中时，由 AI 排序/否决
+    let pick = null;
+    let recommend = null;
+    if (results.length > 1 && typeof CNAI !== "undefined" && CNAI &&
+        Prefs.get("cnFetchAIJudge", true)) {
+      const exacts = results.filter((r) => this._isTitleMatch(r.articleTitle, searchTitle));
+      if (exacts.length !== 1) {
+        const cand10 = results.slice(0, 10);
+        const judgment = await CNAI.judge(
+          { title: searchTitle, author: searchAuthor,
+            journal: (plan && plan.journal) || "", year: (plan && plan.year) || "" },
+          cand10,
+        );
+        const d = CNAI.decide(
+          judgment, cand10.length,
+          Prefs.get("cnAIAutoThreshold", 0.9),
+          Prefs.get("cnAIConfirmThreshold", 0.6),
+        );
+        if (d.action === "auto") {
+          pick = cand10[d.index];
+          this._diag("judge auto-pick #" + d.index);
+        } else if (d.action === "confirm") {
+          recommend = { index: d.index, reason: d.reason || "" };
+        } else if (d.action === "reject") {
+          this._diag("judge rejected all candidates");
+          results = [];
+        }
+      }
+    }
+    if (results.length && !pick) pick = this._pickResult(results, searchTitle, recommend);
+
+    // 0.42.0 P3 AI 兜底：全部检索失败（非风控）→ AI 直读 PDF 建元数据（标 unverified）
+    if (!results.length && !pick) {
+      if (!captcha && typeof CNAI !== "undefined" && CNAI) {
+        const aiMeta = await CNAI.recognize(item);
+        if (aiMeta) {
+          const filledAI = this._enrichItem(item, aiMeta, upgradeTitle);
+          try {
+            const mark = "AI-recognized, unverified";
+            const curExtra = String(item.getField("extra") || "");
+            if (!curExtra.includes(mark)) {
+              item.setField("extra", (curExtra ? curExtra + "\n" : "") + mark);
+              if (!filledAI.includes("extra")) filledAI.push("extra");
+            }
+          } catch (e) { /* ignore */ }
+          if (filledAI.length) await item.saveTx();
+          return { status: "ok", detail: "ai:" + (filledAI.join(",") || "marked"),
+            source: "AI", captcha, pdf: "" };
+        }
+      }
+      return { status: "empty", detail: captcha ? "captcha" : "no-result", captcha };
+    }
     if (!pick) return { status: "skip", detail: "user-cancel" };
+
+    // 0.42.0 P2 双通道 + 融合：CNKI 命中 → GetExport 拿 EndNote 权威元数据补全，
+    // 融合纪律 = EndNote 为准、搜索结果补协议字段、AI 规划只填空
+    if (pick.source === "CNKI" && pick.exportID &&
+        Prefs.get("cnFetchCNKIExport", true) && typeof CNAI !== "undefined" && CNAI) {
+      const enText = await this._getExportEndNote(pick.exportID);
+      if (enText) {
+        const dbMeta = this._parseEndNote(enText);
+        if (dbMeta.articleTitle) {
+          pick = CNAI.fuseMeta(dbMeta, pick, plan);
+          this._diag("fused with EndNote export: " + (dbMeta.doi || "no-doi"));
+        }
+      }
+    }
 
     // 类型不一致（如 thesis vs journalArticle）且字段差异大时，先尽量字段级回填
     const filled = this._enrichItem(item, pick, upgradeTitle);

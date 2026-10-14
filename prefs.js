@@ -43,6 +43,14 @@ pref("extensions.zotero.paperpilot.matrixMaxItems", 8);
 pref("extensions.zotero.paperpilot.autoTagMax", 6);
 // 0.6.0 新增：Semantic Scholar 被引量列
 pref("extensions.zotero.paperpilot.citationColumnEnabled", true);
+// 标题译文列（读 extra 中 PP Title Translation 行，由「翻译标题与摘要」写回）
+pref("extensions.zotero.paperpilot.titleTranslationColumnEnabled", true);
+// 阅读进度列（心跳时长 ÷ PDF 页数；无页数走时长启发值）
+pref("extensions.zotero.paperpilot.progressColumnEnabled", true);
+// 星标评级列（读 ★×n 标签）
+pref("extensions.zotero.paperpilot.ratingColumnEnabled", true);
+// 「翻译标题与摘要」成功后把译文写回 extra（PP Title/Abstract Translation 行）
+pref("extensions.zotero.paperpilot.translateWriteBack", true);
 pref("extensions.zotero.paperpilot.s2ApiKey", "");
 // 无 DOI 的条目是否走标题检索兜底（较慢、可能误配，可关闭）
 pref("extensions.zotero.paperpilot.s2TitleSearch", true);
@@ -120,6 +128,10 @@ pref("extensions.zotero.paperpilot.scihubEnabled", true);
 pref("extensions.zotero.paperpilot.scihubMirrors", "sci-hub.ru, sci-hub.se, sci-hub.st");
 pref("extensions.zotero.paperpilot.scinetEnabled", true);
 pref("extensions.zotero.paperpilot.scinetUrl", "https://sci-net.xyz");
+// 0.43.0 新增：原生 Find Full Text 集成（fulltext-resolver.js）——启动时把 Unpaywall
+// 与 Sci-Hub/Sci-Net（尊重上面的开关）写进 Zotero 内置 extensions.zotero.findPDFs.resolvers，
+// 复用原生「查找全文」与「自动下载 PDF」流程；卸载时精确移除。关 = 完全不碰该 pref
+pref("extensions.zotero.paperpilot.fulltextResolverEnabled", true);
 pref("extensions.zotero.paperpilot.ankiCardCount", 10);
 // 0.13.0 新增：工作台 2.0（主题 auto/light/dark；会话持久化 JSON）
 pref("extensions.zotero.paperpilot.wbTheme", "auto");
@@ -131,6 +143,18 @@ pref("extensions.zotero.paperpilot.cnFetchUseCNKI", true);
 pref("extensions.zotero.paperpilot.cnDownloadDir", "");
 // 0.16.1 新增：抓取中文元数据时同时尝试下载 PDF 全文（PubScholar 免费直链 + CNKI 机构权限通道）
 pref("extensions.zotero.paperpilot.cnFetchPDF", true);
+// 0.42.0 新增：中文文献 AI 增强四层（cn-ai.js）
+// cnFetchAI      L1 检索词规划 + P3 AI 兜底/自愈总开关（关则全部回退确定性启发式）
+// cnFetchAIJudge L3 语义裁决（多候选排序+置信度分档）
+// cnFetchCNKIExport P2 双通道：CNKI 命中后经 GetExport 拿 EndNote 权威元数据融合
+// cnFetchAIVision P3 视觉路径（扫描件渲染 PNG 喂多模态；Zotero 10+，实验默认关）
+// cnAIAutoThreshold / cnAIConfirmThreshold 裁决置信度分档阈值
+pref("extensions.zotero.paperpilot.cnFetchAI", true);
+pref("extensions.zotero.paperpilot.cnFetchAIJudge", true);
+pref("extensions.zotero.paperpilot.cnFetchCNKIExport", true);
+pref("extensions.zotero.paperpilot.cnFetchAIVision", false);
+pref("extensions.zotero.paperpilot.cnAIAutoThreshold", 0.9);
+pref("extensions.zotero.paperpilot.cnAIConfirmThreshold", 0.6);
 // 0.14.7 新增：设置界面敏感信息默认掩码（接口地址明文开关）
 pref("extensions.zotero.paperpilot.uiShowFullUrl", false);
 // 0.16.0 新增：界面主题（"" = 跟随 Zotero 原生；主题 id 见 ui-theme.js THEMES）
