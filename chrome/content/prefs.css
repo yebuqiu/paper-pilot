@@ -343,6 +343,38 @@
 .pp-root .pp-dev-act { display: flex; gap: 10px; flex: 0 0 auto; }
 .pp-root .pp-link-danger { color: var(--pp-danger); }
 
+/* ---------- 0.38.0 折叠式分组 ---------- */
+/* 工具条（全部展开 / 全部收起） */
+.pp-root .pp-fold-bar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 10px; flex-wrap: wrap;
+}
+/* 分组标题行：icon + 标题 + 一行说明（超长省略）+ 旋转箭头；整行可点击 */
+.pp-root .pp-fold-head {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; user-select: none; min-width: 0;
+}
+.pp-root .pp-fold-head:hover .pp-card-title { color: var(--pp-accent); }
+.pp-root .pp-fold-head .pp-card-title { flex: none; }
+.pp-root .pp-fold-head .pp-card-desc {
+  flex: 1 1 auto; margin-top: 0; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pp-root .pp-fold-arrow {
+  flex: none; color: var(--pp-muted); font-size: 11px;
+  transition: transform .15s ease;
+}
+/* 收起态：箭头转向右、卡片体隐藏（display:none 不影响 getElementById 与 pref 绑定） */
+.pp-root .pp-fold-closed .pp-fold-arrow { transform: rotate(-90deg); }
+.pp-root .pp-fold-closed .pp-card-body { display: none; }
+.pp-root .pp-fold-closed { padding-bottom: 11px; }
+/* 分类标签（账号 / AI 与翻译 / 条目与文献 / 外观与界面）——纯视觉分隔 */
+.pp-root .pp-cat-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .1em;
+  color: var(--pp-muted);
+  margin: 6px 0 -4px 2px;
+}
+
 /* ---------- 套餐 AI 能力说明（0.24.8：试用 / 高级模型） ---------- */
 .pp-root .pp-ai-tier {
   margin-top: 8px; padding: 7px 10px; border-radius: 6px;

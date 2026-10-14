@@ -64,6 +64,19 @@
       <html:button id="pp-pd-all" style="font-size:12px;padding:1px 9px;font-weight:600;"></html:button>
       <html:button id="pp-pd-retranslate" style="font-size:12px;padding:1px 9px;"></html:button>
       <html:button id="pp-pd-note" style="font-size:12px;padding:1px 9px;"></html:button>
+
+      <!-- 0.39.0 导出 ▾：双语 PDF 附件 / HTML / Markdown / Word（0.38.x 只有「笔记」一个出口） -->
+      <html:span id="pp-pd-export-label"
+                 style="font-size:12px;color:var(--fill-secondary,#555);white-space:nowrap;
+                        margin-left:4px;"></html:span>
+      <menulist id="pp-pd-export" native="true" style="font-size:12px;">
+        <menupopup>
+          <menuitem value="pdf" id="pp-pd-exp-pdf"/>
+          <menuitem value="html" id="pp-pd-exp-html"/>
+          <menuitem value="md" id="pp-pd-exp-md"/>
+          <menuitem value="docx" id="pp-pd-exp-docx"/>
+        </menupopup>
+      </menulist>
       <html:button id="pp-pd-close" style="font-size:12px;padding:1px 9px;margin-left:auto;">✕</html:button>
 
       <html:span id="pp-pd-count"

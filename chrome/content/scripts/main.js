@@ -125,6 +125,8 @@ Zotero.PaperPilot = {
       "features/pdf-theme.js",
       // 0.25.1 主题切换按钮：界面主题（主窗口左上角）+ PDF 阅读主题（阅读器工具栏），二者分开
       "features/theme-toggle.js",
+      // 0.38.0 顶部快捷按钮：条目工具栏一键菜单（高频直达项 + 功能中心 + 设置）
+      "features/toolbar-quick.js",
       // 0.34.0 PDF 页内叠加内核：读 pdf.js textLayer 坐标 → 译文按段叠加回原页位置。
       // 依赖 ai/pdf-text.js（viewerOf/classify 单一真源）与 ai/translate.js，故排在其后。
       // 0.36.0 起它降级为**内核**（不再注入阅读器工具栏），仍被下列模块复用。
@@ -132,6 +134,9 @@ Zotero.PaperPilot = {
       // 0.36.0 PDF 对照翻译（左原右译双栏窗口）：右栏 = 同一 PDF 的 mono 译文视图，
       // 复用 PdfInline 内核做提取/翻译/注入 → 必须排在 pdf-inline.js 之后
       "features/pdf-dual.js",
+      // 0.39.0 对照翻译导出（双语 PDF 附件 / HTML / Markdown / Word）：
+      // 从内核 state 取段落 + 右栏 canvas 叠画 → 零依赖自建 PDF 等；排在 pdf-inline 之后
+      "features/pdf-export.js",
       // 0.37.1 更新提示：Zotero 的插件更新是静默的，这里补一次可见反馈
       "features/update-notice.js",
       "columns/rank-column.js",
@@ -337,6 +342,7 @@ Zotero.PaperPilot = {
         id: "paperpilot-prefs",
         src: rootURI + "chrome/content/prefs.xhtml",
         scripts: [
+          rootURI + "chrome/content/prefs-fold.js",
           rootURI + "chrome/content/prefs-pane.js",
           rootURI + "chrome/content/prefs-account.js",
           rootURI + "chrome/content/prefs-translate.js",
@@ -441,6 +447,13 @@ Zotero.PaperPilot = {
       await this._diag("theme toggle registered");
     } catch (e) {
       await this._diag("theme toggle FAILED: " + (e && (e.stack || e.message) || e));
+    }
+    // 0.38.0 顶部快捷按钮：条目工具栏一键菜单（须在 menus.js 加载后注册，标签走 I18n）
+    try {
+      ToolbarQuick.register();
+      await this._diag("toolbar quick registered");
+    } catch (e) {
+      await this._diag("toolbar quick FAILED: " + (e && (e.stack || e.message) || e));
     }
     // 0.34.0 PDF 原位对照翻译：阅读器工具栏按钮（同一个 renderToolbar 扩展位）
     try {
@@ -579,10 +592,12 @@ Zotero.PaperPilot = {
     // 「两个 pane 是否挂上、右栏段落/卡片数、同步滚动位置」，结果写进 boot 日志
     if (Prefs.get("pdfDualSelfTest", false)) {
       try {
-        this.pdfDual.selfTest()
+        // pdfDualSelfTestAtt：指定附件 itemID（排障直指用户报告的那篇；0 = 扫库取第一个）
+        const att = Number(Prefs.get("pdfDualSelfTestAtt", 0)) || 0;
+        this.pdfDual.selfTest(undefined, att)
           .then((r) => this._diag("pdfDual selfTest: " + JSON.stringify(r)))
           .catch((e) => this._diag("pdfDual selfTest rejected: " + (e && e.message)));
-        await this._diag("pdfDual self-test scheduled");
+        await this._diag("pdfDual self-test scheduled" + (att ? " (att=" + att + ")" : ""));
       } catch (e) {
         await this._diag("pdfDual self-test FAILED: " + (e && (e.stack || e.message) || e));
       }
@@ -651,7 +666,7 @@ Zotero.PaperPilot = {
     // （FF140 实证：addObserver(..., weak=true) 直接抛错拖死 startup）。
     // 改用 Zotero.Prefs.registerObserver——Zotero 自己在主作用域持有单个
     // nsIObserver 再分发，按「完整 pref key」注册（无前缀监听，逐 key 注册）。
-    this._prefObserverSymbols = ["rankDataPath", "rankColumnEnabled", "easyScholarEnabled", "easyScholarKey", "citationColumnEnabled", "rankDataSets", "rankMaxBadges", "rankBadgeStyle", "uiTheme", "uiThemeCustom", "uiWallpaper", "uiWallpaperPath", "uiWallpaperUrl", "uiWallpaperOpacity", "pdfTheme", "pdfThemeCustomColor", "pdfThemeCustomOpacity", "themeButtonEnabled"].map((key) =>
+    this._prefObserverSymbols = ["rankDataPath", "rankColumnEnabled", "easyScholarEnabled", "easyScholarKey", "citationColumnEnabled", "rankDataSets", "rankMaxBadges", "rankBadgeStyle", "uiTheme", "uiThemeCustom", "uiWallpaper", "uiWallpaperPath", "uiWallpaperUrl", "uiWallpaperOpacity", "pdfTheme", "pdfThemeCustomColor", "pdfThemeCustomOpacity", "themeButtonEnabled", "quickBarButtonEnabled"].map((key) =>
       Zotero.Prefs.registerObserver(Prefs.PREFIX + key, () => {
         this._onPrefChanged(key).catch((e) => {
           try { Zotero.logError(e); } catch (_) { /* ignore */ }
@@ -703,6 +718,9 @@ Zotero.PaperPilot = {
     } else if (key === "themeButtonEnabled") {
       // 两处按钮的总开关
       try { ThemeToggle.syncEnabled(); } catch (e) { /* ignore */ }
+    } else if (key === "quickBarButtonEnabled") {
+      // 顶部快捷按钮开关（直达项变化无需观察：菜单在 popupshowing 时重填）
+      try { ToolbarQuick.syncEnabled(); } catch (e) { /* ignore */ }
     }
   },
 
@@ -715,6 +733,7 @@ Zotero.PaperPilot = {
     }
     try { Menus.destroy(); } catch (e) { Zotero.logError(e); }
     try { ThemeToggle.unregister(); } catch (e) { Zotero.logError(e); }
+    try { ToolbarQuick.unregister(); } catch (e) { Zotero.logError(e); }
     try { PdfInline.unregister(); } catch (e) { Zotero.logError(e); }
     try { UpdateNotice.unregister(); } catch (e) { Zotero.logError(e); }
     try { UiTheme.unregister(); } catch (e) { Zotero.logError(e); }

@@ -54,6 +54,157 @@ var PdfInline = (function () {
     return Math.max(2, (Number(fontSize) || 10) * 0.45);
   }
 
+  /* ==================== 双栏检测（0.38.2） ====================
+   * 根因：groupSpans 只按 top 聚行 —— 两栏排版里同一基线的「左栏 span + 右栏 span」
+   * 会被并成一行，两栏文本交错成一句、段落块横跨整页（用户实测 Deeb 2019 双栏章）。
+   * 思路：**行级投票**找「栏间距」——大多数「多段行」在同一个 x 区间上有行内空档，
+   * 该区间就是分界线。整行跨栏的行（标题/摘要）不投票、也不受拆分影响（自成块）。
+   */
+
+  /** 行聚类（只分组、不并文本）：与 groupSpans 同一容差，parts 按 left 排序 */
+  function rowPartsOf(spans) {
+    const list = (spans || []).filter((s) => s && s.text && String(s.text).trim() &&
+      isFinite(s.left) && isFinite(s.top));
+    const sorted = list.slice().sort((a, b) => (a.top - b.top) || (a.left - b.left));
+    const rows = [];
+    for (const s of sorted) {
+      const last = rows[rows.length - 1];
+      const tol = _rowTol(Math.max(s.fontSize || 10, (last && last.fontSize) || 10));
+      if (last && Math.abs(s.top - last.top) <= tol) {
+        last.parts.push(s);
+        last.top = Math.min(last.top, s.top);
+      } else {
+        rows.push({ parts: [s], top: s.top, fontSize: s.fontSize || 10 });
+      }
+    }
+    for (const r of rows) r.parts.sort((a, b) => a.left - b.left);
+    return rows;
+  }
+
+  /** 区间合并：[[l,r]...] → 不相交且升序 */
+  function _mergeIv(ivs) {
+    const s = ivs.filter((v) => v && isFinite(v[0]) && isFinite(v[1]) && v[1] > v[0])
+      .sort((a, b) => a[0] - b[0]);
+    const out = [];
+    for (const v of s) {
+      const last = out[out.length - 1];
+      if (last && v[0] <= last[1] + 0.5) last[1] = Math.max(last[1], v[1]);
+      else out.push([v[0], v[1]]);
+    }
+    return out;
+  }
+
+  /** 双栏分界检测（纯函数）：rows=[{parts}]（rowPartsOf 输出）。
+   *  返回分界 x（CSS 坐标）或 null（单栏/证据不足）。
+   *  规则：① 多段行的行内空档 ≥ 1.8% 页宽才投票，得票最多的 x 桶需拿到
+   *  ≥ max(6, 60% 投票行) 的票数；② ★栏边缘一致性——真双栏两端对齐，
+   *  覆盖最优桶的所有空档的左缘/右缘标准差必须 < 3% 页宽（目录页「标题…页码」
+   *  这类行内大间隙边缘杂乱，靠这条排除——姜旭学位论文目录页实踩）。 */
+  function detectColumnSplit(rows, pageWidth) {
+    const W = Math.max(100, Number(pageWidth) || 0);
+    if (!W || !rows || rows.length < 6) return null;
+    const multi = rows.filter((r) => r.parts.length >= 2);
+    if (multi.length < 6) return null;
+    const NB = 120;
+    const votes = new Array(NB).fill(0);
+    const gaps = [];        // {g1, g2, a, b}：参与投票的行内空档（含桶区间）
+    let voters = 0;
+    for (const r of multi) {
+      const iv = _mergeIv(r.parts.map((p) => [p.left, p.left + (p.width || 0)]));
+      if (iv.length < 2) continue;
+      let voted = false;
+      for (let k = 0; k + 1 < iv.length; k++) {
+        const g1 = iv[k][1], g2 = iv[k + 1][0];
+        if (g2 - g1 < Math.max(W * 0.018, 6)) continue;   // 词间隙不投票，只认栏间距量级
+        const a = Math.max(0, Math.floor(g1 / W * NB));
+        const b = Math.min(NB - 1, Math.ceil(g2 / W * NB) - 1);
+        if (b < a) continue;
+        for (let i = a; i <= b; i++) votes[i]++;
+        gaps.push({ g1, g2, a, b });
+        voted = true;
+      }
+      if (voted) voters++;
+    }
+    let best = -1, bestV = 0;
+    for (let i = 0; i < NB; i++) if (votes[i] > bestV) { bestV = votes[i]; best = i; }
+    if (best < 0 || bestV < Math.max(6, voters * 0.6)) return null;
+    // 分界必须在页面中部（10%–90%），排除把左右页边距当分界
+    const splitX = (best + 0.5) / NB * W;
+    if (splitX < W * 0.1 || splitX > W * 0.9) return null;
+    // ★ 栏边缘一致性：覆盖最优桶的空档，其左缘（左栏右缘）与右缘（右栏左缘）
+    //   各自的中位数附近（±4.5% 页宽）要聚着 ≥55% 的空档 —— 真双栏的正文行
+    //   两端对齐、边缘高度一致（段末散行是少数离群值）；目录页「标题…页码」
+    //   的行内空档边缘随标题长度乱飞，聚不起来（姜旭学位论文目录页实踩）。
+    const cover = gaps.filter((g) => g.a <= best && g.b >= best);
+    if (cover.length < bestV * 0.8) return null;
+    const median = (arr) => {
+      const s = arr.slice().sort((a, b) => a - b);
+      return s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+    };
+    const bandRatio = (arr, med) => {
+      if (!arr.length) return 0;
+      const tol = W * 0.045;
+      let n = 0;
+      for (const v of arr) if (Math.abs(v - med) <= tol) n++;
+      return n / arr.length;
+    };
+    const g1s = cover.map((g) => g.g1), g2s = cover.map((g) => g.g2);
+    if (bandRatio(g1s, median(g1s)) < 0.55 || bandRatio(g2s, median(g2s)) < 0.55) return null;
+    return splitX;
+  }
+
+  /** 按分界线把**行**分到 左栏 / 右栏 / 跨栏（0.38.2b：行级归属，span 级会把
+   *  整宽段落里恰好跨界的行撕开 —— Deeb 摘要行实踩）：
+   *  · 整行合并区间覆盖分界 → 跨栏组（标题、整宽摘要，整行保持完整）；
+   *  · 否则行内各 span 按中心点分到左右栏（真双栏行的左右两半各归其栏）。 */
+  function splitByColumn(rows, splitX, pageWidth) {
+    const W = Math.max(100, Number(pageWidth) || 0);
+    const tol = Math.max(4, W * 0.01);
+    const left = [], right = [], cross = [];
+    for (const r of (rows || [])) {
+      const iv = _mergeIv((r.parts || []).map((p) => [p.left, p.left + (p.width || 0)]));
+      const covers = iv.some((v) => v[0] < splitX - tol && v[1] > splitX + tol);
+      if (covers) { for (const p of r.parts) cross.push(p); continue; }
+      for (const p of r.parts) {
+        if (p.left + (p.width || 0) / 2 < splitX) left.push(p);
+        else right.push(p);
+      }
+    }
+    return { left, right, cross };
+  }
+
+  /** 统一入口：span 集合 → 分类后的段落块（双栏感知；两路抽取共用） */
+  function blocksFromSpans(spans, pageWidth) {
+    const list = (spans || []).filter((s) => s && s.text && String(s.text).trim());
+    if (!list.length) return null;
+    let groups = [list];
+    try {
+      const rows = rowPartsOf(list);
+      const splitX = detectColumnSplit(rows, pageWidth);
+      if (splitX) {
+        const g = splitByColumn(rows, splitX, pageWidth);
+        groups = [g.left, g.right, g.cross];
+      }
+    } catch (e) { /* 检测失败按单栏处理 */ }
+    const out = [];
+    for (const grp of groups) {
+      if (!grp || !grp.length) continue;
+      const blocks = linesToBlocks(groupSpans(grp));
+      for (const b of blocks) {
+        let kind = "body";
+        try {
+          kind = (typeof PdfText !== "undefined" && PdfText) ? PdfText.classify(b.text) : "body";
+        } catch (e) { kind = "body"; }
+        if (kind === "junk") continue;
+        b.kind = kind;
+        out.push(b);
+      }
+    }
+    // 块按（top, left）排序：阅读顺序 = 先左栏后右栏（左栏 x 小）
+    out.sort((a, b) => (a.top - b.top) || (a.left - b.left));
+    return out.length ? out : null;
+  }
+
   /**
    * span 列表 → 行。span: {text, left, top, width, height, fontSize}
    * @returns [{text, left, top, right, bottom, height, fontSize, spans:[i...]}]
@@ -243,6 +394,8 @@ var PdfInline = (function () {
       "." + CARD_CLS + ".pp-pit-mo{box-shadow:none;}",
       "." + CARD_CLS + ".pp-pit-pending{color:var(--fill-tertiary,#999);}",
       "." + CARD_CLS + ".pp-pit-fail{color:#c0392b;}",
+      // 兜底卡片（getPageData 路径）：无 textLayer 可淡化，译文直接盖 canvas 原文 → 加描边
+      "." + LAYER_CLS + ".pp-pit-fb ." + CARD_CLS + "{box-shadow:0 0 0 .6px rgba(127,127,127,.45);}",
       "." + SRC_CLS + "{transition:opacity .12s linear;}",
       // 原文处理：overlay 淡显 / mono 完全隐藏（右栏就是「译文版 PDF」，图形与公式保留）
       (m === "overlay" ? ".textLayer ." + SRC_CLS + "{opacity:.18;}\n" : ""),
@@ -302,20 +455,200 @@ var PdfInline = (function () {
       });
     }
     if (!spans.length) return null;
-    const lines = groupSpans(spans);
-    const blocks = linesToBlocks(lines);
-    // 分类（单一真源）：junk 丢弃、formula 不译、caption/body 照常翻译
-    const out = [];
-    for (const b of blocks) {
-      let kind = "body";
-      try {
-        kind = (typeof PdfText !== "undefined" && PdfText) ? PdfText.classify(b.text) : "body";
-      } catch (e) { kind = "body"; }
-      if (kind === "junk") continue;
-      b.kind = kind;
-      out.push(b);
+    // 双栏感知（0.38.2）：行级投票检测栏间距，两栏各自走行/段聚类；单栏行为不变
+    return blocksFromSpans(spans, pageRect ? pageRect.width : 0);
+  }
+
+  /* ==================== 无 textLayer 时的 getPageData 兜底（0.38.1） ====================
+   *
+   * 背景：Zotero 预览恒 textLayerMode=0（resource/reader/reader.js 写死
+   * `this._preview ? 0 : 1`）——pdf-dual-view 的 ensureTextLayer 尽力在 viewer 初始化前
+   * 翻转回 1，但仍可能失败（真机 0.37.3/0.38.0 实测：PDF 明明有文本、全文索引能抽出
+   * 12 万字符，右栏却整篇报「无文本层」）。与其赌翻转，不如**再备一条不依赖渲染的取数路**：
+   *
+   *   走 Zotero 给 pdf.js 打的补丁接口 `app.pdfDocument.getPageData({pageIndex})` →
+   *   `{ chars }`（朗读功能同款；compare.js pageText 已实证可从 chrome 作用域调用，
+   *   参数必须 cloneInto）。worker 侧（pdf.worker.mjs）的字符对象自带：
+   *     · `rect`：PDF 用户空间 [x1,y1,x2,y2]（原点左下）；
+   *     · `lineBreakAfter` / `paragraphBreakAfter` / `spaceAfter`：Zotero 自己算好的
+   *       断行断段（比几何启发式可靠）；
+   *     · `rotation` / `fontName` / `ignorable` / `c`。
+   *   **worker 取数不依赖页面渲染** ⇒ 后台/无头窗口（detached 自检）里同样可用。
+   *
+   *   chars → 行级 span（与 textLayer span 同构）→ 复用 groupSpans/linesToBlocks/classify
+   *   → 翻译落卡走同一套管线。扫描页 chars 为空 → 如实记 noTextPages（提示「需 OCR」）。
+   */
+
+  /** 纯函数：PDF 用户空间 rect + viewport.transform → 页内 CSS 盒（任意旋转都取变换后外接框） */
+  function rectToCssBox(t, r) {
+    if (!t || t.length < 6 || !r || r.length < 4) return null;
+    const xs = [], ys = [];
+    const pts = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]];
+    for (const p of pts) {
+      xs.push(t[0] * p[0] + t[2] * p[1] + t[4]);
+      ys.push(t[1] * p[0] + t[3] * p[1] + t[5]);
     }
+    const left = Math.min.apply(null, xs), right = Math.max.apply(null, xs);
+    const top = Math.min.apply(null, ys), bottom = Math.max.apply(null, ys);
+    if (!isFinite(left) || !isFinite(top) || right - left <= 0 || bottom - top <= 0) return null;
+    return { left, top, width: right - left, height: bottom - top };
+  }
+
+  /** 纯函数：getPageData chars → 行级 span 列表（用 Zotero 的 lineBreakAfter 断行；
+   *  段落切分交给 linesToBlocks 的几何规则，与 textLayer 路径行为一致） */
+  function charsToLineSpans(chars, t) {
+    const out = [];
+    let text = "";
+    let minL = Infinity, minT = Infinity, maxR = -Infinity, maxB = -Infinity, fs = 0;
+    const flush = () => {
+      const s = text.replace(/\s+/g, " ").trim();
+      // 先捕获行的聚合值，再重置累加器（顺序反了会把 Infinity 当坐标发出去）
+      const L = minL, Tp = minT, R = maxR, B = maxB, F = fs;
+      text = ""; minL = minT = Infinity; maxR = maxB = -Infinity; fs = 0;
+      if (!s || !isFinite(L) || R === -Infinity) return;
+      out.push({
+        text: s,
+        left: L, top: Tp,
+        width: Math.max(1, R - L),
+        height: Math.max(1, B - Tp),
+        fontSize: Math.max(6, F || (B - Tp) || 10),
+      });
+    };
+    for (const ch of (chars || [])) {
+      if (!ch || !ch.c || ch.ignorable) continue;
+      const box = rectToCssBox(t, ch.rect);
+      if (!box) continue;
+      if (box.left < minL) minL = box.left;
+      if (box.top < minT) minT = box.top;
+      if (box.left + box.width > maxR) maxR = box.left + box.width;
+      if (box.top + box.height > maxB) maxB = box.top + box.height;
+      if (box.height > fs) fs = box.height;
+      text += ch.c;
+      if (ch.lineBreakAfter || ch.paragraphBreakAfter) flush();
+      else if (ch.spaceAfter) text += " ";
+    }
+    flush();
     return out;
+  }
+
+  /** 纯函数：chars + transform → 分类后的段落块（与 extractBlocks 输出同构；空/垃圾返回 null）
+   *  0.38.2 起双栏感知（blocksFromSpans）。页宽用最大 span 右边界推
+   *  （transform 只是缩放矩阵，不含 PDF 原始页宽，不能从它算页宽）。 */
+  function blocksFromCharsCore(chars, t) {
+    const spans = charsToLineSpans(chars, t);
+    if (!spans.length) return null;
+    let pw = 0;
+    for (const s of spans) pw = Math.max(pw, s.left + (s.width || 0));
+    return blocksFromSpans(spans, pw);
+  }
+
+  /** 参数克隆到 pdf.js 所在隔间（getPageData 内部结构化克隆给 worker；
+   *  直传普通对象报 "The object could not be cloned." —— compare.js 实证） */
+  function contentArgFor(obj, win) {
+    try {
+      const Cu = (typeof Components !== "undefined" && Components && Components.utils) || null;
+      if (Cu && Cu.cloneInto && win) {
+        const scopes = [];
+        try { if (win.wrappedJSObject) scopes.push(win.wrappedJSObject); } catch (e) { /* ignore */ }
+        try { scopes.push(win); } catch (e) { /* ignore */ }
+        for (const s of scopes) {
+          try { return Cu.cloneInto(obj, s); } catch (e) { /* 逐个降级 */ }
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return obj;
+  }
+
+  /** 取某页 viewport.transform（页元素 CSS 坐标 = transform × PDF 用户空间坐标）。
+   *  _pages 是 pdf.js 在 setDocument 时建好的（不依赖渲染），后台窗口同样可用。 */
+  function pageTransform(state, pageNo) {
+    try {
+      const pv = state.app && state.app.pdfViewer;
+      const views = pv && pv._pages;
+      const v = views && views[pageNo - 1];
+      const vp = v && v.viewport;
+      const t = vp && vp.transform;
+      if (t && t.length >= 6) return t;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  async function fetchPageChars(state, pageNo) {
+    try {
+      const doc = state.app && state.app.pdfDocument;
+      if (!doc || typeof doc.getPageData !== "function") return null;
+      const data = await doc.getPageData(contentArgFor({ pageIndex: pageNo - 1 }, state.win));
+      const chars = data && data.chars;
+      return (chars && chars.length) ? chars : null;
+    } catch (e) { return null; }
+  }
+
+  /** 某页的字符兜底（幂等去重：同页并发只发一次 worker 请求）。
+   *  完成后走与 processPage 相同的落卡/入队管线；返回 Promise<boolean>（true=已落卡）。
+   *  ★ 0.38.3 性能三点：
+   *   ① `state.charsByPage`：chars 在 **PDF 用户空间**，与缩放无关 → 缓存后
+   *      缩放重铺不再发 worker 往返；② 调用方可先过 `pageNearViewport` 门控
+   *      （只解析视口附近的页，别开窗就把全篇 eager 解析+翻译）；
+   *   ③ 已落卡且签名未变时直接返回，不再重铺。 */
+  function charFallbackFor(state, pageNo) {
+    const num = String(pageNo);
+    if (state.charJobs.has(num)) return state.charJobs.get(num);
+    // 已处理过且译文层还在 → 直接成功（防轮询/事件重复重铺）
+    const prev = state.pages.get(num);
+    if (prev && prev.sig) {
+      try {
+        const pe0 = state.doc.querySelector('.page[data-page-number="' + num + '"]');
+        const geo0 = pe0 ? ((pe0.offsetWidth || 0) + "x" + (pe0.offsetHeight || 0)) : "";
+        if (pe0 && pe0.querySelector("." + LAYER_CLS) && prev.geo === geo0 && pageSignature(pe0) === prev.sig) {
+          return Promise.resolve(true);
+        }
+      } catch (e) { /* ignore */ }
+    }
+    const job = (async () => {
+      if (state.stopped) return false;
+      const t = pageTransform(state, pageNo);
+      if (!t) return false;
+      let chars = state.charsByPage.has(num) ? state.charsByPage.get(num) : null;
+      if (!state.charsByPage.has(num)) {
+        chars = await fetchPageChars(state, pageNo);
+        state.charsByPage.set(num, chars || null);   // 负结果也缓存（扫描页不再反复问 worker）
+        state.stat.charFetches = (state.stat.charFetches || 0) + 1;
+      }
+      const blocks = chars ? blocksFromCharsCore(chars, t) : null;
+      if (!blocks) {
+        // 扫描页（worker 都抽不出字符）→ 如实记录；提示语由 updateButton 统一给「需 OCR」
+        if (state.noTextPages.indexOf(num) < 0) state.noTextPages.push(num);
+        return false;
+      }
+      if (state.stopped) return false;
+      const pe = state.doc.querySelector('.page[data-page-number="' + num + '"]');
+      if (!pe) return false;
+      const sig = pageSignature(pe);
+      state.pages.set(num, { sig, geo: (pe.offsetWidth || 0) + "x" + (pe.offsetHeight || 0) });
+      state.stat.charRenders = (state.stat.charRenders || 0) + 1;
+      const sm = stateMode(state);
+      clearPage(pe);
+      renderBlocks(pe, blocks, state.doc, sm, true);
+      state.pageBlocks.set(num, blocks);
+      recount(state);
+      updateButton(state);
+      for (const b of blocks) {
+        if (b.kind === "formula") continue;
+        const hit = textCache.get(cacheKey(b.text));
+        if (hit !== undefined) { b.dst = hit; paintBlock(b, sm); recount(state); continue; }
+        enqueue(state, async () => {
+          if (state.stopped) return;
+          await translateBlock(state, b);
+          if (!state.stopped) paintBlock(b, stateMode(state));
+          recount(state);
+          updateButton(state);
+        });
+      }
+      updateButton(state);
+      return true;
+    })().catch(() => false).finally(() => { try { state.charJobs.delete(num); } catch (e) { /* ignore */ } });
+    state.charJobs.set(num, job);
+    return job;
   }
 
   /* ==================== 渲染 ==================== */
@@ -331,12 +664,16 @@ var PdfInline = (function () {
     for (const pageEl of pageEls(state.doc)) clearPage(pageEl);
   }
 
-  /** 在页元素内注入译文层并渲染各段卡片 */
-  function renderBlocks(pageEl, blocks, doc, m) {
+  /** 在页元素内注入译文层并渲染各段卡片（fromChars=true 表示块来自 getPageData 兜底：
+   *  无 textLayer，卡片直接盖在 canvas 原文上，加个描边提升可读性）。
+   *  ★ 0.38.3 批量布局：先建卡+挂载（写），再统一测高（读）—— 0.38.2 每建一张就读
+   *  `scrollHeight`，写读交错 = 每卡一次强制同步重排；160 段时是明显卡顿来源。 */
+  function renderBlocks(pageEl, blocks, doc, m, fromChars) {
     clearPage(pageEl);
     if (!blocks || !blocks.length) return;
     const layer = doc.createElementNS(HTML_NS, "div");
-    layer.setAttribute("class", LAYER_CLS);
+    layer.setAttribute("class", LAYER_CLS + (fromChars ? " pp-pit-fb" : ""));
+    const made = [];
     for (const b of blocks) {
       if (b.kind === "formula") continue;      // 公式保持原样，不叠加
       const card = doc.createElementNS(HTML_NS, "div");
@@ -353,20 +690,20 @@ var PdfInline = (function () {
       card.style.maxHeight = Math.max(30, Math.ceil(Math.max(b.height * 3.2, b.height + 44))) + "px";
       const base = Math.max(6, (b.fontSize || 10) * fontScale());
       card.style.fontSize = (Math.round(base * 10) / 10) + "px";
-      card.textContent = b.dst == null
-        ? (I18n && I18n.isZh ? "…" : "…")
-        : b.dst;
+      card.textContent = b.dst == null ? "…" : b.dst;
       layer.appendChild(card);
       b.cardEl = card;
       b.baseFontSize = base;
-      // 内容超高 → 降档字号（渲染后量一次）
-      try {
-        const ch = card.scrollHeight;
-        const bh = Math.max(10, Math.floor(b.height + pad * 2));
-        if (ch > bh * 1.2) card.style.fontSize = fitFontSize(base, bh, ch) + "px";
-      } catch (e) { /* ignore */ }
+      made.push({ b, card, boxH: Math.max(10, Math.floor(b.height + pad * 2)) });
     }
     pageEl.appendChild(layer);
+    // —— 统一测量（此阶段只读 DOM，一次布局即可覆盖全部卡片）——
+    for (const it of made) {
+      try {
+        const ch = it.card.scrollHeight;
+        if (ch > it.boxH * 1.2) it.card.style.fontSize = fitFontSize(it.b.baseFontSize, it.boxH, ch) + "px";
+      } catch (e) { /* ignore */ }
+    }
   }
 
   /** 把该页原文 span 标记/取消标记（overlay 模式淡化由 CSS 承担）。
@@ -384,11 +721,20 @@ var PdfInline = (function () {
     } catch (e) { /* ignore */ }
   }
 
-  /** 页面坐标签名：前若干 span 的几何值。缩放/重排会改变它 → 据此判断卡片坐标已作废。 */
+  /** 页面坐标签名：前若干 span 的几何值。缩放/重排会改变它 → 据此判断卡片坐标已作废。
+   *  ★ 0.38.3：无 textLayer 的页（getPageData 兜底路径）也必须给**稳定签名** ——
+   *  0.38.1/0.38.2 这里返回 ""，而 processPage 的跳过条件含 `&& sig`（空串为假），
+   *  于是这类页**永远不跳过**：900ms 轮询每拍都对全篇重跑 getPageData（worker 往返）
+   *  + 重铺卡片 + 重排队翻译 —— 这正是用户「很卡、解析很慢」的主因（31 页实测）。 */
   function pageSignature(pageEl) {
     try {
+      const w = pageEl.offsetWidth || 0;
+      const h = pageEl.offsetHeight || 0;
       const layer = pageEl.querySelector(".textLayer");
-      if (!layer) return "";
+      if (!layer) {
+        // 兜底路径：坐标随页宽高（缩放）变化 → 用几何 + 页号做签名
+        return "g" + w + "x" + h;
+      }
       const spans = layer.querySelectorAll("span");
       const parts = [];
       for (let i = 0; i < Math.min(4, spans.length); i++) {
@@ -397,8 +743,22 @@ var PdfInline = (function () {
         if (!r) continue;
         parts.push(Math.round(r.left) + "," + Math.round(r.top) + "," + Math.round(r.width));
       }
-      return parts.join("|") + "|" + (pageEl.offsetWidth || 0) + "x" + (pageEl.offsetHeight || 0);
+      return parts.join("|") + "|" + w + "x" + h;
     } catch (e) { return ""; }
+  }
+
+  /** 该页是否在（或邻近）视口内：兜底解析只做可见页附近，避免开窗即全篇 eager
+   *  （31 页 × getPageData + 160 段翻译瞬时压满队列 = 「解析很慢」）。
+   *  上下各放宽 1 个视口高，滚动时下一屏已经算好。 */
+  function pageNearViewport(state, pageEl) {
+    try {
+      const c = state.doc.getElementById("viewerContainer");
+      if (!c) return true;
+      const cr = c.getBoundingClientRect();
+      const pr = pageEl.getBoundingClientRect();
+      const margin = (cr.height || 800) * 1.0;
+      return pr.bottom >= cr.top - margin && pr.top <= cr.bottom + margin;
+    } catch (e) { return true; }
   }
 
   /* ==================== 翻译队列 ==================== */
@@ -509,24 +869,37 @@ var PdfInline = (function () {
     }
   }
 
-  async function processPage(state, pageEl) {
+  async function processPage(state, pageEl, opts) {
     if (state.stopped) return;
+    state.procCount = (state.procCount || 0) + 1;   // 诊断：缩放/事件驱动重铺计数
+    const full = !!(opts && opts.full);            // 事件驱动扫描：跳过稳态快路径
     const pageNum = String(pageEl.getAttribute("data-page-number") || "");
-    const sig = pageSignature(pageEl);
+    const geo = (pageEl.offsetWidth || 0) + "x" + (pageEl.offsetHeight || 0);
     const existing = state.pages.get(pageNum);
-    // 已处理且几何签名未变、译文层仍在 → 跳过（幂等，懒加载/事件重入安全）
-    if (existing && existing.sig === sig && sig) {
-      try {
-        if (pageEl.querySelector("." + LAYER_CLS)) return;
-      } catch (e) { /* ignore */ }
+    let hasLayer = false;
+    try { hasLayer = !!pageEl.querySelector("." + LAYER_CLS); } catch (e) { hasLayer = false; }
+    // ★ 0.38.3 两级幂等判断（修「很卡」的核心）：
+    //  ① 轮询快路径：页几何没变 + 译文层还在 → 直接返回，**零 span 几何读取**
+    //     （0.38.2 每拍对每页读 4 个 getBoundingClientRect = 强制布局，31 页 × 每拍
+    //      是持续性卡顿来源；实测静置期空转重铺）。
+    //  ② 事件/滚动路径（full）：已处理页做完整签名比对，捕捉「页尺寸没变但 textLayer
+    //     被重建」的情形；未处理/无层的页不需要 span 几何。
+    if (existing && hasLayer) {
+      if (!full && existing.geo === geo) return;
+      const sig0 = pageSignature(pageEl);
+      if (sig0 && sig0 === existing.sig) return;
     }
     const blocks = extractBlocks(pageEl);
     if (blocks === null) {
-      // 该页无文本层（扫描页）→ 记录，按钮提示统一给出「需 OCR」
-      if (state.noTextPages.indexOf(pageNum) < 0) state.noTextPages.push(pageNum);
-      return;
+      // 无 textLayer：先试 getPageData 兜底（异步、幂等去重；扫描页才真正「无文本」）。
+      // 不 await —— processPage 保持同步签名，事件/轮询/整篇翻译三条路共用这一口。
+      // ★ 0.38.3：只对**视口附近**的页做兜底 —— 否则开窗瞬间就把全篇（31 页）
+      //   eager 解析 + 排队翻译（160 段），表现为「很卡、解析很慢」。
+      if (!state.stopped && pageNearViewport(state, pageEl)) charFallbackFor(state, pageNum);
+      return false;
     }
-    state.pages.set(pageNum, { sig });
+    state.pages.set(pageNum, { sig: pageSignature(pageEl), geo });
+    state.stat.textRenders = (state.stat.textRenders || 0) + 1;
     const sm = stateMode(state);
     // 坐标可能已变（缩放）：旧层作废重建；原文标记一并重刷
     clearPage(pageEl);
@@ -573,6 +946,9 @@ var PdfInline = (function () {
       stopped: false,
       pages: new Map(),        // pageNum → {sig}（几何签名，判断坐标是否作废）
       pageBlocks: new Map(),   // pageNum → blocks（计数派生自这里，重绘不虚高）
+      charJobs: new Map(),     // pageNum → Promise<boolean>（getPageData 兜底幂等去重）
+      charsByPage: new Map(),  // pageNum → chars|null（PDF 用户空间，与缩放无关 → 跨缩放复用）
+      stat: { charFetches: 0, charRenders: 0, textRenders: 0 },   // 性能诊断计数
       noTextPages: [],
       blockCount: 0,
       doneCount: 0,
@@ -601,7 +977,8 @@ var PdfInline = (function () {
         if (!state.active || state.stopped) return;
         for (const pageEl of pageEls(state.doc)) {
           if (state.stopped) return;
-          try { processPage(state, pageEl); } catch (e) { /* 单页失败不拖垮 */ }
+          // full=true：事件/滚动/缩放驱动 → 完整签名判断（不吃稳态快路径）
+          try { processPage(state, pageEl, { full: true }); } catch (e) { /* 单页失败不拖垮 */ }
         }
         updateButton(state);
       };
@@ -613,21 +990,48 @@ var PdfInline = (function () {
           scan();
         }, 180);
       };
+      // ★ 0.38.2：缩放保底 —— scalechanging 同步派发（不依赖渲染），重启轮询窗口
+      //  让重铺不赌 textlayerrendered（detached 无 rAF 实测一次都不来）
+      state.zoomHandler = () => {
+        if (!state.active || state.stopped) return;
+        restartPoll(state);
+        if (state.busHandler) state.busHandler();
+      };
       state.app.eventBus.on("textlayerrendered", state.busHandler);
       state.app.eventBus.on("pagerendered", state.busHandler);
+      state.app.eventBus.on("scalechanging", state.zoomHandler);
+      // ★ 0.38.3：滚动节流触发 —— 新页滚进视口才该被解析（配合 processPage 的视口
+      //  门控 = 按需懒解析）。pagerendered 在兜底页（无 textLayer）不一定来，故补滚动。
+      //  与事件共用 busHandler 的 180ms 节流；此时 processPage 幂等，已处理页零成本跳过。
+      try {
+        const c = state.doc.getElementById("viewerContainer");
+        if (c && typeof c.addEventListener === "function") {
+          state.scrollEl = c;
+          state.scrollHandler = () => { if (state.busHandler) state.busHandler(); };
+          c.addEventListener("scroll", state.scrollHandler, { passive: true });
+        }
+      } catch (e) { /* ignore */ }
     } catch (e) { /* ignore */ }
   }
 
   function unbindBus(state) {
     try {
       if (state.busTimer) { clearTimeout(state.busTimer); state.busTimer = null; }
-      if (state.app && state.app.eventBus && state.busHandler &&
-          typeof state.app.eventBus.off === "function") {
-        state.app.eventBus.off("textlayerrendered", state.busHandler);
-        state.app.eventBus.off("pagerendered", state.busHandler);
+      if (state.app && state.app.eventBus && typeof state.app.eventBus.off === "function") {
+        if (state.busHandler) {
+          state.app.eventBus.off("textlayerrendered", state.busHandler);
+          state.app.eventBus.off("pagerendered", state.busHandler);
+        }
+        if (state.zoomHandler) state.app.eventBus.off("scalechanging", state.zoomHandler);
+      }
+      if (state.scrollEl && state.scrollHandler && typeof state.scrollEl.removeEventListener === "function") {
+        state.scrollEl.removeEventListener("scroll", state.scrollHandler);
       }
     } catch (e) { /* ignore */ }
     state.busHandler = null;
+    state.zoomHandler = null;
+    state.scrollEl = null;
+    state.scrollHandler = null;
   }
 
   /** 开始（幂等）：注入样式 + 扫描已渲染页 + 挂事件与轮询兜底 */
@@ -654,12 +1058,17 @@ var PdfInline = (function () {
    *  可能一个 textLayer 都不产出，`textlayerrendered` 事件也就永远不来 ——
    *  只看事件会让原位层一直空着（表现为「点了按钮没反应」）。
    *  这里以 900ms 间隔扫已渲染页（签名未变即跳过，开销极小），
-   *  轮询 60 次后停（约 54 秒）；此后由事件继续负责懒加载与缩放。 */
+   *  轮询 60 次后停（约 54 秒）；此后由事件继续负责懒加载与缩放。
+   *  ★ 0.38.2：缩放（scalechanging）会**重启**轮询窗口 —— 实测缩放后
+   *  textlayerrendered/pagerendered 并不可靠（detached 无 rAF 时一次都不来；
+   *  CSS-only 缩放/延迟绘制路径也各有前提），用户「读完一会儿再缩放 → 译文
+   *  全留在旧坐标」就是这个空窗。scalechanging 是 pdf.js 缩放时**同步派发**
+   *  的（不依赖渲染推进），拿它当缩放重铺的保底触发。 */
   function bindPoll(state) {
     if (state.pollTimer) return;
-    let ticks = 0;
+    state.pollTicks = 0;
     state.pollTimer = setInterval(() => {
-      if (!state.active || state.stopped || ++ticks > 60) {
+      if (!state.active || state.stopped || ++state.pollTicks > 60) {
         clearInterval(state.pollTimer);
         state.pollTimer = null;
         // 轮询结束仍一无所获 → 给出「等待渲染/可能是扫描版」的可读提示
@@ -676,12 +1085,24 @@ var PdfInline = (function () {
         return;
       }
       if (!state.active || state.stopped) return;
+      // ★ 0.38.3：轮询只扫**视口附近**的页（pdf.js 也只渲染可见页；远处页既不会
+      //  新产出 textLayer、也不在用户眼前）。滚入视口由滚动/事件触发的 full 扫描接管。
+      //  31 页 → 约 3 页/拍，配合两级幂等判断，静置期近乎零开销。
       for (const pageEl of pageEls(state.doc)) {
         if (state.stopped) return;
+        if (!pageNearViewport(state, pageEl)) continue;
         try { processPage(state, pageEl); } catch (e) { /* ignore */ }
       }
       updateButton(state);
     }, 900);
+  }
+
+  /** 缩放/交互后重启轮询窗口（0.38.2）：清零计数、没在跑就拉起 */
+  function restartPoll(state) {
+    try {
+      state.pollTicks = 0;
+      if (!state.pollTimer) bindPoll(state);
+    } catch (e) { /* ignore */ }
   }
 
   function unbindPoll(state) {
@@ -1010,17 +1431,33 @@ var PdfInline = (function () {
         }
       } catch (e) { /* ignore */ }
       // ② 等该页 textLayer 出现（pdf.js 渲染是异步的）；waitTicks 可调（测试/慢机器）
+      //  ★ 0.38.3 自适应：本站一旦确认走兜底（charFetches > 0 且尚无 textLayer 渲染），
+      //  后续页不再干等 24 拍（24×160ms = 3.84s/页；31 页纯等待近 2 分钟 —— 用户
+      //  实测「解析很慢」）。兜底走 worker 取字符，比等渲染确定得多。
       let pe = null;
       let got = false;
-      const ticks = o.waitTicks ? Math.max(1, Number(o.waitTicks)) : 24;
+      const baseTicks = o.waitTicks ? Math.max(1, Number(o.waitTicks)) : 24;
+      const fallbackMode = !o.waitTicks && state.stat
+        && (state.stat.charFetches || 0) > 0 && (state.stat.textRenders || 0) === 0;
+      const ticks = fallbackMode ? Math.min(baseTicks, 2) : baseTicks;
       for (let w = 0; w < ticks; w++) {
         if (state.stopped) break;
         try { pe = state.doc.querySelector('.page[data-page-number="' + i + '"]'); } catch (e) { pe = null; }
         if (pe && pe.querySelector(".textLayer")) { got = true; break; }
         await new Promise((r) => setTimeout(r, 160));
       }
-      if (!got) { out.skipped++; if (o.onProgress) { try { o.onProgress({ page: i, total: limit, phase: "skip" }); } catch (e) { /* ignore */ } } continue; }
-      // ③ 抽段落 + 翻译（复用页处理；命中缓存时零请求）
+      // ③ 无 textLayer（预览翻转失败/未渲染）→ getPageData 兜底：worker 取字符+坐标，
+      //    不依赖渲染；真扫描页（无字符）才计入 skipped（0.38.1：此前一律误报「无文本层」）
+      if (!got) {
+        let laid = false;
+        try { laid = await charFallbackFor(state, i); } catch (e) { laid = false; }
+        if (!laid) {
+          out.skipped++;
+          if (o.onProgress) { try { o.onProgress({ page: i, total: limit, phase: "skip" }); } catch (e) { /* ignore */ } }
+        }
+        continue;
+      }
+      // ④ 抽段落 + 翻译（复用页处理；命中缓存时零请求）
       try { await processPage(state, pe); } catch (e) { /* 单页失败不拖垮整篇 */ }
       if (o.onProgress) {
         try { o.onProgress({ page: i, total: limit, phase: "page", blocks: state.blockCount, done: state.doneCount }); }
@@ -1071,6 +1508,8 @@ var PdfInline = (function () {
         pages: s.pages.size,
         noTextPages: s.noTextPages.length,
         running: !!(s.queue && s.queue.running),
+        proc: s.procCount || 0,
+        stat: s.stat ? { fetch: s.stat.charFetches || 0, charR: s.stat.charRenders || 0, textR: s.stat.textRenders || 0 } : null,
       });
     }
     return out;
@@ -1179,6 +1618,14 @@ var PdfInline = (function () {
   return {
     // 纯函数（单测）
     groupSpans, linesToBlocks, fitFontSize,
+    // 0.38.2：双栏检测（纯函数）
+    rowPartsOf, detectColumnSplit, splitByColumn, blocksFromSpans,
+    // 0.38.2：缩放保底（测试用）
+    restartPoll,
+    // 0.38.3：逐页处理（测试用：钉幂等/不空转）
+    processPage, pageSignature, pageNearViewport,
+    // 0.38.1：getPageData 兜底（纯函数部分）
+    rectToCssBox, charsToLineSpans, blocksFromCharsCore,
     // 运行时
     register, unregister, start, stop, startForItem, startForSelected, refresh, snapshot, selfTest,
     // 0.36.0：供 PdfDual 复用（右栏 = 同一 PDF 的 mono 译文视图）

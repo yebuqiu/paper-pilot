@@ -141,9 +141,14 @@ function mkViewer(pages, layout) {
   container._rect = { left: 0, top: 0, width: 600, height: 400 };
   container.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 400 });
   // 容器定位：页元素相对容器的 top（容器在原点）
-  const win = { document: vdoc, PDFViewerApplication: {} };
+  // PDFViewerApplicationOptions 桩：记录 set 调用（0.37.3 textLayerMode 翻转断言用）
+  const setCalls = [];
+  const win = {
+    document: vdoc,
+    PDFViewerApplicationOptions: { set(k, v) { setCalls.push([k, v]); return true; } },
+  };
   const viewer = { scrollMode: 3, pagesCount: pages, currentScaleValue: "page-width", currentPageNumber: 1 };
-  const app = { pdfViewer: viewer, eventBus: { on() {}, off() {} } };
+  const app = { pdfViewer: viewer, eventBus: { on() {}, off() {} }, _initializedCapability: { settled: true } };
   win.PDFViewerApplication = app;
   return {
     win,
@@ -151,6 +156,7 @@ function mkViewer(pages, layout) {
     viewer,
     container,
     vdoc,
+    setCalls,
     setScrollTop(t) { container.scrollTop = t; },
   };
 }
@@ -158,7 +164,7 @@ function mkViewer(pages, layout) {
 /* ==================== 桩环境 ==================== */
 
 function mkPayload(over) {
-  const calls = { panesReady: [], notes: 0, retranslate: 0, fontScale: [], unload: 0, prefs: {} };
+  const calls = { panesReady: [], notes: 0, retranslate: 0, fontScale: [], unload: 0, prefs: {}, exports: [] };
   const base = {
     attID: 3987,
     title: "测试论文",
@@ -172,6 +178,13 @@ function mkPayload(over) {
     onPanesReady: (l, r) => { calls.panesReady.push([l, r]); },
     onUnload: () => { calls.unload++; },
     exportNote: async () => { calls.notes++; return { ok: true }; },
+    // 0.39.0 导出 ▾：pdf=双语PDF附件 / html / md / docx
+    exportAs: async (kind) => {
+      calls.exports.push(kind);
+      if (kind === "pdf") return { ok: true, pages: 3, skipped: 1, bytes: 12345, attachmentID: 99 };
+      if (kind === "docx") return { ok: true, path: "C:/tmp/x.docx" };
+      return { ok: true, path: "C:/tmp/x." + kind };
+    },
     retranslate: () => { calls.retranslate++; },
     setFontScale: (v) => { calls.fontScale.push(v); },
   };
@@ -303,6 +316,28 @@ async function main() {
     eq(util.__pending().right + util.__pending().left, 0, "5.3 300ms 兜底清零（窗口被遮挡也不卡死）");
   }
 
+  /* ---- 5b. 同步滚动节流（0.38.3）：连续 scroll 只对侧写一次 ---- */
+  {
+    const { payload: p3b } = mkPayload();
+    const w3b = boot(p3b);
+    await waitFor(() => w3b.win.ppDualReady(), 6000);
+    const R = w3b.rightViewer;
+    let writes = 0;
+    const proto = Object.getPrototypeOf(R.container);
+    const desc = Object.getOwnPropertyDescriptor(proto, "scrollTop");
+    Object.defineProperty(R.container, "scrollTop", {
+      configurable: true,
+      get() { return desc && desc.get ? desc.get.call(this) : 0; },
+      set(v) { writes++; if (desc && desc.set) desc.set.call(this, v); },
+    });
+    // 20 次连续滚动（模拟滚轮连发）→ 节流窗口内只应产生少量对侧写入
+    for (let i = 0; i < 20; i++) w3b.leftViewer.container.fire("scroll");
+    await sleep(200);
+    ok(writes <= 3, "5b.1 ★ 连续 20 次 scroll 只触发 ≤3 次对侧写入（60ms 节流合并）", { writes });
+    await sleep(400);
+    ok(writes <= 4, "5b.2 节流窗口结束后不再补写（不积压）", { writes });
+  }
+
   /* ---- 6. 重新翻译 / 导出笔记 / 同步开关 ---- */
   {
     const { payload: p4, calls: c4 } = mkPayload();
@@ -402,6 +437,102 @@ async function main() {
        registry.get("pp-pd-status").textContent.indexOf("失败") >= 0,
        "9.1 ★ _open 返回 false → 状态行明确报错（不静默空白）");
     eq(c8.panesReady.length, 0, "9.2 预览失败时不启动翻译");
+  }
+
+  /* ---- 11. textLayerMode 翻转（0.37.3：预览恒 0 → 抢在 viewer 初始化读选项前改回 1） ---- */
+  {
+    // 11.1–11.4 真实时序模拟：Zotero 在 webviewerloaded 里先置 0，
+    // 翻转循环在「await createL10n()」窗口里持续置 1，直到初始化落定
+    const wu = boot(mkPayload().payload);
+    const sets = [];
+    let settled = false;
+    const vwin = {
+      PDFViewerApplicationOptions: { set(k, v) { sets.push([k, v]); return true; } },
+      PDFViewerApplication: { _initializedCapability: { get settled() { return settled; } } },
+    };
+    setTimeout(() => { settled = true; }, 30);   // 模拟 l10n await：两次轮询后初始化落定
+    const paneStub = {
+      reader: { _internalReader: { _primaryView: { _iframeWindow: vwin } } },
+      browser: { contentWindow: null },
+    };
+    const r = await wu.win.ppDualUtil.ensureTextLayer(paneStub);
+    eq(r, true, "11.1 翻转循环等到 viewer 初始化落定后返回 true");
+    ok(sets.length >= 2, "11.2 初始化落定前持续重设（不止设一次，防 Zotero 的 0 覆盖后没补）");
+    ok(sets.every((s) => s[0] === "textLayerMode" && s[1] === 1), "11.3 每次写入都是 textLayerMode=1");
+    eq(sets[sets.length - 1][1], 1, "11.4 最后一次也是 1（viewer 读到的一定是 1）");
+
+    // 11.5–11.7 挂载路径：两个 pane 的翻转随 mountPane 自动启动并生效
+    const { payload: p11 } = mkPayload();
+    const w11 = boot(p11);
+    await waitFor(() => w11.win.ppDualReady(), 6000);
+    await waitFor(() => {
+      const s = w11.win.ppDualSnapshot();
+      return s.left.textLayerFlip === true && s.right.textLayerFlip === true;
+    }, 3000);
+    const s11 = w11.win.ppDualSnapshot();
+    eq(s11.left.textLayerFlip, true, "11.5 左栏 textLayerMode 翻转生效（顺带解锁预览划词/复制）");
+    eq(s11.right.textLayerFlip, true, "11.6 ★ 右栏 textLayerMode 翻转生效（右栏译文的前提，否则每页都报无文本层）");
+    ok(w11.leftViewer.setCalls.some((s) => s[0] === "textLayerMode" && s[1] === 1),
+      "11.7 挂载期间确实向 viewer options 写入 textLayerMode=1");
+    ok(w11.rightViewer.setCalls.some((s) => s[0] === "textLayerMode" && s[1] === 1),
+      "11.8 右栏同样写入（两 pane 独立 viewer，各自翻转）");
+  }
+
+  /* ---- 12. 导出 ▾（0.39.0：双语PDF附件 / HTML / Markdown / Word） ---- */
+  {
+    const { payload: p12, calls: c12 } = mkPayload();
+    const w12 = boot(p12);
+    await waitFor(() => w12.win.ppDualReady(), 6000);
+    const reg12 = w12.registry;
+    // 12.1–12.3 文案
+    eq(reg12.get("pp-pd-export-label").textContent, "导出", "12.1 工具栏有「导出」标签");
+    ok(String(reg12.get("pp-pd-exp-pdf").getAttribute("label") || "").indexOf("双语 PDF 附件") >= 0,
+      "12.2 ★ 菜单含「双语 PDF 附件」项");
+    ok(String(reg12.get("pp-pd-exp-docx").getAttribute("label") || "").indexOf("Word") >= 0,
+      "12.3 菜单含 Word 项");
+    ok(reg12.get("pp-pd-exp-html") && reg12.get("pp-pd-exp-md"), "12.4 菜单含 HTML / Markdown 项");
+
+    // 12.5 选 PDF：回插件作用域执行并把结果写状态行
+    const sel = reg12.get("pp-pd-export");
+    sel.value = "pdf";
+    sel.fire("change");
+    await waitFor(() => c12.exports.length === 1, 3000);
+    eq(c12.exports[0], "pdf", "12.5 选中 pdf → 回插件侧 exportAs('pdf')");
+    await waitFor(() => reg12.get("pp-pd-status").textContent.indexOf("已导出") >= 0, 3000);
+    const st12 = reg12.get("pp-pd-status").textContent;
+    ok(st12.indexOf("3 页") >= 0 && st12.indexOf("跳过 1 页") >= 0 && st12.indexOf("附件") >= 0,
+      "12.6 ★ PDF 导出的状态行报「页数 / 跳过未渲染页 / 已加入附件」", st12);
+    eq(sel.value, "", "12.7 执行后清空选择（可再次选同一项）");
+
+    // 12.8 选 Markdown：状态行给出落盘路径
+    sel.value = "md";
+    sel.fire("change");
+    await waitFor(() => c12.exports.length === 2, 3000);
+    eq(c12.exports[1], "md", "12.8 选中 md → exportAs('md')");
+    await waitFor(() => reg12.get("pp-pd-status").textContent.indexOf("x.md") >= 0, 3000);
+
+    // 12.9 取消导出
+    const { payload: p13, calls: c13 } = mkPayload({
+      exportAs: async () => ({ ok: false, canceled: true }),
+    });
+    const w13 = boot(p13);
+    await waitFor(() => w13.win.ppDualReady(), 6000);
+    w13.registry.get("pp-pd-export").value = "html";
+    w13.registry.get("pp-pd-export").fire("change");
+    await waitFor(() => w13.registry.get("pp-pd-status").textContent.indexOf("已取消") >= 0, 3000);
+    ok(true, "12.9 取消导出给出明确反馈（不静默）");
+
+    // 12.10 失败路径：把后端错误如实显示
+    const { payload: p14 } = mkPayload({
+      exportAs: async () => ({ ok: false, error: "no rendered pages" }),
+    });
+    const w14 = boot(p14);
+    await waitFor(() => w14.win.ppDualReady(), 6000);
+    w14.registry.get("pp-pd-export").value = "pdf";
+    w14.registry.get("pp-pd-export").fire("change");
+    await waitFor(() => w14.registry.get("pp-pd-status").textContent.indexOf("导出失败") >= 0, 3000);
+    ok(w14.registry.get("pp-pd-status").textContent.indexOf("no rendered pages") >= 0,
+      "12.10 ★ 导出失败的原因原样显示给用户");
   }
 
   /* ---------------- 输出 ---------------- */

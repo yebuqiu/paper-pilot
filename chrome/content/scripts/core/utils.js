@@ -207,6 +207,8 @@ var I18n = (() => {
     themeGroupGiant: zh ? "巨物风" : "Giant",
     // ---- 0.25.1 主题切换按钮：界面主题（主窗口）/ PDF 阅读主题（阅读器）两个按钮分开 ----
     themeUiButtonTip: zh ? "PaperPilot 界面主题" : "PaperPilot UI theme",
+    quickBarTip: zh ? "PaperPilot 快捷菜单（高频功能 / 功能中心 / 设置）"
+      : "PaperPilot quick menu (frequent actions / hub / settings)",
     themePdfButtonTip: zh ? "PaperPilot PDF 阅读主题" : "PaperPilot PDF reading theme",
     themeOpenSettings: zh
       ? "外观主题设置…（自定义配色 / 壁纸）"

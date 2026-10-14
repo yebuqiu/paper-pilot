@@ -10,6 +10,11 @@
  *   ② 预览的 scrollMode 落到 3（单页）→ 强制 0（连续垂直）+ 解禁 #viewerContainer 的 overflow；
  *   ③ 就绪判据是 `contentWindow.wrappedJSObject.createReader` 是函数（about:blank 的
  *      readyState 立刻是 complete，只看它会把未就绪当就绪）。
+ *   ④ ★ 预览恒 textLayerMode=0（Zotero reader.js 在 webviewerloaded 里写死
+ *      `textLayerMode: this._preview ? 0 : 1`）→ 预览 pane **永远不渲染 .textLayer**，
+ *      右栏 PdfInline 会每页都报「无文本层」（0.37.3 实锤；0.36/0.37 自检里预览栏
+ *      withTextLayer=0 也是它，此前误归因为 detached 窗口不渲染）。
+ *      补救见 ensureTextLayer：抢在 viewer 初始化读选项前把 textLayerMode 改回 1。
  */
 (function () {
   "use strict";
@@ -125,6 +130,102 @@
     } catch (e) { /* ignore */ }
   }
 
+  /* ★ 预览无文本层的根因与补救（0.37.3）：
+   *  Zotero reader.js 在 webviewerloaded 事件里写死 `textLayerMode: this._preview ? 0 : 1`
+   *  （本机 Zotero 10 的 resource/reader/reader.js 实锤）→ openPreview 的 pane 从不渲染
+   *  .textLayer，与窗口可见性无关。右栏 PdfInline 靠 textLayer span 抽段落坐标 →
+   *  每页都被判「无文本层（扫描版）」。
+   *
+   *  viewer.html 的启动序（resource/reader/pdf/web/viewer.mjs）：
+   *    webviewerloaded（Zotero 置 0）→ PDFViewerApplication.run() →
+   *    `await createL10n()` ← ★异步窗口 → _initializeViewerComponents 读 AppOptions
+   *    构造 PDFViewer（textLayerMode 烧进私有字段，事后改无效）
+   *  所以在 openPreview 返回后立刻高频轮询 PDFViewerApplicationOptions、持续置 1，
+   *  直到 _initializedCapability.settled —— 无论 Zotero 的 0 何时落，都保证读到的是 1。
+   *  （顺带收益：左栏预览从此可划词/复制，compare.js 时代「预览不能选字」的限制解除。）
+   *
+   *  ★ 0.38.1 加固（0.38.0 真机实锤「翻转在跑但仍失败」——PDF 有文本、全文索引
+   *  正常，右栏却整篇报无文本层）：
+   *    · 写后回读校验：每次 set 后用 opts.get("textLayerMode") 复核，绝不无凭据报成功；
+   *    · 三管齐下：opts.set(1) + 直改视图对象 _preview=false（让 Zotero 自己的 setOptions
+   *      置 1，最正路）+ settled 后再补 6 秒轻量重设（防 late setOptions 覆盖）；
+   *    · 真机上仍失败时的兜底在内核：PdfInline 的 getPageData 字符路径（不依赖 textLayer）。
+   */
+  async function ensureTextLayer(pane) {
+    const FLIP_KEEP_MS = 6000;
+    const deadline = Date.now() + 20000;
+    let sets = 0, verified = false;
+    const viewerWin = () => {
+      // ① reader 内部视图 iframe：_iframeWindow 在 webviewerloaded 之后才有值；
+      //    _iframe.contentWindow 更早可用（viewer.html 加载期间 contentWindow 会换壳）
+      try {
+        const ir = pane.reader && pane.reader._internalReader;
+        const pv = ir && ir._primaryView;
+        const w = (pv && pv._iframeWindow) || (pv && pv._iframe && pv._iframe.contentWindow);
+        if (w) return { w, pv: pv || null };
+      } catch (e) { /* ignore */ }
+      // ② 兜底：从 browser 的 reader.html 文档里找带 PDFViewerApplicationOptions 的 iframe
+      try {
+        const rw = pane.browser.contentWindow;
+        const rdoc = rw && (rw.wrappedJSObject || rw).document;
+        if (rdoc && typeof rdoc.querySelectorAll === "function") {
+          for (const f of rdoc.querySelectorAll("iframe")) {
+            const w = f.contentWindow;
+            if (!w) continue;
+            const uw = w.wrappedJSObject || w;
+            if (uw.PDFViewerApplicationOptions) return { w, pv: null };
+          }
+        }
+      } catch (e) { /* ignore */ }
+      return null;
+    };
+    for (;;) {
+      const hit = viewerWin();
+      if (hit) {
+        const uw = (hit.w && hit.w.wrappedJSObject) || hit.w;
+        // 三管齐下之一：直改视图的 _preview（setOptions 读它决定 0/1）
+        if (hit.pv) { try { hit.pv._preview = false; } catch (e) { /* ignore */ } }
+        const opts = uw.PDFViewerApplicationOptions;
+        if (opts && typeof opts.set === "function") {
+          try { opts.set("textLayerMode", 1); sets++; } catch (e) { /* ignore */ }
+          // 写后回读：set 没抛 ≠ 真的写进去了（跨隔间可能有坑），必须复核
+          try {
+            if (typeof opts.get === "function" && opts.get("textLayerMode") === 1) verified = true;
+          } catch (e) { /* ignore */ }
+        }
+        const app = uw.PDFViewerApplication;
+        if (app && app._initializedCapability && app._initializedCapability.settled) {
+          // settled 后再补几拍轻量重设（防 late setOptions 把 0 又写回去），
+          // 不阻塞返回：后台自转，下一轮窗口快照/日志能看到 verified
+          const keep = Date.now() + FLIP_KEEP_MS;
+          (async () => {
+            try {
+              while (Date.now() < keep) {
+                const h2 = viewerWin();
+                if (!h2) return;
+                const u2 = (h2.w && h2.w.wrappedJSObject) || h2.w;
+                const o2 = u2.PDFViewerApplicationOptions;
+                if (o2 && typeof o2.set === "function") {
+                  o2.set("textLayerMode", 1); sets++;
+                  if (typeof o2.get === "function" && o2.get("textLayerMode") === 1) verified = true;
+                }
+                await sleep(300);
+              }
+            } catch (e) { /* ignore */ }
+          })();
+          pane.textLayerHow = (sets ? (verified ? "set+verified" : "set(unverified)") : "no-set")
+            + ";sets=" + sets;
+          return !!(sets && (verified || (opts && typeof opts.get !== "function")));
+        }
+      }
+      if (Date.now() > deadline) {
+        pane.textLayerHow = "timeout;sets=" + sets + ";verified=" + (verified ? 1 : 0);
+        return false;
+      }
+      await sleep(10);
+    }
+  }
+
   /** 打开一个 pane 的 reader 预览 */
   async function mountPane(pane, attID) {
     const ok = await waitBrowserReady(pane.browser);
@@ -145,6 +246,10 @@
           "Preview open timed out");
         return false;
       }
+      // ★ 预览 textLayerMode=0（头注释④）→ 并发启动翻转循环，抢在 viewer 初始化读选项
+      //   之前生效；不 await：_open 与它互不阻塞，谁先跑完都正确。
+      pane.textLayerFlip = null;
+      ensureTextLayer(pane).then((v) => { pane.textLayerFlip = v; }, () => { pane.textLayerFlip = false; });
       // _open 内部吞异常后 return false —— 必须判返回值
       if (pane.reader && typeof pane.reader._open === "function") {
         const opened = await Promise.race([
@@ -266,21 +371,43 @@
   function bindScrollSync() {
     if (!panes) return;
     const L = panes.left, R = panes.right;
+    // ★ 0.38.3 节流：scroll 事件每秒可达几十次，每次都做几何二分（多次
+    //  getBoundingClientRect = 强制布局）+ 对侧写 scrollTop（又一次布局）→ 卡顿。
+    //  合并到 60ms 一次、且只跟最新位置（pending 标记存待办，不排队积压）。
+    const SYNC_THROTTLE_MS = 60;
+    let adjTimer = null;      // 节流窗口
+    let adjDirty = null;      // "left" | "right"：窗口结束后补跑一次
+    const schedule = (side) => {
+      adjDirty = side;
+      if (adjTimer) return;
+      adjTimer = setTimeout(run, SYNC_THROTTLE_MS);
+    };
+    const run = () => {
+      adjTimer = null;
+      const side = adjDirty;
+      adjDirty = null;
+      if (!side) return;
+      if (side === "left") {
+        if (!syncEnabled() || !R.viewer) return;
+        const pos = currentPosition(L);
+        if (!pos) return;
+        markPending("right");
+        gotoPosition(R, pos.page, pos.intra);
+      } else {
+        if (!syncEnabled() || !L.viewer) return;
+        const pos = currentPosition(R);
+        if (!pos) return;
+        markPending("left");
+        gotoPosition(L, pos.page, pos.intra);
+      }
+    };
     const onLeft = () => {
       if (pendingLeft > 0) { pendingLeft--; return; }
-      if (!syncEnabled() || !R.viewer) return;
-      const pos = currentPosition(L);
-      if (!pos) return;
-      markPending("right");
-      gotoPosition(R, pos.page, pos.intra);
+      schedule("left");
     };
     const onRight = () => {
       if (pendingRight > 0) { pendingRight--; return; }
-      if (!syncEnabled() || !L.viewer) return;
-      const pos = currentPosition(R);
-      if (!pos) return;
-      markPending("left");
-      gotoPosition(L, pos.page, pos.intra);
+      schedule("right");
     };
     try { L.viewer.container.addEventListener("scroll", onLeft, { passive: true }); } catch (e) { /* ignore */ }
     try { R.viewer.container.addEventListener("scroll", onRight, { passive: true }); } catch (e) { /* ignore */ }
@@ -370,6 +497,16 @@
         setStatus(tx("pdNoteFail", "生成笔记失败：", "Note failed: ") + ((e && e.message) || e));
       }
     });
+    // 0.39.0 导出 ▾（双语 PDF 附件 / HTML / Markdown / Word）：选中即执行，
+    // 执行后清空 value 便于再次选择同一项
+    const exp = $("pp-pd-export");
+    if (exp) {
+      exp.addEventListener("change", () => {
+        const kind = String(exp.value || "");
+        try { exp.value = ""; } catch (e) { /* ignore */ }
+        if (kind) window.ppDualExport(kind);
+      });
+    }
     const cl = $("pp-pd-close");
     if (cl) cl.addEventListener("click", () => { try { window.close(); } catch (e) { /* ignore */ } });
   }
@@ -381,7 +518,52 @@
     setText("pp-pd-retranslate", tx("pdRetranslate", "重新翻译", "Re-translate"));
     setText("pp-pd-note", tx("pdNote", "导出双语笔记", "Export note"));
     setText("pp-pd-title", A.title || "");
+    // 0.39.0：导出 ▾ 菜单
+    setText("pp-pd-export-label", tx("pdExport", "导出", "Export"));
+    const opt = (id, text) => {
+      const el = $(id);
+      if (el) { try { el.setAttribute("label", text); } catch (e) { /* ignore */ } }
+    };
+    opt("pp-pd-exp-pdf", tx("pdExpPdf", "双语 PDF 附件（挂到条目）", "Bilingual PDF attachment"));
+    opt("pp-pd-exp-html", tx("pdExpHtml", "双语 HTML 文件…", "Bilingual HTML file…"));
+    opt("pp-pd-exp-md", tx("pdExpMd", "双语 Markdown 文件…", "Bilingual Markdown file…"));
+    opt("pp-pd-exp-docx", tx("pdExpDocx", "双语 Word (.docx)…", "Bilingual Word (.docx)…"));
   }
+
+  /** 导出入口（0.39.0）：kind = pdf | html | md | docx；回插件作用域执行并把结果写状态行。
+   *  导出 PDF 需要「已渲染的页」——未渲染页会如实报跳过数，提示先点「翻译全文」。 */
+  window.ppDualExport = async function (kind) {
+    if (!kind) return false;
+    if (busy) { setStatus(tx("pdBusy", "翻译进行中，请稍候…", "Still translating…")); return false; }
+    const label = kind === "pdf" ? tx("pdExpPdf", "双语 PDF 附件（挂到条目）", "Bilingual PDF attachment")
+      : kind === "docx" ? "Word (.docx)"
+        : kind === "html" ? "HTML" : "Markdown";
+    setStatus(tx("pdExpBusy", "正在导出：", "Exporting: ") + label + "…");
+    try {
+      const r = await A.exportAs(kind);
+      if (r && r.ok) {
+        let extra = "";
+        if (kind === "pdf") {
+          extra = r.pages + (zh() ? " 页" : " pages")
+            + (r.skipped ? (zh() ? "（跳过 " + r.skipped + " 页未渲染）" : " (" + r.skipped + " not rendered)") : "")
+            + (zh() ? " → 已作为附件加入该条目" : " → attached to item");
+        } else {
+          extra = r.path || "";
+        }
+        setStatus(tx("pdExpDone", "✓ 已导出 ", "✓ Exported ") + label + (extra ? "：" + extra : ""));
+        return true;
+      }
+      if (r && r.canceled) {
+        setStatus(tx("pdExpCanceled", "已取消导出", "Export canceled"));
+        return false;
+      }
+      setStatus(tx("pdExpFail", "导出失败：", "Export failed: ") + ((r && r.error) || ""));
+      return false;
+    } catch (e) {
+      setStatus(tx("pdExpFail", "导出失败：", "Export failed: ") + ((e && e.message) || e));
+      return false;
+    }
+  };
 
   function setFontSize(n) {
     fontSize = clampFont(n);
@@ -547,6 +729,10 @@
         browserReady: ready,
         probe: probe(pane),
         box,
+        // textLayerMode 翻转：null=进行中 / true=已生效 / false=超时（此时右栏靠内核
+        // getPageData 兜底，仍能翻译；textLayerHow 是过程明细，排障看它）
+        textLayerFlip: pane.textLayerFlip === undefined ? null : pane.textLayerFlip,
+        textLayerHow: pane.textLayerHow || null,
       };
     };
     let winBox = null;
@@ -581,7 +767,25 @@
   };
 
   /** 供测试/同步断言使用（纯函数导出） */
-  window.ppDualUtil = { currentPosition, gotoPosition, markPending, __pending: () => ({ left: pendingLeft, right: pendingRight }) };
+  window.ppDualUtil = {
+    currentPosition, gotoPosition, markPending, ensureTextLayer,
+    // 缩放探针（自检/测试用）：读写某栏的缩放倍数
+    getScale: (side) => {
+      try {
+        const pane = panes && panes[side];
+        return pane && pane.viewer ? (pane.viewer.viewer.currentScale || 0) : 0;
+      } catch (e) { return 0; }
+    },
+    setScale: (side, v) => {
+      try {
+        const pane = panes && panes[side];
+        if (!pane || !pane.viewer) return false;
+        pane.viewer.viewer.currentScale = Number(v);
+        return true;
+      } catch (e) { return false; }
+    },
+    __pending: () => ({ left: pendingLeft, right: pendingRight }),
+  };
 
   window.addEventListener("unload", () => {
     try { if (A.onUnload) A.onUnload(); } catch (e) { /* ignore */ }

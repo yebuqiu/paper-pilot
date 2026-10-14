@@ -242,3 +242,10 @@ pref("extensions.zotero.paperpilot.refImportSources", "");
 // 0.33.0：Crossref / OpenAlex 的「礼貌池」联系邮箱（填了会获得更高的限速配额，
 // 建议填真实邮箱；留空走内置占位值，功能不受影响）
 pref("extensions.zotero.paperpilot.refImportMailto", "");
+// 0.38.0 设置面板折叠分组：已展开的分组键（CSV，取值为 prefs.xhtml 里 data-fold：
+// account/channels/translate/aiparams/popup/columns/tagging/enhance/uitheme/pdftheme/menu）。
+// 留空 = 全部收起（默认）；面板里点标题行 / 全部展开会更新本 pref
+pref("extensions.zotero.paperpilot.prefsFoldOpen", "");
+// 0.38.0 顶部快捷按钮：条目工具栏一键菜单（高频直达项 + 功能中心 + 设置）。
+// 直达项内容与右键菜单共用 menuQuickItems（单一真源），在「设置 → 菜单定制」里改
+pref("extensions.zotero.paperpilot.quickBarButtonEnabled", true);

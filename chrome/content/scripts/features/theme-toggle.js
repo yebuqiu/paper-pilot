@@ -467,14 +467,23 @@ var ThemeToggle = {
 
     const popup = this._xul(doc, "menupopup");
     popup.id = "paperpilot-theme-main-popup";
-    popup.addEventListener("popupshowing", () => this._fillMainMenu(doc, popup));
+    // ⚠️ 0.38.0 修复「按钮点得开但子菜单进不去」：popupshowing / popupshown / popuphidden
+    // 都会**从子菜单冒泡**到本 popup（Zotero 自身 menuManager.js 同样用
+    // ev.target !== ev.currentTarget 防御）。不拦的话：悬停进入分组子菜单（标准/动漫风/…）
+    // → 冒泡触发 _fillMainMenu → 整个菜单被拆掉重建 → 用户正进入的子菜单当场销毁，
+    // 表现为菜单反复闪、子菜单永远点不进 —— 用户视角就是「背景切换无法使用」。
+    const onlySelf = (fn) => (ev) => { if (ev.target !== popup) return; fn(ev); };
+    popup.addEventListener("popupshowing", onlySelf(() => this._fillMainMenu(doc, popup)));
     // 手动窗口：不用 type="menu"（那样宽度会变成 40px，与相邻 28px 按钮不齐）；
     // 自己维护 open 属性，让原生 `toolbarbutton[open=true]{--fill-quarternary}` 生效
-    popup.addEventListener("popupshown", () => btn.setAttribute("open", "true"));
-    popup.addEventListener("popuphidden", () => btn.removeAttribute("open"));
+    popup.addEventListener("popupshown", onlySelf(() => btn.setAttribute("open", "true")));
+    popup.addEventListener("popuphidden", onlySelf(() => btn.removeAttribute("open")));
     btn.appendChild(popup);
 
-    btn.addEventListener("command", () => {
+    btn.addEventListener("command", (ev) => {
+      // ⚠️ 同款冒泡坑之二：菜单项（含子菜单里的主题项）的 command 会冒泡到按钮——
+      // 不拦的话用户选完主题菜单不关闭、反而原地重开
+      if (ev.target !== btn) return;
       if (btn.hasAttribute("disabled")) return;
       try {
         popup.openPopup(btn, "after_start", 0, 4, false, false);

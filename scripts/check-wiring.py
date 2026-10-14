@@ -953,7 +953,27 @@ for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
-ok('"version": "0.37.2"' in MANIFEST, "20.12 manifest 版本 0.37.2")
+# 0.38.3 起改为**自洽校验**：manifest 版本必须等于 dist/ 里最新 xpi 的版本号
+# （早先钉死字面量，每发一版都要手改这里，改漏就假红/过时）。
+def _latest_dist_version():
+    d = os.path.join(ROOT, "dist")
+    vs = []
+    try:
+        for f in os.listdir(d):
+            m = re.match(r"paper-pilot-(\d+\.\d+\.\d+)\.xpi$", f)
+            if m:
+                vs.append(tuple(int(x) for x in m.group(1).split(".")))
+    except OSError:
+        pass
+    if not vs:
+        return None
+    return ".".join(str(x) for x in max(vs))
+
+
+_mf_ver = (re.search(r'"version"\s*:\s*"([^"]+)"', MANIFEST) or [None, ""])[1]
+_dist_ver = _latest_dist_version()
+ok(bool(_mf_ver) and _mf_ver == _dist_ver,
+   "20.12 manifest 版本与 dist 最新产物一致（%s / %s）" % (_mf_ver, _dist_ver))
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
@@ -1628,8 +1648,8 @@ def _mj3_line(marker):
 ok(0 <= _mj3_line('"features/pdf-inline.js"') < _mj3_line('"features/pdf-dual.js"'),
    "28.3 ★ 装配序：PdfDual 在内核 pdf-inline.js 之后（右栏复用其 attach）")
 ok("this.pdfDual = PdfDual;" in mainjs, "28.4 main.js 把 PdfDual 挂到 Zotero.PaperPilot")
-ok("this.pdfDual.selfTest()" in mainjs and "pdfDualSelfTest" in prefsdef,
-   "28.5 自检开关（真实 PDF 上验左右 pane 挂载与右栏落卡）")
+ok("this.pdfDual.selfTest(undefined, att)" in mainjs and "pdfDualSelfTest" in prefsdef,
+   "28.5 自检开关（真实 PDF 上验左右 pane 挂载与右栏落卡；可指定附件排障）")
 
 # 窗口骨架与元素守卫
 ok('windowtype="paperpilot:pdf-dual"' in pd_xhtml, "28.6 窗口 windowtype=paperpilot:pdf-dual")
@@ -1784,6 +1804,97 @@ ok("prefs.xhtml 有 XML 未定义实体" in mainjs and "prefs.xhtml ok（" in ma
 ok("new DOMParser()" not in mainjs,
    "30.7 不用 DOMParser（bootstrap 作用域实测不可用，会让自查本身静默失败）")
 
+# ---------- 31. 0.38.0 设置面板折叠分组 ----------
+# 设计约束：折叠只切 .pp-fold-closed 类，卡片内 DOM / 元素 id / preference= 绑定一律
+# 原样保留——所以这里的守卫盯三件事：脚本注册了、工具条与分组键齐了、默认值声明了。
+PFOLD_JS = os.path.join(ROOT, "chrome", "content", "prefs-fold.js")
+ok(os.path.exists(PFOLD_JS), "31.1 prefs-fold.js 存在")
+_pfold_js = io.open(PFOLD_JS, encoding="utf-8").read() if os.path.exists(PFOLD_JS) else ""
+ok("prefs-fold.js" in mainjs, "31.2 main.js 注册 prefs-fold.js（scripts 列表）")
+for _eid in ("pp-fold-expand", "pp-fold-collapse"):
+    ok(_eid in xhtml_ids, "31.3 prefs.xhtml 含折叠工具条 #%s" % _eid)
+_FOLD_KEYS = ["account", "channels", "translate", "aiparams", "popup",
+              "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu"]
+_fold_found = re.findall(r'data-fold="([a-z]+)"', prefs_xhtml)
+ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
+   "31.4 prefs.xhtml 的 11 个折叠分组键齐全 → 实际: %s" % ",".join(sorted(set(_fold_found))))
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 11,
+   "31.5 折叠卡片共 11 张（不多不少，防止漏包一张）")
+ok('pref("extensions.zotero.paperpilot.prefsFoldOpen", "");' in prefsdef,
+   "31.6 prefs.js 有 prefsFoldOpen 默认值（空 = 全收起）")
+ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
+   "31.7 prefs-fold.js 读写 prefsFoldOpen 并切换 pp-fold-closed")
+ok(".pp-fold-closed .pp-card-body { display: none; }" in prefs_css,
+   "31.8 prefs.css 收起态隐藏卡片体")
+# 深链：reader-popup 打开设置前放 _prefsFocus，prefs-fold.js 消费后清掉
+_rp_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts",
+                               "features", "reader-popup.js"), encoding="utf-8").read()
+ok("_prefsFocus" in _rp_src and "_prefsFocus" in _pfold_js,
+   "31.9 深链定位接线：reader-popup 写 _prefsFocus → prefs-fold.js 消费")
+
+# ---------- 32. 0.38.0 主题按钮冒泡修复 + 顶部快捷按钮 ----------
+# 主题按钮「点得开但子菜单进不去」的根因：XUL popup 事件与 menuitem command 都会冒泡。
+# 守卫盯两处模块的 ev.target 防御（Zotero 自身 menuManager.js 同款写法）。
+_tt_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts",
+                               "features", "theme-toggle.js"), encoding="utf-8").read()
+ok("if (ev.target !== popup) return" in _tt_src,
+   "32.1 ★ theme-toggle popup 事件带 ev.target 冒泡守卫（子菜单悬停不再触发整菜单重建）")
+ok("if (ev.target !== btn) return" in _tt_src,
+   "32.2 ★ theme-toggle 按钮 command 带 ev.target 冒泡守卫（选完主题菜单正常关闭）")
+TQ_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "toolbar-quick.js")
+ok(os.path.exists(TQ_JS), "32.3 toolbar-quick.js 存在")
+_tq_js = io.open(TQ_JS, encoding="utf-8").read() if os.path.exists(TQ_JS) else ""
+ok("toolbar-quick.js" in mainjs, "32.4 main.js 注册 toolbar-quick.js（scripts 列表）")
+ok("ToolbarQuick.register()" in mainjs and "ToolbarQuick.unregister()" in mainjs,
+   "32.5 main.js 挂 ToolbarQuick 生命周期（register/unregister）")
+ok('pref("extensions.zotero.paperpilot.quickBarButtonEnabled", true);' in prefsdef,
+   "32.6 prefs.js 有 quickBarButtonEnabled 默认值")
+ok("quickBarButtonEnabled" in mainjs and "ToolbarQuick.syncEnabled" in mainjs,
+   "32.7 pref 观察者接线：quickBarButtonEnabled → ToolbarQuick.syncEnabled")
+ok("if (ev.target !== popup) return" in _tq_js and "if (ev.target !== btn) return" in _tq_js,
+   "32.8 ★ toolbar-quick 同款双冒泡守卫（新代码不吃同一个坑）")
+ok("zotero-items-toolbar" in _tq_js,
+   "32.9 toolbar-quick 锚定 #zotero-items-toolbar（顶部条目工具栏）")
+ok("_quickItems" in _tq_js,
+   "32.10 ★ 快捷菜单直达项与右键菜单共用 Menus._quickItems（单一真源，不维护第二份列表）")
+ok("quickBarButtonEnabled" in prefs_xhtml,
+   "32.11 prefs.xhtml 有快捷按钮开关（增强功能卡）")
+
+
+# ---------- 33. 对照翻译导出（0.39.0：双语 PDF 附件 / HTML / Markdown / Word） ----------
+
+PE_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "pdf-export.js")
+ok(os.path.exists(PE_JS), "33.1 pdf-export.js 存在")
+_pe_js = io.open(PE_JS, encoding="utf-8").read() if os.path.exists(PE_JS) else ""
+_pe_test = os.path.join(TEST_DIR, "pdf-export.test.js")
+ok("pdf-export.js" in mainjs, "33.2 main.js 注册 pdf-export.js")
+ok(mainjs.find('"features/pdf-inline.js"') < mainjs.find('"features/pdf-export.js"'),
+   "33.3 ★ 装配序：导出模块在内核 pdf-inline.js 之后（要读它的 state）")
+ok("PdfExport.exportAs" in pd_mod, "33.4 pdf-dual 经 PdfExport.exportAs 导出（不在窗口里塞业务）")
+ok("exportAs: (kind) => this.exportAs(kind, item, title)" in pd_mod,
+   "33.5 ★ 载荷把 exportAs 注入窗口（窗口不直连 PdfExport/附件 API）")
+ok('id="pp-pd-export"' in pd_xhtml and "<menulist" in pd_xhtml,
+   "33.6 窗口工具栏有导出菜单（menulist，与 compare 窗口同款）")
+for _v in ["pdf", "html", "md", "docx"]:
+    ok('value="%s"' % _v in pd_xhtml, "33.7 导出菜单含 %s 项" % _v)
+ok("window.ppDualExport" in pd_view, "33.8 窗口导出入口 window.ppDualExport(kind)")
+ok("A.exportAs(kind)" in pd_view, "33.9 窗口导出经注入回调回插件作用域")
+ok("setLabelAndText" in pd_view and 'opt("pp-pd-exp-pdf"' in pd_view,
+   "33.10 ★ 菜单项文案走文案表（中英双语，不硬编码）")
+ok("buildImagePdf" in _pe_js and "/DCTDecode" in _pe_js,
+   "33.11 ★ 零依赖自建 PDF：JPEG 以 /DCTDecode 内嵌（不引 npm 包，守零依赖约束）")
+ok("Zotero.Attachments.importFromFile" in _pe_js,
+   "33.12 ★ 双语 PDF 走 importFromFile 挂到条目下（与补全文同一条通道）")
+ok("Zotero.File.zipDirectory(" not in _pe_js and "nsIZipWriter" in _pe_js,
+   "33.13 ★ docx 自建 zip（不用 zipDirectory —— 它跳过点文件，会漏掉 OOXML 必需的 _rels/.rels）")
+ok("\"_rels/.rels\"" in _pe_js and "addEntryFile" in _pe_js,
+   "33.13b ★_rels/.rels 在部件表里 + addEntryFile 显式条目名（点文件能进包）")
+ok("[Content_Types].xml" in _pe_js and "word/document.xml" in _pe_js,
+   "33.14 docx 部件齐全（content-types / rels / document）")
+ok("modeSave" in _pe_js and "fp.open(" in _pe_js, "33.15 文本类导出用文件选择器保存（含取消路径）")
+ok(os.path.exists(_pe_test), "33.16 导出单测存在（test/pdf-export.test.js）")
+ok("buildImagePdf" in (io.open(_pe_test, encoding="utf-8").read() if os.path.exists(_pe_test) else ""),
+   "33.17 ★ 单测覆盖 PDF 生成器（xref / 流长度 / 流式偏移结构自校验）")
 
 print("=" * 60)
 for p in passes:

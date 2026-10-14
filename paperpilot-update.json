@@ -601,6 +601,56 @@
               "strict_max_version": "99.*"
             }
           }
+        },
+        {
+          "version": "0.37.3",
+          "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/raw/main/dist/paper-pilot-0.37.3.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          }
+        },
+        {
+          "version": "0.38.1",
+          "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/raw/main/dist/paper-pilot-0.38.1.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          }
+        },
+        {
+          "version": "0.38.2",
+          "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/raw/main/dist/paper-pilot-0.38.2.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          }
+        },
+        {
+          "version": "0.38.3",
+          "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/raw/main/dist/paper-pilot-0.38.3.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          }
+        },
+        {
+          "version": "0.39.0",
+          "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/raw/main/dist/paper-pilot-0.39.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          }
         }
       ]
     }

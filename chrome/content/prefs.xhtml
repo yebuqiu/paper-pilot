@@ -10,14 +10,33 @@
      卡片内子分区，层次 = 卡片 > 子分区 > 行。样式在 prefs.css（经 register 的
      stylesheets 参数随面板加载——官方推荐通道），配色经 CSS 变量随系统明暗主题切换；
      全部选择器以 .pp- 前缀收在 .pp-root 作用域内，不泄漏到设置窗口其他面板。 -->
+<!-- 0.38.0 折叠式重构：设置项增多后整页过长 → 每张卡片改为可折叠分组（.pp-fold：
+     点标题行展开/收起，展开状态记在 prefsFoldOpen pref，CSV 为「已展开」的 data-fold 键）。
+     ★ 兼容性约束：卡片内部 DOM 一律原样保留（所有元素 id 与 preference= 声明式绑定不动，
+     五个面板脚本全靠 getElementById 探测）；折叠只由 prefs-fold.js 切 .pp-fold-closed
+     类 + CSS display:none 实现，不挪动、不删除任何节点。分组上方的分类标签
+     （.pp-cat-label）只是视觉分隔，不参与交互。 -->
 <vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
       xmlns:html="http://www.w3.org/1999/xhtml"
       class="pp-root" style="padding:12px;overflow-y:auto;" flex="1">
 
+  <!-- ============ 折叠工具条（0.38.0） ============ -->
+  <html:div class="pp-fold-bar">
+    <html:button id="pp-fold-expand" class="pp-btn pp-btn-sm">全部展开</html:button>
+    <html:button id="pp-fold-collapse" class="pp-btn pp-btn-sm">全部收起</html:button>
+    <html:span class="pp-hint">共 11 组设置；点击组标题行展开 / 收起，展开状态自动记住</html:span>
+  </html:div>
+
+  <!-- ============ 分类 · 账号 ============ -->
+  <html:div class="pp-cat-label">账号</html:div>
+
   <!-- ============ 1 · PaperPilot 账号 ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">👤</html:span><html:span class="pp-card-title">PaperPilot 账号</html:span></html:div>
-    <html:div class="pp-card-desc">登录后免费使用官方 AI 模型；登录状态本地持久化，会话过期自动提醒</html:div>
+  <html:div class="pp-card pp-fold" data-fold="account">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">👤</html:span><html:span class="pp-card-title">PaperPilot 账号</html:span>
+      <html:span class="pp-card-desc">登录后免费使用官方 AI 模型；登录状态本地持久化，会话过期自动提醒</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
       <!-- 未登录：登录表单（0.15.0 起不再提供服务器地址入口，固定连接官方服务） -->
       <html:div id="pp-login-view">
@@ -205,10 +224,16 @@
     </html:div>
   </html:div>
 
+  <!-- ============ 分类 · AI 与翻译 ============ -->
+  <html:div class="pp-cat-label">AI 与翻译</html:div>
+
   <!-- ============ 2 · AI 模型通道 ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">🔌</html:span><html:span class="pp-card-title">AI 模型通道</html:span></html:div>
-    <html:div class="pp-card-desc">多套配置一键切换；「活动通道」供全部 AI 功能使用。官方通道登录即用，也可接入自己的 OpenAI 兼容接口</html:div>
+  <html:div class="pp-card pp-fold" data-fold="channels">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">🔌</html:span><html:span class="pp-card-title">AI 模型通道</html:span>
+      <html:span class="pp-card-desc">多套配置一键切换；「活动通道」供全部 AI 功能使用。官方通道登录即用，也可接入自己的 OpenAI 兼容接口</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
       <html:div id="pp-ch-status" class="pp-ch-status" style="margin-top:10px;"></html:div>
       <html:div class="pp-hint">每行的模型下拉框 = 该通道当前调用的模型（改动立即生效，无需保存）；「切换」= 设为活动通道（全部 AI 功能经此通道）。</html:div>
@@ -285,9 +310,12 @@
   </html:div>
 
   <!-- ============ 2.5 · 翻译引擎（0.28.0） ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">🌐</html:span><html:span class="pp-card-title">翻译引擎</html:span></html:div>
-    <html:div class="pp-card-desc">划词翻译 / 全文对照翻译 / 标题摘要翻译共用这一套引擎。可选 AI 大模型（默认，质量最好），也可切到 Google / 必应 / 有道 等免费引擎（无需登录、开箱即用），或填自己的 DeepL / 百度 / 腾讯云 密钥</html:div>
+  <html:div class="pp-card pp-fold" data-fold="translate">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">🌐</html:span><html:span class="pp-card-title">翻译引擎</html:span>
+      <html:span class="pp-card-desc">划词翻译 / 全文对照翻译 / 标题摘要翻译共用这一套引擎。可选 AI 大模型（默认，质量最好），也可切到 Google / 必应 / 有道 等免费引擎（无需登录、开箱即用），或填自己的 DeepL / 百度 / 腾讯云 密钥</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
       <html:div id="pp-tr-status" class="pp-ch-status" style="margin-top:10px;"></html:div>
       <html:div class="pp-grid3">
@@ -435,9 +463,12 @@
   </html:div>
 
   <!-- ============ 3 · AI 参数 ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">🎛️</html:span><html:span class="pp-card-title">AI 参数</html:span></html:div>
-    <html:div class="pp-card-desc">全局参数，应用于当前活动通道</html:div>
+  <html:div class="pp-card pp-fold" data-fold="aiparams">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">🎛️</html:span><html:span class="pp-card-title">AI 参数</html:span>
+      <html:span class="pp-card-desc">全局参数，应用于当前活动通道</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
       <html:div class="pp-grid3">
         <html:div class="pp-field">
@@ -463,9 +494,12 @@
   </html:div>
 
   <!-- ============ 4 · 阅读器划词浮窗 ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">💬</html:span><html:span class="pp-card-title">阅读器划词浮窗</html:span></html:div>
-    <html:div class="pp-card-desc">PDF 阅读器内选中文字即弹浮窗：翻译 / 解读 / 追问</html:div>
+  <html:div class="pp-card pp-fold" data-fold="popup">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">💬</html:span><html:span class="pp-card-title">阅读器划词浮窗</html:span>
+      <html:span class="pp-card-desc">PDF 阅读器内选中文字即弹浮窗：翻译 / 解读 / 追问</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
       <html:label class="pp-check">
         <html:input type="checkbox" preference="extensions.zotero.paperpilot.readerPopupEnabled" id="pp-popup-enabled"/>
@@ -505,10 +539,16 @@
     </html:div>
   </html:div>
 
+  <!-- ============ 分类 · 条目与文献 ============ -->
+  <html:div class="pp-cat-label">条目与文献</html:div>
+
   <!-- ============ 5 · 条目数据列 ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">📊</html:span><html:span class="pp-card-title">条目数据列</html:span></html:div>
-    <html:div class="pp-card-desc">在条目列表显示期刊分区与被引量两列；右键列表表头可勾选显示</html:div>
+  <html:div class="pp-card pp-fold" data-fold="columns">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">📊</html:span><html:span class="pp-card-title">条目数据列</html:span>
+      <html:span class="pp-card-desc">在条目列表显示期刊分区与被引量两列；右键列表表头可勾选显示</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
 
       <!-- 5.1 期刊分区 -->
@@ -595,9 +635,12 @@
   </html:div>
 
   <!-- ============ 6 · 规则打标与 AI 功能 ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">🏷️</html:span><html:span class="pp-card-title">规则打标与 AI 功能</html:span></html:div>
-    <html:div class="pp-card-desc">无 AI 依赖的规则打标 + AI 功能的通用参数</html:div>
+  <html:div class="pp-card pp-fold" data-fold="tagging">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">🏷️</html:span><html:span class="pp-card-title">规则打标与 AI 功能</html:span>
+      <html:span class="pp-card-desc">无 AI 依赖的规则打标 + AI 功能的通用参数</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
 
       <!-- 6.1 规则打标 -->
@@ -639,9 +682,12 @@
   </html:div>
 
   <!-- ============ 7 · 增强功能 ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">🧩</html:span><html:span class="pp-card-title">增强功能</html:span></html:div>
-    <html:div class="pp-card-desc">阅读状态 / 附件命名 / 全文对照翻译 / Anki 制卡 / 笔记模板</html:div>
+  <html:div class="pp-card pp-fold" data-fold="enhance">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">🧩</html:span><html:span class="pp-card-title">增强功能</html:span>
+      <html:span class="pp-card-desc">阅读状态 / 附件命名 / 全文对照翻译 / Anki 制卡 / 笔记模板</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
       <html:label class="pp-check" style="margin-top:6px;">
         <html:input type="checkbox" preference="extensions.zotero.paperpilot.readingStateAutoUnread" id="pp-rs-auto"/>
@@ -650,6 +696,10 @@
       <html:label class="pp-check" style="margin-top:6px;">
         <html:input type="checkbox" preference="extensions.zotero.paperpilot.updateNoticeEnabled" id="pp-upd-notice"/>
         <html:span>有新版本时提示我（Zotero 自身的插件更新是静默后台替换、不会弹提示；本项默认开，同一版本只提示一次）</html:span>
+      </html:label>
+      <html:label class="pp-check" style="margin-top:6px;">
+        <html:input type="checkbox" preference="extensions.zotero.paperpilot.quickBarButtonEnabled" id="pp-quickbar-enabled"/>
+        <html:span>顶部快捷按钮（条目列表上方的一键菜单：高频直达项 + 功能中心 + 设置；直达项内容与右键菜单共用「菜单定制」的配置）</html:span>
       </html:label>
       <html:div class="pp-field" style="margin-top:10px;">
         <html:label class="pp-label">附件命名模板</html:label>
@@ -709,10 +759,17 @@
       </html:div>
     </html:div>
   </html:div>
+
+  <!-- ============ 分类 · 外观与界面 ============ -->
+  <html:div class="pp-cat-label">外观与界面</html:div>
+
   <!-- ============ 8 · 界面主题（0.16.0） ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">🎨</html:span><html:span class="pp-card-title">界面主题</html:span></html:div>
-    <html:div class="pp-card-desc">主题 = 配色 + 壁纸一体包，点击卡片立即应用（记住选择，重启自动恢复）；界面主题与 PDF 阅读主题可独立搭配</html:div>
+  <html:div class="pp-card pp-fold" data-fold="uitheme">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">🎨</html:span><html:span class="pp-card-title">界面主题</html:span>
+      <html:span class="pp-card-desc">主题 = 配色 + 壁纸一体包，点击卡片立即应用（记住选择，重启自动恢复）；界面主题与 PDF 阅读主题可独立搭配</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
       <!-- 主题库（0.17.0 分类：动漫 / 风景 / 动态） -->
       <html:div id="pp-ui-special" class="pp-theme-grid"></html:div>
@@ -826,9 +883,12 @@
   </html:div>
 
   <!-- ============ 9 · PDF 阅读主题（0.16.0） ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">📖</html:span><html:span class="pp-card-title">PDF 阅读主题</html:span></html:div>
-    <html:div class="pp-card-desc">更换 PDF 页面底色：护眼/羊皮纸等浅色叠色不改动 PDF 本身；夜间模式将页面反色（黑纸白字）</html:div>
+  <html:div class="pp-card pp-fold" data-fold="pdftheme">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">📖</html:span><html:span class="pp-card-title">PDF 阅读主题</html:span>
+      <html:span class="pp-card-desc">更换 PDF 页面底色：护眼/羊皮纸等浅色叠色不改动 PDF 本身；夜间模式将页面反色（黑纸白字）</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
       <html:div id="pp-pdf-theme-list" class="pp-pdf-list"></html:div>
       <html:div class="pp-hint" style="margin-top:8px;">也可在 PDF 阅读器工具栏点 🎨 快速切换；对新打开的 PDF 自动应用</html:div>
@@ -859,9 +919,12 @@
   </html:div>
 
   <!-- ============ 10 · 菜单定制（0.29.0） ============ -->
-  <html:div class="pp-card">
-    <html:div><html:span class="pp-card-icon">🧭</html:span><html:span class="pp-card-title">菜单定制</html:span></html:div>
-    <html:div class="pp-card-desc">右键菜单与「工具」菜单的结构、分组与高频直达项；所有改动即时生效，无需重启 Zotero</html:div>
+  <html:div class="pp-card pp-fold" data-fold="menu">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">🧭</html:span><html:span class="pp-card-title">菜单定制</html:span>
+      <html:span class="pp-card-desc">右键菜单与「工具」菜单的结构、分组与高频直达项；所有改动即时生效，无需重启 Zotero</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
     <html:div class="pp-card-body">
       <html:div class="pp-row" style="margin-top:6px;">
         <html:span class="pp-label">菜单结构</html:span>

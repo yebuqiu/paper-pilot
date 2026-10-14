@@ -276,7 +276,17 @@ async function main() {
   const page1 = mkPage(doc, 1, SPANS);
   mkPage(doc, 2, null); // 无文本层（扫描页）
   const win = { document: doc };
-  const app = { pdfDocument: {}, eventBus: { on() {}, off() {} } };
+  // 0.38.3：兜底路径要能拿到 viewport.transform 才会问 worker；扫描页 = 有 transform
+  // 但 getPageData 返回空字符（真实语义）。测试桩照此建模。
+  const T4 = [1, 0, 0, -1, 0, 792];
+  let fetchCalls = 0;
+  const app = {
+    pdfDocument: {
+      getPageData: async () => { fetchCalls++; return { chars: [] }; },   // 真扫描页：空字符
+    },
+    pdfViewer: { pagesCount: 2, _pages: [{ viewport: { transform: T4 } }, { viewport: { transform: T4 } }] },
+    eventBus: { on() {}, off() {} },
+  };
   const fakeWin = { document: doc, PDFViewerApplication: app };
   const reader = { itemID: 1, _internalReader: { _primaryView: { _iframeWindow: fakeWin } } };
 
@@ -291,7 +301,10 @@ async function main() {
   eq(snap.active, true, '4.2 状态为启用');
   eq(snap.blocks, 3, '4.3 段落数 = 3（两段正文 + 图注；公式与页码不计）');
   eq(snap.done, 3, '4.4 三段全部翻译完成');
-  eq(snap.noTextPages, 1, '4.5 无文本层的页被记录（扫描页提示）');
+  // 0.38.3：扫描页判定走异步兜底（getPageData → 空字符）→ 等它落定
+  await waitFor(() => PI.snapshot()[0].noTextPages === 1, 3000);
+  eq(PI.snapshot()[0].noTextPages, 1, '4.5 无文本层的页被记录（扫描页提示）');
+  eq(fetchCalls, 1, '4.5b ★ 扫描页结果负缓存：worker 只被问一次（轮询空转的卡顿根因）');
 
   const cards = page1.querySelectorAll('.pp-pit-card');
   eq(cards.length, 3, '4.6 页内恰好 3 张译文卡（公式段不产卡）');
@@ -411,6 +424,314 @@ async function main() {
   eq(cards.length, 3, '⑨ 三页各段落都注入了译文卡（整篇一次铺好）');
   PI.stop(reader, { keepPref: true });
 }
+
+  /* ==================== ⑩ getPageData 兜底（0.38.1：无 textLayer 也能翻译） ==================== */
+{
+  /* ---- ⑩.1 rectToCssBox：PDF 用户空间 → 页内 CSS（标准旋转 0 变换） ---- */
+  // t = [s,0,0,-s,0,pageH*s]（s=1.5，页高 792）——rect [72,700,78,712] → {108,120,9,18}
+  const T = [1.5, 0, 0, -1.5, 0, 792 * 1.5];
+  const box = PI.rectToCssBox(T, [72, 700, 78, 712]);
+  ok(box && Math.abs(box.left - 108) < 0.01 && Math.abs(box.top - 120) < 0.01,
+    '⑩.1 rect → CSS 盒（y 轴翻转 + 缩放）', box);
+  ok(Math.abs(box.width - 9) < 0.01 && Math.abs(box.height - 18) < 0.01, '⑩.1b 盒宽高随 scale 缩放');
+  eq(PI.rectToCssBox(null, [1, 2, 3, 4]), null, '⑩.1c 无 transform → null');
+  eq(PI.rectToCssBox(T, null), null, '⑩.1d 无 rect → null');
+  eq(PI.rectToCssBox(T, [5, 5, 5, 5]), null, '⑩.1e 零面积 rect → null');
+
+  /* ---- ⑩.2 charsToLineSpans：Zotero 的 lineBreakAfter 断行、spaceAfter 补空格 ---- */
+  const mkChars = (lines) => {
+    const chars = [];
+    for (const ln of lines) {
+      let x = ln.x;
+      for (let i = 0; i < ln.text.length; i++) {
+        const c = ln.text[i];
+        chars.push({ c, rect: [x, ln.y, x + 6, ln.y + 12], rotation: 0 });
+        x += 6;
+        if (i < ln.text.length - 1 && c === ' ') chars[chars.length - 1].spaceAfter = true;
+      }
+      chars[chars.length - 1].lineBreakAfter = true;
+      if (ln.paraEnd) chars[chars.length - 1].paragraphBreakAfter = true;
+    }
+    return chars;
+  };
+  const CHARS = mkChars([
+    { text: 'Hello world first line.', x: 72, y: 700 },
+    { text: 'Second line same para.', x: 72, y: 686 },
+    { text: 'A brand new paragraph.', x: 72, y: 650, paraEnd: true },
+  ]);
+  const spans = PI.charsToLineSpans(CHARS, T);
+  eq(spans.length, 3, '⑩.2 三行字符 → 3 个行级 span（lineBreakAfter 断行）');
+  eq(spans[0].text, 'Hello world first line.', '⑩.2b 行文本完整（含空格）');
+  near(spans[0].left, 108, 0.6, '⑩.2c 行 left = 首字符 CSS x');
+  near(spans[0].top, 120, 0.6, '⑩.2d 行 top = 字符顶边（y 翻转后）');
+  ok(spans[0].fontSize >= 17 && spans[0].fontSize <= 19, '⑩.2e 行字号 ≈ 字符高（18）');
+  eq(PI.charsToLineSpans([], T).length, 0, '⑩.2f 空字符 → 空 span');
+  eq(PI.charsToLineSpans([{ c: 'x', ignorable: true, rect: [1, 1, 2, 2] }], T).length, 0,
+    '⑩.2g ignorable 字符被跳过');
+  eq(PI.charsToLineSpans([{ c: 'x', rect: null }], T).length, 0, '⑩.2h 无 rect 字符被跳过');
+
+  /* ---- ⑩.3 blocksFromCharsCore：段落切分 + 分类（与 textLayer 路径同构） ---- */
+  const blocks = PI.blocksFromCharsCore(CHARS, T);
+  ok(blocks && blocks.length === 2, '⑩.3 三行 → 2 段（第三行行距大 → 新段）', blocks && blocks.length);
+  eq(blocks[0].kind, 'body', '⑩.3b 正常文本判 body（PdfText.classify 单一真源）');
+  ok(String(blocks[0].text).indexOf('Hello world') === 0 &&
+    String(blocks[0].text).indexOf('Second line') > 0, '⑩.3c 同段两行文本合并');
+  eq(blocks[1].text, 'A brand new paragraph.', '⑩.3d 第二段独立成块');
+  near(blocks[0].top, 120, 0.6, '⑩.3e 块 top = 首行 top');
+  eq(PI.blocksFromCharsCore([], T), null, '⑩.3f 空字符 → null（扫描页）');
+
+  /* ---- ⑩.4 端到端：translateAll 无 textLayer 的页走 getPageData 兜底落卡 ---- */
+  PrefStore.clear();
+  PrefStore.set('pdfInlineMode', 'overlay');
+  PrefStore.set('pdfInlineGapMs', 0);
+  const docF = mkDoc();
+  mkPage(docF, 1, null);   // 无 textLayer，但 getPageData 有字符 → 兜底翻译落卡
+  mkPage(docF, 2, null);   // 无 textLayer 且字符为空 → 真扫描页 → 如实跳过
+  const contF = docF.createElementNS('', 'div');
+  contF.id = 'viewerContainer';
+  contF.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 400 });
+  docF.documentElement.appendChild(contF);
+  const viewerF = {
+    pagesCount: 2, currentPageNumber: 1,
+    _pages: [{ viewport: { transform: T } }, { viewport: { transform: T } }],
+  };
+  const appF = {
+    pdfViewer: viewerF,
+    pdfDocument: { getPageData: async (arg) => ({ chars: (arg && arg.pageIndex === 0) ? CHARS : [] }) },
+    eventBus: { on() {}, off() {} },
+  };
+  const readerF = { itemID: 10, _internalReader: { _primaryView: { _iframeWindow: { document: docF, PDFViewerApplication: appF } } } };
+  const progF = [];
+  const resF = await PI.translateAll(readerF, { waitTicks: 1, onProgress: (p) => progF.push(p) });
+  eq(resF.error, null, '⑩.4 translateAll 无错误');
+  eq(resF.skipped, 1, '⑩.4b ★ 真扫描页（无字符）才计入 skipped');
+  eq(resF.blocks, 2, '⑩.4c ★ 无 textLayer 的第 1 页经兜底产出 2 段');
+  eq(resF.done, 2, '⑩.4d 兜底段落同样完成翻译');
+  ok(progF.some((p) => p.phase === 'skip' && p.page === 2), '⑩.4e 扫描页进度带 phase=skip');
+  const page1F = docF.querySelector('.page[data-page-number="1"]');
+  const cardsF = page1F.querySelectorAll('.pp-pit-card');
+  eq(cardsF.length, 2, '⑩.4f ★ 兜底段落真的落了译文卡');
+  const layerF = page1F.querySelector('.pp-pit-layer');
+  ok(layerF && layerF.hasClass('pp-pit-fb'), '⑩.4g 兜底译文层带 pp-pit-fb 类（描边提示）');
+  ok(String(cardsF[0].textContent).indexOf('译:') === 0, '⑩.4h 卡片内容是译文');
+  eq(docF.querySelector('.page[data-page-number="2"]').querySelectorAll('.pp-pit-card').length, 0,
+    '⑩.4i 扫描页不产卡');
+  const stF = PI._states.get(readerF);
+  eq(stF && stF.noTextPages.indexOf('2') >= 0, true, '⑩.4j 扫描页进 noTextPages（按钮提示「需 OCR」）');
+  PI.stop(readerF, { keepPref: true });
+}
+
+  /* ==================== ⑪ 双栏检测与拆分（0.38.2） ==================== */
+{
+  /* ---- ⑪.1 rowPartsOf：top 聚行 + parts 按 left 排序 ---- */
+  const spans = [
+    { text: 'right col', left: 320, top: 100, width: 200, height: 12, fontSize: 10 },
+    { text: 'left col', left: 40, top: 101, width: 200, height: 12, fontSize: 10 },
+    { text: 'next line', left: 40, top: 130, width: 200, height: 12, fontSize: 10 },
+  ];
+  const rows = PI.rowPartsOf(spans);
+  eq(rows.length, 2, '⑪.1 top 聚行 → 2 行');
+  eq(rows[0].parts.length, 2, '⑪.1b 同一基线的左右栏 span 是一行的两个 part');
+  eq(rows[0].parts[0].text, 'left col', '⑪.1c parts 按 left 排序');
+
+  /* ---- ⑪.2 detectColumnSplit：合成双栏 → 检出分界 ---- */
+  const mk2col = (n) => {
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      out.push({ text: 'L' + i, left: 40, top: 100 + i * 20, width: 220, height: 12, fontSize: 10 });
+      out.push({ text: 'R' + i, left: 320, top: 100 + i * 20, width: 220, height: 12, fontSize: 10 });
+    }
+    return out;
+  };
+  const sp2 = mk2col(12);
+  const splitX = PI.detectColumnSplit(PI.rowPartsOf(sp2), 600);
+  ok(splitX !== null, '⑪.2 双栏检出分界', splitX);
+  ok(splitX >= 260 && splitX <= 320, '⑪.2b 分界落在栏间距区间 [260,320]', splitX);
+
+  eq(PI.detectColumnSplit(PI.rowPartsOf([
+    { text: 'single col long line text here', left: 50, top: 100, width: 500, height: 12, fontSize: 10 },
+  ]), 600), null, '⑪.2c 单行不足 → null');
+  eq(PI.detectColumnSplit(PI.rowPartsOf(mk2col(3)), 600), null, '⑪.2d 行数不足 6 → null（宁缺勿滥）');
+  eq(PI.detectColumnSplit(PI.rowPartsOf([
+    { text: 'a', left: 50, top: 100, width: 400, height: 12, fontSize: 10 },   // 整宽行
+    { text: 'b', left: 50, top: 130, width: 400, height: 12, fontSize: 10 },
+    { text: 'c', left: 50, top: 160, width: 400, height: 12, fontSize: 10 },
+    { text: 'd', left: 50, top: 190, width: 400, height: 12, fontSize: 10 },
+    { text: 'e', left: 50, top: 220, width: 400, height: 12, fontSize: 10 },
+    { text: 'f', left: 50, top: 250, width: 400, height: 12, fontSize: 10 },
+  ]), 600), null, '⑪.2e 全是整宽单段行（无行内空档）→ null');
+
+  /* ---- ⑪.3 目录页负例：行内空档位置杂乱（「标题……页码」）→ 不判双栏 ---- */
+  const tocSpans = [];
+  for (let i = 0; i < 10; i++) {
+    const titleEnd = 60 + (i % 5) * 80;      // 标题长度不一 → 空档左缘乱飞
+    tocSpans.push({ text: '第一章 标题' + i, left: 40, top: 100 + i * 24, width: titleEnd - 40, height: 12, fontSize: 12 });
+    tocSpans.push({ text: String(i + 1), left: 540, top: 100 + i * 24, width: 20, height: 12, fontSize: 12 });
+  }
+  eq(PI.detectColumnSplit(PI.rowPartsOf(tocSpans), 600), null,
+    '⑪.3 ★ 目录页（行内空档边缘杂乱）不误判双栏');
+
+  /* ---- ⑪.4 splitByColumn：行级归属（整宽行不撕开） ---- */
+  {
+    // 整宽摘要行：两半 span 恰好跨分界 → 整行归跨栏组，保持完整
+    const rowsA = PI.rowPartsOf([
+      { text: 'tivity disorder and obsessive', left: 71, top: 200, width: 118, height: 12, fontSize: 10 },
+      { text: '–', left: 190, top: 200, width: 5, height: 12, fontSize: 10 },
+      { text: 'compulsive disorder. The first', left: 195, top: 200, width: 289, height: 12, fontSize: 10 },
+    ]);
+    const g = PI.splitByColumn(rowsA, 270, 544);
+    eq(g.cross.length, 3, '⑪.4 覆盖分界的整宽行 → 全部 span 归跨栏组（不撕行）');
+    eq(g.left.length + g.right.length, 0, '⑪.4b 不剩散件');
+    // 真双栏行：左右各归其栏
+    const rowsB = PI.rowPartsOf([
+      { text: 'L0', left: 40, top: 100, width: 220, height: 12, fontSize: 10 },
+      { text: 'R0', left: 320, top: 100, width: 220, height: 12, fontSize: 10 },
+    ]);
+    const g2 = PI.splitByColumn(rowsB, 270, 600);
+    eq(g2.left.length, 1, '⑪.4c 双栏行的左半归左栏');
+    eq(g2.right.length, 1, '⑪.4d 右半归右栏');
+    eq(g2.cross.length, 0, '⑪.4e 双栏行不进跨栏组');
+  }
+
+  /* ---- ⑪.5 blocksFromSpans 端到端：双栏页 → 段落块各归其栏、标题整宽 ---- */
+  {
+    const sp = [
+      // 整宽标题（跨栏）
+      { text: 'Chapter Title Here', left: 140, top: 40, width: 320, height: 16, fontSize: 16 },
+    ];
+    for (let i = 0; i < 10; i++) {
+      sp.push({ text: 'left paragraph line ' + i + ' with some words', left: 40, top: 120 + i * 20, width: 220, height: 12, fontSize: 10 });
+      sp.push({ text: 'right paragraph line ' + i + ' more text', left: 320, top: 120 + i * 20, width: 220, height: 12, fontSize: 10 });
+    }
+    const blocks = PI.blocksFromSpans(sp, 600);
+    ok(blocks && blocks.length >= 3, '⑪.5 双栏页产出 ≥3 块', blocks && blocks.length);
+    const title = blocks.find((b) => b.text.indexOf('Chapter Title') === 0);
+    ok(title, '⑪.5b 整宽标题独立成块');
+    near(title.right - title.left, 320, 2, '⑪.5c 标题块保持整宽');
+    const bodies = blocks.filter((b) => b.kind === 'body' && b.text.indexOf('paragraph line') >= 0);
+    ok(bodies.length >= 2, '⑪.5d 左右栏段落各成块');
+    ok(bodies.every((b) => (b.right <= 300) || (b.left >= 300)),
+      '⑪.5e ★ 正文块不横跨栏间距（左右栏结构保留）',
+      bodies.map((b) => [Math.round(b.left), Math.round(b.right)]));
+    const leftB = bodies.filter((b) => b.right <= 300);
+    const rightB = bodies.filter((b) => b.left >= 300);
+    ok(leftB.length >= 1 && rightB.length >= 1, '⑪.5f 两栏都有块');
+    ok(String(leftB[0].text).indexOf('left paragraph') >= 0 &&
+      String(rightB[0].text).indexOf('right paragraph') >= 0,
+      '⑪.5g 左右栏文本不交错（各是连续的一句话）');
+  }
+
+  /* ---- ⑪.6 chars 兜底路径同样双栏感知 ---- */
+  {
+    // chars 模拟双栏：两列各 8 行（worker 的 lineBreakAfter 断行），中间栏间距
+    const T = [1, 0, 0, -1, 0, 800];
+    const chars = [];
+    let x = 40, y = 700;
+    for (let i = 0; i < 8; i++) {
+      for (const c of 'left col!') {
+        chars.push({ c, rect: [x, y, x + 8, y + 12] });
+        x += 8;
+      }
+      chars[chars.length - 1].lineBreakAfter = true;
+      x = 40; y -= 20;
+    }
+    x = 320;
+    for (let i = 0; i < 8; i++) {
+      for (const c of 'right col!') {
+        chars.push({ c, rect: [x, y, x + 8, y + 12] });
+        x += 8;
+      }
+      chars[chars.length - 1].lineBreakAfter = true;
+      x = 320; y -= 20;
+    }
+    const blocks = PI.blocksFromCharsCore(chars, T);
+    ok(blocks && blocks.length >= 2, '⑪.6 chars 兜底双栏产出 ≥2 块', blocks && blocks.length);
+    const noCross = (blocks || []).every((b) => (b.right <= 300) || (b.left >= 300));
+    ok(noCross, '⑩⑪.6b 兜底块也不跨栏间距');
+  }
+}
+
+  /* ==================== ⑫ scalechanging 缩放保底（0.38.2） ==================== */
+{
+    PrefStore.clear();
+    PrefStore.set('pdfInlineMode', 'overlay');
+    PrefStore.set('pdfInlineGapMs', 0);
+    const doc = mkDoc();
+    mkPage(doc, 1, [
+      { text: 'Zoom test paragraph.', left: 50, top: 100, width: 200, height: 12, fontSize: 10 },
+    ]);
+    const handlers = {};
+    const app = {
+      pdfDocument: {},
+      pdfViewer: { pagesCount: 1 },
+      eventBus: {
+        on(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); },
+        off(ev, fn) { handlers[ev] = (handlers[ev] || []).filter((f) => f !== fn); },
+      },
+    };
+    const reader = { itemID: 12, _internalReader: { _primaryView: { _iframeWindow: { document: doc, PDFViewerApplication: app } } } };
+    PI.start(reader);
+    ok(handlers["scalechanging"] && handlers["scalechanging"].length >= 1,
+      '⑫.1 ★ scalechanging 已挂监听（缩放保底入口）');
+    const st = PI._states.get(reader);
+    ok(st && st.pollTimer != null, '⑫.2 start 后轮询在跑');
+    // 模拟「轮询快到期」：scalechanging → 重启轮询窗口（ticks 清零）
+    st.pollTicks = 55;
+    for (const fn of handlers["scalechanging"]) fn();
+    eq(st.pollTicks, 0, '⑫.3 ★ scalechanging 重启轮询窗口（读 54 秒后再缩放也能重铺）');
+    // 手动把轮询杀掉再触发 → 应重新拉起
+    clearInterval(st.pollTimer); st.pollTimer = null;
+    for (const fn of handlers["scalechanging"]) fn();
+    ok(st.pollTimer != null, '⑫.4 轮询已停时 scalechanging 重新拉起轮询');
+    // unbind 干净
+    PI.stop(reader, { keepPref: true });
+    eq(handlers["scalechanging"] ? handlers["scalechanging"].length : 0, 0,
+      '⑫.5 stop 后 scalechanging 监听被移除（不泄漏）');
+    clearInterval(st.pollTimer);
+  }
+
+  /* ==================== ⑬ 幂等与性能（0.38.3：无 textLayer 页不得空转） ==================== */
+{
+    PrefStore.clear();
+    PrefStore.set('pdfInlineMode', 'overlay');
+    PrefStore.set('pdfInlineGapMs', 0);
+    const doc = mkDoc();
+    mkPage(doc, 1, null);                       // 无 textLayer（走 getPageData 兜底）
+    const T = [1, 0, 0, -1, 0, 800];
+    const chars = [];
+    let x = 50;
+    for (const c of 'Fallback page paragraph.') {
+      chars.push({ c, rect: [x, 700, x + 8, 712] });
+      x += 8;
+    }
+    chars[chars.length - 1].lineBreakAfter = true;
+    let fetches = 0;
+    const app = {
+      pdfDocument: { getPageData: async () => { fetches++; return { chars }; } },
+      pdfViewer: { pagesCount: 1, _pages: [{ viewport: { transform: T } }] },
+      eventBus: { on() {}, off() {} },
+    };
+    const reader = { itemID: 13, _internalReader: { _primaryView: { _iframeWindow: { document: doc, PDFViewerApplication: app } } } };
+    const st = PI.start(reader) && PI._states.get(reader);
+    await waitFor(() => st.blockCount > 0, 3000);
+    const fetchesAfterFirst = fetches;
+    const rendersAfterFirst = st.stat.charRenders;
+    eq(fetchesAfterFirst, 1, '⑬.1 兜底页只问 worker 一次');
+    ok(st.pages.get('1') && st.pages.get('1').sig, '⑬.2 ★ 无 textLayer 页有稳定几何签名（0.38.2 是空串 → 永不跳过）');
+    // 模拟轮询连续 5 拍（0.38.2 在此处每拍重跑 getPageData + 重铺卡片 → 卡顿）
+    for (let i = 0; i < 5; i++) PI.processPage(st, doc.querySelector('.page[data-page-number="1"]'));
+    await sleep(50);
+    eq(fetches, fetchesAfterFirst, '⑬.3 ★ 重复扫描不再问 worker（负结果/结果都缓存）');
+    eq(st.stat.charRenders, rendersAfterFirst, '⑬.4 ★ 重复扫描不再重铺卡片');
+    // 缩放（页几何变化）→ 应重铺但仍复用缓存的 chars（不发新请求）
+    const pageEl = doc.querySelector('.page[data-page-number="1"]');
+    pageEl.offsetWidth = 900; pageEl.offsetHeight = 1200;
+    PI.processPage(st, pageEl);
+    await waitFor(() => st.stat.charRenders > rendersAfterFirst, 2000);
+    eq(fetches, fetchesAfterFirst, '⑬.5 ★ 缩放重铺复用 chars 缓存（零新增 worker 往返）');
+    PI.stop(reader, { keepPref: true });
+    clearInterval(st.pollTimer);
+  }
 
 /* ---------------- 输出 ---------------- */
   console.log('='.repeat(60));

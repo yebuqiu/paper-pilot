@@ -140,6 +140,9 @@ var ReaderPopup = {
   _openSettings() {
     try {
       const paneID = (Zotero.PaperPilot && Zotero.PaperPilot._paneID) || "paperpilot-prefs";
+      // 0.38.0：设置面板改为折叠分组——浮窗「未就绪」基本是模型通道问题，
+      // 打开时自动展开「AI 模型通道」并滚动定位（prefs-fold.js 消费后清掉）
+      if (Zotero.PaperPilot) Zotero.PaperPilot._prefsFocus = "channels";
       Zotero.Utilities.Internal.openPreferences(paneID);
     } catch (e) {
       try { Zotero.logError(e); } catch (_) { /* ignore */ }

@@ -17,7 +17,7 @@
  * 为什么右栏不「另生成一份译文 PDF」：版面/分页/图形天然一致，无需重排引擎与
  * Python 生成链；坐标来自 pdf.js 已渲染的 textLayer（真实 rect），与缩放/DPR 解耦。
  */
-/* global Zotero, Services, Prefs, I18n, ItemSel, AIChat, TranslateSvc, PdfText, PdfInline, BilingualTranslate, Notes */
+/* global Zotero, Services, Prefs, I18n, ItemSel, AIChat, TranslateSvc, PdfText, PdfInline, BilingualTranslate, Notes, PdfExport */
 
 var PdfDual = {
   WINDOW_TYPE: "paperpilot:pdf-dual",
@@ -132,6 +132,8 @@ var PdfDual = {
       onPanesReady: (leftReader, rightReader) => this._startRight(leftReader, rightReader, title),
       onUnload: () => this._stopRight(),
       exportNote: () => this.exportNote(item, title),
+      // 0.39.0：导出 ▾（pdf=双语PDF附件 / html / md / docx）
+      exportAs: (kind) => this.exportAs(kind, item, title),
       retranslate: () => this.retranslate(),
       setFontScale: (v) => this.setFontScale(v),
       translateAll: () => this.translateAll(),
@@ -173,11 +175,40 @@ var PdfDual = {
       } catch (e) { /* ignore */ }
     };
     try {
-      return PdfInline.attach(rightReader, { mode: this._rightMode(), onProgress });
+      const ok = PdfInline.attach(rightReader, { mode: this._rightMode(), onProgress });
+      this._diagAfterOpen(title);
+      return ok;
     } catch (e) {
       Zotero.logError(e);
       return false;
     }
+  },
+
+  /** 0.38.1：每次开窗都把「翻转/探测/内核」写进 boot 日志 —— 用户一句「还是无文本层」
+   *  就够我们定位（翻转成没成、textLayer 有没有、兜底走了几页），不用再来回问。
+   *  「textLayerFlip」= pdf-dual-view 的 textLayerMode 翻转结果；
+   *  「right.probe」= 右栏页元素数 / 有 textLayer 的页数；
+   *  「kernel」= 内核块数（>0 说明 getPageData 兜底或 textLayer 至少一路成了）。 */
+  _diagAfterOpen(title) {
+    setTimeout(() => {
+      try {
+        const w = this._win;
+        const snap = (w && typeof w.ppDualSnapshot === "function") ? w.ppDualSnapshot() : null;
+        const r = this._rightReader;
+        const st = r && PdfInline._states ? PdfInline._states.get(r) : null;
+        const d = {
+          t: (title || "").slice(0, 24),
+          flipL: snap && snap.left ? snap.left.textLayerFlip : null,
+          howL: snap && snap.left ? snap.left.textLayerHow : null,
+          flipR: snap && snap.right ? snap.right.textLayerFlip : null,
+          howR: snap && snap.right ? snap.right.textLayerHow : null,
+          probeR: snap && snap.right ? snap.right.probe : null,
+          kernelBlocks: st ? st.blockCount : (st === null ? "no-state" : 0),
+          noTextPages: st ? st.noTextPages.length : null,
+        };
+        try { _ppDiag("pdfDual open diag: " + JSON.stringify(d)); } catch (e) { /* ignore */ }
+      } catch (e) { /* ignore */ }
+    }, 10000);
   },
 
   _stopRight() {
@@ -238,34 +269,74 @@ var PdfDual = {
     }
   },
 
+  /**
+   * 导出（0.39.0）：双语 PDF 附件 / HTML / Markdown / Word。
+   * PDF 出口把右栏已渲染页的 canvas + 译文原位叠画 → 自建 PDF → 作为附件挂到条目下；
+   * 其余三种写文件（文件选择器）。全部实现在 features/pdf-export.js（纯函数可单测）。
+   */
+  async exportAs(kind, item, title) {
+    try {
+      const r = this._rightReader;
+      if (!r) return { ok: false, error: "no-reader" };
+      if (typeof PdfExport === "undefined" || !PdfExport) {
+        return { ok: false, error: "PdfExport 未加载" };
+      }
+      const res = await PdfExport.exportAs(kind, { item, reader: r, title });
+      if (res && res.ok && kind === "pdf") {
+        // 新附件要立刻出现在条目下：刷新条目树
+        try {
+          if (item && item.id && Zotero.ItemTreeManager && Zotero.ItemTreeManager.refresh) {
+            Zotero.ItemTreeManager.refresh();
+          }
+        } catch (e) { /* ignore */ }
+      }
+      return res || { ok: false, error: "unknown" };
+    } catch (e) {
+      try { Zotero.logError(e); } catch (_) { /* ignore */ }
+      return { ok: false, error: String((e && e.message) || e) };
+    }
+  },
+
   /* ---------------- 自检（真实 PDF 上验左右栏与段落注入） ---------------- */
 
   /**
    * 自检（pref `pdfDualSelfTest`，默认关）：拿库里第一个 PDF 开一次对照窗口，
    * 等右栏翻译若干秒后把「左/右 pane 是否挂上、右栏每页段落数与卡片数、同步滚动位置」
    * 写进 boot 日志（main.js 调用）。迷你 DOM 测不到 pdf.js 真实渲染，这类问题只能实机验。
+   * @param {number} waitMs 挂载等待上限
+   * @param {number} [attID] 指定附件 itemID（pref pdfDualSelfTestAtt；0 = 扫库取第一个）
    * @returns {Promise<object>} 诊断对象（永不抛异常）
    */
-  async selfTest(waitMs) {
+  async selfTest(waitMs, attID) {
     const out = { ok: false };
     try {
-      let all = [];
-      let attempt = 0;
-      const lib = Zotero.Libraries && Zotero.Libraries.userLibraryID;
-      for (; attempt < 25; attempt++) {
-        // ⚠️ Zotero 10 的 Items.getAll 是 async（必须 await）；onlyTopLevel 必须为 false
-        let raw = null;
-        try { raw = await Zotero.Items.getAll(lib, false, false); } catch (e) { raw = null; }
-        all = Array.prototype.slice.call(raw || []);
-        if (all.length) break;
-        await new Promise((r) => setTimeout(r, 800));
-      }
       let att = null;
-      for (const it of all) {
-        if (it && it.isPDFAttachment && it.isPDFAttachment()) { att = it; break; }
+      if (attID) {
+        // 指定附件（排障用：直指用户报告的那篇，如双栏 PDF）
+        try { att = Zotero.Items.get(Number(attID)); } catch (e) { att = null; }
+        if (!att || !(att.isPDFAttachment && att.isPDFAttachment())) {
+          out.error = "pdfDualSelfTestAtt not a pdf attachment";
+          return out;
+        }
       }
-      if (!att) { out.error = "no-pdf-attachment-in-library"; return out; }
-      out.itemsScanned = all.length;
+      if (!att) {
+        let all = [];
+        let attempt = 0;
+        const lib = Zotero.Libraries && Zotero.Libraries.userLibraryID;
+        for (; attempt < 25; attempt++) {
+          // ⚠️ Zotero 10 的 Items.getAll 是 async（必须 await）；onlyTopLevel 必须为 false
+          let raw = null;
+          try { raw = await Zotero.Items.getAll(lib, false, false); } catch (e) { raw = null; }
+          all = Array.prototype.slice.call(raw || []);
+          if (all.length) break;
+          await new Promise((r) => setTimeout(r, 800));
+        }
+        for (const it of all) {
+          if (it && it.isPDFAttachment && it.isPDFAttachment()) { att = it; break; }
+        }
+        if (!att) { out.error = "no-pdf-attachment-in-library"; return out; }
+        out.itemsScanned = all.length;
+      }
       out.attachmentID = att.id;
       try { out.attTitle = (att.getDisplayTitle() || "").slice(0, 40); } catch (e) { /* ignore */ }
       const parent = (() => {
@@ -300,13 +371,18 @@ var PdfDual = {
         }
       }
       // 挂载后再给翻译一点时间（只等「有段落且已译完」，最多 25 秒）
+      const tStart = Date.now();
+      let tFirstCard = 0;
       const deadline2 = Date.now() + 25000;
       for (;;) {
         const st0 = this._kernelState();
+        if (!tFirstCard && st0 && st0.blockCount > 0) tFirstCard = Date.now() - tStart;
         if (st0 && st0.blockCount > 0 && st0.doneCount >= st0.blockCount) break;
         if (Date.now() > deadline2) break;
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 250));
       }
+      // ★ 0.38.3：首屏出译文耗时（ms）—— 直接量化用户说的「解析很慢」是否解决
+      out.firstBlocksMs = tFirstCard || null;
       out.snapshot = (win && typeof win.ppDualSnapshot === "function") ? win.ppDualSnapshot() : snap;
       out.windowOpened = !!win;
       const r = this._rightReader;
@@ -402,6 +478,134 @@ var PdfDual = {
           }
         }
       }
+      // ---- 缩放探针（0.38.2）：**等轮询过期后**再放大右栏 1.4×（复现用户
+      //  「读了一会儿再缩放」的最恶劣场景——轮询已死、事件链不可靠），
+      //  验证 scalechanging 保底重铺：卡片几何应换算到新比例。
+      try {
+        const w = this._win;
+        const r = this._rightReader;
+        const stOf = () => (r && PdfInline._states ? PdfInline._states.get(r) : null);
+        const cardsOf = (st) => {
+          if (!st) return -1;
+          let n = 0;
+          for (const [, bs] of st.pageBlocks) for (const b of (bs || [])) {
+            if (b.kind !== "formula" && b.cardEl && b.cardEl.isConnected) n++;
+          }
+          return n;
+        };
+        const cardGeo = (st) => {
+          if (!st) return null;
+          for (const [, bs] of st.pageBlocks) {
+            const b = (bs || []).find((x) => x.cardEl && x.cardEl.isConnected);
+            if (b) return { top: b.cardEl.style.top, left: b.cardEl.style.left, w: b.cardEl.style.width, fs: b.cardEl.style.fontSize };
+          }
+          return null;
+        };
+        // 等轮询自然过期（bindPoll 60×900ms ≈ 54s；给到 80s）
+        const deadlinePoll = Date.now() + 80000;
+        while (Date.now() < deadlinePoll) {
+          const s = stOf();
+          if (!s || s.pollTimer == null) break;
+          await new Promise((r2) => setTimeout(r2, 1000));
+        }
+        const st0 = stOf();
+        const scale0 = (w && typeof w.ppDualUtil.getScale === "function") ? w.ppDualUtil.getScale("right") : 0;
+        out.zoomProbe = {
+          pollExpired: !!(st0 && st0.pollTimer == null),
+          scaleBefore: scale0, cardsBefore: cardsOf(st0), cardBefore: cardGeo(st0),
+          procBefore: st0 ? (st0.procCount || 0) : -1,
+        };
+        if (w && typeof w.ppDualUtil.setScale === "function") w.ppDualUtil.setScale("right", (scale0 || 1) * 1.4);
+        await new Promise((r2) => setTimeout(r2, 6000));
+        const snapZ = (w && typeof w.ppDualSnapshot === "function") ? w.ppDualSnapshot() : null;
+        const st1 = stOf();
+        out.zoomProbe.scaleAt140 = (w && w.ppDualUtil.getScale) ? w.ppDualUtil.getScale("right") : 0;
+        out.zoomProbe.cardsAfterZoom = cardsOf(st1);
+        out.zoomProbe.procAfterZoom = st1 ? (st1.procCount || 0) : -1;
+        out.zoomProbe.probeR = snapZ && snapZ.right ? snapZ.right.probe : null;
+        out.zoomProbe.boxR = snapZ && snapZ.right ? snapZ.right.box : null;
+        out.zoomProbe.cardAfter = cardGeo(st1);
+        out.zoomProbe.noTextPages = st1 ? st1.noTextPages.length : null;
+        // 还原
+        if (w && typeof w.ppDualUtil.setScale === "function") w.ppDualUtil.setScale("right", scale0 || 1);
+        await new Promise((r2) => setTimeout(r2, 4000));
+        const st2 = stOf();
+        out.zoomProbe.cardsAfterRestore = cardsOf(st2);
+        out.zoomProbe.procAfterRestore = st2 ? (st2.procCount || 0) : -1;
+      } catch (e) {
+        out.zoomProbe = out.zoomProbe || {};
+        out.zoomProbe.error = String((e && e.message) || e);
+      }
+
+      // ---- 空闲性能探针（0.38.3）：静置 8 秒统计「空转」——0.38.2 时轮询每拍都对
+      //  无 textLayer 的页重发 getPageData + 重铺卡片（用户实测「很卡、解析很慢」）。
+      //  修好后这两个计数在静置期应**零增长**。
+      try {
+        const stP = (r && PdfInline._states) ? PdfInline._states.get(r) : null;
+        if (stP && stP.stat) {
+          const s0 = { fetch: stP.stat.charFetches || 0, charR: stP.stat.charRenders || 0, textR: stP.stat.textRenders || 0, proc: stP.procCount || 0 };
+          await new Promise((r2) => setTimeout(r2, 8000));
+          const stP2 = PdfInline._states.get(r);
+          const s1 = stP2 && stP2.stat ? { fetch: stP2.stat.charFetches || 0, charR: stP2.stat.charRenders || 0, textR: stP2.stat.textRenders || 0, proc: stP2.procCount || 0 } : null;
+          out.idleProbe = {
+            before: s0, after: s1,
+            dFetch: s1 ? s1.fetch - s0.fetch : null,
+            dCharRender: s1 ? s1.charR - s0.charR : null,
+            dProc: s1 ? s1.proc - s0.proc : null,
+            idleSeconds: 8,
+          };
+        }
+      } catch (e) {
+        out.idleProbe = { error: String((e && e.message) || e) };
+      }
+
+      // ---- 导出探针（0.39.0）：四条出口都真跑一遍，产物写临时目录（不动用户库）——
+      //  验证「canvas 叠画 → JPEG → 自建 PDF」「HTML/Markdown 文本」「OOXML+zip → docx」
+      //  在真实引擎里能闭环；页数/字节数写进 boot 日志。
+      try {
+        const r = this._rightReader;
+        const tmpDir = (typeof PathUtils !== "undefined" && PathUtils.tempDir) ? PathUtils.tempDir : null;
+        if (r && tmpDir && typeof PdfExport !== "undefined" && PdfExport) {
+          const stamp = Date.now();
+          // 探针一律走 outPath（只落盘，不挂附件）→ 不需要 item
+          out.exportProbe = {};
+          const pdfPath = PathUtils.join(tmpDir, "pp-exp-" + stamp + ".pdf");
+          const htmlPath = PathUtils.join(tmpDir, "pp-exp-" + stamp + ".html");
+          const mdPath = PathUtils.join(tmpDir, "pp-exp-" + stamp + ".md");
+          const docxPath = PathUtils.join(tmpDir, "pp-exp-" + stamp + ".docx");
+          const ctx = {
+            item: null, reader: r, outPath: null,
+            title: (snap && snap.title) || out.attTitle || "paper",
+          };
+          // PDF（自建生成器 + canvas 捕获）
+          try {
+            out.exportProbe.pdf = await PdfExport.exportAs("pdf", Object.assign({}, ctx, { outPath: pdfPath }));
+          } catch (e) { out.exportProbe.pdf = { ok: false, error: String((e && e.message) || e) }; }
+          // HTML
+          try {
+            out.exportProbe.html = await PdfExport.exportAs("html", Object.assign({}, ctx, { outPath: htmlPath }));
+          } catch (e) { out.exportProbe.html = { ok: false, error: String((e && e.message) || e) }; }
+          // Markdown
+          try {
+            out.exportProbe.md = await PdfExport.exportAs("md", Object.assign({}, ctx, { outPath: mdPath }));
+          } catch (e) { out.exportProbe.md = { ok: false, error: String((e && e.message) || e) }; }
+          // Word（OOXML + zipDirectory）
+          try {
+            out.exportProbe.docx = await PdfExport.exportAs("docx", Object.assign({}, ctx, { outPath: docxPath }));
+          } catch (e) { out.exportProbe.docx = { ok: false, error: String((e && e.message) || e) }; }
+          // 产物大小（证明真的写到磁盘了）
+          try {
+            const sizes = {};
+            for (const [k, p] of [["pdf", pdfPath], ["html", htmlPath], ["md", mdPath], ["docx", docxPath]]) {
+              try { sizes[k] = (await IOUtils.stat(p)).size; } catch (e) { sizes[k] = -1; }
+            }
+            out.exportProbe.sizes = sizes;
+          } catch (e) { /* ignore */ }
+        }
+      } catch (e) {
+        out.exportProbe = { error: String((e && e.message) || e) };
+      }
+
       // 自检不改用户偏好：停掉本次注入
       this._stopRight();
       return out;
@@ -426,6 +630,8 @@ var PdfDual = {
       blocks: st.blockCount,
       done: st.doneCount,
       noTextPages: st.noTextPages ? st.noTextPages.length : 0,
+      proc: st.procCount || 0,
+      stat: st.stat ? { fetch: st.stat.charFetches || 0, charR: st.stat.charRenders || 0, textR: st.stat.textRenders || 0 } : null,
     };
   },
 };
