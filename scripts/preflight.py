@@ -118,6 +118,7 @@ NODE_SUITES = [
     ("PDF 文本分析", "test/pdf-text.test.js"),
     ("PDF 页内叠加内核", "test/pdf-inline.test.js"),
     ("PDF 左原右译窗口", "test/pdf-dual.test.js"),
+    ("更新提示", "test/update-notice.test.js"),
     ("翻译设置面板", "test/prefs-translate.test.js"),
     ("阅读器翻译面板", "test/translate-pane.test.js"),
     ("AI 问答悬浮窗", "test/chat-float.test.js"),

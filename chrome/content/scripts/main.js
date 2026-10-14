@@ -132,6 +132,8 @@ Zotero.PaperPilot = {
       // 0.36.0 PDF 对照翻译（左原右译双栏窗口）：右栏 = 同一 PDF 的 mono 译文视图，
       // 复用 PdfInline 内核做提取/翻译/注入 → 必须排在 pdf-inline.js 之后
       "features/pdf-dual.js",
+      // 0.37.1 更新提示：Zotero 的插件更新是静默的，这里补一次可见反馈
+      "features/update-notice.js",
       "columns/rank-column.js",
       "columns/citation-column.js",
       "panels/ai-chat-pane.js",
@@ -542,6 +544,17 @@ Zotero.PaperPilot = {
       }
     }
 
+    // 0.37.1：更新提示（Zotero 的第三方插件更新是静默的，补一次可见反馈；
+    // pref updateNoticeEnabled 默认开，检查失败静默，同一版本只提示一次）
+    try {
+      UpdateNotice.register(id, version, (r) => {
+        try { this._diag("update notice: " + JSON.stringify(r || {})); } catch (e) { /* ignore */ }
+      });
+      await this._diag("update notice scheduled (v" + version + ")");
+    } catch (e) {
+      await this._diag("update notice FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
     // 0.36.0：左原右译双栏自检（pref pdfDualSelfTest，默认关）——真实 PDF 上验
     // 「两个 pane 是否挂上、右栏段落/卡片数、同步滚动位置」，结果写进 boot 日志
     if (Prefs.get("pdfDualSelfTest", false)) {
@@ -683,6 +696,7 @@ Zotero.PaperPilot = {
     try { Menus.destroy(); } catch (e) { Zotero.logError(e); }
     try { ThemeToggle.unregister(); } catch (e) { Zotero.logError(e); }
     try { PdfInline.unregister(); } catch (e) { Zotero.logError(e); }
+    try { UpdateNotice.unregister(); } catch (e) { Zotero.logError(e); }
     try { UiTheme.unregister(); } catch (e) { Zotero.logError(e); }
     try { PdfTheme.unregister(); } catch (e) { Zotero.logError(e); }
     try { RuleTag.unregister(); } catch (e) { Zotero.logError(e); }

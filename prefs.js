@@ -106,6 +106,10 @@ pref("extensions.zotero.paperpilot.pdfDualSelfTest", false);
 // 把每页段落数/卡片数/首卡落点写进 paperpilot-boot.log —— 「段落抽取错/卡片错位」
 // 只有真实 PDF 才暴露；验完请改回 false
 pref("extensions.zotero.paperpilot.pdfInlineSelfTest", false);
+// 0.37.1 更新提示（默认开）：启动后台检查一次更新清单，**只有确实有更高版本时**才弹
+// Zotero 原生通知（Zotero 自身的插件更新是静默的，用户感知不到）。同一版本只提示一次；
+// 网络失败静默；可在「设置 → 增强功能」里关掉
+pref("extensions.zotero.paperpilot.updateNoticeEnabled", true);
 pref("extensions.zotero.paperpilot.noteTemplatesCustom", "");
 pref("extensions.zotero.paperpilot.attachNamePattern", "{author} - {year} - {title}");
 pref("extensions.zotero.paperpilot.unpaywallEmail", "");

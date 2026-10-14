@@ -647,6 +647,10 @@
         <html:input type="checkbox" preference="extensions.zotero.paperpilot.readingStateAutoUnread" id="pp-rs-auto"/>
         <html:span>新条目入库自动标记「未读」（打开 PDF 自动转为「在读」）</html:span>
       </html:label>
+      <html:label class="pp-check" style="margin-top:6px;">
+        <html:input type="checkbox" preference="extensions.zotero.paperpilot.updateNoticeEnabled" id="pp-upd-notice"/>
+        <html:span>有新版本时提示我（Zotero 自身的插件更新是静默后台替换、不会弹提示；本项默认开，同一版本只提示一次）</html:span>
+      </html:label>
       <html:div class="pp-field" style="margin-top:10px;">
         <html:label class="pp-label">附件命名模板</html:label>
         <html:input type="text" preference="extensions.zotero.paperpilot.attachNamePattern" class="pp-input"

@@ -953,7 +953,7 @@ for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
-ok('"version": "0.37.0"' in MANIFEST, "20.12 manifest 版本 0.37.0")
+ok('"version": "0.37.1"' in MANIFEST, "20.12 manifest 版本 0.37.1")
 ok("J14 ★ 旧服务端无 balance → 整块隐藏" in io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read(),
    "20.13 面板测试含余额用例（旧服务端隐藏 + 三档展示 + 充值下单）")
 
@@ -1711,6 +1711,39 @@ ok("ppDualReady" in io.open(os.path.join(ROOT, "test", "pdf-dual.test.js"), enco
 ok("translateAll" in io.open(os.path.join(ROOT, "test", "pdf-inline.test.js"),
                              encoding="utf-8").read(),
    "28.42 内核测试覆盖整篇翻译（遍历/跳过页/滚动复位/卡片落地）")
+
+
+# ---------- 29. 更新提示（插件 0.37.1） ----------
+# 起因：用户报「没有接收到版本更新」——实测更新通道完全正常（把 profile 降回 0.36.0，
+# 启动 150 秒后 Zotero 自动替换成 0.37.0），真正的问题是 Zotero 对第三方插件的更新是
+# **静默后台替换**，不给任何提示，用户感知不到。本模块补这个反馈。
+# 静默失败点：① 本机已是最新还弹窗 = 纯骚扰；② 同一版本每次启动都弹 = 用户想卸载；
+# ③ 断网时弹错误窗 = 比不提示更糟；④ 关掉开关还偷偷联网。
+UN_MOD = os.path.join(ROOT, "chrome", "content", "scripts", "features", "update-notice.js")
+un_js = io.open(UN_MOD, encoding="utf-8").read() if os.path.exists(UN_MOD) else ""
+
+ok(os.path.exists(UN_MOD), "29.1 UpdateNotice 模块存在")
+ok('"features/update-notice.js"' in mainjs, "29.2 main.js 装配清单含 features/update-notice.js")
+ok("UpdateNotice.register(id, version," in mainjs, "29.3 启动时排程检查（带当前版本与结果回调）")
+ok("UpdateNotice.unregister();" in mainjs, "29.4 关闭时清掉定时器")
+ok("function compareVersion" in un_js or "compareVersion(a, b)" in un_js,
+   "29.5 版本比较是纯函数（可单测）")
+ok("function latestVersion" in un_js or "latestVersion(json)" in un_js,
+   "29.6 清单取最新版本是纯函数")
+# 与 manifest 的 update_url 完全一致（两处漂移 = 检查错地址，且很难发现）
+_mf_url_hit = re.search(r'"update_url"\s*:\s*"([^"]+)"', MANIFEST)
+_mf_url = _mf_url_hit.group(1) if _mf_url_hit else ""
+ok('UPDATE_URL: "%s"' % _mf_url in un_js,
+   "29.7 ★ 模块 UPDATE_URL 与 manifest 的 update_url 完全一致")
+ok("updateNoticeLastVersion" in un_js, "29.8 记录已提示版本（同一版本只提示一次）")
+ok('out.skipped = "already-notified"' in un_js, "29.9 ★ 已提示过则静默")
+ok('out.skipped = "up-to-date"' in un_js, "29.10 ★ 已是最新则静默（不骚扰）")
+ok('out.skipped = "disabled"' in un_js, "29.11 开关关掉直接跳过")
+ok("catch (e)" in un_js and "network: " in un_js, "29.12 ★ 网络异常静默（不弹错误窗）")
+ok("ProgressWindow" in un_js, "29.13 用 Zotero 原生通知（与插件其它提示一致）")
+ok("updateNoticeEnabled" in prefsdef,
+   "29.14 prefs.js 含 updateNoticeEnabled 默认值")
+ok("update-notice.test.js" in _pf3, "29.15 preflight 含更新提示测试")
 
 
 print("=" * 60)
