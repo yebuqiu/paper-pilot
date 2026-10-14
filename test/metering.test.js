@@ -265,10 +265,19 @@ const todayKey = () => mod.isoDay(Date.now());
     ok(typeof me.cost.today.text === 'string' && me.cost.today.text.startsWith('¥'), 'H4 成本文案已格式化');
     eq(me.cost.missingUsage, 2, 'H5 计量盲区透出给客户端');
     eq(me.cost.currency, 'CNY', 'H6 币种');
+    // 0.37.0 价值感知：插件要显示「本次消耗 ¥x / 剩余 ¥y」，数据源就是这一条
+    ok(me.cost.today.costMicro > 0, 'H7 前置：今天确实产生了成本');
+    ok(!!me.cost.last, 'H8 有成本 ⇒ 必有「最近一次扣费」');
+    ok(me.cost.last && me.cost.last.micro > 0, 'H9 last.micro > 0');
+    ok(me.cost.last && /^¥/.test(String(me.cost.last.text)), 'H10 last.text 已格式化');
+    ok(me.cost.last && /^AI 调用/.test(String(me.cost.last.reason)), 'H11 last.reason 可读（哪次调用）');
+    ok(me.cost.last && !!me.cost.last.at, 'H12 last.at 存在（插件据此判定是不是「本次」）');
+    ok(me.balance && me.balance.ledger === undefined,
+      'H13 ★ 客户端契约仍不带流水——只放行这一条，不给整本账');
 
     /* ---------- I. health 暴露计量状态 ---------- */
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.7.0', 'I1 服务端版本 1.7.0');
+    eq(h.version, '1.7.1', 'I1 服务端版本 1.7.1');
     eq(h.pricedModels, 1, 'I2 health 报告已配价模型数');
     eq(h.meteringGaps, 2, 'I3 health 报告计量盲区累计');
   } catch (e) {

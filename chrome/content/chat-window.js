@@ -128,6 +128,12 @@
         }
         msgsEl.scrollTop = msgsEl.scrollHeight;
       },
+      onCost(info) {
+        // 0.40.0 价值感知：官方通道调用后显示本次消耗（自带 Key 通道不显示）
+        const line = T("chatCostNote") + " " + info.costText
+          + (info.balanceText ? " · " + T("chatCostLeft") + " " + info.balanceText : "");
+        appendBubble("sys", line, "#888");
+      },
       onError(msg) {
         if (statusBubble) { statusBubble.remove(); statusBubble = null; }
         if (streamBubble) { streamBubble.remove(); streamBubble = null; }

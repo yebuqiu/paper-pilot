@@ -33,6 +33,9 @@
  *   GET  /api/plans                 公开 → {plans, priceOptions, priceItems, upcoming, cycles, pay}
  *   GET  /api/membership            Bearer → {membership(等级/到期/剩余天数/额度/历史), user(含用量趋势)}
  *   GET  /api/auth/me               Bearer → user 内附带 usage:{today,limit,last7,days[30]}
+ *                                              + cost:{today,last7,last30,missingUsage,last}
+ *                                     （1.7.1 起 cost.last = 最近一次扣费 {at,micro,text,reason}，
+ *                                      供插件回答后显示「本次消耗 ¥x / 剩余 ¥y」——只放行这一条流水）
  *   POST /api/orders                Bearer {plan,months} → 下单（订单号+金额+收款信息）
  *   GET  /api/orders/:id            Bearer → 订单状态
  *   POST /api/orders/:id/claim      Bearer → 标记「我已完成支付」，等管理员核销
@@ -623,6 +626,28 @@ function dailyUsedOf(user) {
  * 账号的成本视图（1.5.0）。金额一律同时给「微元」与已格式化文案，
  * 前端不做换算也不做舍入——避免前后端口径不一致。
  */
+/**
+ * 最近一次 AI 扣费（0.40.0 价值感知）：从余额流水里取最后一条 consume。
+ * 客户端契约平时**刻意不带流水**（避免无谓流量），但「这次花了多少」需要一条——
+ * 所以只给一条，不给整本账。
+ */
+function lastChargeOf(user) {
+  const lg = user && user.balance && Array.isArray(user.balance.ledger)
+    ? user.balance.ledger : [];
+  for (let i = lg.length - 1; i >= 0; i--) {
+    const e = lg[i];
+    if (!e || e.kind !== 'consume') continue;
+    const micro = Math.abs(Number(e.delta) || 0);
+    return {
+      at: e.at || null,
+      micro,
+      text: pricing.microText(micro),
+      reason: String(e.reason || '').slice(0, 80),
+    };
+  }
+  return null;
+}
+
 function costViewOf(user) {
   const t = usageTotalsIn(user, 1);
   const d7 = usageTotalsIn(user, 7);
@@ -637,6 +662,8 @@ function costViewOf(user) {
     // ★ 上游未返回 usage 的次数：成本是「未知」而不是 0，必须让界面说清楚
     missingUsage: Number((user.usage && user.usage.missingUsage) || 0),
     currency: pricingStore.data.currency || 'CNY',
+    // 0.40.0：供插件显示「本次消耗 ¥x / 剩余 ¥y」用（null = 尚无扣费记录）
+    last: lastChargeOf(user),
   };
 }
 
@@ -1912,7 +1939,7 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'GET' && url === '/api/health') {
       return json(res, 200, {
-        ok: true, service: 'paperpilot-account-server', version: '1.7.0',
+        ok: true, service: 'paperpilot-account-server', version: '1.7.1',
         uptime: Math.round(process.uptime()), now: new Date().toISOString(),
         mail: mail.configured() ? 'on' : 'off',
         users: usersStore.data.users.length,

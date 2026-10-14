@@ -211,10 +211,13 @@ let aiReady = true;
 let aiReply = '这是**AI**的回答';
 let aiThrows = null; // null=成功；Error=抛
 let chatStreamDelay = false;
+// 0.37.0 价值感知只在官方通道触发，测试里可切换
+let activeChannelId = 'official';
 const streamHandles = [];
 const AIClient = {
   hasKey: () => aiReady,
   guidance: () => '未登录/未配置',
+  _config: () => ({ ok: true, channelId: activeChannelId }),
   async chat() { if (aiThrows) throw aiThrows; return aiReply; },
   chatStream(messages, onDelta) {
     const h = {
@@ -256,8 +259,18 @@ const Prompts = { all: () => [
   { id: 'p2', name: '方法', text: '这篇论文用了什么方法？' },
 ] };
 
+// 0.37.0 价值感知依赖桩：cost() 读缓存的花费视图，refreshCost() 模拟一次服务端刷新
+let refreshCostCalls = 0;
+let accountCost = null;
+let accountCostAfterRefresh = null;
+const Account = {
+  cost: () => accountCost,
+  balance: () => ({ text: '¥9.99' }),
+  async refreshCost() { refreshCostCalls++; accountCost = accountCostAfterRefresh; return null; },
+};
+
 const sandbox = {
-  console, Zotero, Services: {}, AIClient, AIChat, Notes, Prompts,
+  console, Zotero, Services: {}, AIClient, AIChat, Notes, Prompts, Account,
   IOUtils: {}, PathUtils: {},
   setTimeout: (fn) => { if (typeof fn === 'function') setTimeout(fn, 0); return 0; },
   clearTimeout: () => {},
@@ -322,6 +335,65 @@ async function tick(n = 4) { for (let i = 0; i < n; i++) await new Promise((r) =
   eq(CF.session.busy, false, 'runSend: 结束后 busy=false');
   ok(ui.busyFlags.indexOf(true) >= 0 && ui.busyFlags.indexOf(false) >= 0, 'runSend: onBusy 开合成对');
   eq(CF.session.inputHistory[0], '这篇论文的创新点？', 'runSend: 输入历史入栈');
+
+  /* ---- 0.37.0 价值感知：官方通道调用后回报「本次消耗 + 剩余额度」 ---- */
+
+  function freshCostUI() {
+    const u = freshUI();
+    u.costs = [];
+    u.onCost = (c) => { u.costs.push(c); };
+    return u;
+  }
+  // _reportCost 走 Promise 微任务链（不阻塞回答）→ 断言前清一次任务队列
+  const flush = () => new Promise((r) => setImmediate(r));
+
+  // ① 官方通道 + 产生了新扣费 → 回报一次（文案取刷新后的 last）
+  CF.session.item = itemA; CF.session.history = [];
+  activeChannelId = 'official';
+  refreshCostCalls = 0;
+  accountCost = { last: { at: 'T1', micro: 1890, text: '¥0.0019', reason: 'AI 调用 glm-5.3-flash' } };
+  accountCostAfterRefresh = { last: { at: 'T2', micro: 2100, text: '¥0.0021', reason: 'AI 调用 glm-5.3-flash' } };
+  ui = freshCostUI();
+  await CF.runSend('问题', ui);
+  await flush();
+  eq(ui.costs.length, 1, 'cost: 官方通道回报本次消耗一次');
+  eq(ui.costs[0] && ui.costs[0].costText, '¥0.0021', 'cost: 消耗文案来自刷新后的 last');
+  eq(ui.costs[0] && ui.costs[0].balanceText, '¥9.99', 'cost: 同时带上剩余额度');
+  eq(refreshCostCalls, 1, 'cost: 官方通道刷新了一次花费视图');
+
+  // ② 自带 Key 通道 → 不刷新也不显示（不经本站、不计量，显示 ¥0 是误导）
+  refreshCostCalls = 0;
+  accountCost = { last: { at: 'T3', micro: 1, text: '¥0.0001', reason: '' } };
+  accountCostAfterRefresh = { last: { at: 'T4', micro: 1, text: '¥0.0001', reason: '' } };
+  activeChannelId = 'custom';
+  ui = freshCostUI();
+  await CF.runSend('问题', ui);
+  await flush();
+  eq(ui.costs.length, 0, 'cost: 自带 Key 通道不显示消耗');
+  eq(refreshCostCalls, 0, 'cost: 自带 Key 通道不发起刷新');
+
+  // ③ 官方通道但本次未产生新扣费（成本取整为 0 / 上游未给 usage）→ 跳过
+  //    拿上一次的流水冒充「本次」是错的，宁可不显示
+  activeChannelId = 'official';
+  refreshCostCalls = 0;
+  const stale = { last: { at: 'T5', micro: 500, text: '¥0.0005', reason: 'AI 调用 x' } };
+  accountCost = stale;
+  accountCostAfterRefresh = stale;
+  ui = freshCostUI();
+  await CF.runSend('问题', ui);
+  await flush();
+  eq(ui.costs.length, 0, 'cost: at 未变（本次未计费）→ 不显示');
+  eq(refreshCostCalls, 1, 'cost: 未计费也刷新了一次（判断依据来自服务端）');
+
+  // ④ 旧服务端没有 cost 块 → 静默，绝不影响回答
+  refreshCostCalls = 0;
+  accountCost = null; accountCostAfterRefresh = null;
+  ui = freshCostUI();
+  await CF.runSend('问题', ui);
+  await flush();
+  eq(ui.costs.length, 0, 'cost: 旧服务端无 cost 块 → 静默不显示');
+  has(ui.done, aiReply, 'cost: 取不到花费不影响回答内容');
+  accountCost = null; accountCostAfterRefresh = null; activeChannelId = 'official';
 
   // 无 Key
   aiReady = false; CF.session.item = itemA; CF.session.history = [];

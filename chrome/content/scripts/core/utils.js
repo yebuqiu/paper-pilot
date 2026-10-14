@@ -101,6 +101,9 @@ var I18n = (() => {
     chatFloatOpenHint: zh ? "Enter 发送 · Shift+Enter 换行 · ↑↓ 翻提问记录 · Esc 关闭" : "Enter to send · Shift+Enter newline · ↑↓ history · Esc to close",
     popupContinueFloat: zh ? "在浮窗继续" : "Continue in floating chat",
     chatFloatReaderBtnTip: zh ? "AI 问答（Ctrl+Enter）" : "AI Chat (Ctrl+Enter)",
+    // 0.40.0 价值感知：回答后提示「本次消耗 / 剩余额度」
+    chatCostNote: zh ? "本次消耗" : "Cost",
+    chatCostLeft: zh ? "剩余额度" : "Balance",
     noteTitle: zh ? "AI 文献解读" : "AI Interpretation",
     noteChatTitle: zh ? "AI 问答记录" : "AI Q&A",
     noteDone: zh ? "已生成解读笔记" : "Note created",

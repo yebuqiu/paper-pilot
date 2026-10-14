@@ -678,6 +678,53 @@ var Account = {
     };
   },
 
+  /**
+   * AI 花费视图（0.40.0，服务端 1.7.1）：今天 / 近 7 天 / 近 30 天的 token 与成本，
+   * 外加 `last` = **最近一次扣费**（「本次消耗」提示用）。
+   * **旧服务端没有 cost 块 → 返回 null**，调用点据此不显示（不显示假数据）。
+   * @returns {{today:object, last7:object, last30:object, missingUsage:number,
+   *            last:{at:string|null, micro:number, text:string, reason:string}|null}|null}
+   */
+  cost() {
+    const u = this.user();
+    const c = u && u.cost;
+    if (!c || typeof c !== "object") return null;
+    const last = c.last && typeof c.last === "object" ? {
+      at: c.last.at || null,
+      micro: Number(c.last.micro) || 0,
+      text: c.last.text || "",
+      reason: c.last.reason || "",
+    } : null;
+    return {
+      today: c.today || null,
+      last7: c.last7 || null,
+      last30: c.last30 || null,
+      missingUsage: Number(c.missingUsage) || 0,
+      last,
+    };
+  },
+
+  /**
+   * 只刷新「花费视图」（0.40.0）：官方通道每次调用后取一次，用于显示本次消耗。
+   * ★ 与 refreshUser 的区别：**不落盘、不 _notify()** —— 这是每次调用都会触发的
+   *   轻量刷新，不该带来额外的会话写入与全局重绘（会话写盘是本项目的高危路径）。
+   * ★ 失败一律静默返回 null：花费提示完全不值得打扰用户；也不在这里处理 401
+   *   （会话失效由既有 refreshUser 链路定论）。
+   * @returns {Promise<object|null>} 刷新后的用户视图；失败返回 null
+   */
+  async refreshCost() {
+    if (!this._session || !this._session.token) return null;
+    try {
+      const resp = await this._request("GET", "/api/auth/me", null, this._session.token, 10000);
+      const j = (resp && resp.json) || {};
+      if (!j.ok || !j.user) return null;
+      this._session.user = j.user;   // 仅内存更新：取值方立即看到新的 cost / balance
+      return j.user;
+    } catch (e) {
+      return null;
+    }
+  },
+
   /** 是否 Pro（含到期判断：过期的 Pro 视为 Free） */
   isPro() {
     const m = this.membership();

@@ -195,6 +195,8 @@ var ChatFloat = {
       }
       s.histIdx = -1;
       if (ui.onDone) ui.onDone(acc);
+      // 0.40.0 价值感知：官方通道调用后回报「本次消耗 + 剩余额度」（异步、静默、不阻塞）
+      this._reportCost(ui);
     } catch (e) {
       if (e && e.message === "ABORTED") {
         if (ui.onAbort) ui.onAbort();
@@ -209,6 +211,38 @@ var ChatFloat = {
       s.handle = null;
       if (ui.onBusy) ui.onBusy(false);
     }
+  },
+
+  /**
+   * 0.40.0 价值感知：官方通道调用成功后，异步取回「本次消耗 + 剩余额度」回报给 UI。
+   * 三条边界（都踩得起，但都必须守住）：
+   *   · **仅官方通道** —— 自带 Key 通道不经本站、不计量，给它显示 ¥0 是误导；
+   *   · **at 未变则跳过** —— 本次调用可能压根没计费（成本取整为 0 / 上游未返回
+   *     usage），此时拿上一次的流水当「本次」是错的，宁可不显示；
+   *   · **全程静默** —— 取不到就不显示，绝不影响回答本身。
+   * 另：只调 Account.refreshCost（不落盘、不重绘），见 account.js 的说明。
+   */
+  _reportCost(ui) {
+    try {
+      if (!ui || !ui.onCost) return;
+      if (typeof Account === "undefined" || !Account || !Account.cost) return;
+      const cfg = (typeof AIClient !== "undefined" && AIClient._config) ? AIClient._config() : null;
+      if (!cfg || cfg.channelId !== "official") return;
+      const before = Account.cost();
+      const prevAt = before && before.last ? before.last.at : null;
+      Promise.resolve()
+        .then(() => Account.refreshCost())
+        .then(() => {
+          const c = Account.cost();
+          const last = c && c.last;
+          if (!last || !last.text || last.at === prevAt) return;
+          const bal = Account.balance ? Account.balance() : null;
+          try {
+            ui.onCost({ costText: last.text, balanceText: (bal && bal.text) || "" });
+          } catch (e) { /* UI 回调不得拖死流程 */ }
+        })
+        .catch(() => { /* 静默 */ });
+    } catch (e) { /* 静默 */ }
   },
 
   /** 停止当前生成（流式 abort；非流式在 runSend 侧无句柄，忽略） */
@@ -848,6 +882,11 @@ var ChatFloat = {
           self._appendBubble(entry, "assistant", text);
         }
         entry.refs.msgs.scrollTop = entry.refs.msgs.scrollHeight;
+      },
+      onCost(info) {
+        const line = I18n.t("chatCostNote") + " " + info.costText
+          + (info.balanceText ? " · " + I18n.t("chatCostLeft") + " " + info.balanceText : "");
+        self._appendBubble(entry, "sys", line, "#888");
       },
       onError(msg) {
         if (statusBubble) { statusBubble.remove(); statusBubble = null; }
