@@ -493,22 +493,29 @@ async function main() {
     ok(reg12.get("pp-pd-exp-html") && reg12.get("pp-pd-exp-md"), "12.4 菜单含 HTML / Markdown 项");
 
     // 12.5 选 PDF：回插件作用域执行并把结果写状态行
+    // ★ 0.41.1：XUL menulist 派发 command（不是 HTML 的 change）——真机就是这条路径
     const sel = reg12.get("pp-pd-export");
     sel.value = "pdf";
-    sel.fire("change");
+    sel.fire("command");
     await waitFor(() => c12.exports.length === 1, 3000);
-    eq(c12.exports[0], "pdf", "12.5 选中 pdf → 回插件侧 exportAs('pdf')");
+    eq(c12.exports[0], "pdf", "12.5 选中 pdf（command 事件）→ 回插件侧 exportAs('pdf')");
     await waitFor(() => reg12.get("pp-pd-status").textContent.indexOf("已导出") >= 0, 3000);
     const st12 = reg12.get("pp-pd-status").textContent;
     ok(st12.indexOf("3 页") >= 0 && st12.indexOf("跳过 1 页") >= 0 && st12.indexOf("附件") >= 0,
       "12.6 ★ PDF 导出的状态行报「页数 / 跳过未渲染页 / 已加入附件」", st12);
     eq(sel.value, "", "12.7 执行后清空选择（可再次选同一项）");
+    // 12.7b 两个事件都绑：command 与 change 交替触发不会重复导出（值已清空）
+    sel.value = "html";
+    sel.fire("command");
+    sel.fire("change");
+    await sleep(120);
+    eq(c12.exports.length, 2, "12.7b ★ command+change 双绑且幂等（不重复导出）", c12.exports.length);
 
     // 12.8 选 Markdown：状态行给出落盘路径
     sel.value = "md";
-    sel.fire("change");
-    await waitFor(() => c12.exports.length === 2, 3000);
-    eq(c12.exports[1], "md", "12.8 选中 md → exportAs('md')");
+    sel.fire("command");
+    await waitFor(() => c12.exports.length === 3, 3000);
+    eq(c12.exports[2], "md", "12.8 选中 md → exportAs('md')");
     await waitFor(() => reg12.get("pp-pd-status").textContent.indexOf("x.md") >= 0, 3000);
 
     // 12.9 取消导出
@@ -529,10 +536,23 @@ async function main() {
     const w14 = boot(p14);
     await waitFor(() => w14.win.ppDualReady(), 6000);
     w14.registry.get("pp-pd-export").value = "pdf";
-    w14.registry.get("pp-pd-export").fire("change");
+    w14.registry.get("pp-pd-export").fire("command");
     await waitFor(() => w14.registry.get("pp-pd-status").textContent.indexOf("导出失败") >= 0, 3000);
     ok(w14.registry.get("pp-pd-status").textContent.indexOf("no rendered pages") >= 0,
       "12.10 ★ 导出失败的原因原样显示给用户");
+
+    // 12.11 自检用的 dryRun：只记链路、不真导出（否则会弹文件选择器卡住自检）
+    const { payload: p15, calls: c15 } = mkPayload();
+    const w15 = boot(p15);
+    await waitFor(() => w15.win.ppDualReady(), 6000);
+    const n15 = c15.exports.length;
+    w15.win.ppDualExportDryRun = true;
+    w15.registry.get("pp-pd-export").value = "docx";
+    w15.registry.get("pp-pd-export").fire("command");
+    await sleep(120);
+    eq(c15.exports.length, n15, "12.11 ★ dryRun 下不触发真实导出（自检不弹选择器）");
+    eq(w15.win.ppDualExportStats.last, "docx", "12.11b dryRun 仍记录调用（链路可验证）");
+    w15.win.ppDualExportDryRun = false;
   }
 
   /* ---------------- 输出 ---------------- */

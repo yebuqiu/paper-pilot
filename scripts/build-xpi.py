@@ -1,6 +1,10 @@
 import os, sys, zipfile, json
 
-ROOT = r"E:\project\paper-pilot"
+# ★ 0.41.1：根路径改为**脚本自身位置推导**（原为写死的绝对路径）。
+# 写死的后果：在 git worktree（并发期从干净树构建的常规手段）里执行本脚本，
+# 实际打包的仍是主树 —— 会混入另一会话的在制品，且版本号取自主树 manifest
+# （真机实踩：worktree 构建出的包里有主树的未提交新文件，版本也不是传入的那个）。
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 VER = sys.argv[1] if len(sys.argv) > 1 else "0.18.1"
 OUT = "dist/paper-pilot-%s.xpi" % VER

@@ -498,14 +498,21 @@
       }
     });
     // 0.39.0 导出 ▾（双语 PDF 附件 / HTML / Markdown / Word）：选中即执行，
-    // 执行后清空 value 便于再次选择同一项
+    // 执行后清空 value 便于再次选择同一项。
+    // ★ 0.41.1 修复：XUL `menulist` 派发的是 **command**（HTML 才用 change）——
+    //  0.39.0/0.40.0 只绑了 change → 真机点选后回调根本不触发，
+    //  表现为「选了导出，什么都没发生、也没有附件」（用户实报）。
+    //  compare.js:931 / bilingual-view.js:367 的项目惯例同为 command。
+    //  这里两个都绑：处理函数开头读 value 并立刻清空 → 第二个事件读到空值自然 no-op（幂等）。
     const exp = $("pp-pd-export");
     if (exp) {
-      exp.addEventListener("change", () => {
+      const onExportPick = () => {
         const kind = String(exp.value || "");
         try { exp.value = ""; } catch (e) { /* ignore */ }
         if (kind) window.ppDualExport(kind);
-      });
+      };
+      exp.addEventListener("command", onExportPick);
+      exp.addEventListener("change", onExportPick);
     }
     const cl = $("pp-pd-close");
     if (cl) cl.addEventListener("click", () => { try { window.close(); } catch (e) { /* ignore */ } });
@@ -531,9 +538,17 @@
   }
 
   /** 导出入口（0.39.0）：kind = pdf | html | md | docx；回插件作用域执行并把结果写状态行。
-   *  导出 PDF 需要「已渲染的页」——未渲染页会如实报跳过数，提示先点「翻译全文」。 */
-  window.ppDualExport = async function (kind) {
+   *  导出 PDF 需要「已渲染的页」——未渲染页会如实报跳过数，提示先点「翻译全文」。
+   *  0.41.1：调用计数写进 window.ppDualExportStats（自检据此验证「菜单事件→回调」链路）；
+   *  window.ppDualExportDryRun = true 时只验链路、不真导出（自检用，避免弹文件选择器）。 */
+  window.ppDualExportStats = { calls: 0, last: null, dry: 0 };
+  window.ppDualExport = async function (kind, opts) {
     if (!kind) return false;
+    const stats = window.ppDualExportStats;
+    stats.calls++;
+    stats.last = kind;
+    const dry = (opts && opts.dryRun === true) || window.ppDualExportDryRun === true;
+    if (dry) { stats.dry++; return true; }
     if (busy) { setStatus(tx("pdBusy", "翻译进行中，请稍候…", "Still translating…")); return false; }
     const label = kind === "pdf" ? tx("pdExpPdf", "双语 PDF 附件（挂到条目）", "Bilingual PDF attachment")
       : kind === "docx" ? "Word (.docx)"

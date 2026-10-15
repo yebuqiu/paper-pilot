@@ -601,6 +601,84 @@ var PdfDual = {
             }
             out.exportProbe.sizes = sizes;
           } catch (e) { /* ignore */ }
+
+          // ---- ★ 0.41.1：真「附件」路径验证（建后立即删，不留痕迹）----
+          //  0.39.0 的自检只验了 outPath 落盘路径，**没验 Zotero.Attachments.importFromFile**
+          //  （当时为不污染用户库而刻意绕过）→ 附件路径的问题（如菜单事件不触发）测不出来。
+          //  这里真的挂一次附件、回读确认，再 eraseTx 删掉。
+          try {
+            const parent = (() => {
+              try { return att && att.parentItemID ? Zotero.Items.get(att.parentItemID) : att; }
+              catch (e) { return null; }
+            })();
+            if (parent) {
+              const res = await PdfExport.exportAs("pdf", {
+                item: parent, reader: r,
+                title: (snap && snap.title) || out.attTitle || "paper",
+              });
+              out.exportProbe.attach = {
+                ok: !!(res && res.ok),
+                error: (res && res.error) || null,
+                attachmentID: (res && res.attachmentID) || null,
+                pages: (res && res.pages) || null,
+              };
+              if (res && res.ok && res.attachmentID) {
+                let title = "";
+                let erased = false;
+                try {
+                  const made = Zotero.Items.get(res.attachmentID);
+                  if (made) {
+                    title = String(made.getField("title") || "");
+                    out.exportProbe.attachIsPDF = !!(made.isPDFAttachment && made.isPDFAttachment());
+                    out.exportProbe.attachFile = (() => {
+                      try { return PathUtils.filename(made.getFilePath() || ""); } catch (e) { return ""; }
+                    })();
+                    await made.eraseTx();
+                    erased = true;
+                  }
+                } catch (e) {
+                  out.exportProbe.attachEraseError = String((e && e.message) || e);
+                }
+                out.exportProbe.attachTitle = title;
+                out.exportProbe.attachErased = erased;   // 不回读为 true 就会留下垃圾附件
+              }
+            } else {
+              out.exportProbe.attach = { ok: false, error: "no-parent-item" };
+            }
+          } catch (e) {
+            out.exportProbe.attach = { ok: false, error: String((e && e.message) || e) };
+          }
+
+          // ---- ★ 0.41.1：UI 链路探针 —— 合成 command 事件走「菜单 → 窗口 → 插件」全链 ----
+          //  本次 bug 就出在这一环（XUL menulist 发 command，代码却只绑了 change）。
+          //  dryRun 只验链路，不真导出（否则会弹文件选择器卡住自检）。
+          try {
+            const w = this._win;
+            const doc = w && w.document;
+            const sel = doc && doc.getElementById ? doc.getElementById("pp-pd-export") : null;
+            if (sel) {
+              const s0 = (w.ppDualExportStats && w.ppDualExportStats.calls) || 0;
+              w.ppDualExportDryRun = true;
+              try { sel.value = "md"; } catch (e) { /* ignore */ }
+              try {
+                const Ev = w.Event || (w.CustomEvent);
+                sel.dispatchEvent(new Ev("command", { bubbles: true }));
+              } catch (e) {
+                out.exportProbe.uiEventError = String((e && e.message) || e);
+              }
+              await new Promise((r2) => setTimeout(r2, 300));
+              const s1 = (w.ppDualExportStats && w.ppDualExportStats.calls) || 0;
+              out.exportProbe.uiCommand = {
+                before: s0, after: s1, fired: s1 > s0,
+                lastKind: (w.ppDualExportStats && w.ppDualExportStats.last) || null,
+              };
+              w.ppDualExportDryRun = false;
+            } else {
+              out.exportProbe.uiCommand = { fired: false, error: "menulist not found" };
+            }
+          } catch (e) {
+            out.exportProbe.uiCommand = { fired: false, error: String((e && e.message) || e) };
+          }
         }
       } catch (e) {
         out.exportProbe = { error: String((e && e.message) || e) };
