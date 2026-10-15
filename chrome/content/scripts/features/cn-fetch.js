@@ -720,18 +720,25 @@ var CNFetch = {
     const exactHit = results.some((r) => this._isTitleMatch(r.articleTitle, searchTitle));
     if (!exactHit && Prefs.get("cnFetchUseCNKI", true) && !this._batchBlocked) {
       await this._seedCNKI();
-      const r2 = await this._searchCNKI(searchTitle, searchAuthor);
-      if (r2.captcha) {
-        captcha = r2.captcha;
-        this._batchBlocked = true;
-      } else if (r2.maybeBlocked) {
-        // no-content 软拦 vs 真空结果：热词探测一次定真伪（每批至多一次）
+      let r2 = await this._searchCNKI(searchTitle, searchAuthor);
+      // no-content 软拦 vs 真空结果：热词探测一次定真伪（每批至多一次）。
+      // 0.42.1：探测通过但本题 0 结果时重试一次原搜索——no-content 也可能是
+      // 偶发软拦（2026-10-15 真机诊断实踩：同会话先 no-content 后 403 滑块）
+      if (r2.maybeBlocked) {
         const ok = await CNVerify.probe();
         if (!ok) {
           captcha = "soft-block";
           this._batchBlocked = true;
           this._diag("cnki soft-blocked confirmed by probe");
+        } else if (!r2.results.length) {
+          this._diag("no-content but probe ok, retry original search once");
+          r2 = await this._searchCNKI(searchTitle, searchAuthor);
         }
+      }
+      if (r2.captcha) {
+        captcha = r2.captcha;
+        this._batchBlocked = true;
+        this._lastCaptchaUrl = r2.captcha; // 0.42.1：记住 403 滑块页链接，批末验证窗直接开它
       } else if (r2.structureChanged && typeof CNAI !== "undefined" && CNAI) {
         // 0.42.0 P3 自愈：页面结构疑似改版 → LLM 从 HTML 提取结果行
         const rescued = await CNAI.rescue(r2.html);
@@ -905,7 +912,9 @@ var CNFetch = {
             ? "知网触发了安全验证（滑块/风控拦截）。\n是否现在打开知网页面完成验证？验证通过后会自动继续本次抓取。"
             : "CNKI is blocking requests (slider/risk control). Open the CNKI page to verify? Fetching will resume automatically afterwards.");
         if (go) {
-          CNVerify.openAndWait(() => this.runForSelected());
+          // 0.42.1：优先 403 滑块页链接（本题的 → 探测捕到的），都没有才回落搜索页
+          CNVerify.openAndWait(() => this.runForSelected(), null,
+            this._lastCaptchaUrl || CNVerify._probeCaptchaUrl || "");
         }
       }
     }
@@ -1077,7 +1086,10 @@ var CNFetch = {
  * 0.14.9：验证通过状态缓存 5 分钟（免重复验证）；等待会话 Promise 去重（并发只开一个窗）。
  */
 var CNVerify = {
-  VERIFY_URL: "https://kns.cnki.net/",
+  // 0.42.1：软拦（no-content 不带验证码 URL）时开**真实搜索页**（预填热词）。
+  // 裸首页不执行搜索、不产生完整反爬 cookie；搜索页正常出结果 = 会话已恢复
+  // （jasminum getCNKIHomeCookieId 同款思路：带 kw 打开 defaultresult 页）。
+  VERIFY_URL: "https://kns.cnki.net/kns8s/defaultresult/index?korder=SU&kw=%E9%AB%98%E8%A1%80%E5%8E%8B",
   PASS_TTL: 5 * 60 * 1000, // 验证通过状态缓存时长（借鉴茉莉花 COOKIE_EXPIRE_MS）
   _passTime: 0,
   _waitPromise: null,   // 进行中的验证会话（并发去重）
@@ -1094,13 +1106,16 @@ var CNVerify = {
     return !!(this._passTime && (Date.now() - this._passTime) < this.PASS_TTL);
   },
 
-  /** 探测知网当前是否可用：固定热词搜索，能出结果 = 未被风控 */
+  /** 探测知网当前是否可用：固定热词搜索，能出结果 = 未被风控。
+   *  0.42.1：探测遭 403 时顺手记下滑块 URL——软拦形态（no-content）拿不到链接，
+   *  但探测的 403 有；批末验证窗优先用它。 */
   async probe() {
     try {
       const r = await CNFetch._searchCNKI("高血压", "");
       const ok = !r.maybeBlocked && !r.captcha && r.results.length > 0;
       if (ok) this._passTime = Date.now();
-      this._diag("probe: " + (ok ? "ok" : "blocked"));
+      if (r.captcha) this._probeCaptchaUrl = r.captcha;
+      this._diag("probe: " + (ok ? "ok" : "blocked") + (r.captcha ? " (403)" : ""));
       return ok;
     } catch (e) {
       this._diag("probe error: " + (e && e.message));
@@ -1111,11 +1126,15 @@ var CNVerify = {
   /**
    * 打开知网验证窗并等待通过（自动轮询 + 页面内手动确认按钮并行，最长 5 分钟）。
    * 并发去重：已有验证会话时挂到同一会话上，不再开新窗。
+   * 0.42.1：captchaUrl（403 响应里的 verify/home?captchaType=blockPuzzle… 链接）优先——
+   * 直接打开**那次拦截对应的滑块页**。此前固定开知网首页：首页本身不被拦、不弹滑块，
+   * 用户点「已完成验证」后探测仍 403，永远过不去（真机诊断实踩，jasminum cookiebox
+   * passCaptchaToCookieBox(respJson.message) 同款做法）。
    * onPass 在通过后回调（如自动续抓）；onGiveup 超时/关窗时回调。
    */
-  async openAndWait(onPass, onGiveup) {
+  async openAndWait(onPass, onGiveup, captchaUrl) {
     if (!this._waitPromise) {
-      this._waitPromise = this._waitSession()
+      this._waitPromise = this._waitSession(captchaUrl)
         .finally(() => { this._waitPromise = null; });
     } else {
       this._diag("wait session already running, attaching to it");
@@ -1130,15 +1149,21 @@ var CNVerify = {
   },
 
   /** 单个验证会话；resolve true=通过 false=超时/用户关窗 */
-  async _waitSession() {
+  async _waitSession(captchaUrl) {
     const zh = I18n.isZh;
     this._manualWaiters = [];
     this._closeWaiters = [];
     this._panelHint = null;
 
+    // 优先开 403 给的滑块页（带 ident/returnUrl），没有才回落首页
+    const targetUrl = (captchaUrl && /^https?:\/\/[\w.]*cnki\.net\//i.test(captchaUrl))
+      ? captchaUrl : this.VERIFY_URL;
+    this._diag("verify window url=" + targetUrl.slice(0, 120) +
+      (captchaUrl ? " (from-403)" : " (home)"));
+
     // viewer 窗口打开知网（默认 cookie 容器，与 Zotero.HTTP 共享会话）
     let win = null;
-    try { win = Zotero.openInViewer(this.VERIFY_URL); }
+    try { win = Zotero.openInViewer(targetUrl); }
     catch (e) { this._diag("openInViewer failed: " + (e && e.message)); }
     if (!win) {
       try { Zotero.getActiveZoteroPane().loadURI(this.VERIFY_URL); }
@@ -1155,14 +1180,45 @@ var CNVerify = {
     const pw = new Zotero.ProgressWindow({ closeOnClick: false });
     pw.changeHeadline("PaperPilot · " + (zh ? "知网验证" : "CNKI verification"));
     const line = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
-      zh ? "请在打开的知网页面完成滑块/安全验证——通过后自动继续，也可点页面右上角「我已完成验证」（最长 5 分钟）…"
-         : "Complete the slider in the CNKI page — auto-resume on pass, or click the confirm button in the page (up to 5 min)…");
+      zh ? "请在打开的知网页面完成滑块验证（若弹出）；若是搜索页，等搜索结果正常显示后，点页面右上角「我已完成验证」（最长 5 分钟）…"
+         : "Complete the slider if shown; for the search page, wait until results load, then click the confirm button (up to 5 min)…");
     pw.show();
 
     const deadline = Date.now() + 5 * 60 * 1000;
+    // 0.42.1：cookie 观察驱动验证等待。解题成功的落点是默认 cookie 罐（viewer 与
+    // Zotero.HTTP 共享）里知网 cookie 新增/变更；而每次搜索探测的 403 都会**轮换
+    // captchaId**（真机实证：5 分钟 68 次探测全部 403、每条都带新 captchaId）——
+    // 密集轮询既扰民又可能顶掉用户正在解的题。改为：本地观察 cookie（零请求）→
+    // 变更后探测一次；手动确认 → 立即探测；30s 兜底探测。
+    const cookieFP = () => {
+      try {
+        const out = [];
+        for (const host of ["cnki.net", "kns.cnki.net"]) {
+          for (const c of Services.cookies.getCookiesFromHost(host, {})) {
+            out.push(host + "|" + c.name + "=" + String(c.value).slice(0, 24));
+          }
+        }
+        return out.sort().join(";");
+      } catch (e) { return "err"; }
+    };
+    const passedNow = async () => {
+      if (await this.probe()) {
+        line.setText(zh ? "✓ 验证已通过，知网恢复访问" : "✓ Verification passed");
+        line.setProgress(100);
+        pw.startCloseTimer(2500);
+        try { if (win) win.close(); } catch (e) { /* ignore */ }
+        return true;
+      }
+      lastFP = cookieFP(); // 探测本身也会写 cookie（403 设 KNS2COOKIE 等），快照复位防自激
+      return false;
+    };
+    let lastFP = cookieFP();
+    let lastFallback = Date.now();
+    // 开窗后先留 8s 给用户解题
+    await new Promise((r) => setTimeout(r, 8000));
     while (Date.now() < deadline) {
       const race = await Promise.race([
-        new Promise((r) => setTimeout(() => r("tick"), 3000)),
+        new Promise((r) => setTimeout(() => r("tick"), 2000)),
         new Promise((r) => this._manualWaiters.push(() => r("manual"))),
         new Promise((r) => this._closeWaiters.push(() => r("closed"))),
       ]);
@@ -1173,17 +1229,21 @@ var CNVerify = {
         pw.startCloseTimer(3500);
         return false;
       }
-      if (await this.probe()) {
-        line.setText(zh ? "✓ 验证已通过，知网恢复访问" : "✓ Verification passed");
-        line.setProgress(100);
-        pw.startCloseTimer(2500);
-        try { if (win) win.close(); } catch (e) { /* ignore */ }
-        return true;
-      }
       if (race === "manual") {
+        if (await passedNow()) return true;
         this._flashPanel(zh
           ? "仍未检测到通过——请确认已在页面中完成滑块，或稍等自动检测"
           : "Not passed yet — finish the slider, or wait for auto-detection");
+        continue;
+      }
+      const fp = cookieFP();
+      const changed = fp !== lastFP;
+      const due = Date.now() - lastFallback > 30000;
+      if (changed || due) {
+        this._diag("cookie " + (changed ? "changed" : "fallback-due") + " → probe");
+        lastFP = cookieFP();
+        lastFallback = Date.now();
+        if (await passedNow()) return true;
       }
     }
     line.setError();
@@ -1207,8 +1267,8 @@ var CNVerify = {
           "background:#ffffff;border:2px solid #c0392b;border-radius:8px;" +
           "box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:sans-serif;");
         const hint = doc.createElementNS(XHTML, "div");
-        hint.textContent = zh ? "PaperPilot：在页面完成滑块后点击按钮"
-                              : "PaperPilot: click after passing the slider";
+        hint.textContent = zh ? "PaperPilot：完成滑块（若弹出）或等搜索结果正常显示后，点击按钮"
+                              : "PaperPilot: finish the slider (if shown) or wait for search results, then click";
         hint.setAttribute("style", "font-size:12px;color:#333;margin-bottom:8px;max-width:230px;");
         const btn = doc.createElementNS(XHTML, "button");
         btn.textContent = zh ? "我已完成验证" : "Done verifying";
