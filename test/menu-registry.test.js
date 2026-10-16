@@ -65,9 +65,10 @@ const ok = (cond, name) => {
 
 // ① 注册表规模：0.28 的 40 个右键命令一条不减（0.31.0 +ai-chat → 41；0.36.0 撤 pdf-inline → 41；
 // 0.42.0 撤「文本双栏」-1 → 40，+嵌套标签视图 +1 → 41，+星标评级组 ×6 → 47；
-// 0.43.0 +知网账号登录 → 48；0.43.1 登录类收敛到设置面板，撤 cn-login → 47）
+// 0.43.0 +知网账号登录 → 48；0.43.1 登录类收敛到设置面板，撤 cn-login → 47；
+// 0.44.0（实验）+第三方文献源 → 48）
 const reg = Menus.ITEM_REGISTRY;
-ok(reg.length === 47, "注册表恰好 47 条（实测 " + reg.length + "）");
+ok(reg.length === 48, "注册表恰好 48 条（实测 " + reg.length + "）");
 
 // ② id 唯一 + group 合法
 const ids = reg.map((i) => i.id);

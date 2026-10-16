@@ -701,6 +701,16 @@
               "strict_max_version": "99.*"
             }
           }
+        },
+        {
+          "version": "0.44.0",
+          "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/releases/download/v0.44.0/paper-pilot-0.44.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          }
         }
       ]
     }

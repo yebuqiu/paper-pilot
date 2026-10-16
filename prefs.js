@@ -168,6 +168,8 @@ pref("extensions.zotero.paperpilot.cnkiPassword", "");
 // 默认关；开一次验证完记得关（每次启动都会打一次知网接口）。
 pref("extensions.zotero.paperpilot.cnkiBootSelfTest", false);
 // 0.14.7 新增：设置界面敏感信息默认掩码（接口地址明文开关）
+// 0.43.2：开关 UI 已移除——地址与密钥永久防窥屏隐藏（无明文出口）；
+// 历史 user pref 由面板脚本 initShowUrlToggle 清理，本默认值仅为向后兼容保留。
 pref("extensions.zotero.paperpilot.uiShowFullUrl", false);
 // 0.16.0 新增：界面主题（"" = 跟随 Zotero 原生；主题 id 见 ui-theme.js THEMES）
 // 借鉴 yaobian-zotero（CSS 变量映射换肤）与 zotero-night（Nord 色板）设计
@@ -289,3 +291,14 @@ pref("extensions.zotero.paperpilot.prefsFoldOpen", "");
 // 0.38.0 顶部快捷按钮：条目工具栏一键菜单（高频直达项 + 功能中心 + 设置）。
 // 直达项内容与右键菜单共用 menuQuickItems（单一真源），在「设置 → 菜单定制」里改
 pref("extensions.zotero.paperpilot.quickBarButtonEnabled", true);
+
+// 0.44.0（实验）第三方文献源（文献虫/毕业助手等代查站）：默认关闭；面向 Pro 会员试用；
+// 凭据只存本机（base64 混淆，非加密，不上传）。站点清单与登录自检见 features/third-source.js
+pref("extensions.zotero.paperpilot.thirdSourceEnabled", false);
+pref("extensions.zotero.paperpilot.thirdSourceSite", "wenxianchong");
+pref("extensions.zotero.paperpilot.thirdSourceUsername", "");
+pref("extensions.zotero.paperpilot.thirdSourcePassword", "");
+// 0.44.0（实验）实机验证后补：上次登录测试结果（JSON：at/ok/code/site/username）
+// 与账号权限缓存（JSON 数组，登录成功时自动刷新；面板「账号权限」行展示）
+pref("extensions.zotero.paperpilot.thirdSourceLastTest", "");
+pref("extensions.zotero.paperpilot.thirdSourceEntitlements", "");

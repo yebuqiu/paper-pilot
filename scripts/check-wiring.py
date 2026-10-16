@@ -1226,8 +1226,8 @@ ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
 for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
     ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
 _item_reg_src = menus_js.split("GROUPS:")[0]
-ok(_item_reg_src.count("labelKey:") == 47,
-   "23.7 ★ 注册表恰好 47 条命令（实测 %d；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login）" % _item_reg_src.count("labelKey:"))
+ok(_item_reg_src.count("labelKey:") == 48,
+   "23.7 ★ 注册表恰好 48 条命令（实测 %d；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源）" % _item_reg_src.count("labelKey:"))
 ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
@@ -1817,13 +1817,13 @@ _pfold_js = io.open(PFOLD_JS, encoding="utf-8").read() if os.path.exists(PFOLD_J
 ok("prefs-fold.js" in mainjs, "31.2 main.js 注册 prefs-fold.js（scripts 列表）")
 for _eid in ("pp-fold-expand", "pp-fold-collapse"):
     ok(_eid in xhtml_ids, "31.3 prefs.xhtml 含折叠工具条 #%s" % _eid)
-_FOLD_KEYS = ["account", "cnki", "channels", "translate", "aiparams", "popup",
+_FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "popup",
               "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys"]
 _fold_found = re.findall(r'data-fold="([a-z]+)"', prefs_xhtml)
 ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
-   "31.4 prefs.xhtml 的 13 个折叠分组键齐全（0.43.1 +知网账号卡片）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 13,
-   "31.5 折叠卡片共 13 张（0.43.1 +知网账号；不多不少，防止漏包一张）")
+   "31.4 prefs.xhtml 的 14 个折叠分组键齐全（0.44.0 实验 +第三方文献源）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 14,
+   "31.5 折叠卡片共 14 张（0.44.0 实验 +第三方文献源；不多不少，防止漏包一张）")
 ok('pref("extensions.zotero.paperpilot.prefsFoldOpen", "");' in prefsdef,
    "31.6 prefs.js 有 prefsFoldOpen 默认值（空 = 全收起）")
 ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
@@ -2064,6 +2064,61 @@ ok('data-fold="account"' in _prefs_xhtml and 'pp-cnki-status' in _prefs_xhtml,
 ok("cnkiBootSelfTest" in prefsdef and "bootSelfTest" in _cn_f
    and "cnkiBootSelfTest" in mainjs,
    "36.21 ★ 启动自检三端接线（pref 默认关 / CNAuth.bootSelfTest / main.js 条件调度）")
+# 0.43.2 防窥屏升级：接口地址无明文出口 + 完全隐藏
+_pacc = io.open(os.path.join(ROOT, "chrome", "content", "prefs-account.js"), encoding="utf-8").read()
+ok('showFullUrl()' not in _pacc and 'return maskUrl(u || "—")' in _pacc,
+   "36.22 ★ 防窥屏：displayUrl 恒掩码（0.14.7 的明文开关出口已移除）")
+ok('"***.***.***"' in _pacc,
+   "36.23 掩码升级完全隐藏（主机名整体打码，防厂商/域名侧信道）")
+ok('pp-ch-show-url' not in _prefs_xhtml and 'pp-ch-show-url' not in _pacc,
+   "36.24 prefs.xhtml 已无「显示完整接口地址」勾选框")
+ok('留空保持原地址' in _pacc,
+   "36.25 编辑通道 baseUrl 不回填明文（留空=保持原地址，同密钥模式）")
+_pcj = io.open(os.path.join(ROOT, "chrome", "content", "prefs-cnki.js"), encoding="utf-8").read()
+ok("cnAuth().logout()" in _pcj and "logout" in _cn_f,
+   "36.26 「清除凭据/退出登录」清 prefs 凭据 + cnki.net 会话 cookie（台账一致）")
+ok("清除凭据/退出登录" in _prefs_xhtml,
+   "36.27 按钮文案与行为一致（清除凭据/退出登录）")
+
+# ---------- 37. 0.44.0（实验）第三方文献源（Pro 试用）----------
+# 实验功能：模块装配 / 面板卡片 / 菜单注册 / Pro 软门控（判定不出时放行）/ 默认关闭。
+_ts_path = os.path.join(ROOT, "chrome", "content", "scripts", "features", "third-source.js")
+ok(os.path.exists(_ts_path), "37.1 third-source.js 存在")
+_ts_js = io.open(_ts_path, encoding="utf-8").read() if os.path.exists(_ts_path) else ""
+ok('"features/third-source.js"' in mainjs, "37.2 main.js 装配清单含 features/third-source.js")
+ok("this.thirdSource = ThirdSource;" in mainjs, "37.3 main.js 暴露 thirdSource")
+ok('"chrome/content/prefs-third-source.js"' in mainjs, "37.4 设置面板注册 prefs-third-source.js")
+_pts_path = os.path.join(ROOT, "chrome", "content", "prefs-third-source.js")
+ok(os.path.exists(_pts_path), "37.5 prefs-third-source.js 存在")
+_pts_js = io.open(_pts_path, encoding="utf-8").read() if os.path.exists(_pts_path) else ""
+ok('data-fold="thirdsrc"' in prefs_xhtml and 'id="pp-ts-login-btn"' in prefs_xhtml
+   and 'id="pp-ts-enabled"' in prefs_xhtml and 'id="pp-ts-site"' in prefs_xhtml,
+   "37.6 ★ 设置面板有「第三方文献源」卡片（启用开关 + 站点选择 + 登录按钮）")
+ok('{ id: "third-source", group: "cn", labelKey: "menuThirdSource", run: () => ThirdSource.openPortal() }' in menus_js,
+   "37.7 菜单注册 third-source（中文文献工具组 → openPortal）")
+ok("menuThirdSource:" in utils_js, "37.8 I18n 表含 menuThirdSource 文案")
+for _k in ["thirdSourceEnabled", "thirdSourceSite", "thirdSourceUsername", "thirdSourcePassword",
+           "thirdSourceLastTest", "thirdSourceEntitlements"]:
+    ok(("paperpilot.%s" % _k) in prefsdef, "37.9 prefs.js 含 %s 默认值" % _k)
+ok('pref("extensions.zotero.paperpilot.thirdSourceEnabled", false);' in prefsdef,
+   "37.10 ★ 实验功能默认关闭")
+ok("proGate()" in _ts_js and '"not-logged-in"' in _ts_js and "unknown-allow" in _ts_js,
+   "37.11 ★ Pro 软门控（判定不出时放行；仅明确非 Pro 拦截）")
+ok("parseLoginResult" in _ts_js and "只能一人在线" in _ts_js,
+   "37.12 登录结果纯函数解析（含单会话话术识别）")
+_pts_used = set(re.findall(r'\$\("([A-Za-z0-9_-]+)"\)', _pts_js))
+_pts_missing = sorted(i for i in _pts_used if i not in xhtml_ids)
+ok(not _pts_missing,
+   "37.13 prefs-third-source.js 引用的元素 id 都存在于 prefs.xhtml → 缺失: %s" % (_pts_missing or "无"))
+_pf_ts = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
+ok("test/third-source.test.js" in _pf_ts, "37.14 preflight 含第三方文献源测试")
+# 0.44.0 实机验证后的面板补强：权限展示 + 上次测试记录 + 检测权限按钮
+ok('id="pp-ts-ent"' in prefs_xhtml and 'id="pp-ts-refresh-btn"' in prefs_xhtml,
+   "37.15 ★ 卡片含「账号权限」行与「检测权限」按钮（实机验证后补）")
+ok("parseEntitlements" in _ts_js and "fetchEntitlements" in _ts_js and "readLastTest" in _ts_js,
+   "37.16 模块含权限解析/拉取与上次测试记录（纯函数可离线测）")
+ok("打开入口」后需在浏览器里用同一卡号再登录一次" in prefs_xhtml,
+   "37.17 面板提示含浏览器再登录说明（插件会话与浏览器互不相通）")
 
 print("=" * 60)
 for p in passes:

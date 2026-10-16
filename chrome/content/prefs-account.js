@@ -28,30 +28,30 @@
     catch (e) { return new Date(ms).toLocaleString(); }
   };
 
-  /* ---------- 敏感信息掩码（0.14.7）：接口地址默认掩码，复选框切换明文 ---------- */
+  /* ---------- 敏感信息掩码（0.14.7；0.43.2 升级完全隐藏）：接口地址**永远**掩码 ----------
+   * 防窥屏常开：账号服务器地址与 AI 通道 baseUrl 一律完整隐藏主机名（不再提供
+   * 「显示完整地址」出口——排查连接问题看「连接测试」结果即可，不需要看明文）。 */
 
   const PREF_PREFIX = "extensions.zotero.paperpilot.";
 
-  function showFullUrl() {
-    try { return !!Zotero.Prefs.get(PREF_PREFIX + "uiShowFullUrl", true); } catch (e) { return false; }
-  }
-
-  /** URL 掩码：保留协议与路径，主机名中间打码。本机地址（127.0.0.1/localhost）不打码。 */
+  /**
+   * URL 掩码（完全隐藏）：主机名整体打码，只保留协议形状、端口与路径分段
+   * （协议/端口/路径不含厂商与私有域名信息）。本机地址（127.0.0.1/localhost）原样。
+   */
   function maskUrl(u) {
     const s = String(u || "");
     if (!s) return "—";
     if (/^(https?:\/\/)?(127\.0\.0\.1|localhost|\[::1\])/.test(s)) return s;
     const m = s.match(/^(https?:\/\/)?([^/:]+)(:\d+)?(\/.*)?$/);
-    if (!m) return s.length <= 10 ? "***" : s.slice(0, 6) + "***" + s.slice(-4);
-    const scheme = m[1] || "", host = m[2], port = m[3] || "", path = m[4] || "";
-    const masked = host.length <= 8 ? host.slice(0, 2) + "***"
-      : host.slice(0, 6) + "***" + host.slice(-4);
-    return scheme + masked + port + path;
+    if (!m) return "***";
+    const scheme = m[1] || "", port = m[3] || "", path = m[4] || "";
+    // 主机名完全隐藏：不同长度一律同样式，防长度侧信道
+    return scheme + "***.***.***" + port + path;
   }
 
-  /** 按当前开关返回展示用地址 */
+  /** 展示用地址：恒掩码（防窥屏没有明文出口） */
   function displayUrl(u) {
-    return showFullUrl() ? (u || "—") : maskUrl(u);
+    return maskUrl(u || "—");
   }
 
   /* ==================== 账号区块 ==================== */
@@ -1331,15 +1331,10 @@
     }
   }
 
-  /** 「显示完整接口地址」开关：读初始态、变更写 pref 并重绘 */
+  /** 防窥屏（0.43.2）：0.14.7 的「显示完整接口地址」开关已移除——
+   *  地址与密钥一律掩码，面板不再提供任何明文出口。此函数仅清理历史 pref。 */
   function initShowUrlToggle() {
-    const box = $("pp-ch-show-url");
-    if (!box) return;
-    box.checked = showFullUrl();
-    box.addEventListener("change", () => {
-      try { Zotero.Prefs.set(PREF_PREFIX + "uiShowFullUrl", !!box.checked, true); } catch (e) { /* ignore */ }
-      renderAll(); // 账号卡片的服务器地址也随开关联动
-    });
+    try { Zotero.Prefs.clear(PREF_PREFIX + "uiShowFullUrl", true); } catch (e) { /* ignore */ }
   }
 
   async function onTest(id, btn) {
@@ -1495,7 +1490,9 @@
   async function onModelsFetch() {
     const btn = $("pp-mf-models-fetch");
     const C = channels();
-    const baseUrl = $("pp-mf-baseUrl").value.trim();
+    // 防窥屏：编辑时 baseUrl 留空 = 用原通道地址（与 onSave/onDetect 同口径）
+    let baseUrl = $("pp-mf-baseUrl").value.trim();
+    if (!baseUrl && mfEditing) baseUrl = (C.getChannel(mfEditing) || {}).baseUrl || "";
     let apiKey = $("pp-mf-apiKey").value.trim();
     if (!apiKey && mfEditing) {
       apiKey = (C.getChannel(mfEditing) || {}).apiKey || ""; // 编辑时留空 = 用原密钥
@@ -1525,7 +1522,9 @@
     const btn = $("pp-mf-detect");
     const C = channels();
     const key = $("pp-mf-apiKey").value.trim();
-    const baseUrl = $("pp-mf-baseUrl").value.trim();
+    // 防窥屏：编辑时 baseUrl 留空 = 用原通道地址
+    let baseUrl = $("pp-mf-baseUrl").value.trim();
+    if (!baseUrl && mfEditing) baseUrl = (C.getChannel(mfEditing) || {}).baseUrl || "";
     if (!key && !baseUrl) {
       setDetectResult("请先填写 API Key 或接口地址", "var(--pp-danger)");
       return;
@@ -1575,7 +1574,11 @@
     $("pp-mf-id").value = c ? c.id : "";
     $("pp-mf-id").disabled = !!c;
     $("pp-mf-name").value = c ? c.name : "";
-    $("pp-mf-baseUrl").value = c ? c.baseUrl : "";
+    // 防窥屏（0.43.2）：编辑不回填明文 baseUrl——占位显示掩码，留空 = 保持原地址
+    $("pp-mf-baseUrl").value = "";
+    $("pp-mf-baseUrl").placeholder = c
+      ? "留空保持原地址（当前 " + maskUrl(c.baseUrl) + "）"
+      : "https://api.example.com/v1";
     $("pp-mf-apiKey").value = "";
     $("pp-mf-apiKey").placeholder = c ? "留空保持不变（当前 " + c.apiKeyMasked + "）" : "sk-...";
     $("pp-mf-model").value = c ? c.model : "auto";
@@ -1597,6 +1600,7 @@
   function onSave() {
     const C = channels();
     const errEl = $("pp-mf-err");
+    const existing = mfEditing ? C.getChannel(mfEditing) : null;
     let extra = {};
     const raw = $("pp-mf-extraBody").value.trim();
     if (raw) {
@@ -1607,11 +1611,13 @@
     }
     const providerId = $("pp-mf-provider").value;
     const preset = providerPreset(providerId);
+    // 防窥屏：编辑时 baseUrl 留空 = 保持原地址（不回填明文的前提下仍可保存）
+    const baseUrl = $("pp-mf-baseUrl").value.trim() || (existing ? existing.baseUrl : "");
     const d = {
       id: mfEditing || $("pp-mf-id").value.trim(),
       name: $("pp-mf-name").value.trim(),
       provider: providerId,
-      baseUrl: $("pp-mf-baseUrl").value.trim(),
+      baseUrl,
       apiKey: $("pp-mf-apiKey").value.trim(),
       model: $("pp-mf-model").value.trim() || "auto",
       models: mfModels,
@@ -1619,7 +1625,7 @@
       timeoutMs: Number($("pp-mf-timeoutMs").value) || 12000,
     };
     if (!d.id || !/^[a-z0-9-]+$/.test(d.id)) { errEl.textContent = "通道 id 必填（小写字母/数字/连字符）"; return; }
-    if (!d.baseUrl && !(mfEditing && C.getChannel(mfEditing))) { errEl.textContent = "接口地址必填"; return; }
+    if (!d.baseUrl && !existing) { errEl.textContent = "接口地址必填"; return; }
     const noKeyOk = preset && (preset.noKey || /127\.0\.0\.1|localhost/.test(d.baseUrl));
     if (!d.apiKey && !mfEditing && !noKeyOk) { errEl.textContent = "API Key 必填（本地免密接口除外）"; return; }
     const r = C.upsert(d);

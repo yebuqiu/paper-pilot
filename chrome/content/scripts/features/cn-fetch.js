@@ -1627,6 +1627,31 @@ var CNAuth = {
     return !!(this._loginOkAt && (Date.now() - this._loginOkAt) < 10 * 60 * 1000);
   },
 
+  /**
+   * 退出登录（0.43.2）：清除 cnki.net 域的会话 cookie（登录态/机构会话）。
+   * 与 prefs 凭据清除配对——「清除凭据」按钮点一次 = 用户名密码 + 会话全清，
+   * 避免「清了凭据面板仍显示已登录」的困惑。
+   */
+  logout() {
+    let n = 0;
+    try {
+      for (const host of ["cnki.net", "login.cnki.net", "kns.cnki.net", "oversea.cnki.net", "bar.cnki.net"]) {
+        for (const c of Services.cookies.getCookiesFromHost(host, {})) {
+          try {
+            Services.cookies.remove(c.host, c.name, c.path, {});
+            n++;
+          } catch (e) { /* 单个失败继续 */ }
+        }
+      }
+    } catch (e) { this._diag("logout error: " + (e && e.message)); }
+    this._loginOkAt = 0;
+    this._ipCheckedAt = 0;
+    this._cnkiSeeded = false;
+    if (CNFetch) CNFetch._cnkiSeeded = false;
+    this._diag("logout: cleared " + n + " cookies");
+    return n;
+  },
+
   // ================= 登录编排 =================
 
   /**

@@ -130,6 +130,7 @@ NODE_SUITES = [
     ("Sci-Hub 补全文", "test/scihub-fetch.test.js"),
     ("中文文献AI增强", "test/cn-ai.test.js"),
     ("知网账号登录", "test/cn-auth.test.js"),
+    ("第三方文献源(实验)", "test/third-source.test.js"),
     ("期刊分区列门控", "test/rank-gate.test.js"),
     ("#命令标签", "test/chat-tags.test.js"),
     ("快捷键注册表", "test/hotkeys.test.js"),

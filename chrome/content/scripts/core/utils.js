@@ -216,6 +216,7 @@ var I18n = (() => {
     noteReviewTitle: zh ? "AI 文献综述" : "AI Literature Review",
     menuMetaLint: zh ? "元数据规范清洗（DOI/日期/标题/URL）" : "Metadata Lint",
     menuOaFetch: zh ? "开放获取 / Sci-Hub 补全文" : "Find Full Text (OA / Sci-Hub)",
+    menuThirdSource: zh ? "第三方文献源（实验 · Pro 试用）" : "Third-party Source (Experimental · Pro)",
     menuAnki: zh ? "AI 制卡导出 Anki…" : "AI Cards to Anki…",
     menuLibGraph: zh ? "PaperPilot 文献统计图谱（HTML 报告）" : "PaperPilot Library Report (HTML)",
     // 0.16.0 外观主题

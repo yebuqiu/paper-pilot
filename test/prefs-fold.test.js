@@ -90,7 +90,7 @@ class El {
   }
 }
 
-const FOLD_KEYS = ['account', 'cnki', 'channels', 'translate', 'aiparams', 'popup',
+const FOLD_KEYS = ['account', 'cnki', 'thirdsrc', 'channels', 'translate', 'aiparams', 'popup',
   'columns', 'tagging', 'enhance', 'uitheme', 'pdftheme', 'menu', 'hotkeys'];
 
 /** 从 prefs.xhtml 的真实结构建卡（每卡 = card > head + body），外加工具条按钮 */
@@ -164,7 +164,7 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
 /* ---------------- ⑤ 结构体检（纯文本） ---------------- */
 {
   const dom = makeDom();
-  ok(dom.byKey.size === 13, '⑤ 13 张分组卡都建出来了（0.43.1 +知网账号）', dom.byKey.size);
+  ok(dom.byKey.size === 14, '⑤ 14 张分组卡都建出来了（0.44.0 实验 +第三方文献源）', dom.byKey.size);
   ok(/id="pp-fold-expand"/.test(dom.xhtml) && /id="pp-fold-collapse"/.test(dom.xhtml),
     '⑤ 工具条按钮 #pp-fold-expand / #pp-fold-collapse 存在');
   // 每张卡：pp-fold-head 必须在 pp-card-body 之前（点击区不能包住表单）
@@ -175,15 +175,15 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
       'class="pp-card pp-fold" data-fold="' + key + '"[\\s\\S]*?class="pp-fold-head"[\\s\\S]*?class="pp-card-body"');
     ok(re.test(dom.xhtml), '⑤ 卡 ' + key + '：head 在 body 之前');
   }
-  ok((dom.xhtml.match(/class="pp-card pp-fold"/g) || []).length === 13,
-    '⑤ pp-fold 卡恰好 13 张（无裸 pp-card 漏包）');
+  ok((dom.xhtml.match(/class="pp-card pp-fold"/g) || []).length === 14,
+    '⑤ pp-fold 卡恰好 14 张（无裸 pp-card 漏包）');
 }
 
 /* ---------------- ① 初始：默认全收起 ---------------- */
 {
   const dom = makeDom();
   const { PrefStore } = runFoldScript(dom);
-  eq(openCount(dom), 0, '① pref 为空 → 13 张卡全部收起');
+  eq(openCount(dom), 0, '① pref 为空 → 14 张卡全部收起');
   eq(PrefStore.get('extensions.zotero.paperpilot.prefsFoldOpen'), undefined,
     '① 初始不写 pref');
 }
@@ -212,9 +212,9 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
   const dom = makeDom();
   const { PrefStore } = runFoldScript(dom);
   dom.expandBtn.click();
-  eq(openCount(dom), 13, '③ 全部展开 → 13 张卡全开');
-  eq(PrefStore.get('extensions.zotero.paperpilot.prefsFoldOpen').split(',').length, 13,
-    '③ pref 记满 13 键');
+  eq(openCount(dom), 14, '③ 全部展开 → 14 张卡全开');
+  eq(PrefStore.get('extensions.zotero.paperpilot.prefsFoldOpen').split(',').length, 14,
+    '③ pref 记满 14 键');
   dom.collapseBtn.click();
   eq(openCount(dom), 0, '③ 全部收起 → 12 张卡全闭');
   eq(PrefStore.get('extensions.zotero.paperpilot.prefsFoldOpen'), '', '③ pref 清空');

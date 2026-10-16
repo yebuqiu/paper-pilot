@@ -103,6 +103,8 @@ Zotero.PaperPilot = {
       // 0.27.0 Sci-Hub / Sci-Net 补全文（Unpaywall 未命中时的补充渠道；须排在 oa-fetch 之前）
       "features/scihub.js",
       "features/oa-fetch.js",
+      // 0.44.0（实验）第三方文献源（文献虫/毕业助手）：登录自检 + 入口直达（Pro 试用）
+      "features/third-source.js",
       // 0.42.0 原生 Find Full Text 集成：把 Unpaywall/Sci-Hub 链注册为 Zotero 内置 findPDFs resolvers
       "features/fulltext-resolver.js",
       "features/anki-export.js",
@@ -240,6 +242,8 @@ Zotero.PaperPilot = {
     this.oaFetch = OAFetch;
     // 0.27.0 Sci-Hub / Sci-Net 补全文（排障与设置窗口经此访问）
     this.scihub = SciHub;
+    // 0.44.0（实验）第三方文献源（设置面板/菜单经此访问）
+    this.thirdSource = ThirdSource;
     this.ankiExport = AnkiExport;
     this.libGraph = LibGraph;
     // 0.22.0 库内问答 / 标签治理 / 附件体检（功能中心与 lib-ask 窗口经此访问）
@@ -385,6 +389,8 @@ Zotero.PaperPilot = {
           rootURI + "chrome/content/prefs-account.js",
           // 0.43.1 知网账号卡片（登录类入口收敛到设置面板）
           rootURI + "chrome/content/prefs-cnki.js",
+          // 0.44.0（实验）第三方文献源卡片
+          rootURI + "chrome/content/prefs-third-source.js",
           rootURI + "chrome/content/prefs-translate.js",
           rootURI + "chrome/content/prefs-menu.js",
           rootURI + "chrome/content/prefs-theme.js",

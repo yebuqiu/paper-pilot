@@ -8,7 +8,7 @@
  *   - menuMode / menuHiddenGroups / menuQuickItems 三个 pref 变更即时重建菜单。
  * 设计口径：只做「重组」不做「删减」——被折叠的功能仍可从功能中心（Hub）、
  * 工具菜单分组、classic 模式三处到达，任何入口都不失联。 */
-/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats */
+/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats, ThirdSource */
 
 var Menus = {
   _nodes: [], // 记录注入的 DOM 节点，shutdown 时移除
@@ -70,6 +70,8 @@ var Menus = {
     { id: "cn-name-merge", group: "cn", labelKey: "menuCnNameMerge", run: () => CNFetch.mergeNames() },
     { id: "cn-name-split", group: "cn", labelKey: "menuCnNameSplit", run: () => CNFetch.splitNames() },
     { id: "oa-fetch", group: "cn", labelKey: "menuOaFetch", run: () => OAFetch.runForSelected() },
+    // 0.44.0（实验）第三方文献源：打开代查站文献下载入口（自带卡号；Pro 试用）
+    { id: "third-source", group: "cn", labelKey: "menuThirdSource", run: () => ThirdSource.openPortal() },
     { id: "attach-rename", group: "cn", labelKey: "menuAttachRename", run: () => AttachManager.runForSelected() },
     { id: "attach-doctor", group: "cn", labelKey: "menuAttachDoctor", run: () => AttachDoctor.run() },
     // 自动化

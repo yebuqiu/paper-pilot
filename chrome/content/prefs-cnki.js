@@ -81,10 +81,15 @@
     try {
       Zotero.Prefs.set(PREFIX + "cnkiUsername", "", true);
       Zotero.Prefs.set(PREFIX + "cnkiPassword", "", true);
+      // 0.43.2：同时退出登录（清 cnki.net 会话 cookie）——「清除凭据」= 彻底退出
+      let n = 0;
+      try { n = cnAuth().logout(); } catch (e) { /* ignore */ }
       const u = $("pp-cnki-user"); if (u) u.value = "";
       const p = $("pp-cnki-pass"); if (p) p.value = "";
-      setText("pp-cnki-result", zh ? "已清除" : "Cleared");
+      setText("pp-cnki-result",
+        (zh ? "已清除凭据并退出登录（会话 " : "Cleared & logged out (") + n + (zh ? " 项）" : ")"));
     } catch (e) { /* ignore */ }
+    refreshStatus();
   }
 
   async function onVerify() {
