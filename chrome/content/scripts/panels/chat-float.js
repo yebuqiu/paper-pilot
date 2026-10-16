@@ -24,7 +24,7 @@
  *
  * 生命周期：register(pluginID) / unregister()。UI 惰性构建：首次唤起才建 DOM。
  */
-/* global Zotero, Services, Prefs, AIClient, AIChat, I18n, Prompts, MdLite, Notes */
+/* global Zotero, Services, Prefs, AIClient, AIChat, I18n, Prompts, MdLite, Notes, CommandTags, Hotkeys, Components */
 
 var ChatFloat = {
   ROOT_ID: "paperpilot-chat-float",
@@ -38,6 +38,10 @@ var ChatFloat = {
   OPACITY_STEPS: ["1", "0.9", "0.75", "0.6"],
   MIN_W: 340, MIN_H: 380,
   DEFAULT_W: 400, DEFAULT_H: 540,
+
+  // 0.44.0 拖拽条目作为上下文 chip：上限与单篇上下文截断
+  CHIP_MAX: 5,
+  CHIP_TEXT_MAX: 6000,
 
   _pluginID: null,
   _readerHandler: null,
@@ -54,6 +58,7 @@ var ChatFloat = {
     handle: null,      // 进行中的流式句柄
     inputHistory: [],  // 输入历史（↑↓ 导航）
     histIdx: -1,
+    contextItems: [],  // 0.44.0 拖入的上下文条目 itemID 列表（chip；存在时优先于 item）
   },
 
   /* ==================== 工具 ==================== */
@@ -138,6 +143,196 @@ var ChatFloat = {
     try { return s.item.getDisplayTitle() || ""; } catch (e) { return ""; }
   },
 
+  /* ==================== 拖拽条目上下文 chip（0.44.0） ====================
+   * 主窗口条目列表拖拽 flavor 为 "zotero/item"（逗号分隔 itemID）。
+   * 口径：session.contextItems 非空 → 以 chip 条目为上下文（多篇拼接）；
+   *       为空 → 维持「锁定当前条目」的既有行为。 */
+
+  /** drop 数据 → itemID 列表（只认 zotero/item flavor；text/plain 是标题不取） */
+  _parseItemDrop(dt) {
+    if (!dt) return [];
+    let raw = "";
+    try { raw = dt.getData("zotero/item") || ""; } catch (e) { return []; }
+    if (!raw) return [];
+    return String(raw).split(/[,\s]+/)
+      .map((x) => parseInt(x, 10))
+      .filter((n) => isFinite(n) && n > 0);
+  },
+
+  /** itemID → 常规条目（附件上溯父条目；取不到返回 null） */
+  _resolveChipItem(id) {
+    let it = null;
+    try { it = Zotero.Items.get(id); } catch (e) { return null; }
+    if (!it) return null;
+    try {
+      if (it.isRegularItem && it.isRegularItem()) return it;
+      if (it.parentItemID) {
+        const p = Zotero.Items.get(it.parentItemID);
+        if (p) return p;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  },
+
+  /** 当前 chip 条目对象列表（顺带清掉已失效的 itemID） */
+  _chipItems() {
+    const s = this.session;
+    if (!Array.isArray(s.contextItems)) s.contextItems = [];
+    const items = [];
+    const alive = [];
+    for (const id of s.contextItems) {
+      const it = this._resolveChipItem(id);
+      if (it) { items.push(it); alive.push(it.id); }
+    }
+    if (alive.length !== s.contextItems.length) s.contextItems = alive;
+    return items;
+  },
+
+  /**
+   * 加入 chip（去重 + CHIP_MAX 上限）。返回
+   * { added:[item], dup:n, overflow:n, invalid:n }，调用方据 overflow/dup 提示。
+   */
+  addChipItems(ids) {
+    const s = this.session;
+    if (!Array.isArray(s.contextItems)) s.contextItems = [];
+    const res = { added: [], dup: 0, overflow: 0, invalid: 0 };
+    for (const id of ids || []) {
+      const it = this._resolveChipItem(id);
+      if (!it) { res.invalid++; continue; }
+      if (s.contextItems.indexOf(it.id) >= 0 ||
+          res.added.some((a) => a.id === it.id)) { res.dup++; continue; }
+      if (s.contextItems.length + res.added.length >= this.CHIP_MAX) { res.overflow++; continue; }
+      res.added.push(it);
+    }
+    for (const it of res.added) s.contextItems.push(it.id);
+    if (res.added.length) this._renderAllCtxChips();
+    return res;
+  },
+
+  removeChipItem(id) {
+    const s = this.session;
+    if (!Array.isArray(s.contextItems)) s.contextItems = [];
+    const i = s.contextItems.indexOf(id);
+    if (i >= 0) {
+      s.contextItems.splice(i, 1);
+      this._renderAllCtxChips();
+    }
+  },
+
+  /** 单窗口重绘 chip 行（无 chip 时整行隐藏） */
+  _renderCtxChips(entry) {
+    const box = entry && entry.refs && entry.refs.ctxChips;
+    if (!box) return;
+    box.textContent = "";
+    const items = this._chipItems();
+    box.style.display = items.length ? "flex" : "none";
+    const doc = entry.win.document;
+    const self = this;
+    for (const it of items) {
+      let title = "";
+      try { title = it.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
+      const chip = this._h(doc, "span", {
+        class: "pp-cf-ctxchip", title,
+        style: "display:inline-flex;align-items:center;gap:4px;max-width:180px;" +
+          "padding:1px 4px 1px 8px;font-size:11px;border-radius:10px;" +
+          "border:1px solid var(--color-accent,#2563eb);" +
+          "background:rgba(45,108,223,.10);color:inherit;",
+      });
+      chip.appendChild(this._h(doc, "span", {
+        style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
+      }, title || ("#" + it.id)));
+      const x = this._h(doc, "button", {
+        type: "button", title: I18n.t("chatChipRemove"),
+        style: "flex:none;border:none;background:transparent;color:inherit;" +
+          "cursor:pointer;font-size:11px;padding:0 2px;line-height:1;",
+      }, "✕");
+      x.addEventListener("click", () => self.removeChipItem(it.id));
+      chip.appendChild(x);
+      box.appendChild(chip);
+    }
+  },
+
+  _renderAllCtxChips() {
+    for (const [, en] of this._wins) {
+      try { this._renderCtxChips(en); } catch (e) { /* ignore */ }
+    }
+  },
+
+  /** 悬浮窗根节点接受条目拖入（dragover 仅对 zotero/item flavor 放行） */
+  _bindItemDrop(entry) {
+    const { root } = entry;
+    const self = this;
+    const hasItemFlavor = (dt) => {
+      try {
+        const types = dt && dt.types ? Array.from(dt.types) : [];
+        return types.indexOf("zotero/item") >= 0;
+      } catch (e) { return false; }
+    };
+    root.addEventListener("dragover", (ev) => {
+      if (!hasItemFlavor(ev.dataTransfer)) return;
+      ev.preventDefault();
+      try { ev.dataTransfer.dropEffect = "copy"; } catch (e) { /* ignore */ }
+    });
+    root.addEventListener("drop", (ev) => {
+      const ids = self._parseItemDrop(ev.dataTransfer);
+      if (!ids.length) return;
+      ev.preventDefault();
+      const r = self.addChipItems(ids);
+      if (r.overflow > 0) {
+        self._appendBubble(entry, "sys", I18n.t("chatChipLimit"), "#c0392b");
+      } else if (r.added.length === 0 && r.dup > 0) {
+        self._appendBubble(entry, "sys", I18n.t("chatChipDup"), "#888");
+      }
+    });
+  },
+
+  /**
+   * 多篇上下文消息构造（chip 模式）：每篇「文献 n」标记 + 题录，
+   * 全文优先（单篇截断 CHIP_TEXT_MAX）、无全文回退摘要、再退化为仅题录。
+   * 比单篇 buildMessages 更宽容：单篇取不到全文/摘要不抛 NO_PDF。
+   */
+  async _buildChipsMessages(items, question) {
+    const zh = I18n.isZh;
+    const blocks = [];
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const meta = AIChat.paperMeta(it);
+      let body = "";
+      let kind = "";
+      try { body = (await AIChat.getFullText(it)) || ""; } catch (e) { body = ""; }
+      if (body) {
+        kind = zh ? "全文" : "full text";
+        if (body.length > this.CHIP_TEXT_MAX) {
+          body = body.slice(0, this.CHIP_TEXT_MAX) +
+            (zh ? "\n[……单篇已截断……]" : "\n[...truncated...]");
+        }
+      } else {
+        try { body = it.getField("abstractNote") || ""; } catch (e) { body = ""; }
+        kind = zh ? "摘要" : "abstract";
+      }
+      let head = `【文献 ${i + 1}】${meta.title}`;
+      const byline = [meta.creators, (meta.pub + " " + meta.year).trim()]
+        .filter(Boolean).join(" · ");
+      if (byline) head += `\n${byline}`;
+      blocks.push(body
+        ? `${head}\n（${kind}）\n${body}`
+        : `${head}\n（${zh ? "仅题录，无全文/摘要" : "metadata only"}）`);
+    }
+    const sys = (Prefs.get("aiSystemPrompt", "") || "") +
+      (zh
+        ? `\n\n用户提供了 ${items.length} 篇文献作为上下文（每篇以「文献 n」标记）。` +
+          "回答要求：只基于这些文献的内容；文献未提及的信息明确说明；" +
+          "引用观点注明出自「文献 n」；你的推断与文献原文分开表述。\n\n"
+        : `\n\nThe user provided ${items.length} papers as context (each marked "文献 n"). ` +
+          "Answer only from them; state clearly when information is missing; " +
+          "cite sources as 文献 n; separate your inference from the source text.\n\n") +
+      blocks.join("\n\n----\n\n");
+    const messages = [{ role: "system", content: sys }];
+    messages.push(...this.session.history.slice(-12));
+    messages.push({ role: "user", content: question });
+    return messages;
+  },
+
   /* ==================== 发送（单源：悬浮窗 / 独立窗口共用） ==================== */
 
   /**
@@ -155,14 +350,16 @@ var ChatFloat = {
       if (ui.onError) ui.onError(I18n.t("chatNoKey"));
       return;
     }
-    if (!s.item) {
+    // 0.44.0：chip 上下文优先于「锁定条目」——有 chip 时不再要求锁定条目
+    const chipItems = this._chipItems();
+    if (!chipItems.length && !s.item) {
       const it = this._resolveItem();
       if (it) {
         const r = this.setSessionItem(it);
         if (ui.onItemChanged) ui.onItemChanged(this._itemTitle(), r === "switched");
       }
     }
-    if (!s.item) {
+    if (!chipItems.length && !s.item) {
       if (ui.onError) ui.onError(I18n.t("chatNoItem"));
       return;
     }
@@ -172,8 +369,13 @@ var ChatFloat = {
     if (ui.onUser) ui.onUser(question);
     try {
       if (ui.onStatus) ui.onStatus(I18n.t("chatReading"));
-      const fullText = await AIChat.getFullText(s.item);
-      const messages = await AIChat.buildMessages(s.item, question, s.history, fullText || undefined);
+      let messages;
+      if (chipItems.length) {
+        messages = await this._buildChipsMessages(chipItems, question);
+      } else {
+        const fullText = await AIChat.getFullText(s.item);
+        messages = await AIChat.buildMessages(s.item, question, s.history, fullText || undefined);
+      }
 
       let acc = "";
       const useStream = Prefs.get("readerPopupStream", true) && AIClient.chatStream;
@@ -256,7 +458,9 @@ var ChatFloat = {
   /** 把当前会话保存为笔记（悬浮窗 / 独立窗口共用；成功返回 true） */
   async saveHistoryAsNote(ui) {
     const s = this.session;
-    if (!s.item || !s.history.length) {
+    // 0.44.0：chip 模式下未锁定条目时，笔记挂到第一篇 chip 条目
+    const noteItem = s.item || this._chipItems()[0] || null;
+    if (!noteItem || !s.history.length) {
       if (ui && ui.onError) ui.onError(I18n.t("chatEmptyHistory"));
       return false;
     }
@@ -265,8 +469,8 @@ var ChatFloat = {
         .map(h => (h.role === "user" ? "**问：** " : "**答：** ") + h.content)
         .join("\n\n");
       await Notes.createFromMarkdown(
-        s.item,
-        `${I18n.t("noteChatTitle")}｜${s.item.getDisplayTitle() || ""}`,
+        noteItem,
+        `${I18n.t("noteChatTitle")}｜${noteItem.getDisplayTitle() || ""}`,
         md
       );
       return true;
@@ -364,27 +568,16 @@ var ChatFloat = {
         "flex-direction:column;gap:6px;scrollbar-width:thin;",
     });
 
-    // ---- Prompt 快捷标签（zotero-gpt Command Tag / PapersGPT 内置 prompts 思路）----
+    // ---- Prompt 快捷标签（zotero-gpt Command Tag 同款：可编辑/触发正则/导入导出）----
     const chips = this._h(doc, "div", {
       style: "display:flex;flex-wrap:wrap;gap:4px;padding:0 8px 6px;",
     });
-    try {
-      const list = (Prompts.all() || []).slice(0, 8);
-      for (const p of list) {
-        const chip = this._h(doc, "button", {
-          type: "button", title: p.text,
-          style: "max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" +
-            "padding:1px 8px;font-size:11px;border-radius:10px;cursor:pointer;" +
-            "border:1px solid var(--color-border,rgba(128,128,128,.4));" +
-            "background:var(--fill-quinary,rgba(128,128,128,.08));color:var(--fill-secondary,#666);",
-        }, p.name);
-        chip.addEventListener("click", () => {
-          entry.refs.input.value = p.text;
-          this._doSend(entry);
-        });
-        chips.appendChild(chip);
-      }
-    } catch (e) { /* Prompts 不可用则无标签行 */ }
+
+    // ---- 上下文 chip 行（拖入条目生成；空时隐藏）----
+    const ctxChips = this._h(doc, "div", {
+      class: "pp-cf-ctx",
+      style: "display:none;flex-wrap:wrap;gap:4px;padding:0 8px 6px;",
+    });
 
     // ---- 输入行 ----
     const inputRow = this._h(doc, "div", {
@@ -427,6 +620,7 @@ var ChatFloat = {
     root.appendChild(head);
     root.appendChild(msgs);
     root.appendChild(chips);
+    root.appendChild(ctxChips);
     root.appendChild(inputRow);
     root.appendChild(grip);
     doc.documentElement.appendChild(root);
@@ -434,10 +628,16 @@ var ChatFloat = {
     const entry = {
       win, root, grip,
       refs: { head, titleEl, undockBtn, dockLBtn, dockRBtn, opBtn, popBtn, closeBtn,
-        msgs, chips, input, sendBtn, saveBtn, clearBtn },
+        msgs, chips, ctxChips, input, sendBtn, saveBtn, clearBtn },
       geo: this._restoreGeo(),
     };
     this._wins.set(win, entry);
+
+    // ---- Prompt 标签区填充（单击发送 / 长按编辑 / ＋新建）----
+    this._renderChips(entry);
+    // ---- 上下文 chip 行（会话里可能已有拖入条目）----
+    this._renderCtxChips(entry);
+    this._bindItemDrop(entry);
 
     // ---- 几何与外观应用 ----
     this._applyGeo(entry);
@@ -566,6 +766,277 @@ var ChatFloat = {
         "border:1px solid var(--color-border,rgba(128,128,128,.4));padding:2px 6px;}\n";
       doc.documentElement.appendChild(style);
     } catch (e) { this._err(e); }
+  },
+
+  /* ==================== Prompt 命令标签（A1：可编辑 #标签体系） ==================== */
+
+  /** 标签来源：CommandTags（可编辑存储）优先；不可用时回退 Prompts 内置（只读） */
+  _tagList() {
+    try {
+      if (typeof CommandTags !== "undefined" && CommandTags) return CommandTags.all();
+    } catch (e) { /* ignore */ }
+    try {
+      return (Prompts.all() || []).slice(0, 8)
+        .map((p) => ({ id: p.id, label: p.name, prompt: p.text, color: "", trigger: "" }));
+    } catch (e) { /* Prompts 不可用则无标签 */ }
+    return [];
+  },
+
+  _tagsEditable() {
+    return typeof CommandTags !== "undefined" && !!CommandTags;
+  },
+
+  /** 全量重绘标签区（编辑/导入后所有窗口同步调用） */
+  _renderChips(entry) {
+    const { chips, input } = entry.refs;
+    const doc = entry.win.document;
+    const win = entry.win;
+    chips.textContent = "";
+    const self = this;
+    const editable = this._tagsEditable();
+    for (const tag of this._tagList().slice(0, 12)) {
+      const color = tag.color || "";
+      const chip = this._h(doc, "button", {
+        type: "button", title: tag.prompt,
+        style: "max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" +
+          "padding:1px 8px;font-size:11px;border-radius:10px;cursor:pointer;" +
+          "border:1px solid " + (color || "var(--color-border,rgba(128,128,128,.4))") + ";" +
+          "background:var(--fill-quinary,rgba(128,128,128,.08));" +
+          "color:" + (color || "var(--fill-secondary,#666)") + ";",
+      }, tag.label);
+      // 单击 = 填入并发送；长按 ≥500ms = 打开编辑层（zotero-gpt 同款手势）
+      let pressTimer = null;
+      let longFired = false;
+      const cancelPress = () => {
+        if (pressTimer) {
+          try { win.clearTimeout(pressTimer); } catch (e) { /* ignore */ }
+          pressTimer = null;
+        }
+      };
+      if (editable) {
+        chip.addEventListener("pointerdown", (ev) => {
+          if (ev.button !== 0) return;
+          longFired = false;
+          cancelPress();
+          pressTimer = win.setTimeout(() => {
+            pressTimer = null;
+            longFired = true;
+            self._openTagEditor(entry, tag.id);
+          }, 500);
+        });
+        chip.addEventListener("pointerup", cancelPress);
+        chip.addEventListener("pointerleave", cancelPress);
+        chip.addEventListener("pointercancel", cancelPress);
+      }
+      chip.addEventListener("click", () => {
+        if (longFired) { longFired = false; return; }
+        input.value = tag.prompt;
+        self._doSend(entry);
+      });
+      chips.appendChild(chip);
+    }
+    if (editable) {
+      const addBtn = this._h(doc, "button", {
+        type: "button", title: I18n.isZh ? "新建标签" : "New tag",
+        style: "padding:1px 8px;font-size:11px;border-radius:10px;cursor:pointer;" +
+          "border:1px dashed var(--color-border,rgba(128,128,128,.4));" +
+          "background:transparent;color:var(--fill-secondary,#666);",
+      }, "＋");
+      addBtn.addEventListener("click", () => self._openTagEditor(entry, null));
+      chips.appendChild(addBtn);
+    }
+  },
+
+  _renderAllChips() {
+    for (const [, en] of this._wins) {
+      try { this._renderChips(en); } catch (e) { /* ignore */ }
+    }
+  },
+
+  /** 写剪贴板（nsIClipboardHelper；失败返回 false） */
+  _clipboardWrite(text) {
+    try {
+      const Cc = Components.classes;
+      const clip = Cc["@mozilla.org/widget/clipboardhelper;1"]
+        .getService(Components.interfaces.nsIClipboardHelper);
+      clip.copyString(String(text || ""));
+      return true;
+    } catch (e) { /* ignore */ }
+    try { Zotero.Utilities.Internal.copyText(String(text || "")); return true; }
+    catch (e) { return false; }
+  },
+
+  /** 读剪贴板文本（优先 navigator.clipboard，回落 XPCOM；note-templates.js 同款） */
+  async _clipboardRead(win) {
+    try {
+      if (win && win.navigator && win.navigator.clipboard && win.navigator.clipboard.readText) {
+        return String(await win.navigator.clipboard.readText() || "");
+      }
+    } catch (e) { /* 走 XPCOM 回落 */ }
+    try {
+      const clip = Components.classes["@mozilla.org/widget/clipboard;1"]
+        .getService(Components.interfaces.nsIClipboard);
+      const trans = Components.classes["@mozilla.org/widget/transferable;1"]
+        .createInstance(Components.interfaces.nsITransferable);
+      if (trans.init) trans.init(null);
+      for (const flavor of ["text/plain", "text/unicode"]) {
+        try {
+          trans.addDataFlavor(flavor);
+          clip.getData(trans, clip.kGlobalClipboard);
+          const data = {};
+          const len = {};
+          try { trans.getTransferData(flavor, data, len); }
+          catch (e) { data.value = trans.getTransferData(flavor); }
+          if (data.value) {
+            const str = data.value.QueryInterface(Components.interfaces.nsISupportsString);
+            if (str && str.data) return String(str.data);
+          }
+        } catch (e) { /* 换下一个 flavor */ }
+      }
+    } catch (e) { this._err(e); }
+    return "";
+  },
+
+  /**
+   * 标签编辑层（长按标签 / 点「＋」打开）：改 label/prompt/color/trigger，
+   * 删除、新建，剪贴板 JSON 全量导入/导出。
+   */
+  _openTagEditor(entry, tagId) {
+    if (!this._tagsEditable()) return;
+    const doc = entry.win.document;
+    const win = entry.win;
+    const zh = I18n.isZh;
+    const self = this;
+    // 已开则先关（幂等）
+    const old = entry.root.querySelector("#paperpilot-tag-editor");
+    if (old) old.remove();
+
+    const tag = tagId ? (CommandTags.get(tagId) || { id: tagId }) : null;
+    const isNew = !tagId;
+
+    const overlay = this._h(doc, "div", {
+      id: "paperpilot-tag-editor",
+      style: "position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;" +
+        "background:var(--material-surface,#ffffff);color:inherit;padding:10px;gap:6px;overflow-y:auto;",
+    });
+    const headRow = this._h(doc, "div", {
+      style: "display:flex;align-items:center;gap:6px;",
+    });
+    headRow.appendChild(this._h(doc, "span", {
+      style: "flex:1;font-weight:600;font-size:12.5px;",
+    }, isNew ? (zh ? "新建标签" : "New tag") : (zh ? "编辑标签" : "Edit tag")));
+    const closeBtn = this._h(doc, "button", {
+      type: "button",
+      style: "flex:none;width:22px;height:22px;padding:0;border-radius:4px;cursor:pointer;" +
+        "border:1px solid transparent;background:transparent;color:inherit;font-size:12px;",
+    }, "✕");
+    closeBtn.addEventListener("click", () => overlay.remove());
+    headRow.appendChild(closeBtn);
+    overlay.appendChild(headRow);
+
+    const fieldLabel = (t) => this._h(doc, "div", {
+      style: "font-size:11px;color:var(--fill-secondary,#666);margin-top:2px;",
+    }, t);
+    const textInput = (v) => {
+      const el = this._h(doc, "input", {
+        type: "text",
+        style: "width:100%;box-sizing:border-box;padding:3px 6px;font-size:12px;border-radius:4px;" +
+          "border:1px solid var(--color-border,rgba(128,128,128,.4));background:transparent;color:inherit;",
+      });
+      el.value = v || "";
+      return el;
+    };
+    overlay.appendChild(fieldLabel(zh ? "名称" : "Label"));
+    const labelIn = textInput(tag && tag.label);
+    overlay.appendChild(labelIn);
+    overlay.appendChild(fieldLabel(zh ? "提示词（{input} 代表用户原输入）" : "Prompt ({input} = user text)"));
+    const promptIn = this._h(doc, "textarea", {
+      rows: "5",
+      style: "width:100%;box-sizing:border-box;resize:vertical;padding:4px 6px;font-size:12px;" +
+        "border-radius:4px;border:1px solid var(--color-border,rgba(128,128,128,.4));" +
+        "background:transparent;color:inherit;font-family:inherit;",
+    });
+    promptIn.value = (tag && tag.prompt) || "";
+    overlay.appendChild(promptIn);
+    overlay.appendChild(fieldLabel(zh ? "颜色（CSS 颜色，可空）" : "Color (CSS, optional)"));
+    const colorIn = textInput(tag && tag.color);
+    overlay.appendChild(colorIn);
+    overlay.appendChild(fieldLabel(zh
+      ? "触发正则（可空）：输入命中时自动套用该提示词，如 ^/总结"
+      : "Trigger regex (optional), e.g. ^/sum"));
+    const triggerIn = textInput(tag && tag.trigger);
+    overlay.appendChild(triggerIn);
+
+    const status = this._h(doc, "div", {
+      style: "font-size:11px;min-height:14px;color:var(--fill-secondary,#666);",
+    });
+    overlay.appendChild(status);
+
+    const btnRow = this._h(doc, "div", { style: "display:flex;gap:6px;flex-wrap:wrap;" });
+    const mkBtn = (label, primary) => this._h(doc, "button", {
+      type: "button",
+      style: "padding:3px 12px;font-size:12px;border-radius:5px;cursor:pointer;" +
+        "border:1px solid var(--color-border,rgba(128,128,128,.4));" +
+        (primary ? "background:var(--color-accent,#2563eb);color:#fff;font-weight:600;"
+                 : "background:transparent;color:inherit;"),
+    }, label);
+    const saveBtn = mkBtn(zh ? "保存" : "Save", true);
+    saveBtn.addEventListener("click", () => {
+      const label = labelIn.value.trim();
+      const prompt = promptIn.value;
+      if (!label || !prompt.trim()) {
+        status.textContent = zh ? "名称与提示词不能为空" : "Label and prompt are required";
+        status.style.color = "#c0392b";
+        return;
+      }
+      CommandTags.upsert({
+        id: tagId || "",
+        label, prompt,
+        color: colorIn.value.trim(),
+        trigger: triggerIn.value.trim(),
+      });
+      self._renderAllChips();
+      overlay.remove();
+    });
+    btnRow.appendChild(saveBtn);
+    if (!isNew) {
+      const delBtn = mkBtn(zh ? "删除" : "Delete", false);
+      delBtn.addEventListener("click", () => {
+        CommandTags.remove(tagId);
+        self._renderAllChips();
+        overlay.remove();
+      });
+      btnRow.appendChild(delBtn);
+    }
+    overlay.appendChild(btnRow);
+
+    const ioRow = this._h(doc, "div", { style: "display:flex;gap:6px;margin-top:2px;" });
+    const exportBtn = mkBtn(zh ? "导出到剪贴板" : "Export to clipboard", false);
+    exportBtn.addEventListener("click", () => {
+      const okW = self._clipboardWrite(CommandTags.exportJSON());
+      status.style.color = okW ? "#1e7d32" : "#c0392b";
+      status.textContent = okW
+        ? (zh ? "✓ 已复制全部标签 JSON" : "✓ Tags JSON copied")
+        : (zh ? "写剪贴板失败" : "Clipboard write failed");
+    });
+    const importBtn = mkBtn(zh ? "从剪贴板导入" : "Import from clipboard", false);
+    importBtn.addEventListener("click", async () => {
+      const text = await self._clipboardRead(win);
+      const r = CommandTags.importJSON(text);
+      if (r.ok) {
+        status.style.color = "#1e7d32";
+        status.textContent = (zh ? "✓ 已导入 " : "✓ Imported ") + r.count + (zh ? " 个标签" : " tags");
+        self._renderAllChips();
+      } else {
+        status.style.color = "#c0392b";
+        status.textContent = zh ? "导入失败：剪贴板不是有效的标签 JSON" : "Import failed: invalid JSON";
+      }
+    });
+    ioRow.appendChild(exportBtn);
+    ioRow.appendChild(importBtn);
+    overlay.appendChild(ioRow);
+
+    entry.root.appendChild(overlay);
   },
 
   /* ---------- 几何（位置/尺寸/停靠持久化） ---------- */
@@ -767,6 +1238,7 @@ var ChatFloat = {
       entry.refs.titleEl.setAttribute("title",
         s.item ? this._itemTitle() : I18n.t("chatFloatNoItem"));
       this._renderHistory(entry);
+      this._renderCtxChips(entry);
       entry.root.style.display = "flex";
       // 弹回视口（窗口尺寸可能变了）
       this._applyGeo(entry);
@@ -856,7 +1328,7 @@ var ChatFloat = {
     let statusBubble = null;
     let streamBubble = null;
     const self = this;
-    this.runSend(q, {
+    this.runSend(this._applyTrigger(q), {
       onUser(text) {
         self._appendBubble(entry, "user", text);
       },
@@ -907,6 +1379,14 @@ var ChatFloat = {
         entry.refs.titleEl.setAttribute("title", title || "");
       },
     });
+  },
+
+  /** trigger 命中 → 套用标签 prompt（{input} 替换为原输入）；无命中原样返回 */
+  _applyTrigger(q) {
+    try {
+      if (typeof CommandTags === "undefined" || !CommandTags) return q;
+      return CommandTags.applyTrigger(q);
+    } catch (e) { return q; }
   },
 
   /**
@@ -981,22 +1461,44 @@ var ChatFloat = {
       }
     }
 
-    // ② 主窗口快捷键 Ctrl/Cmd+Shift+K（keyset；现有窗口 + 之后新开的主窗口）
-    this._injectKeysets();
-    try {
-      this._obsObserver = {
-        observe(subject) {
-          try {
-            const win = subject && subject.defaultView ? subject.defaultView : subject;
-            // 只给 Zotero 主窗口装快捷键（reader 独立窗口不装，避免双份）
-            if (win && win.ZoteroPane) ChatFloat._injectKeysets();
-          } catch (e) { /* ignore */ }
-        },
-      };
-      Services.obs.addObserver(this._obsObserver, "domwindowopened", false);
-    } catch (e) {
-      this._obsObserver = null;
-      this._err(e);
+    // ② 主窗口快捷键 Ctrl/Cmd+Shift+K：优先走 Hotkeys 中央注册表（设置面板可改键）；
+    //    Hotkeys 未加载时回退自注入 keyset（现有窗口 + 之后新开的主窗口）
+    if (typeof Hotkeys !== "undefined" && Hotkeys) {
+      try {
+        Hotkeys.register({
+          id: "chat-float-toggle",
+          label: I18n.isZh ? "AI 问答悬浮窗（主窗口唤起）" : "AI Chat float (main window)",
+          combo: "Ctrl+Shift+K",
+          scope: "main",
+          handler: (w) => this.toggle(w),
+        });
+        Hotkeys.register({
+          id: "chat-float-reader",
+          label: I18n.isZh ? "AI 问答悬浮窗（阅读器唤起）" : "AI Chat float (reader)",
+          combo: "Ctrl+Enter",
+          scope: "reader",
+          handler: null, // reader 文档 keydown 由 _onRenderToolbar 捕获 + matches 判定
+        });
+      } catch (e) {
+        this._err(e);
+      }
+    } else {
+      this._injectKeysets();
+      try {
+        this._obsObserver = {
+          observe(subject) {
+            try {
+              const win = subject && subject.defaultView ? subject.defaultView : subject;
+              // 只给 Zotero 主窗口装快捷键（reader 独立窗口不装，避免双份）
+              if (win && win.ZoteroPane) ChatFloat._injectKeysets();
+            } catch (e) { /* ignore */ }
+          },
+        };
+        Services.obs.addObserver(this._obsObserver, "domwindowopened", false);
+      } catch (e) {
+        this._obsObserver = null;
+        this._err(e);
+      }
     }
   },
 
@@ -1048,11 +1550,11 @@ var ChatFloat = {
       });
       append(btn);
 
-      // Ctrl/Cmd+Enter（PapersGPT 同款）：reader 文档上捕获一次
+      // Ctrl/Cmd+Enter（PapersGPT 同款）：reader 文档上捕获一次；combo 读 Hotkeys 生效值
       if (!doc.__ppChatFloatKey) {
         doc.__ppChatFloatKey = true;
         doc.addEventListener("keydown", (ev) => {
-          if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey) {
+          if (this._readerComboMatch(ev)) {
             ev.preventDefault();
             ev.stopPropagation();
             this.toggle(this._readerChromeWin(doc));
@@ -1062,6 +1564,17 @@ var ChatFloat = {
     } catch (e) {
       this._err(e);
     }
+  },
+
+  /** reader 唤起键判定：Hotkeys 生效值（含禁用/改键）优先，回退硬编码 Ctrl/Cmd+Enter */
+  _readerComboMatch(ev) {
+    try {
+      if (typeof Hotkeys !== "undefined" && Hotkeys) {
+        if (!Hotkeys.isEnabled("chat-float-reader")) return false;
+        return Hotkeys.matches(ev, Hotkeys.combo("chat-float-reader"));
+      }
+    } catch (e) { /* 回退硬编码 */ }
+    return ev.key === "Enter" && (ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey;
   },
 
   /** reader iframe doc → 所属 chrome window（tab 模式=主窗口；独立窗口=reader 窗口） */
@@ -1120,7 +1633,7 @@ var ChatFloat = {
 
     this.session = {
       item: null, history: [], busy: false, handle: null,
-      inputHistory: [], histIdx: -1,
+      inputHistory: [], histIdx: -1, contextItems: [],
     };
   },
 };

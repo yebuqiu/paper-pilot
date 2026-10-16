@@ -63,9 +63,11 @@ const ok = (cond, name) => {
   if (!cond) failed++;
 };
 
-// ① 注册表规模：0.28 的 40 个右键命令一条不减（0.31.0 +ai-chat → 41；0.36.0 撤 pdf-inline → 41）
+// ① 注册表规模：0.28 的 40 个右键命令一条不减（0.31.0 +ai-chat → 41；0.36.0 撤 pdf-inline → 41；
+// 0.42.0 撤「文本双栏」-1 → 40，+嵌套标签视图 +1 → 41，+星标评级组 ×6 → 47；
+// 0.43.0 +知网账号登录 → 48；0.43.1 登录类收敛到设置面板，撤 cn-login → 47）
 const reg = Menus.ITEM_REGISTRY;
-ok(reg.length === 41, "注册表恰好 41 条（实测 " + reg.length + "）");
+ok(reg.length === 47, "注册表恰好 47 条（实测 " + reg.length + "）");
 
 // ② id 唯一 + group 合法
 const ids = reg.map((i) => i.id);
@@ -108,13 +110,16 @@ ok(noState.length === 1 && noState[0].id === "ai-summary",
 const menusSrc = fs.readFileSync(path.join(ROOT, "chrome/content/scripts/menus.js"), "utf8");
 ok("_buildClassicItemMenu" in Menus && "_buildClassicTools" in Menus, "classic 回退构建器存在");
 ok(menusSrc.includes('"classic"'), "menuMode=classic 分支存在");
-// 0.36.0：主入口改为「左原右译」对照窗口；旧「文本双栏」出口仍在模块里（备用）
+// 0.36.0：主入口改为「左原右译」对照窗口；0.42.0：旧「文本双栏」右键入口撤掉（功能中心仍可达）
 ok(menusSrc.includes("PdfDual.openForSelected"), "注册表主入口指向左原右译对照窗口（0.36.0）");
 ok(!menusSrc.includes("startForSelected"), "页内叠加入口已从菜单撤掉（0.36.0）");
-ok(menusSrc.includes("BilingualTranslate.runForSelected()"), "注册表保留 AI 双语笔记出口");
+ok(!menusSrc.includes("BilingualTranslate.runForSelected()"), "文本双栏右键入口已撤（0.42.0，功能中心保留）");
+// 0.42.0：星标评级 radio 子菜单 + 自动化用户规则动态项
+ok(menusSrc.includes("_buildRatingSubmenu"), "星标评级子菜单构建器存在（0.42.0）");
+ok(menusSrc.includes("_automationRuleItems"), "自动化规则动态菜单项存在（0.42.0）");
 
-// pref 观察者：三个菜单 pref 键名正确
-ok(menusSrc.includes('"menuMode", "menuHiddenGroups", "menuQuickItems"'), "三个菜单 pref 均被观察（即时重建）");
+// pref 观察者：菜单 pref 键名正确（0.42.0 追加 automationRules：规则改了菜单即时重建）
+ok(menusSrc.includes('"menuMode", "menuHiddenGroups", "menuQuickItems", "automationRules"'), "菜单 pref 均被观察（即时重建）");
 
 console.log(failed ? "菜单注册表测试：" + failed + " 项失败" : "菜单注册表测试：全部通过 ✓");
 process.exit(failed ? 1 : 0);

@@ -15,6 +15,11 @@
  *
  * 规则存储：pref `automationRules`（JSON 数组）。字段操作只允许白名单字段，
  * 避免自动化误改标题/DOI 这类核心标识。
+ *
+ * 0.39.0 起规则新增两个可选字段（旧规则没有也兼容，load/validate 不炸）：
+ *   hotkey     快捷键 combo 串（如 "Ctrl+Shift+T"，空=无），由主线注册进中央快捷键表
+ *   showInMenu 是否出现在条目右键菜单（默认 false）
+ * 配套只读接口：getMenuRules() / getHotkeyRules()；runRule(ruleId, items) 按 id 手动执行。
  */
 /* global Zotero, Services, Prefs, I18n, ItemSel, RuleTag, AIClient, AIChat, AutoTag, ReadingState, MdLite */
 
@@ -121,6 +126,8 @@ var Automation = {
     if (!String(rule.name || "").trim()) errs.push(zh ? "缺少规则名称" : "Missing name");
     if (!this.TRIGGERS.includes(rule.trigger)) errs.push((zh ? "未知触发方式：" : "Unknown trigger: ") + rule.trigger);
     if (!["all", "any"].includes(rule.match || "all")) errs.push(zh ? "match 只能是 all 或 any" : "match must be all/any");
+    const hk = String(rule.hotkey || "").trim();
+    if (hk && !this.isValidHotkey(hk)) errs.push((zh ? "快捷键格式不对：" : "Bad hotkey: ") + hk);
     const conds = Array.isArray(rule.conditions) ? rule.conditions : [];
     for (const c of conds) {
       if (!this.READ_FIELDS.includes(c.field)) errs.push((zh ? "条件字段不支持：" : "Bad field: ") + c.field);
@@ -151,6 +158,45 @@ var Automation = {
       if (!r || r.enabled === false) continue;
       if (this.validate(r).length) continue;
       out.push(r);
+    }
+    return out;
+  },
+
+  /* ================== 快捷键 / 菜单（0.39.0） ================== */
+
+  /**
+   * combo 串校验：至少一个修饰键 + 一个主键，如 "Ctrl+Shift+T"。
+   * 修饰键限定 Ctrl/Alt/Shift/Meta；主键为单字符、F1-F24 或常见命名键。
+   */
+  isValidHotkey(combo) {
+    if (typeof combo !== "string") return false;
+    const parts = combo.split("+").map((s) => s.trim());
+    if (parts.length < 2 || parts.some((p) => !p)) return false;
+    const mods = parts.slice(0, -1);
+    if (!mods.every((m) => ["Ctrl", "Alt", "Shift", "Meta"].includes(m))) return false;
+    const key = parts[parts.length - 1];
+    return /^([A-Za-z0-9]|F([1-9]|1[0-9]|2[0-4])|Enter|Escape|Space|Tab|Backspace|Delete|Insert|Home|End|PageUp|PageDown|Up|Down|Left|Right)$/.test(key);
+  },
+
+  /** 启用且勾选「出现在条目右键菜单」的规则 → [{id, name}]（menus.js 动态菜单数据源） */
+  getMenuRules() {
+    const out = [];
+    for (const r of this.load()) {
+      if (!r || r.enabled === false) continue;
+      if (r.showInMenu !== true) continue;
+      out.push({ id: r.id, name: String(r.name || "") });
+    }
+    return out;
+  },
+
+  /** 启用且配了快捷键的规则 → [{id, name, hotkey}]（主线 Hotkeys.register 数据源） */
+  getHotkeyRules() {
+    const out = [];
+    for (const r of this.load()) {
+      if (!r || r.enabled === false) continue;
+      const hotkey = String(r.hotkey || "").trim();
+      if (!hotkey || !this.isValidHotkey(hotkey)) continue;
+      out.push({ id: r.id, name: String(r.name || ""), hotkey });
     }
     return out;
   },
@@ -428,6 +474,40 @@ var Automation = {
     );
   },
 
+  /**
+   * 「预览 → 确认 → 执行 → 进度窗」的公共流程（runForSelected 与 runRule 复用）
+   * @returns {Promise<boolean>} 是否真正执行了
+   */
+  async _runWithPreview(rules, items) {
+    const zh = I18n.isZh;
+    const pv = await this.preview(rules, items);
+    if (!pv.hits.length) {
+      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+        zh ? `选中 ${items.length} 篇，没有规则命中，未做任何改动。` : `No rule matched among ${items.length} items.`);
+      return false;
+    }
+    const lines = pv.byRule.map(([name, n]) => "  · " + name + " → " + n + (zh ? " 篇" : " items")).join("\n");
+    const msg = (zh
+      ? `选中 ${items.length} 篇，命中 ${pv.hits.length} 处，预计 ${pv.changeCount} 项变更：\n\n` + lines + "\n\n确认执行？"
+      : `${items.length} selected, ${pv.hits.length} matches, ${pv.changeCount} changes:\n\n` + lines + "\n\nProceed?");
+    const flags = Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING +
+      Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING;
+    const choice = Services.prompt.confirmEx(Zotero.getMainWindow(), "PaperPilot · " + (zh ? "自动化预览" : "Automation preview"),
+      msg, flags, zh ? "执行" : "Run", zh ? "取消" : "Cancel", null, null, {});
+    if (choice !== 0) return false;
+    const r = await this.apply(rules, items, false);
+    const pw = new Zotero.ProgressWindow({ closeOnClick: true });
+    pw.changeHeadline("PaperPilot · " + (zh ? "自动化" : "Automation"));
+    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+      (zh ? "已执行 " : "Applied ") + r.applied + (zh ? " 项变更" : " changes") +
+      (r.skipped.length ? (zh ? "，跳过 " : ", skipped ") + r.skipped.length : ""));
+    if (r.errors.length) progress.setError();
+    progress.setProgress(100);
+    pw.show();
+    pw.startCloseTimer(3000);
+    return true;
+  },
+
   /** 对选中条目运行 manual 触发的规则（先预览、确认后执行） */
   async runForSelected() {
     const zh = I18n.isZh;
@@ -441,31 +521,37 @@ var Automation = {
         zh ? "没有可用的自动化规则。请在「自动化规则」对话框中创建并启用。" : "No enabled automation rules.");
       return;
     }
-    const pv = await this.preview(rules, items);
-    if (!pv.hits.length) {
+    await this._runWithPreview(rules, items);
+  },
+
+  /**
+   * 按 id 手动执行单条规则（右键菜单 / 快捷键的入口）。
+   * @param {string} ruleId
+   * @param {Array} [items] 不传则取当前选中条目
+   * @returns {Promise<boolean>} 是否真正执行了
+   */
+  async runRule(ruleId, items) {
+    const zh = I18n.isZh;
+    const rule = this.load().find((r) => r && r.id === ruleId);
+    if (!rule) {
       Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
-        zh ? `选中 ${items.length} 篇，没有规则命中，未做任何改动。` : `No rule matched among ${items.length} items.`);
-      return;
+        zh ? "这条自动化规则已不存在（可能被删除）。" : "Rule no longer exists.");
+      return false;
     }
-    const lines = pv.byRule.map(([name, n]) => "  · " + name + " → " + n + (zh ? " 篇" : " items")).join("\n");
-    const msg = (zh
-      ? `选中 ${items.length} 篇，命中 ${pv.hits.length} 处，预计 ${pv.changeCount} 项变更：\n\n` + lines + "\n\n确认执行？"
-      : `${items.length} selected, ${pv.hits.length} matches, ${pv.changeCount} changes:\n\n` + lines + "\n\nProceed?");
-    const flags = Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING +
-      Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING;
-    const choice = Services.prompt.confirmEx(Zotero.getMainWindow(), "PaperPilot · " + (zh ? "自动化预览" : "Automation preview"),
-      msg, flags, zh ? "执行" : "Run", zh ? "取消" : "Cancel", null, null, {});
-    if (choice !== 0) return;
-    const r = await this.apply(rules, items, false);
-    const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + (zh ? "自动化" : "Automation"));
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
-      (zh ? "已执行 " : "Applied ") + r.applied + (zh ? " 项变更" : " changes") +
-      (r.skipped.length ? (zh ? "，跳过 " : ", skipped ") + r.skipped.length : ""));
-    if (r.errors.length) progress.setError();
-    progress.setProgress(100);
-    pw.show();
-    pw.startCloseTimer(3000);
+    const errs = this.validate(rule);
+    if (errs.length) {
+      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+        (zh ? "规则配置有误，未执行：" : "Rule invalid, not run: ") + errs[0]);
+      return false;
+    }
+    let list = items;
+    if (!Array.isArray(list) || !list.length) {
+      const zp = Zotero.getActiveZoteroPane();
+      if (!zp) return false;
+      list = ItemSel.regularOnly(zp.getSelectedItems() || []);
+    }
+    if (!list.length) { ItemSel.alertEmpty(); return false; }
+    return this._runWithPreview([rule], list);
   },
 
   /* ================== Notifier ================== */

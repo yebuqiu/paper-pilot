@@ -431,6 +431,9 @@ var ThemeToggle = {
 
   _injectMainWindow(win) {
     if (!win || !win.document || !win.ZoteroPane) return;
+    // 0.42.0：主窗口（收藏夹工具栏）主题按钮默认不再注入——换主题非高频操作，
+    // 入口收敛到设置面板/classic 视图菜单；about:config 开 themeMainButtonEnabled 可恢复
+    if (!Prefs.get("themeMainButtonEnabled", false)) return;
     const doc = win.document;
     const host = doc.getElementById("zotero-collections-toolbar");
     if (!host) return;
@@ -559,8 +562,18 @@ var ThemeToggle = {
     const on = !!Prefs.get(this.PREF_ENABLED, true);
     if (on) {
       this._injectMainWindows();
-      return;
     }
+    // 0.42.0：主窗口按钮独立门控（themeMainButtonEnabled，默认关）——关掉即刻摘除
+    const mainOn = on && !!Prefs.get("themeMainButtonEnabled", false);
+    if (!mainOn) {
+      for (const win of this._mainWindows()) {
+        try {
+          const btn = win.document.getElementById(this.MAIN_BTN_ID);
+          if (btn) btn.remove();
+        } catch (e) { /* ignore */ }
+      }
+    }
+    if (on) return;
     for (const win of this._mainWindows()) {
       try {
         const btn = win.document.getElementById(this.MAIN_BTN_ID);

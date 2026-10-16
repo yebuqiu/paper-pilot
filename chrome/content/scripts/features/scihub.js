@@ -1,8 +1,15 @@
-/* PaperPilot Sci-Hub / Sci-Net 补全文（0.27.0）
+/* PaperPilot Sci-Hub / Sci-Net / 出版商直连 补全文（0.27.0；0.43.0 借鉴开源项目强化）
  * 用途：Unpaywall 未命中时的补充渠道 —— 有 DOI 但既无开放获取版本、也无 PDF 的条目。
- * 流程：按镜像顺序探测 Sci-Hub 文章页（默认 sci-hub.ru → sci-hub.se → sci-hub.st，可配置）
- *      → 解析 PDF 直链（embed#pdf / citation_pdf_url / object / 下载链 / JS 跳转，兼容 " = " 带空格写法）
+ * 流程：按镜像顺序探测 Sci-Hub 文章页（可配置）→ 解析 PDF 直链（embed#pdf /
+ *      citation_pdf_url / object / 下载链 / JS 跳转，兼容 " = " 带空格写法）
  *      → 下载字节并用 %PDF 魔数校验 → 交 OAFetch 挂附件。
+ * 0.43.0（参考 2026 年活跃开源项目 scihub-mcp / zotero-scihub-resolver）：
+ *   ① 默认镜像链 3 → 7（+ sci-hub.ren / .ee / .hkvisa.net / .mksa.top），
+ *      旧默认值用户由 upgradeMirrorsPref() 一次性升级（自定义过的不动）；
+ *   ② 出版商直连（fetchFromPublisher）：doi.org → 出版商落地页 → citation_pdf_url
+ *      元标签提取 PDF。校园 VPN / 机构订阅下可拿到 Sci-Hub 停更后的新文献；
+ *   ③ 镜像死亡记忆：不可达镜像记入 _deadUntil（TTL 5 分钟），批量补全文时
+ *      后续条目直接跳过，不再逐条重复等待超时。
  * 兜底：Sci-Hub 未收录（2021 年后文献居多）时可选接力 Sci-Net（社区上传，见 fetchFromSciNet）。
  * 验证页：镜像要求人机验证（ALTCHA .question/.answer / Cloudflare 盾）时返回 captcha，
  *        由调用方在 Zotero 中打开页面；验证状态存于 Zotero 会话 cookie 罐，完成后重跑即可。
@@ -14,13 +21,21 @@
 /* global Zotero, Prefs, TextDecoder, URL */
 
 var SciHub = {
-  DEFAULT_MIRRORS: ["sci-hub.ru", "sci-hub.se", "sci-hub.st"],
+  // 镜像链参考 scihub-mcp（2026-08 活跃维护）与 Zotero 中文社区镜像页；
+  // 前三个为原有顺序，ren/ee 两边列表都收录，hkvisa.net/mksa.top 为 scihub-mcp 首两位
+  DEFAULT_MIRRORS: ["sci-hub.ru", "sci-hub.se", "sci-hub.st", "sci-hub.ren", "sci-hub.ee", "sci-hub.hkvisa.net", "sci-hub.mksa.top"],
+  // 0.27–0.42 的默认镜像串：恰好等于它的用户没自定义过，升级到新链（幂等，自定义用户不动）
+  LEGACY_DEFAULT_MIRRORS: "sci-hub.ru,sci-hub.se,sci-hub.st",
   DEFAULT_SCINET: "https://sci-net.xyz",
   // 移动端 UA：镜像对移动端返回更简单、可稳定解析的页面模板（参考 zotero-scihub 的成熟做法）
   UA: "Mozilla/5.0 (iPhone; CPU iPhone OS 11_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
+  // 出版商直连用桌面 UA：出版商落地页的 citation_pdf_url 只对桌面端可靠（zotero-scihub-resolver 同做法）
+  DESKTOP_UA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
   MIN_INTERVAL_MS: 1200,
   TIMEOUT_MS: 30000,
+  DEAD_TTL_MS: 5 * 60 * 1000,
   _lastReqAt: 0,
+  _deadUntil: {}, // host → 不可达失效截止时间戳（会话级）
 
   _debug(msg) {
     try { Zotero.debug("PaperPilot scihub: " + msg); } catch (e) { /* ignore */ }
@@ -35,6 +50,46 @@ var SciHub = {
       .filter(Boolean)
       .map((s) => (/^https?:\/\//i.test(s) ? s : "https://" + s).replace(/\/+$/, ""));
     return list.length ? list : this.DEFAULT_MIRRORS.map((m) => "https://" + m);
+  },
+
+  /**
+   * 0.43.0 一次性镜像链升级：用户 pref 恰好等于 0.27–0.42 的出厂默认值（说明从未自定义）
+   * → 改写为新 7 镜像链。自定义过的用户（哪怕增删一个）不动。幂等：升级后值不再匹配旧默认。
+   * 返回 1 表示已升级，0 表示无需/未升级。
+   */
+  upgradeMirrorsPref() {
+    let raw = "";
+    try { raw = String(Prefs.get("scihubMirrors", "") || ""); } catch (e) { return 0; }
+    const norm = raw.split(/[,，;\n]+/)
+      .map((s) => s.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, ""))
+      .filter(Boolean)
+      .join(",");
+    if (norm !== this.LEGACY_DEFAULT_MIRRORS) return 0;
+    try {
+      Prefs.set("scihubMirrors", this.DEFAULT_MIRRORS.join(", "));
+      this._debug("镜像列表升级为 " + this.DEFAULT_MIRRORS.length + " 镜像链（旧默认值迁移）");
+      return 1;
+    } catch (e) {
+      this._debug("镜像列表升级失败 - " + (e && e.message));
+      return 0;
+    }
+  },
+
+  /** 会话级死亡记忆：不可达镜像 5 分钟内不再尝试（批量补全文时避免逐条重复等待超时） */
+  _markDead(host) {
+    if (!host) return;
+    this._deadUntil[host] = Date.now() + this.DEAD_TTL_MS;
+  },
+
+  _isDead(host) {
+    const until = this._deadUntil[host] || 0;
+    if (until > Date.now()) return true;
+    if (until) delete this._deadUntil[host];
+    return false;
+  },
+
+  _hostOf(mirror) {
+    return mirror.replace(/^https?:\/\//, "").replace(/\/+$/, "");
   },
 
   /** Sci-Net 基地址（pref 覆盖默认） */
@@ -57,10 +112,10 @@ var SciHub = {
     this._lastReqAt = Date.now();
   },
 
-  /** 带限速的 GET → { buf, status, finalUrl } | { transport: true, error } */
-  async _getBuffer(url, referer) {
+  /** 带限速的 GET → { buf, status, finalUrl } | { transport: true, error }；ua 覆盖默认移动端 UA */
+  async _getBuffer(url, referer, ua) {
     await this._throttle();
-    const headers = { "User-Agent": this.UA };
+    const headers = { "User-Agent": ua || this.UA };
     if (referer) headers.Referer = referer;
     let xhr = null;
     try {
@@ -117,6 +172,17 @@ var SciHub = {
     return /\.pdf(?:[?#]|$)/i.test(u) || /\/downloads?\//i.test(u) || /dacemirror/i.test(u);
   },
 
+  /** <meta name="citation_pdf_url" content="…">（出版商直连与 .ru 2026 模板共用；属性顺序无关） */
+  _metaPdfUrl(html, baseUrl) {
+    for (const t of String(html || "").match(/<meta\b[^>]*>/gi) || []) {
+      if (/\bname\s*=\s*["']citation_pdf_url["']/i.test(t)) {
+        const u = this._attrUrl(t, "content");
+        if (u) return this._resolveUrl(u, baseUrl);
+      }
+    }
+    return "";
+  },
+
   /** 标签属性取值：name 指定时取该属性，否则 src / data 依次试（(?:^|\s) 防 data-* 前缀误配） */
   _attrUrl(tag, name) {
     const names = name ? [name] : ["src", "data"];
@@ -140,12 +206,8 @@ var SciHub = {
       }
     }
     // ② <meta name="citation_pdf_url" content="…">（.ru 2026）
-    for (const t of s.match(/<meta\b[^>]*>/gi) || []) {
-      if (/\bname\s*=\s*["']citation_pdf_url["']/i.test(t)) {
-        const u = this._attrUrl(t, "content");
-        if (u) return this._resolveUrl(u, baseUrl);
-      }
-    }
+    const meta = this._metaPdfUrl(s, baseUrl);
+    if (meta) return meta;
     // ③ <object type="application/pdf" data="…">（.ru）
     for (const t of mediaTags) {
       if (/^<object\b/i.test(t) && /\btype\s*=\s*["']application\/pdf["']/i.test(t)) {
@@ -247,15 +309,26 @@ var SciHub = {
   /**
    * Sci-Hub：按镜像顺序尝试。任一镜像返回 not-found 即停（各镜像共享同一数据库，再审无益）；
    * 验证页 / 不可达 / 其它错误则换下一个镜像；全部失败时优先返回「验证页」（可修复，供用户处理）。
+   * 不可达镜像记入死亡记忆（TTL 5 分钟）：同一会话内后续条目不再重试，避免批量场景逐条等待超时。
    */
   async fetchPdf(doi) {
-    const mirrors = this.mirrors();
+    const all = this.mirrors();
+    const mirrors = [];
+    for (const m of all) {
+      const host = this._hostOf(m);
+      if (this._isDead(host)) { this._debug("跳过死亡镜像 " + host + "（冷却中）"); continue; }
+      mirrors.push(m);
+    }
+    if (!mirrors.length) {
+      return { status: "unreachable", host: this._hostOf(all[0] || ""), message: "all mirrors in cooldown" };
+    }
     let lastCaptcha = null;
     let last = { status: "error", host: "", message: "no mirrors" };
     for (const m of mirrors) {
-      const host = m.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+      const host = this._hostOf(m);
       const r = await this._fetchPageForPdf(m + "/" + doi, { host });
       if (r.status === "ok" || r.status === "not-found") return r;
+      if (r.status === "unreachable") this._markDead(host);
       if (r.status === "captcha" && !lastCaptcha) lastCaptcha = r;
       last = r;
       this._debug("镜像 " + host + " 失败（" + r.status + (r.message ? "：" + r.message : "") + "），换下一个");
@@ -268,5 +341,43 @@ var SciHub = {
     const base = this.scinetBase();
     const host = base.replace(/^https?:\/\//, "");
     return this._fetchPageForPdf(base + "/" + doi, { host });
+  },
+
+  /**
+   * 出版商直连（0.43.0，参考 zotero-scihub-resolver）：经 doi.org 跳转到出版商落地页，
+   * 从 <meta name="citation_pdf_url"> 提取 PDF 地址。连校园 VPN / 机构订阅（IP 授权）时可
+   * 拿到 Sci-Hub 停更后（2021+）的新文献；无订阅权限时下载会被拦（非 %PDF）→ 如实 not-found。
+   * 桌面 UA（出版商页对移动端常不给完整 meta）。WebVPN 网址改写式代理无效（域名不对）。
+   */
+  async fetchFromPublisher(doi) {
+    const pageUrl = "https://doi.org/" + doi;
+    let r;
+    try {
+      r = await this._getBuffer(pageUrl, null, this.DESKTOP_UA);
+    } catch (e) {
+      return { status: "unreachable", host: "doi.org", pageUrl, message: String((e && e.message) || e).slice(0, 120) };
+    }
+    if (r.transport) {
+      return { status: "unreachable", host: "doi.org", pageUrl, message: String((r.error && r.error.message) || r.error || "").slice(0, 120) };
+    }
+    if (this._isPdf(r.buf)) return { status: "ok", bytes: r.buf, pdfUrl: pageUrl, pageUrl, host: "doi.org" };
+
+    const html = this._decode(r.buf);
+    if (this._isCaptcha(html)) return { status: "captcha", host: "doi.org", pageUrl };
+    const pdfUrl = this._metaPdfUrl(html, r.finalUrl || pageUrl);
+    if (!pdfUrl) {
+      // 出版商落地页没有 citation_pdf_url（无订阅 / 反爬改写页）→ 未收录，如实上报
+      return { status: "not-found", host: "doi.org", pageUrl };
+    }
+
+    const dl = await this._getBuffer(pdfUrl, r.finalUrl || pageUrl, this.DESKTOP_UA);
+    if (dl.transport) return { status: "unreachable", host: "doi.org", pageUrl, message: "pdf download failed" };
+    if (dl.status !== 200) return { status: "not-found", host: "doi.org", pageUrl, message: "HTTP " + dl.status + " (pdf)" };
+    if (!this._isPdf(dl.buf)) {
+      // 常见于无订阅：citation_pdf_url 存在但 302 到登录页 / 拦截页
+      if (this._isCaptcha(this._decode(dl.buf))) return { status: "captcha", host: "doi.org", pageUrl };
+      return { status: "not-found", host: "doi.org", pageUrl, message: "not a pdf (no access?)" };
+    }
+    return { status: "ok", bytes: dl.buf, pdfUrl, pageUrl, host: "doi.org" };
   },
 };

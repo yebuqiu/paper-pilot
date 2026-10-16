@@ -36,7 +36,8 @@ PaperPilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstra
 | 用途 | 要求 | 说明 |
 |---|---|---|
 | 运行插件 | Zotero 7–10 | 本机为 Zotero 10.0.5；程序目录 `C:\Program Files\Zotero` |
-| 运行账号后台 | Node ≥ 14 | 本机 managed：`C:\Users\Administrator\.workbuddy\binaries\node\versions\22.22.2-5\node.exe` |
+| 运行账号后台 | Node ≥ 14 | **首选项目自带 `runtime\node\node.exe`**（便携，随移动硬盘走）；兜底：managed `C:\Users\Administrator\.workbuddy\binaries\node\versions\<最新>`，再退回 PATH |
+| 公网通道 | 项目自带 `runtime\cloudflared\` | cloudflared.exe + token.txt + 运行器全部在项目内（见 §3.8） |
 | 打包 / 门禁 | Python 3 | 本机：`3.13.12`（managed）；`3.11.9`（system 备选） |
 | 启动器 / 守护 | Windows PowerShell 5.1 + `wscript` | GUI 走 WinForms，**必须 `-STA`** |
 | 浏览器 E2E | 系统 Chrome + `playwright-core` | 依赖装在 `C:\Users\Administrator\.workbuddy\binaries\node\workspace`，运行时设 `NODE_PATH` |
@@ -109,7 +110,7 @@ python scripts/build-xpi.py 0.27.0
 
 - 打包内容 = 顶层文件（`bootstrap.js` / `LICENSE` / `NOTICE` / `prefs.js` / `README.md` / `manifest.json`）+ 遍历 `chrome/` + `locale/`。
 - **`docs/` 与 `test/` 不进包**。
-- ⚠️ `build-xpi.py` 里 `ROOT` 是**硬编码本机路径** `E:\project\paper-pilot`；换机需先改这一行。
+- `build-xpi.py` 的 `ROOT` 已相对化（按脚本自身位置推导），换机/换盘符无需修改。
 
 ### 3.3 账号后台（服务端）
 
@@ -120,7 +121,7 @@ cd server && node account-server.js
 # 生产拉起（幂等：8000 已有应答即退出）
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-account-server.ps1
 
-# 图形启动器（账号后台 + 模型通道 + 账号管理 + 会员管理）
+# 图形启动器（账号后台 + 公网通道 + 模型通道 + 账号管理 + 会员管理）
 启动PaperPilot后台.bat          # 双击运行；内部经 wscript 无窗拉起 launcher.ps1
 
 # 健康检查
@@ -128,8 +129,26 @@ curl http://127.0.0.1:8000/api/health
 ```
 
 - **改了服务端代码必须同轮重启生产 :8000**，否则新客户端会配到旧服务端。
-- 守护脚本 `scripts/guard-paperpilot.ps1`（计划任务 `PaperPilotGuard`，每分钟一次）**不因代码更新而重启**，只在端口无人应答时用仓库新代码拉起；`server/data/stopped-account.flag` 存在时保持停机。
+- 守护脚本 `scripts/guard-paperpilot.ps1` **已重构为项目内自包含**（2026-10-16：不再依赖 `~/.cloudflared` 与 `_brain`；pass2 走 `runtime\cloudflared\`）。计划任务 `PaperPilotGuard` **已不再注册**——需要时手动注册（每分钟一次，不因代码更新而重启）；`server/data/stopped-account.flag` 与 `runtime/cloudflared/stopped.flag` 存在时各自保持停机。
 - `scripts/start-account-server.ps1` 直接调用会被本机执行策略拦；走上面的 `powershell -ExecutionPolicy Bypass` 形式。
+
+### 3.8 公网通道（Cloudflare 隧道，项目内自包含）
+
+> 2026-10-16 重构：原依赖（`~/.cloudflared` runner + `E:\project\_brain` vault 取令牌 +
+> 计划任务）在项目迁入移动硬盘后全链失效（公网 530）。现改为**依赖全部在项目文件夹内**，
+> 对齐「心血管科药物」项目 cvmech.top 的成熟模式。
+
+```bash
+# 日常（任选其一）
+启动公网隧道.bat / 停止公网隧道.bat            # 根目录双击（幂等）
+# 控制台 GUI：「公网通道」组（启动/停止/测试访问/通道日志）+ 顶部状态灯
+# 命令行：
+powershell -File scripts/tunnel/tunnel.ps1 status|start|stop|restart
+```
+
+- 固定参数：隧道 `paperpilot`（a445d5c2）→ `pp.xinglintools.top` → `127.0.0.1:8000`；metrics `127.0.0.1:20250`；健康判据 = `/ready` 的 `readyConnections > 0`（**端口通 ≠ 健康**）。
+- 令牌：`runtime/cloudflared/token.txt`（gitignore；`--token-file` 传递，不进命令行）。丢失/轮换后 `powershell -File scripts/tunnel/refresh-token.ps1` 从同级 `..\_brain` 重新提取。
+- 二进制：`runtime/cloudflared/cloudflared.exe`（~55MB）与 `runtime/node/node.exe` 均**随盘携带、不入库**；换机/换盘符零配置（脚本全部相对自身位置解析路径）。
 
 ### 3.7 在线支付（运维）
 
@@ -144,7 +163,8 @@ curl http://127.0.0.1:8000/api/health
 1. `PP_PUBLIC_URL` 必须显式配置为**公网 https 地址**（写在 `server/data/pp.env`）——
    回调地址由它决定。**不要依赖 Host 头推断**：下单是公网请求，Host 可被伪造，
    会把 `notify_url` 指向攻击者域名。未配置时 `onlinePayReady()` 为 false，在线支付不可用。
-2. 账号后台的公网入口必须在（Cloudflare 隧道 `paperpilot` → `pp.xinglintools.top` → `:8000`），
+2. 账号后台的公网入口必须在（项目内公网通道 `paperpilot` → `pp.xinglintools.top` → `:8000`；
+   起停见 §3.8；`powershell -File scripts/tunnel/tunnel.ps1 status` 一键自检），
    否则网关的异步通知到不了。**但即使丢了通知也不会漏单**：客户端的「刷新订单状态」
    走主动查单，确认即入账。
 3. 网关侧把 `{PP_PUBLIC_URL}/api/pay/notify` 作为回调地址（下单时自动带上，无需手填）。
@@ -280,15 +300,21 @@ paper-pilot/
 │                             channels.json / pricing.json / audit.log / guard.log /
 │                             server-console.log / pp.env
 │
+├── runtime/                  项目内置运行时（便携；二进制与令牌 gitignore、随盘携带）
+│   ├── node/node.exe         Node 22.x 单文件（后台首选运行时）
+│   └── cloudflared/          ★ 公网通道：cloudflared.exe + token.txt + 运行器 + logs
+│
 ├── scripts/                  工具（不进 xpi）
 │   ├── build-xpi.py          打包 + 包内自检
 │   ├── preflight.py          一键门禁
 │   ├── check-wiring.py       接线一致性静态扫描
 │   ├── sync-github.py        同步 GitHub 镜像
 │   ├── reconcile.js          收款对账 CLI
-│   ├── launcher.ps1          启动器 GUI（WinForms）
-│   ├── guard-paperpilot.ps1  守护（账号后台 + 隧道）
+│   ├── launcher.ps1          启动器 GUI（WinForms；含「公网通道」组）
+│   ├── guard-paperpilot.ps1  守护（账号后台 + 公网通道，项目内自包含）
 │   ├── start-account-server.ps1 / start-server-hidden.vbs  无窗拉起
+│   ├── tunnel/tunnel.ps1     公网通道 CLI：status/start/stop/restart
+│   └── tunnel/refresh-token.ps1  从 _brain 重新提取隧道令牌
 │
 ├── test/                     测试（不进 xpi）
 │   ├── account-persistence / membership / price / usage / membership-panel /
@@ -523,7 +549,7 @@ xpi 固定名 `extensions/paperpilot@dev.local.xpi`。
 ### 8.7 重启账号后台
 
 ```bash
-# 停：干掉占用 8000 的进程（守护会在端口无人应答时用仓库新代码拉起）
+# 停：干掉占用 8000 的进程（若注册过 PaperPilotGuard 计划任务，先停任务或置 stopped 标记，防复活）
 # 起：双击 启动PaperPilot后台.bat，或
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-account-server.ps1
 ```
@@ -535,7 +561,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-account-server
 - **本工作区可能多会话并发**：发版前 `git status` 辨在制品；**禁止 `git add -A`**。`build-xpi.py` 遍历整棵 `chrome/`，**产物侧会自动打包他人的在制品**——并发期要么从干净 git 树构建、要么停发；非本人文件 mtime 仍在变时**不构建、不发布**。
 - **密钥不进 git**；`server/data/` 已 gitignore；提交身份用 noreply。
 - **服务端零依赖**是硬约束，别引第三方包。
-- **`build-xpi.py` 的 `ROOT` 是硬编码本机路径**，换机先改。
+- **项目便携化（2026-10-16）**：`runtime/` 承载 node + cloudflared + token（gitignore）；所有脚本按 `$PSScriptRoot`/`%~dp0` **相对解析路径**——换机、换盘符零改动。**勿在任何脚本里写死盘符或用户目录路径**（历史事故：项目迁入移动硬盘后旧绝对路径全断、公网 530）。
 - **`.ps1` UTF-8+BOM、`.bat` GBK**；PS 续行运算符放行尾。
 - **`IOUtils.writeUTF8` 永不传 `mode`**（它要字符串枚举，传数字 `0o600` 会导致"写入不产出文件"却报成功——这是历史"掉登录"的真凶）；原子写只用 `{tmpPath}`，写完回读校验，失败必须上报 UI。
 - **测试端口用 `listen(0)`**；时间戳相对 `Date.now()`；别用会吞异常的 `catch{}`。

@@ -27,7 +27,11 @@ var Annotations = {
       for (const a of ann) {
         try {
           const text = a.annotationText || "";
-          const comment = a.annotationComment || "";
+          let comment = a.annotationComment || "";
+          // 剥离划词浮窗写入的 pp:tr 标记（保留标记内译文正文；reader-popup.js B2）
+          if (typeof ReaderPopup !== "undefined" && ReaderPopup && ReaderPopup._stripMarked) {
+            comment = ReaderPopup._stripMarked(comment);
+          }
           if (!text.trim() && !comment.trim()) continue;
           list.push({
             type: a.annotationType || "highlight",

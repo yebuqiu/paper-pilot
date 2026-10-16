@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE window>
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="PaperPilot · 嵌套标签视图"
+        windowtype="paperpilot:tag-nested"
+        width="860" height="580">
+  <script src="chrome://paperpilot/content/tag-nested.js"></script>
+  <vbox flex="1" style="padding:12px;">
+    <hbox style="align-items:center;gap:8px;">
+      <html:span id="pp-tn-summary" style="color:var(--fill-secondary,#666);font-size:12px;"></html:span>
+      <spacer flex="1"/>
+      <html:span style="color:var(--fill-secondary,#888);font-size:11px;">只读视图：不修改任何标签数据</html:span>
+      <html:button id="pp-tn-close">关闭</html:button>
+    </hbox>
+    <hbox flex="1" style="gap:10px;margin-top:8px;min-height:0;">
+      <html:div id="pp-tn-tree"
+        style="flex:1;min-width:0;overflow-y:auto;border:1px solid var(--fill-tertiary,#999);border-radius:6px;padding:8px;background:var(--material-surface,#fff);color:var(--fill-primary,#222);font-size:13px;"/>
+      <html:div id="pp-tn-items"
+        style="width:320px;flex:none;overflow-y:auto;border:1px solid var(--fill-tertiary,#999);border-radius:6px;padding:8px;background:var(--material-surface,#fff);color:var(--fill-primary,#222);font-size:12.5px;"/>
+    </hbox>
+  </vbox>
+</window>

@@ -8,7 +8,7 @@
  *   - menuMode / menuHiddenGroups / menuQuickItems 三个 pref 变更即时重建菜单。
  * 设计口径：只做「重组」不做「删减」——被折叠的功能仍可从功能中心（Hub）、
  * 工具菜单分组、classic 模式三处到达，任何入口都不失联。 */
-/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ChatFloat */
+/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats */
 
 var Menus = {
   _nodes: [], // 记录注入的 DOM 节点，shutdown 时移除
@@ -35,11 +35,10 @@ var Menus = {
     { id: "ai-annot", group: "ai", labelKey: "menuAiAnnot", run: () => Menus.annotationTask(true) },
     // 笔记与输出
     // 0.36.0：主入口改为「左原右译」双栏窗口（左=原版 PDF 页面 / 右=同一页译文，
-    // 译文按原文段落坐标原位替换、图形与公式保留）。旧「文本双栏窗口」保留为备用出口。
+    // 译文按原文段落坐标原位替换、图形与公式保留）。
+    // 0.42.0：旧「文本双栏窗口」右键入口下线（与对照翻译重叠），仍可从功能中心到达。
     { id: "bilingual-view", group: "notes", labelKey: "menuPdfDual",
       run: () => PdfDual.openForSelected() },
-    { id: "bilingual", group: "notes", labelKey: "menuBilingual",
-      run: () => BilingualTranslate.runForSelected() },
     { id: "review", group: "notes", labelKey: "menuReview", run: () => ReviewGen.forSelected() },
     { id: "mindmap", group: "notes", labelKey: "menuMindmap", run: () => MindMap.runForSelected() },
     { id: "note-template", group: "notes", labelKey: "menuNoteTemplate", run: () => NoteTemplates.runForSelected() },
@@ -54,6 +53,8 @@ var Menus = {
     { id: "rule-tag", group: "tags", labelKey: "menuRuleTag", run: () => RuleTag.runForSelected() },
     { id: "tag-curator", group: "tags", labelKey: "menuTagCurator", run: () => TagCurator.run(false) },
     { id: "tag-normalize", group: "tags", labelKey: "menuTagNormalize", run: () => TagCurator.run(true) },
+    // 0.42.0 嵌套标签树（#a/b 层级只读视图，独立窗口）
+    { id: "tag-nested", group: "tags", labelKey: "menuTagNested", run: () => TagCurator.openNestedView() },
     // 元数据治理
     { id: "meta-enrich", group: "meta", labelKey: "menuMetaEnrich", run: () => MetaEnrich.runForSelected() },
     { id: "fake-check", group: "meta", labelKey: "menuFakeCheck", run: () => FakeCheck.runForSelected() },
@@ -64,6 +65,7 @@ var Menus = {
     // 中文文献工具
     { id: "cn-meta", group: "cn", labelKey: "menuCnMeta", run: () => CNMeta.runForSelected() },
     { id: "cn-fetch", group: "cn", labelKey: "menuCnFetch", run: () => CNFetch.runForSelected() },
+    // 0.43.1：知网账号登录/验证/转换器更新收敛到设置面板（登录类不再出现在右键菜单）
     { id: "cn-match-att", group: "cn", labelKey: "menuCnMatchAtt", run: () => CNFetch.matchAttachmentsFromDownloads() },
     { id: "cn-name-merge", group: "cn", labelKey: "menuCnNameMerge", run: () => CNFetch.mergeNames() },
     { id: "cn-name-split", group: "cn", labelKey: "menuCnNameSplit", run: () => CNFetch.splitNames() },
@@ -77,6 +79,13 @@ var Menus = {
     { id: "state-unread", group: "state", labelKey: "menuStateUnread", run: () => ReadingState.markForSelected("未读") },
     { id: "state-reading", group: "state", labelKey: "menuStateReading", run: () => ReadingState.markForSelected("在读") },
     { id: "state-done", group: "state", labelKey: "menuStateDone", run: () => ReadingState.markForSelected("已读") },
+    // 星标评级（0.42.0，radio 子菜单，见 _buildRatingSubmenu；存储为 ★×n 单标签）
+    { id: "rating-1", group: "rating", labelKey: "menuRating1", run: () => Menus.setRatingForSelected(1) },
+    { id: "rating-2", group: "rating", labelKey: "menuRating2", run: () => Menus.setRatingForSelected(2) },
+    { id: "rating-3", group: "rating", labelKey: "menuRating3", run: () => Menus.setRatingForSelected(3) },
+    { id: "rating-4", group: "rating", labelKey: "menuRating4", run: () => Menus.setRatingForSelected(4) },
+    { id: "rating-5", group: "rating", labelKey: "menuRating5", run: () => Menus.setRatingForSelected(5) },
+    { id: "rating-clear", group: "rating", labelKey: "menuRatingClear", run: () => Menus.setRatingForSelected(0) },
   ],
 
   // 语义分组（顺序即菜单呈现顺序；id 即 menuHiddenGroups 的取值）
@@ -89,6 +98,7 @@ var Menus = {
     { id: "cn", labelKey: "menuGroupCn" },
     { id: "automation", labelKey: "menuGroupAutomation" },
     { id: "state", labelKey: "menuReadingState" },
+    { id: "rating", labelKey: "menuRating" },
   ],
 
   _xul(doc, tag) {
@@ -177,6 +187,10 @@ var Menus = {
         if (!hidden.has("state")) this._buildStateSubmenu(doc, popup);
         continue;
       }
+      if (g.id === "rating") {
+        if (!hidden.has("rating")) this._buildRatingSubmenu(doc, popup);
+        continue;
+      }
       if (hidden.has(g.id)) continue;
       const items = this.ITEM_REGISTRY.filter((i) => i.group === g.id);
       if (!items.length) continue;
@@ -187,6 +201,8 @@ var Menus = {
       for (const it of items) {
         this._menuItem(doc, subPopup, "paperpilot-itemmenu-" + it.id, it.labelKey, it.run);
       }
+      // 0.42.0 自动化组尾部追加「出现在右键菜单」的用户规则（动态，随规则 pref 重建）
+      if (g.id === "automation") this._automationRuleItems(doc, subPopup);
       popup.appendChild(sub);
     }
     // 顶层直达（恒显，不受隐藏分组影响）
@@ -232,6 +248,67 @@ var Menus = {
     popup.appendChild(sub);
   },
 
+  /** 星标评级：radio 子菜单，popupshowing 时按当前选中条目打点（0.42.0） */
+  _buildRatingSubmenu(doc, popup) {
+    const sub = this._xul(doc, "menu");
+    sub.setAttribute("label", I18n.t("menuRating"));
+    const subPopup = this._xul(doc, "menupopup");
+    sub.appendChild(subPopup);
+    const radios = this.ITEM_REGISTRY
+      .filter((i) => i.group === "rating")
+      .map((it) => {
+        const mi = this._xul(doc, "menuitem");
+        mi.id = "paperpilot-itemmenu-" + it.id;
+        mi.setAttribute("label", I18n.t(it.labelKey));
+        mi.setAttribute("type", "radio");
+        mi.addEventListener("command", it.run);
+        subPopup.appendChild(mi);
+        return mi;
+      });
+    // 打点口径与阅读状态一致：全部选中条目评级一致才打点（0 星=勾选「清除评级」）
+    subPopup.addEventListener("popupshowing", () => {
+      try {
+        const zp = Zotero.getActiveZoteroPane();
+        const items = zp ? ItemSel.regularOnly(zp.getSelectedItems() || []) : [];
+        let cur = items.length ? Rating.get(items[0]) : -1;
+        for (const i of items) {
+          if (Rating.get(i) !== cur) { cur = -1; break; }
+        }
+        // 注册表 rating 组顺序：1..5 星 + 清除（索引 5 对应 rating=0）
+        radios.forEach((mi, idx) => {
+          const val = idx < 5 ? idx + 1 : 0;
+          if (cur >= 0 && val === cur) mi.setAttribute("checked", "true");
+          else mi.removeAttribute("checked");
+        });
+      } catch (e) { /* 状态读取失败不影响打开 */ }
+    });
+    popup.appendChild(sub);
+  },
+
+  /** 对当前选中条目设置星标评级（n=0 清除） */
+  setRatingForSelected(n) {
+    try {
+      const zp = Zotero.getActiveZoteroPane();
+      const items = zp ? ItemSel.regularOnly(zp.getSelectedItems() || []) : [];
+      if (items.length) Rating.set(items, n);
+    } catch (e) { Zotero.logError(e); }
+  },
+
+  /** 自动化用户规则的动态菜单项（0.42.0：规则里勾了「出现在条目右键菜单」的） */
+  _automationRuleItems(doc, parent) {
+    let rules = [];
+    try { rules = Automation.getMenuRules ? Automation.getMenuRules() : []; } catch (e) { rules = []; }
+    for (const r of rules) {
+      const mi = this._xul(doc, "menuitem");
+      mi.id = "paperpilot-itemmenu-autorule-" + r.id;
+      mi.setAttribute("label", r.name);
+      mi.addEventListener("command", () => {
+        try { Automation.runRule(r.id); } catch (e) { Zotero.logError(e); }
+      });
+      parent.appendChild(mi);
+    }
+  },
+
   /** 工具菜单：单一「PaperPilot ▸」入口 + 独立「设置」项 */
   _buildGroupedTools(doc, toolsPopup) {
     const sub = this._xul(doc, "menu");
@@ -269,8 +346,7 @@ var Menus = {
     govMenu.appendChild(govPop);
     this._menuItem(doc, govPop, "paperpilot-menu-automation", "menuAutomation", () => Automation.openDialog());
     this._menuItem(doc, govPop, "paperpilot-menu-meta-rules", "menuMetaRules", () => MetaRules.openDialog());
-    this._menuItem(doc, govPop, "paperpilot-menu-cn-translators", "menuCnTranslators", () => CNTranslators.update(true));
-    this._menuItem(doc, govPop, "paperpilot-menu-cn-verify", "menuCNVerify", () => CNVerify.interactive());
+    // 0.43.1：知网账号登录/验证/转换器更新 → 设置面板「知网账号」卡片（登录类入口不在菜单）
     this._menuItem(doc, govPop, "paperpilot-menu-mcp", "menuMcp", () => MCP.openDialog());
     this._menuItem(doc, govPop, "paperpilot-menu-conn-test", "menuConnTest", () => this.testConnection());
     // AI 模型通道快速切换（popupshowing 时动态填充；0.14.0 取代配置快照菜单）
@@ -324,10 +400,7 @@ var Menus = {
       () => this.openSettings());
     const t3 = this._menuItem(doc, toolsPopup, "paperpilot-menu-workbench", "menuWorkbench",
       () => Zotero.PaperPilot.openWorkbench());
-    const t4 = this._menuItem(doc, toolsPopup, "paperpilot-menu-cn-translators", "menuCnTranslators",
-      () => CNTranslators.update(true));
-    const t5 = this._menuItem(doc, toolsPopup, "paperpilot-menu-cn-verify", "menuCNVerify",
-      () => CNVerify.interactive());
+    // 0.43.1：cn-translators / cn-verify / cn-login 迁设置面板「知网账号」卡片
     // 0.16.0 外观主题：界面主题 / PDF 阅读主题 两组 radio（popupshowing 动态填充，
     // 交互模式与上面的模型通道菜单一致）
     const themeMenu = this._xul(doc, "menu");
@@ -401,11 +474,10 @@ var Menus = {
       () => SmartCleanup.run());
     // ---- 0.11.0 新增 ----
     popup.appendChild(this._xul(doc, "menuseparator"));
-    // 0.25.2 引入双栏出口；0.36.0 主入口改为「左原 PDF / 右译文」的对照窗口
+    // 0.25.2 引入双栏出口；0.36.0 主入口改为「左原 PDF / 右译文」的对照窗口；
+    // 0.42.0 旧「文本双栏窗口」入口下线（功能中心仍可达）
     this._menuItem(doc, popup, "paperpilot-itemmenu-bilingual-view", "menuPdfDual",
       () => PdfDual.openForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-bilingual", "menuBilingual",
-      () => BilingualTranslate.runForSelected());
     this._menuItem(doc, popup, "paperpilot-itemmenu-review", "menuReview",
       () => ReviewGen.forSelected());
     this._menuItem(doc, popup, "paperpilot-itemmenu-mindmap", "menuMindmap",
@@ -439,6 +511,9 @@ var Menus = {
       () => TagCurator.run(false));
     this._menuItem(doc, popup, "paperpilot-itemmenu-tag-normalize", "menuTagNormalize",
       () => TagCurator.run(true));
+    // 0.42.0 嵌套标签树（只读视图窗口）
+    this._menuItem(doc, popup, "paperpilot-itemmenu-tag-nested", "menuTagNested",
+      () => TagCurator.openNestedView());
     // ---- 0.24.0 元数据体检（规则补齐）----
     this._menuItem(doc, popup, "paperpilot-itemmenu-meta-rules", "menuMetaRules",
       () => MetaRules.openDialog());
@@ -447,6 +522,8 @@ var Menus = {
       () => Automation.runForSelected());
     this._menuItem(doc, popup, "paperpilot-itemmenu-auto-read", "menuAutoReadNow",
       () => AutoRead.runForSelected());
+    // 0.42.0 自动化用户规则动态项（勾选「出现在条目右键菜单」的）
+    this._automationRuleItems(doc, popup);
     popup.appendChild(this._xul(doc, "menuseparator"));
     this._menuItem(doc, popup, "paperpilot-itemmenu-state-unread", "menuStateUnread",
       () => ReadingState.markForSelected("未读"));
@@ -454,6 +531,14 @@ var Menus = {
       () => ReadingState.markForSelected("在读"));
     this._menuItem(doc, popup, "paperpilot-itemmenu-state-done", "menuStateDone",
       () => ReadingState.markForSelected("已读"));
+    popup.appendChild(this._xul(doc, "menuseparator"));
+    // 0.42.0 星标评级
+    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-1", "menuRating1", () => this.setRatingForSelected(1));
+    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-2", "menuRating2", () => this.setRatingForSelected(2));
+    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-3", "menuRating3", () => this.setRatingForSelected(3));
+    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-4", "menuRating4", () => this.setRatingForSelected(4));
+    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-5", "menuRating5", () => this.setRatingForSelected(5));
+    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-clear", "menuRatingClear", () => this.setRatingForSelected(0));
   },
 
   /* ---------- 菜单定制 pref 的读取与观察 ---------- */
@@ -463,14 +548,14 @@ var Menus = {
     return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
   },
 
-  /** 高频直达项（≤3，去重，过滤非法 id；state 组与顶层直达项不可作直达） */
+  /** 高频直达项（≤3，去重，过滤非法 id；state/rating 组与顶层直达项不可作直达） */
   _quickItems() {
     const raw = String(Prefs.get("menuQuickItems", "ai-summary,bilingual-view") || "");
     const seen = new Set();
     const out = [];
     for (const id of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
       if (out.length >= 3) break;
-      const item = this.ITEM_REGISTRY.find((i) => i.id === id && i.group && i.group !== "state");
+      const item = this.ITEM_REGISTRY.find((i) => i.id === id && i.group && i.group !== "state" && i.group !== "rating");
       if (item && !seen.has(id)) { seen.add(id); out.push(item); }
     }
     return out;
@@ -479,7 +564,7 @@ var Menus = {
   _watchMenuPrefs() {
     // 与 main.js _watchPrefs 同款：Zotero.Prefs.registerObserver 按完整 key 注册，
     // 沙箱普通对象挂不上 nsIPrefBranch 弱引用 observer（FF140 实证）。
-    this._observers = ["menuMode", "menuHiddenGroups", "menuQuickItems"].map((key) =>
+    this._observers = ["menuMode", "menuHiddenGroups", "menuQuickItems", "automationRules"].map((key) =>
       Zotero.Prefs.registerObserver(Prefs.PREFIX + key, () => {
         try {
           this.destroy();

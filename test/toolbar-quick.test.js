@@ -104,14 +104,16 @@ const QUICK_STUB = [
   const items = popup.byTag('menuitem');
   const seps = popup.byTag('menuseparator');
   const labels = items.map((i) => i.getAttribute('label'));
-  eq(items.length, 5, '①② 菜单项 = 2 直达 + 2 固定（bilingual-view 去重）+ 设置');
+  eq(items.length, 10, '①② 菜单项 = 2 直达 + 2 固定（bilingual-view 去重）+ 视图组 5 + 设置');
   includes(labels, '«menuAiSummary»', '① 直达项在顶部');
   includes(labels, '«menuAiChat»', '② 固定项 AI 悬浮窗');
   includes(labels, '«menuHub»', '② 固定项 功能中心');
   ok(labels.indexOf('«menuPdfDual»') === labels.lastIndexOf('«menuPdfDual»'),
     '② bilingual-view 不因同时出现在直达与固定而重复');
-  eq(labels[labels.length - 1], '«menuSettings»', '③ 设置入口在末尾');
-  ok(seps.length === 2, '③ 分隔线：直达/固定之间 + 固定/设置之间');
+  includes(labels, '保存当前为视图…', '③ 视图组：保存当前入口');
+  includes(labels, '阅读视图', '③ 视图组：内置默认预设补种');
+  eq(labels[labels.length - 1], '«menuSettings»', '④ 设置入口在末尾');
+  ok(seps.length === 4, '④ 分隔线：直达/固定 + 固定/视图组 + 视图/删除 + 视图组/设置');
 }
 function includes(arr, needle, label) {
   return ok(arr.indexOf(needle) >= 0, label, { got: arr });
@@ -124,7 +126,7 @@ function includes(arr, needle, label) {
   const popup = new El('menupopup');
   sandbox.ToolbarQuick._fillQuickMenu(doc, popup);
   const labels = popup.byTag('menuitem').map((i) => i.getAttribute('label'));
-  eq(labels.length, 4, '⑤ 直达项为空 → 固定三件套 + 设置');
+  eq(labels.length, 9, '⑤ 直达项为空 → 固定三件套 + 视图组 5 + 设置');
   includes(labels, '«menuAiChat»', '⑤ 固定项可用');
   eq(labels[labels.length - 1], '«menuSettings»', '⑤ 设置入口仍在');
 }

@@ -194,8 +194,13 @@
     let contextItem = null;
     let mode = "paper"; // paper | deep | free
     let currentHandle = null; // 流式句柄（停止用）
-    let session = null;       // 当前会话 {id,itemID,title,ts,transcript,history}
+    let session = null;       // 当前会话 {id,itemID,title,ts,transcript,history,chips}
     let sessionStore = null;
+    // 0.44.0 拖入条目作为上下文 chip：非空时优先于「当前条目」
+    let chipIDs = [];
+    let contextKey = "";      // 已注入的 chip 组合签名（变化时重建上下文）
+    const CHIP_MAX = 5;
+    const CHIP_TEXT_MAX = 8000;
 
     const $ = (id) => document.getElementById(id);
     const msgs = $("pp-wb-msgs");
@@ -282,6 +287,7 @@
         ts: Date.now(),
         transcript: transcript.slice(),
         history: history.slice(),
+        chips: chipIDs.slice(),
       };
     }
     function sessionTitle() {
@@ -304,6 +310,9 @@
       transcript = (s.transcript || []).slice();
       history = (s.history || []).slice();
       contextItem = currentItem; // 上下文已在历史里，不重复注入
+      chipIDs = (s.chips || []).slice(); // 0.44.0 恢复上下文 chip
+      contextKey = "";                   // 下次发送重新注入 chip 上下文
+      renderCtxChips();
       msgs.textContent = "";
       for (const t of transcript) {
         if (t.role === "user") addBubble("user", t.text, true);
@@ -317,6 +326,9 @@
       history = [];
       transcript = [];
       contextItem = null;
+      chipIDs = [];
+      contextKey = "";
+      renderCtxChips();
       msgs.textContent = "";
       addNotice(zh ? "—— 新会话 ——" : "—— new session ——");
     }
@@ -467,6 +479,87 @@
       }
     }
 
+    /* ---------- 拖拽条目上下文 chip（0.44.0） ----------
+     * 主窗口条目列表拖拽 flavor 为 "zotero/item"（逗号分隔 itemID）。
+     * 口径：chipIDs 非空 → 以 chip 条目为上下文（多篇拼接）；
+     *       为空 → 维持「当前条目 + 模式」的既有注入行为。 */
+    function parseItemDrop(dt) {
+      if (!dt) return [];
+      let raw = "";
+      try { raw = dt.getData("zotero/item") || ""; } catch (e) { return []; }
+      if (!raw) return [];
+      return String(raw).split(/[,\s]+/)
+        .map((x) => parseInt(x, 10))
+        .filter((n) => isFinite(n) && n > 0);
+    }
+    function resolveChipItem(id) {
+      let it = null;
+      try { it = Zotero.Items.get(id); } catch (e) { return null; }
+      if (!it) return null;
+      try {
+        if (it.isRegularItem && it.isRegularItem()) return it;
+        if (it.parentItemID) {
+          const p = Zotero.Items.get(it.parentItemID);
+          if (p) return p;
+        }
+      } catch (e) { /* ignore */ }
+      return null;
+    }
+    function chipItems() {
+      const items = [];
+      const alive = [];
+      for (const id of chipIDs) {
+        const it = resolveChipItem(id);
+        if (it) { items.push(it); alive.push(it.id); }
+      }
+      if (alive.length !== chipIDs.length) chipIDs = alive;
+      return items;
+    }
+    function renderCtxChips() {
+      const box = $("pp-wb-ctx-chips");
+      if (!box) return;
+      box.textContent = "";
+      const items = chipItems();
+      box.style.display = items.length ? "flex" : "none";
+      for (const it of items) {
+        let title = "";
+        try { title = it.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
+        const chip = h("span", "pp-wb-ctx-chip");
+        chip.title = title;
+        chip.appendChild(h("span", "", title || ("#" + it.id)));
+        const x = h("button", "", "✕");
+        x.type = "button";
+        x.title = zh ? "移除该上下文文献" : "Remove from context";
+        x.addEventListener("click", () => {
+          chipIDs = chipIDs.filter((cid) => cid !== it.id);
+          contextKey = ""; // 组合变化 → 下次发送重建上下文
+          renderCtxChips();
+        });
+        chip.appendChild(x);
+        box.appendChild(chip);
+      }
+    }
+    function addChipIDs(ids) {
+      let dup = 0, overflow = 0, added = 0;
+      for (const id of ids || []) {
+        const it = resolveChipItem(id);
+        if (!it) continue;
+        if (chipIDs.indexOf(it.id) >= 0) { dup++; continue; }
+        if (chipIDs.length >= CHIP_MAX) { overflow++; continue; }
+        chipIDs.push(it.id);
+        added++;
+      }
+      if (added) {
+        contextKey = ""; // 组合变化 → 下次发送重建上下文
+        renderCtxChips();
+      }
+      if (overflow > 0) {
+        setStatus(zh ? "上下文文献最多 5 篇（多余的已忽略）" : "Context is limited to 5 papers (extras ignored)", "var(--pp-danger)");
+      } else if (added === 0 && dup > 0) {
+        setStatus(zh ? "该文献已在上下文中" : "Already in context");
+      }
+    }
+
     /* ---------- 模式 ---------- */
     function setMode(m) {
       if (m === mode) return;
@@ -505,19 +598,49 @@
       return ctx;
     }
 
+    /** 多篇 chip 上下文：逐篇复用 buildContext（摘要/全文按模式），单篇截断防超长 */
+    async function buildChipsContext(items) {
+      const parts = [];
+      for (let i = 0; i < items.length; i++) {
+        let ctx = await buildContext(items[i]);
+        if (ctx.length > CHIP_TEXT_MAX) {
+          ctx = ctx.slice(0, CHIP_TEXT_MAX) + (zh ? "\n[……单篇已截断……]" : "\n[...truncated...]");
+        }
+        parts.push("【文献 " + (i + 1) + "】\n" + ctx);
+      }
+      return parts.join("\n\n----\n\n");
+    }
+
     async function buildMessages(question) {
       const messages = [];
       let sys = getPref("extensions.zotero.paperpilot.aiSystemPrompt", "") || "";
       sys += modeSystemSuffix(mode, zh);
       if (sys.trim()) messages.push({ role: "system", content: sys });
-      if (mode !== "free" && currentItem && contextItem !== currentItem) {
-        contextItem = currentItem;
-        history = [];
-        const ctx = await buildContext(currentItem);
-        messages.push({ role: "user", content: zh
-          ? "以下是背景材料，之后的提问都围绕它：\n\n" + ctx
-          : "Background material for the following questions:\n\n" + ctx });
-        messages.push({ role: "assistant", content: zh ? "好的，已了解该文献。" : "Got it." });
+      // 0.44.0：chip 上下文优先于「当前条目」——组合变化时重建注入
+      const chips = chipItems();
+      if (chips.length) {
+        const key = chips.map((i) => i.id).join(",");
+        if (key !== contextKey) {
+          contextKey = key;
+          contextItem = null;
+          history = [];
+          const ctx = await buildChipsContext(chips);
+          messages.push({ role: "user", content: zh
+            ? "以下是 " + chips.length + " 篇文献的背景材料（每篇以「文献 n」标记），之后的提问都围绕它们：\n\n" + ctx
+            : "Background material from " + chips.length + " papers (marked 文献 n):\n\n" + ctx });
+          messages.push({ role: "assistant", content: zh ? "好的，已了解这些文献。" : "Got it." });
+        }
+      } else {
+        if (contextKey) { contextKey = ""; history = []; } // chip 全部移除 → 回到条目上下文口径
+        if (mode !== "free" && currentItem && contextItem !== currentItem) {
+          contextItem = currentItem;
+          history = [];
+          const ctx = await buildContext(currentItem);
+          messages.push({ role: "user", content: zh
+            ? "以下是背景材料，之后的提问都围绕它：\n\n" + ctx
+            : "Background material for the following questions:\n\n" + ctx });
+          messages.push({ role: "assistant", content: zh ? "好的，已了解该文献。" : "Got it." });
+        }
       }
       for (const m of history) messages.push({ role: m.role, content: m.content });
       messages.push({ role: "user", content: question });
@@ -684,11 +807,19 @@
       if (openPop && !openPop.contains(ev.target)) closePop();
     });
 
-    /* ---------- Prompt 技能库 ---------- */
+    /* ---------- Prompt 技能库（0.43.0 起与悬浮窗共用 command-tags 存储） ---------- */
+    function listPromptTags() {
+      // 优先 CommandTags（可编辑标签，同一 pref 存储）；不可用时回退 Prompts 内置库
+      try {
+        if (PP.commandTags && PP.commandTags.all) {
+          return PP.commandTags.all().map((t) => ({ name: t.label, text: t.prompt }));
+        }
+      } catch (e) { /* ignore */ }
+      try { return PP.prompts.all(); } catch (e) { return []; }
+    }
     $("pp-wb-chip-prompts").addEventListener("click", (ev) => {
       ev.stopPropagation();
-      let prompts = [];
-      try { prompts = PP.prompts.all(); } catch (e) { /* ignore */ }
+      const prompts = listPromptTags();
       showPop(ev.target, prompts.map((p) => ({
         label: p.name,
         run: () => {
@@ -774,6 +905,7 @@
       history = [];
       transcript = [];
       contextItem = null;
+      contextKey = ""; // chip 保留，但下次发送重新注入上下文
       session = null;
       msgs.textContent = "";
       setStatus("");
@@ -794,6 +926,27 @@
         send();
       }
     });
+    // 0.44.0 输入区接受主窗口条目拖入 → 生成上下文 chip
+    try {
+      const inputbar = document.querySelector(".pp-wb-inputbar");
+      const hasItemFlavor = (dt) => {
+        try {
+          const types = dt && dt.types ? Array.from(dt.types) : [];
+          return types.indexOf("zotero/item") >= 0;
+        } catch (e) { return false; }
+      };
+      inputbar.addEventListener("dragover", (ev) => {
+        if (!hasItemFlavor(ev.dataTransfer)) return;
+        ev.preventDefault();
+        try { ev.dataTransfer.dropEffect = "copy"; } catch (e) { /* ignore */ }
+      });
+      inputbar.addEventListener("drop", (ev) => {
+        const ids = parseItemDrop(ev.dataTransfer);
+        if (!ids.length) return;
+        ev.preventDefault();
+        addChipIDs(ids);
+      });
+    } catch (e) { /* 拖拽不可用时不影响输入 */ }
     document.addEventListener("keydown", (ev) => {
       if (ev.key === "Escape" && busy && currentHandle) {
         try { currentHandle.abort(); } catch (e) { /* ignore */ }
@@ -803,6 +956,40 @@
         newSession();
       }
     });
+
+    /* ---------- 「/」命令面板（输入框以 / 开头时弹出，↑↓/Enter/Esc） ---------- */
+    function buildSlashCommands() {
+      const cmds = [
+        { id: "mode-paper", title: zh ? "切换到 本文对话 模式" : "Mode: this paper", hint: "mode", run: () => setMode("paper") },
+        { id: "mode-deep", title: zh ? "切换到 深度研读 模式" : "Mode: deep reading", hint: "mode", run: () => setMode("deep") },
+        { id: "mode-free", title: zh ? "切换到 全库对话 模式" : "Mode: free chat", hint: "mode", run: () => setMode("free") },
+        { id: "new", title: zh ? "新建会话" : "New session", hint: "session", run: () => newSession() },
+        { id: "save", title: zh ? "存为笔记" : "Save as note", hint: "note", run: () => saveNote() },
+        { id: "export", title: zh ? "导出对话为 .md" : "Export chat as .md", hint: "export", run: () => exportMd() },
+        { id: "clear", title: zh ? "清空对话" : "Clear chat", hint: "chat", run: () => clearChat() },
+        { id: "pick", title: zh ? "选择条目…" : "Pick item…", hint: "item", run: () => pickItem() },
+      ];
+      // 插入 Prompt 标签（command-tags 同一存储，动态取）
+      for (const p of listPromptTags()) {
+        cmds.push({
+          id: "tag-" + cmds.length,
+          title: (zh ? "插入 Prompt 标签：" : "Insert prompt tag: ") + p.name,
+          hint: String(p.text || "").replace(/\s+/g, " ").slice(0, 36),
+          run: ({ input }) => { input.value = p.text; },
+        });
+      }
+      return cmds;
+    }
+    try {
+      if (PP.slashCommands && PP.slashCommands.attach) {
+        PP.slashCommands.attach({
+          doc: document,
+          input: $("pp-wb-input"),
+          anchor: document.querySelector(".pp-wb-inputbar"),
+          getCommands: buildSlashCommands,
+        });
+      }
+    } catch (e) { /* 面板不可用时静默降级（不影响输入） */ }
 
     /* ---------- 启动 ---------- */
     followTimer = setInterval(followSelection, 1500);

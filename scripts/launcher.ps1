@@ -38,8 +38,23 @@ $Port        = 8000
 $AdminPage   = 'http://127.0.0.1:' + $Port + '/admin'
 $HealthUrl   = 'http://127.0.0.1:' + $Port + '/api/health'
 
-# ---------------- node 路径：自动扫描最新版本 ----------------
+# ---------------- 公网通道（Cloudflare 隧道，项目内自包含 2026-10-16） ----------------
+# 依赖全部在 runtime\cloudflared\（cloudflared.exe + token.txt + 运行器），
+# 随移动硬盘走：换电脑 / 换盘符均可直接使用（勿改成绝对路径）。
+$CfDir             = Join-Path $ProjectRoot 'runtime\cloudflared'
+$TunnelBat         = Join-Path $CfDir 'cloudflared-run-paperpilot.bat'
+$TunnelLog         = Join-Path $CfDir 'logs\cf-run-paperpilot.log'
+$TunnelTokenFile   = Join-Path $CfDir 'token.txt'
+$TunnelMetricsPort = 20250
+$TunnelReadyUrl    = 'http://127.0.0.1:' + $TunnelMetricsPort + '/ready'
+$SiteUrl           = 'https://pp.xinglintools.top'
+
+# ---------------- node 路径：项目自带运行时优先，历史兜底扫描 ----------------
 function Resolve-NodeExe {
+  # 1) 项目自带运行时（移动硬盘换机首选）
+  $local = Join-Path $ProjectRoot 'runtime\node\node.exe'
+  if (Test-Path $local) { return $local }
+  # 2) 历史兜底：扫描 managed 目录取最新版本
   $base = 'C:\Users\Administrator\.workbuddy\binaries\node\versions'
   try {
     $dirs = Get-ChildItem $base -Directory -ErrorAction Stop | Where-Object {
@@ -115,6 +130,46 @@ function Get-ServerState {
   }
   if ((Get-ServerProcess).Count -gt 0) { return @{ State = 'starting'; PortPid = 0 } }
   return @{ State = 'stopped'; PortPid = 0 }
+}
+
+# ---------------- 公网通道：进程/健康检测与启停 ----------------
+function Get-TunnelProcess {
+  # 只认命令行里带本隧道 metrics 端口（20250）的 cloudflared，绝不误伤同机其他隧道。
+  # 注意：return ,@(...) 不能省 —— PowerShell 会“展平”单元素数组，裸对象 .Count 为空。
+  try {
+    $list = Get-CimInstance Win32_Process -Filter "Name='cloudflared.exe'" -ErrorAction Stop
+    return ,@($list | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf([string]$TunnelMetricsPort) -ge 0 })
+  } catch { return ,@() }
+}
+
+function Test-TunnelReady {
+  # 就绪判据 = /ready 的 readyConnections > 0（端口通 ≠ 健康）。
+  # 1 秒短超时 + 调用方隔拍：隧道「进程活着但连不上边缘」时 /ready 会阻塞良久
+  # （2026-10-08 实踩：3s 拍拖住 UI 线程 → 窗口完全无法点击）。
+  try {
+    $r = Invoke-RestMethod -Uri $TunnelReadyUrl -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop
+    return ([int]$r.readyConnections -gt 0)
+  } catch { return $false }
+}
+
+function Start-Tunnel {
+  if ((Get-TunnelProcess).Count -gt 0) { return 'already' }
+  if (-not (Test-Path $TunnelBat)) { return 'missing' }
+  if (-not (Test-Path $TunnelTokenFile)) { return 'no-token' }
+  try {
+    Start-HiddenProcess 'cmd.exe' ('/c "' + $TunnelBat + '"') $CfDir
+    return 'started'
+  } catch {
+    return 'error:' + $_.Exception.Message
+  }
+}
+
+function Stop-Tunnel {
+  $killed = 0
+  foreach ($p in (Get-TunnelProcess)) {
+    try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $killed++ } catch {}
+  }
+  return $killed
 }
 
 # ---------------- 后台启停 ----------------
@@ -2404,27 +2459,31 @@ function Show-MembershipManager {
   $dlg.Dispose()
 }
 
-# ---------------- 开机自启（HKCU Run 键） ----------------
+# ---------------- 开机自启（HKCU Run 键：账号后台 + 公网通道） ----------------
 $script:RunKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $script:RunKeyName = 'PaperPilotAccountServer'
+$script:RunKeyNameTunnel = 'PaperPilotTunnel'
 function Get-StartupEnabled {
   try {
     $p = Get-ItemProperty -Path $script:RunKeyPath -ErrorAction Stop
-    return [bool]($p.$script:RunKeyName)
+    return ([bool]($p.$script:RunKeyName) -and [bool]($p.$script:RunKeyNameTunnel))
   } catch { return $false }
 }
 function Set-Startup([bool]$enable) {
   if ($enable) {
     Set-ItemProperty -Path $script:RunKeyPath -Name $script:RunKeyName -Value (Join-Path $PSScriptRoot 'start-server-hidden.vbs')
+    # 公网通道自启：项目内 vbs（随移动硬盘走；换电脑后点两次本按钮即可刷新路径）
+    Set-ItemProperty -Path $script:RunKeyPath -Name $script:RunKeyNameTunnel -Value (Join-Path $ProjectRoot 'runtime\cloudflared\cloudflared-run-paperpilot-hidden.vbs')
   } else {
     Remove-ItemProperty -Path $script:RunKeyPath -Name $script:RunKeyName -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $script:RunKeyPath -Name $script:RunKeyNameTunnel -ErrorAction SilentlyContinue
   }
 }
 
 # ---------------- 主界面 ----------------
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'PaperPilot 后台 · 控制台'
-$form.ClientSize = New-Object System.Drawing.Size(472, 682)
+$form.ClientSize = New-Object System.Drawing.Size(472, 672)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedSingle'
 $form.MaximizeBox = $false
@@ -2435,6 +2494,8 @@ $form.Icon = $script:appIcon
 $script:tickCount = 0
 $script:pendingSince = $null
 $script:timeoutNotified = $false
+$script:tunTick = 0
+$script:tunReady = $false
 
 $lblTitle = New-Object System.Windows.Forms.Label
 $lblTitle.Text = 'PaperPilot 账号后台'
@@ -2443,7 +2504,7 @@ $lblTitle.TextAlign = 'MiddleCenter'
 $lblTitle.SetBounds(0, 10, 472, 30)
 
 $lblSub = New-Object System.Windows.Forms.Label
-$lblSub.Text = '账号 · 官方模型网关 · AI 模型通道 —— 一站式控制台'
+$lblSub.Text = '账号 · 公网通道 · 官方模型网关 —— 一站式控制台'
 $lblSub.ForeColor = [System.Drawing.Color]::DimGray
 $lblSub.TextAlign = 'MiddleCenter'
 $lblSub.SetBounds(0, 40, 472, 18)
@@ -2458,6 +2519,17 @@ $lampSvc.SetBounds(16, 60, 22, 24)
 $lblSvc = New-Object System.Windows.Forms.Label
 $lblSvc.Text = '正在检测后台状态…'
 $lblSvc.SetBounds(42, 63, 416, 20)
+
+$lampTun = New-Object System.Windows.Forms.Label
+$lampTun.Text = '●'
+$lampTun.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 12)
+$lampTun.ForeColor = [System.Drawing.Color]::Gray
+$lampTun.TextAlign = 'MiddleCenter'
+$lampTun.SetBounds(16, 84, 22, 24)
+
+$lblTun = New-Object System.Windows.Forms.Label
+$lblTun.Text = '正在检测公网通道…'
+$lblTun.SetBounds(42, 87, 416, 20)
 
 function New-Group([string]$text, [int]$y, [int]$h) {
   $g = New-Object System.Windows.Forms.GroupBox
@@ -2477,10 +2549,10 @@ function New-Btn($parent, [string]$text, [int]$x, [int]$y, [int]$w, $handler) {
   return $b
 }
 
-foreach ($c in @($lblTitle, $lblSub, $lampSvc, $lblSvc)) { [void]$form.Controls.Add($c) }
+foreach ($c in @($lblTitle, $lblSub, $lampSvc, $lblSvc, $lampTun, $lblTun)) { [void]$form.Controls.Add($c) }
 
 # 分组 1：账号后台控制
-$grpCtl = New-Group '账号后台控制（端口 8000，插件默认对接地址）' 96 92
+$grpCtl = New-Group '账号后台控制（端口 8000，插件默认对接地址）' 110 92
 $btnStart = New-Btn $grpCtl '启动后台' 10 26 98 {
   $r = Start-Server
   Show-StartResult $r
@@ -2508,8 +2580,37 @@ $lblCtlTip.ForeColor = [System.Drawing.Color]::DimGray
 $lblCtlTip.SetBounds(10, 64, 424, 20)
 [void]$grpCtl.Controls.Add($lblCtlTip)
 
-# 分组 2：AI 模型通道
-$grpLlm = New-Group 'AI 模型通道（官方网关上游）' 196 110
+# 分组 2：公网通道（Cloudflare 隧道，项目内自包含 —— runtime\cloudflared）
+$grpTun = New-Group '公网通道（pp.xinglintools.top → 本机 8000）' 210 62
+$btnTunStart = New-Btn $grpTun '启动' 10 24 80 {
+  $r = Start-Tunnel
+  if ($r -eq 'started') { $lblMsg.Text = '已发起公网通道启动，约 10~30 秒就绪（状态灯变绿前请勿重复点击）' }
+  elseif ($r -eq 'already') { $lblMsg.Text = '公网通道已在运行' }
+  elseif ($r -eq 'no-token') { [System.Windows.Forms.MessageBox]::Show('缺少令牌文件：runtime\cloudflared\token.txt' + "`n" + '可运行 scripts\tunnel\refresh-token.ps1 从 _brain 重新提取。', '无法启动', 'OK', 'Warning') | Out-Null }
+  elseif ($r -eq 'missing') { [System.Windows.Forms.MessageBox]::Show('缺少运行器：runtime\cloudflared\cloudflared-run-paperpilot.bat' + "`n" + '（cloudflared.exe 是否随盘携带？）', '无法启动', 'OK', 'Warning') | Out-Null }
+  else { $lblMsg.Text = '启动失败：' + $r }
+  Update-All
+}
+$btnTunStop = New-Btn $grpTun '停止' 98 24 80 {
+  $n = Stop-Tunnel
+  if ($n -gt 0) { $lblMsg.Text = ('已停止公网通道（结束 ' + $n + ' 个进程）') } else { $lblMsg.Text = '公网通道本来未在运行' }
+  Update-All
+}
+$btnTunTest = New-Btn $grpTun '测试访问' 186 24 96 {
+  try {
+    $r = Invoke-RestMethod -Uri ($SiteUrl + '/api/health') -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop
+    [System.Windows.Forms.MessageBox]::Show(('公网访问正常' + "`n" + $SiteUrl + "`n" + '服务：' + [string]$r.service + ' v' + [string]$r.version), '测试通过', 'OK', 'Information') | Out-Null
+  } catch {
+    [System.Windows.Forms.MessageBox]::Show('公网访问失败：检查通道是否启动（状态灯）+ 账号后台是否运行（8000）', '测试失败', 'OK', 'Warning') | Out-Null
+  }
+}
+$btnTunLog = New-Btn $grpTun '通道日志' 290 24 142 {
+  if (Test-Path $TunnelLog) { Invoke-Item $TunnelLog }
+  else { [System.Windows.Forms.MessageBox]::Show('暂无通道日志（隧道启动后才会产生）', '提示') | Out-Null }
+}
+
+# 分组 3：AI 模型通道
+$grpLlm = New-Group 'AI 模型通道（官方网关上游）' 280 110
 $lblLlm = New-Object System.Windows.Forms.Label
 $lblLlm.Text = '检测中…'
 $lblLlm.Location = New-Object System.Drawing.Point(10, 22)
@@ -2521,19 +2622,19 @@ $btnChPage = New-Btn $grpLlm '打开浏览器管理页' 226 64 208 {
   Open-Url $AdminPage
 }
 
-# 分组 3：账号管理（0.23.0：新增「会员管理」入口 —— 订单核销 / 激活码 / 套餐与收款）
-$grpUser = New-Group '账号管理' 314 96
+# 分组 4：账号管理（0.23.0：新增「会员管理」入口 —— 订单核销 / 激活码 / 套餐与收款）
+$grpUser = New-Group '账号管理' 398 96
 $btnReg = New-Btn $grpUser '注册账号' 10 24 208 { Show-RegisterUser }
 $btnUsers = New-Btn $grpUser '用户列表（会员/密码/删除）' 226 24 208 { Show-UserList }
 $btnMember = New-Btn $grpUser '会员管理（订单核销 / 激活码 / 价格 / 收款 / 审计）' 10 58 424 { Show-MembershipManager }
 
-# 分组 4：维护
-$grpOps = New-Group '维护' 418 94
+# 分组 5：维护
+$grpOps = New-Group '维护' 502 94
 $btnStartup = New-Btn $grpOps '开机自启：…' 10 24 118 {
   $new = -not (Get-StartupEnabled)
   Set-Startup $new
   $btnStartup.Text = '开机自启：' + $(if ($new) { '开' } else { '关' })
-  if ($new) { $state = '已开启：重启电脑后账号后台将自动启动' } else { $state = '已关闭' }
+  if ($new) { $state = '已开启：重启电脑后账号后台与公网通道将自动启动' } else { $state = '已关闭' }
   [System.Windows.Forms.MessageBox]::Show($state, '开机自启', 'OK', 'Information') | Out-Null
 }
 $btnData = New-Btn $grpOps '数据目录' 142 24 98 {
@@ -2550,23 +2651,23 @@ $btnXpi = New-Btn $grpOps '安装包' 354 24 80 {
   } else { $lblMsg.Text = 'dist 目录下暂无 .xpi 安装包' }
 }
 $lblOpsTip = New-Object System.Windows.Forms.Label
-$lblOpsTip.Text = "登录用户经 /v1 网关调用活动通道；未登录插件仍可用自己的通道。`n关闭窗口=最小化到托盘；「退出程序」才会结束控制台（不影响已启动的服务）"
+$lblOpsTip.Text = "公网通道与账号后台的依赖全部在 runtime\ 目录（随移动硬盘走，换电脑无需安装）。`n关闭窗口=最小化到托盘；「退出程序」才会结束控制台（不影响已启动的服务与通道）"
 $lblOpsTip.Location = New-Object System.Drawing.Point(10, 62)
 $lblOpsTip.Size = New-Object System.Drawing.Size(424, 28)
 $lblOpsTip.ForeColor = [System.Drawing.Color]::DimGray
 [void]$grpOps.Controls.Add($lblOpsTip)
 
 # 底部操作
-$btnTray = New-Btn $form '最小化到托盘' 14 618 150 { Hide-ToTray }
+$btnTray = New-Btn $form '最小化到托盘' 14 604 150 { Hide-ToTray }
 $btnTray.Height = 32
-$btnExit = New-Btn $form '退出程序' 174 618 110 { Exit-App }
+$btnExit = New-Btn $form '退出程序' 174 604 110 { Exit-App }
 $btnExit.Height = 32
 
 $lblMsg = New-Object System.Windows.Forms.Label
 $lblMsg.Text = ''
 $lblMsg.ForeColor = [System.Drawing.Color]::DimGray
 $lblMsg.TextAlign = 'MiddleLeft'
-$lblMsg.SetBounds(16, 656, 440, 20)
+$lblMsg.SetBounds(16, 642, 440, 20)
 [void]$form.Controls.Add($lblMsg)
 
 # ---------------- 状态刷新 ----------------
@@ -2641,9 +2742,28 @@ function Update-ChannelLine {
   }
 }
 
+function Update-TunnelStatus {
+  # 隔拍探测（奇拍刷新、偶拍用上次结果兜底）：隧道「进程活着但连不上边缘」时
+  # /ready 响应慢，每拍阻塞会拖住整个 UI（2026-10-08 同类项目实踩）。
+  $script:tunTick = [int]$script:tunTick + 1
+  if (($script:tunTick % 2) -eq 1) { $script:tunReady = Test-TunnelReady }
+  $tunProc = Get-TunnelProcess
+  if ($script:tunReady) {
+    $lampTun.ForeColor = $green
+    $lblTun.Text = '公网通道：运行中（已连接 pp.xinglintools.top）'
+  } elseif ($tunProc.Count -gt 0) {
+    $lampTun.ForeColor = $orange
+    $lblTun.Text = '公网通道：进程在，尚未连接边缘（稍候自动刷新；久不绿可重启通道）'
+  } else {
+    $lampTun.ForeColor = $red
+    $lblTun.Text = '公网通道：未运行（插件将无法连接账号服务器）'
+  }
+}
+
 function Update-All {
   $script:tickCount++
   Update-ServiceStatus
+  Update-TunnelStatus
   if ($script:tickCount % 5 -eq 1) { Update-ChannelLine }
 }
 

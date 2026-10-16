@@ -1,7 +1,7 @@
 /* PaperPilot 主入口：装配各模块
  * 由 bootstrap.js 通过 Services.scriptloader 加载，共享 bootstrap 作用域
  */
-/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, _ppDiag */
+/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, _ppDiag */
 
 Zotero.PaperPilot = {
   id: null,
@@ -61,8 +61,14 @@ Zotero.PaperPilot = {
       // 0.28.0 多引擎翻译：注册表 + 统一调用层（独立于 AI 大模型）
       // 须排在 client.js 之后（llm 引擎要调 AIClient）、chat.js 与各 features 之前
       "ai/translate.js",
+      // 0.42.0 标题/摘要译文写回（extra 行级 upsert 纯函数；须在 chat.js 之前，chat 翻译任务消费它）
+      "ai/translate-writeback.js",
       "ai/chat.js",
       "ai/prompts.js",
+      // 0.42.0 #命令标签（Prompt 标签升级版：可编辑/trigger 正则/导入导出）与 / 命令面板。
+      // 须在 prompts.js 之后（内置默认标签来源）、chat-float.js 与 workbench 之前
+      "ai/command-tags.js",
+      "ai/slash-commands.js",
       "ai/auto-tag.js",
       "ai/matrix.js",
       "ai/semantic-scholar.js",
@@ -97,11 +103,15 @@ Zotero.PaperPilot = {
       // 0.27.0 Sci-Hub / Sci-Net 补全文（Unpaywall 未命中时的补充渠道；须排在 oa-fetch 之前）
       "features/scihub.js",
       "features/oa-fetch.js",
+      // 0.42.0 原生 Find Full Text 集成：把 Unpaywall/Sci-Hub 链注册为 Zotero 内置 findPDFs resolvers
+      "features/fulltext-resolver.js",
       "features/anki-export.js",
       "features/lib-graph.js",
       // 0.22.0 库内问答 / 标签治理 / 附件体检
       "features/lib-search.js",
       "features/tag-curator.js",
+      // 0.42.0 翻译多引擎同屏对比小窗（翻译面板「对比引擎」按钮调起）
+      "features/translate-compare.js",
       "features/attach-doctor.js",
       // 0.23.0 自动化引擎 + 入库自动精读（阶段 2）
       "features/automation.js",
@@ -142,12 +152,23 @@ Zotero.PaperPilot = {
       "features/pdf-export.js",
       // 0.37.1 更新提示：Zotero 的插件更新是静默的，这里补一次可见反馈
       "features/update-notice.js",
+      // 0.42.0 星标评级（★×n 单标签；评级列与右键菜单共用）
+      "features/rating.js",
       "columns/rank-column.js",
       "columns/citation-column.js",
+      // 0.42.0 三个新列：标题译文 / 阅读进度条 / 星标评级（rating.js 须在 rating-column 之前）
+      "columns/title-translation-column.js",
+      "columns/progress-column.js",
+      "columns/rating-column.js",
+      // 0.42.0 快捷键中央注册表（pref 驱动可自定义；须在 chat-float 之前加载并 init）
+      "features/hotkeys.js",
       "panels/ai-chat-pane.js",
       "panels/glance-pane.js",
       // 0.30.0 阅读器右侧栏 · 翻译面板（划词即译 / 换引擎 / 全文对照 一处搞定）
       "panels/translate-pane.js",
+      // 0.42.0 阅读器右侧栏 · 参考文献面板（自动解析当前 PDF 参考文献，+ 一键入库双向关联；
+      // 消费 ref-format/ref-sources/ref-import，故排在 panels 段最后）
+      "panels/ref-pane.js",
       // 0.31.0 AI 问答悬浮窗（可拖动/停靠/分屏；唤起：快捷键/阅读器按钮/右键/划词）
       "panels/chat-float.js",
       "menus.js",
@@ -208,6 +229,8 @@ Zotero.PaperPilot = {
     this.cnTranslators = CNTranslators;
     this.cnFetch = CNFetch;
     this.cnVerify = CNVerify;
+    // 0.43.0 知网个人账号登录（静默 SM2 登录 + 滑块回退官方页自动填充；排障经此）
+    this.cnAuth = CNAuth;
     this.readingState = ReadingState;
     this.noteTemplates = NoteTemplates;
     this.attachManager = AttachManager;
@@ -257,6 +280,18 @@ Zotero.PaperPilot = {
     this.pdfDual = PdfDual;
     // 0.21.0 多篇 PDF 并排对比（菜单/功能中心经此调起；窗口脚本经 window.arguments 拿引用）
     this.pdfCompare = PdfCompare;
+    // 0.42.0 新装配：#命令标签 / 命令面板 / 快捷键注册表 / 参考文献面板 / 新列 / resolver 等
+    this.commandTags = CommandTags;
+    this.slashCommands = SlashCommands;
+    this.hotkeys = Hotkeys;
+    this.refPane = RefPane;
+    this.translateX = TranslateX;
+    this.rating = Rating;
+    this.titleTranslationColumn = TitleTranslationColumn;
+    this.progressColumn = ProgressColumn;
+    this.ratingColumn = RatingColumn;
+    this.fulltextResolver = FullTextResolver;
+    this.translateCompare = TranslateCompare;
 
     // 一次性迁移：aiTemperature 旧版本默认是浮点 0.3，被 Mozilla int pref 截断成 0；
     // 0.4.0 起改存字符串。若用户 pref 仍是 int 类型则清掉，让新的字符串默认值生效
@@ -348,9 +383,13 @@ Zotero.PaperPilot = {
           rootURI + "chrome/content/prefs-fold.js",
           rootURI + "chrome/content/prefs-pane.js",
           rootURI + "chrome/content/prefs-account.js",
+          // 0.43.1 知网账号卡片（登录类入口收敛到设置面板）
+          rootURI + "chrome/content/prefs-cnki.js",
           rootURI + "chrome/content/prefs-translate.js",
           rootURI + "chrome/content/prefs-menu.js",
           rootURI + "chrome/content/prefs-theme.js",
+          // 0.42.0 快捷键卡片（录制/改键/开关）+ 面板锚点目录
+          rootURI + "chrome/content/prefs-hotkeys.js",
         ],
         stylesheets: [
           rootURI + "chrome/content/prefs.css",
@@ -415,6 +454,40 @@ Zotero.PaperPilot = {
       await this._diag("translate pane FAILED: " + (e && (e.stack || e.message) || e));
     }
 
+    // 参考文献面板（0.42.0）：右侧栏自动解析当前文献的参考文献，+ 一键入库双向关联
+    try {
+      RefPane.register(id);
+      await this._diag("refs pane registered");
+    } catch (e) {
+      await this._diag("refs pane FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
+    // 0.42.0 三个新列：标题译文 / 阅读进度 / 星标评级（各自带 pref 开关，结构与 citation 列一致）
+    if (Prefs.get("titleTranslationColumnEnabled", true)) {
+      try {
+        await TitleTranslationColumn.register(id);
+        await this._diag("title translation column registered");
+      } catch (e) {
+        await this._diag("title translation column FAILED: " + (e && (e.stack || e.message) || e));
+      }
+    }
+    if (Prefs.get("progressColumnEnabled", true)) {
+      try {
+        await ProgressColumn.register(id);
+        await this._diag("progress column registered");
+      } catch (e) {
+        await this._diag("progress column FAILED: " + (e && (e.stack || e.message) || e));
+      }
+    }
+    if (Prefs.get("ratingColumnEnabled", true)) {
+      try {
+        await RatingColumn.register(id);
+        await this._diag("rating column registered");
+      } catch (e) {
+        await this._diag("rating column FAILED: " + (e && (e.stack || e.message) || e));
+      }
+    }
+
     // 阅读状态自动化（0.11.0）：新条目打「未读」+ 打开 PDF「未读→在读」
     try {
       ReadingState.register();
@@ -474,6 +547,15 @@ Zotero.PaperPilot = {
       await this._diag("reader popup FAILED: " + (e && (e.stack || e.message) || e));
     }
 
+    // 0.42.0 快捷键中央注册表：必须在 ChatFloat.register 之前 init
+    // （悬浮窗的 Ctrl+Shift+K / 阅读器 Ctrl+Enter 已改经注册表生效）
+    try {
+      Hotkeys.init();
+      await this._diag("hotkeys registry ready");
+    } catch (e) {
+      await this._diag("hotkeys FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
     // 0.31.0 AI 问答悬浮窗：主窗口快捷键 + 阅读器工具栏按钮/Ctrl+Enter + 分屏窗口
     try {
       ChatFloat.register(id);
@@ -498,6 +580,12 @@ Zotero.PaperPilot = {
     } catch (e) {
       await this._diag("automation FAILED: " + (e && (e.stack || e.message) || e));
     }
+    // 0.42.0 自动化规则快捷键：规则里配了 hotkey 的注册进中央快捷键表
+    try {
+      this._registerAutomationHotkeys();
+    } catch (e) {
+      await this._diag("automation hotkeys FAILED: " + (e && (e.stack || e.message) || e));
+    }
     try {
       AutoRead.register();
       await this._diag("auto read notifier registered");
@@ -520,6 +608,22 @@ Zotero.PaperPilot = {
       await this._diag("mcp endpoint register=" + ok + " enabled=" + MCP.enabled());
     } catch (e) {
       await this._diag("mcp FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
+    // 0.43.0 原生 Find Full Text 集成：Unpaywall/Sci-Hub 链注册进 Zotero 内置 resolvers
+    // （自带 fulltextResolverEnabled 总开关，精确增删、不碰用户其他 resolver 配置）
+    // 先做一次性镜像链迁移：默认镜像 3 → 7（用户自定义过的不动），再按新值注册
+    try {
+      const upgraded = SciHub.upgradeMirrorsPref();
+      if (upgraded) await this._diag("scihub mirrors upgraded to 7-mirror chain");
+    } catch (e) {
+      await this._diag("scihub mirrors upgrade FAILED: " + (e && (e.stack || e.message) || e));
+    }
+    try {
+      FullTextResolver.register();
+      await this._diag("fulltext resolvers registered");
+    } catch (e) {
+      await this._diag("fulltext resolvers FAILED: " + (e && (e.stack || e.message) || e));
     }
 
     // 0.24.0 文献发现：每日刷新检查（开关默认关，未开启时定时器空转不做网络请求）
@@ -563,6 +667,19 @@ Zotero.PaperPilot = {
         await this._diag("compare self-test scheduled");
       } catch (e) {
         await this._diag("compare self-test FAILED: " + (e && (e.stack || e.message) || e));
+      }
+    }
+
+    // 0.43.1：知网链路启动自检（pref cnkiBootSelfTest，默认关）——权限三态/登录/搜索探测
+    // 全写 boot 日志。发版前的真机功能级验证不依赖 GUI：装包设 pref → 重启 → 读日志。
+    if (Prefs.get("cnkiBootSelfTest", false)) {
+      try {
+        setTimeout(() => {
+          CNAuth.bootSelfTest().catch((e) => this._diag("cnki selftest rejected: " + (e && e.message)));
+        }, 25000); // 25s 后跑：不与启动期网络任务抢带宽
+        await this._diag("cnki selftest scheduled");
+      } catch (e) {
+        await this._diag("cnki selftest schedule FAILED: " + (e && (e.stack || e.message) || e));
       }
     }
 
@@ -669,7 +786,7 @@ Zotero.PaperPilot = {
     // （FF140 实证：addObserver(..., weak=true) 直接抛错拖死 startup）。
     // 改用 Zotero.Prefs.registerObserver——Zotero 自己在主作用域持有单个
     // nsIObserver 再分发，按「完整 pref key」注册（无前缀监听，逐 key 注册）。
-    this._prefObserverSymbols = ["rankDataPath", "rankColumnEnabled", "easyScholarEnabled", "easyScholarKey", "citationColumnEnabled", "rankDataSets", "rankMaxBadges", "rankBadgeStyle", "uiTheme", "uiThemeCustom", "uiWallpaper", "uiWallpaperPath", "uiWallpaperUrl", "uiWallpaperOpacity", "pdfTheme", "pdfThemeCustomColor", "pdfThemeCustomOpacity", "themeButtonEnabled", "quickBarButtonEnabled"].map((key) =>
+    this._prefObserverSymbols = ["rankDataPath", "rankColumnEnabled", "easyScholarEnabled", "easyScholarKey", "citationColumnEnabled", "rankDataSets", "rankMaxBadges", "rankBadgeStyle", "uiTheme", "uiThemeCustom", "uiWallpaper", "uiWallpaperPath", "uiWallpaperUrl", "uiWallpaperOpacity", "pdfTheme", "pdfThemeCustomColor", "pdfThemeCustomOpacity", "themeButtonEnabled", "themeMainButtonEnabled", "quickBarButtonEnabled", "titleTranslationColumnEnabled", "progressColumnEnabled", "ratingColumnEnabled", "fulltextResolverEnabled", "scihubEnabled", "scinetEnabled", "scihubMirrors", "scinetUrl", "unpaywallEmail", "automationRules"].map((key) =>
       Zotero.Prefs.registerObserver(Prefs.PREFIX + key, () => {
         this._onPrefChanged(key).catch((e) => {
           try { Zotero.logError(e); } catch (_) { /* ignore */ }
@@ -718,12 +835,60 @@ Zotero.PaperPilot = {
       // PDF 阅读主题即时生效：重刷全部已打开 reader（不用重开文档）
       try { PdfTheme.refresh(); } catch (e) { /* ignore */ }
       try { ThemeToggle.refresh(); } catch (e) { /* ignore */ }
-    } else if (key === "themeButtonEnabled") {
-      // 两处按钮的总开关
+    } else if (key === "themeButtonEnabled" || key === "themeMainButtonEnabled") {
+      // 按钮总开关 / 主窗口按钮独立门控（0.42.0）
       try { ThemeToggle.syncEnabled(); } catch (e) { /* ignore */ }
     } else if (key === "quickBarButtonEnabled") {
       // 顶部快捷按钮开关（直达项变化无需观察：菜单在 popupshowing 时重填）
       try { ToolbarQuick.syncEnabled(); } catch (e) { /* ignore */ }
+    } else if (key === "titleTranslationColumnEnabled") {
+      const enabled = Prefs.get("titleTranslationColumnEnabled", true);
+      if (enabled && !TitleTranslationColumn._registered) {
+        await TitleTranslationColumn.register(this.id);
+      } else if (!enabled && TitleTranslationColumn._registered) {
+        TitleTranslationColumn.unregister();
+      }
+    } else if (key === "progressColumnEnabled") {
+      const enabled = Prefs.get("progressColumnEnabled", true);
+      if (enabled && !ProgressColumn._registered) {
+        await ProgressColumn.register(this.id);
+      } else if (!enabled && ProgressColumn._registered) {
+        ProgressColumn.unregister();
+      }
+    } else if (key === "ratingColumnEnabled") {
+      const enabled = Prefs.get("ratingColumnEnabled", true);
+      if (enabled && !RatingColumn._registered) {
+        await RatingColumn.register(this.id);
+      } else if (!enabled && RatingColumn._registered) {
+        RatingColumn.unregister();
+      }
+    } else if (key === "fulltextResolverEnabled" || key === "scihubEnabled" || key === "scinetEnabled"
+      || key === "scihubMirrors" || key === "scinetUrl" || key === "unpaywallEmail") {
+      // resolver 配置项变化：重算注入清单（幂等，无变化不写 pref）
+      try { FullTextResolver.refresh(); } catch (e) { /* ignore */ }
+    } else if (key === "automationRules") {
+      // 规则增删/改快捷键：重挂自动化热键（register 同 id 覆盖；删除的规则热键
+      // 残留到下次启动，触发时 runRule 对未知 id 安全返回）
+      try { this._registerAutomationHotkeys(); } catch (e) { /* ignore */ }
+    }
+  },
+
+  /** 0.42.0：把自动化规则里配了 hotkey 的注册进中央快捷键表（幂等，同 id 覆盖） */
+  _registerAutomationHotkeys() {
+    if (typeof Automation === "undefined" || typeof Hotkeys === "undefined") return;
+    if (!Automation.getHotkeyRules || !Hotkeys.register) return;
+    for (const r of Automation.getHotkeyRules()) {
+      try {
+        Hotkeys.register({
+          id: "automation-" + r.id,
+          label: "自动化：" + r.name,
+          combo: r.hotkey,
+          scope: "main",
+          handler: () => {
+            try { Automation.runRule(r.id); } catch (e) { Zotero.logError(e); }
+          },
+        });
+      } catch (e) { Zotero.logError(e); }
     }
   },
 
@@ -753,8 +918,14 @@ Zotero.PaperPilot = {
     try { AIChatPane.unregister(); } catch (e) { Zotero.logError(e); }
     try { GlancePane.unregister(); } catch (e) { Zotero.logError(e); }
     try { TranslatePane.unregister(); } catch (e) { Zotero.logError(e); }
+    try { RefPane.unregister(); } catch (e) { Zotero.logError(e); }
     try { RankColumn.unregister(); } catch (e) { Zotero.logError(e); }
     try { CitationColumn.unregister(); } catch (e) { Zotero.logError(e); }
+    try { TitleTranslationColumn.unregister(); } catch (e) { Zotero.logError(e); }
+    try { ProgressColumn.unregister(); } catch (e) { Zotero.logError(e); }
+    try { RatingColumn.unregister(); } catch (e) { Zotero.logError(e); }
+    try { Hotkeys.shutdown(); } catch (e) { Zotero.logError(e); }
+    try { FullTextResolver.unregister(); } catch (e) { Zotero.logError(e); }
     // unregister 接收的是 register 返回的 paneID（不是 pluginID；Z10 关机时也会自动注销）
     try {
       if (this._paneID) Zotero.PreferencePanes.unregister(this._paneID);

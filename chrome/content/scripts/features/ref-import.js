@@ -201,7 +201,11 @@ var RefImport = {
    * 批量入库。
    * @param {Array} records
    * @param {{libraryID?:number, collection?:object, viaTranslator?:boolean,
+   *          contextItem?:object,
    *          onProgress?:function(rec, i, n)}} [opts]
+   *   contextItem（0.40.0，阅读器参考文献面板用）：导入成功后把新条目
+   *   ① 与该条目建立 Zotero 原生 related **双向**关联；② 加入该条目所在的**全部**分类。
+   *   纯可选参数，老调用不传则行为完全不变。
    * @returns {Promise<{ok:number, fail:number, items:Array, errors:Array, collection:object|null, mode:string}>}
    */
   async importRecords(records, opts) {
@@ -215,7 +219,10 @@ var RefImport = {
     // 但一旦某条解析失败难以定位，所以失败时**整批回落到直接建条目**（不丢数据）。
     if (o.viaTranslator) {
       const tr = await this._importViaTranslator(list, libID, col).catch(() => null);
-      if (tr && tr.ok > 0) return tr;
+      if (tr && tr.ok > 0) {
+        if (o.contextItem) await this._linkContext(tr.items, o.contextItem);
+        return tr;
+      }
     }
 
     let i = 0;
@@ -242,7 +249,28 @@ var RefImport = {
         res.errors.push({ title: rec.title || "", message: (e && (e.message || String(e))) || "save failed" });
       }
     }
+    if (o.contextItem && res.items.length) await this._linkContext(res.items, o.contextItem);
     return res;
+  },
+
+  /**
+   * 导入后挂上下文（0.40.0）：新条目 ↔ 当前条目 双向 related + 进当前条目全部分类。
+   * 逐条 try/catch：关联/分类失败**不算导入失败**（条目本身已入库）。
+   */
+  async _linkContext(items, ctx) {
+    if (!ctx || !ctx.id) return;
+    let cols = [];
+    try { cols = ctx.getCollections() || []; } catch (e) { cols = []; }
+    for (const it of items || []) {
+      if (!it || !it.id || it.id === ctx.id) continue;
+      try {
+        for (const cid of cols) { try { it.addToCollection(cid); } catch (e) { /* ignore */ } }
+        try { it.addRelatedItem(ctx); } catch (e) { /* ignore */ }
+        await it.saveTx();
+      } catch (e) { /* 单条失败不影响其他条目 */ }
+      try { ctx.addRelatedItem(it); } catch (e) { /* ignore */ }
+    }
+    try { await ctx.saveTx(); } catch (e) { /* 反向关联保存失败不拖垮导入 */ }
   },
 
   /** 用 Zotero 自带 BibTeX 导入器解析后建条目（作为「更规范」的可选通道）

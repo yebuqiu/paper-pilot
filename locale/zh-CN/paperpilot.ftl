@@ -28,3 +28,11 @@ paperpilot-translate-section-header = 翻译
 paperpilot-translate-section-sidenav = 翻译
     .label = 翻译
     .tooltiptext = 侧栏翻译：划词即译 / 换引擎 / 全文对照，一处搞定
+
+paperpilot-refs-section-header = 参考文献
+    .label = 参考文献
+    .tooltiptext = 参考文献
+
+paperpilot-refs-section-sidenav = 参考文献
+    .label = 参考文献
+    .tooltiptext = 本文参考文献：侧栏解析列表，一键入库并建立关联

@@ -13,6 +13,15 @@
  * - 流式/非流式生成中均可「停止」（流式 abort，非流式本地丢弃）
  * - 按钮统一样式（边框/圆角/hover/disabled），结果区细滚动条
  * - <style> 随 box 挂载、随浮窗销毁，不残留 reader 文档
+ *
+ * B1 Ctrl 拼接模式（参考 zotero-pdf-translate）：按住 Ctrl/Cmd 划词不立即触发，
+ * 选区追加进拼接缓冲（徽标「已拼接 N 段」+ 单段移除 + 清空）；松开 Ctrl 或下一次
+ * 无 Ctrl 划词时以合并文本触发默认动作（沿用 readerPopupAutoTranslate 开关语义）；
+ * 拼接状态下翻译/解读/追问均作用于合并文本；缓冲随浮窗关闭清空。
+ * 开关：readerPopupConcat（默认 true）。
+ *
+ * B2 批注安全写入：写入高亮批注的内容用 <!-- pp:tr --> / <!-- /pp:tr --> 包裹；
+ * 二次写入仅替换标记对内内容，标记外用户手写内容原样保留；读取展示剥离标记。
  */
 /* global Zotero, Prefs, AIClient, AIChat, AIChatPane, ChatFloat, I18n, TranslateSvc, TranslatePane */
 
@@ -33,6 +42,14 @@ var ReaderPopup = {
   _lastAutoTime: 0,
   // 0.15.0：结果区展开状态（会话内记忆，跨浮窗共享）
   _expanded: false,
+  // B1 Ctrl 拼接缓冲（会话级，跨浮窗；浮窗关闭/消费后清空）
+  // segs: 已拼接段；modifier: Ctrl/Cmd 是否按住；run: 当前浮窗的合并触发闭包；
+  // owner: 当前浮窗令牌（防旧浮窗的关闭监听误清新浮窗缓冲）
+  _concat: { segs: [], modifier: false, run: null, owner: null },
+  _concatDocs: null, // WeakSet<doc>：已绑定键监听的 reader 文档
+  // B2 批注写入分隔标记
+  _MARK_OPEN: "<!-- pp:tr -->",
+  _MARK_CLOSE: "<!-- /pp:tr -->",
 
   register(pluginID) {
     if (this._handler) return;
@@ -85,6 +102,79 @@ var ReaderPopup = {
       this._resultCache.delete(this._resultCache.keys().next().value);
     }
     this._resultCache.set(key, value);
+  },
+
+  /* ---------- B1 Ctrl 拼接缓冲 ---------- */
+  _concatPush(text) {
+    const t = String(text || "").trim();
+    if (!t) return this._concat.segs.length;
+    // 相邻去重：同一段连续划两次只算一段
+    const segs = this._concat.segs;
+    if (segs.length && segs[segs.length - 1] === t) return segs.length;
+    segs.push(t);
+    return segs.length;
+  },
+
+  _concatRemove(i) {
+    if (i >= 0 && i < this._concat.segs.length) this._concat.segs.splice(i, 1);
+    return this._concat.segs.length;
+  },
+
+  _concatClear() {
+    this._concat.segs = [];
+  },
+
+  _concatText() {
+    return this._concat.segs.join("\n");
+  },
+
+  /** 在 reader 文档上挂 Ctrl/Cmd 监听（每文档只挂一次）；
+   *  keyup 松开时若缓冲非空，交给当前浮窗的 run 闭包决定合并触发 */
+  _bindConcatKeys(doc) {
+    try {
+      if (!doc || typeof doc.addEventListener !== "function") return;
+      if (!this._concatDocs) this._concatDocs = new WeakSet();
+      if (this._concatDocs.has(doc)) return;
+      this._concatDocs.add(doc);
+      doc.addEventListener("keydown", (ev) => {
+        if (ev && (ev.key === "Control" || ev.key === "Meta")) {
+          this._concat.modifier = true;
+        }
+      });
+      doc.addEventListener("keyup", (ev) => {
+        if (!ev || (ev.key !== "Control" && ev.key !== "Meta")) return;
+        const was = this._concat.modifier;
+        this._concat.modifier = false;
+        if (was && this._concat.segs.length && typeof this._concat.run === "function") {
+          this._concat.run();
+        }
+      });
+    } catch (e) { /* 键监听失败不影响浮窗 */ }
+  },
+
+  /* ---------- B2 批注写入分隔标记 ---------- */
+  _wrapMarked(text) {
+    return this._MARK_OPEN + "\n" + text + "\n" + this._MARK_CLOSE;
+  },
+
+  /** 安全写入：comment 已有标记对则仅替换对内内容（标记外手写内容保留），
+   *  否则在末尾追加一个标记块 */
+  _replaceMarked(comment, text) {
+    const prev = String(comment || "");
+    const open = prev.indexOf(this._MARK_OPEN);
+    const close = prev.indexOf(this._MARK_CLOSE);
+    if (open >= 0 && close > open) {
+      return prev.slice(0, open) + this._wrapMarked(text) +
+        prev.slice(close + this._MARK_CLOSE.length);
+    }
+    return prev ? prev + "\n\n" + this._wrapMarked(text) : this._wrapMarked(text);
+  },
+
+  /** 读取展示时剥离标记（保留标记内的译文正文） */
+  _stripMarked(comment) {
+    return String(comment || "")
+      .replace(/<!--\s*pp:tr\s*-->/g, "")
+      .replace(/<!--\s*\/pp:tr\s*-->/g, "");
   },
 
   /** 当前 reader 打开的文献（常规条目优先，用于 paperMeta / 侧栏联动） */
@@ -181,6 +271,29 @@ var ReaderPopup = {
       const item = this._currentItem(event);
       const annotation = (params && params.annotation && params.annotation.id)
         ? params.annotation : null;
+
+      /* ----- B1 Ctrl 拼接：确定本次浮窗作用文本（单段 or 合并） ----- */
+      // textRef.v 随拼接增删动态变化，翻译/解读/追问/写回/外送全部读它
+      const textRef = { v: cleanText };
+      const concatOn = Prefs.get("readerPopupConcat", true);
+      let concatActive = false;
+      if (concatOn) {
+        this._bindConcatKeys(doc);
+        concatActive = !!this._concat.modifier;
+        if (concatActive) {
+          // 按住 Ctrl/Cmd 划词：只入缓冲，本次不自动触发（等 keyup）
+          this._concatPush(cleanText);
+          textRef.v = this._concatText();
+        } else if (this._concat.segs.length) {
+          // 下一次无 Ctrl 划词：并入缓冲并以合并文本消费（自动触发走下方既有逻辑）
+          this._concatPush(cleanText);
+          textRef.v = this._concatText();
+          this._concatClear();
+        }
+      }
+      const syncConcatText = () => {
+        textRef.v = this._concat.segs.length ? this._concatText() : cleanText;
+      };
       const NS = "http://www.w3.org/1999/xhtml";
       const mk = (tag, css, label) => {
         const el = doc.createElementNS(NS, tag);
@@ -235,8 +348,11 @@ var ReaderPopup = {
       if (!aiReady) for (const b of [aiBtn, askBtn]) b.disabled = true;
       const src = mk("span",
         "color:#888;flex:1;min-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" +
-        "font-size:11.5px;",
-        cleanText.slice(0, 50) + (cleanText.length > 50 ? "…" : ""));
+        "font-size:11.5px;");
+      const updateSrc = () => {
+        src.textContent = textRef.v.slice(0, 50) + (textRef.v.length > 50 ? "…" : "");
+      };
+      updateSrc();
       const tools = mk("div", "display:flex;gap:2px;align-items:center;margin-left:auto;");
       const zoomMinus = mkClass("button", "pp-pop-icon", "A−");
       zoomMinus.title = I18n.t("popupZoomOut");
@@ -252,6 +368,51 @@ var ReaderPopup = {
       row.appendChild(askBtn);
       row.appendChild(src);
       row.appendChild(tools);
+
+      /* ----- B1 拼接行：徽标「已拼接 N 段」+ 每段 chip（× 单段移除）+ 清空 ----- */
+      const concatRow = mkClass("div", "pp-pop-concat", null,
+        "display:none;gap:4px;align-items:center;flex-wrap:wrap;font-size:11.5px;");
+      const renderConcat = () => {
+        concatRow.textContent = ""; // 重建（置空会连带清掉旧 chip）
+        const segs = this._concat.segs;
+        if (!concatOn || !segs.length) {
+          concatRow.style.display = "none";
+          return;
+        }
+        concatRow.style.display = "flex";
+        concatRow.appendChild(mk("span",
+          "color:#0a6ebd;font-weight:600;white-space:nowrap;",
+          I18n.t("popupConcatBadge") + " " + segs.length + " " + I18n.t("popupConcatUnit")));
+        segs.forEach((s, i) => {
+          const chip = mk("span",
+            "display:inline-flex;align-items:center;gap:2px;max-width:160px;" +
+            "border:1px solid rgba(128,128,128,.45);border-radius:8px;" +
+            "padding:0 2px 0 6px;color:#666;");
+          chip.appendChild(mk("span",
+            "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
+            s.slice(0, 18) + (s.length > 18 ? "…" : "")));
+          chip.title = s;
+          const rm = mkClass("button", "pp-pop-icon", "×",
+            "padding:0 3px;font-size:11px;line-height:1.4;");
+          rm.title = I18n.t("popupConcatRemove");
+          rm.addEventListener("click", () => {
+            this._concatRemove(i);
+            syncConcatText();
+            updateSrc();
+            renderConcat();
+          });
+          chip.appendChild(rm);
+          concatRow.appendChild(chip);
+        });
+        const clearBtn = mkClass("button", "pp-pop-icon", I18n.t("popupConcatClear"));
+        clearBtn.addEventListener("click", () => {
+          this._concatClear();
+          syncConcatText();
+          updateSrc();
+          renderConcat();
+        });
+        concatRow.appendChild(clearBtn);
+      };
 
       // 追问输入行（默认隐藏）
       const askRow = mk("div", "display:none;gap:6px;align-items:flex-end;");
@@ -315,6 +476,7 @@ var ReaderPopup = {
       }
 
       box.appendChild(row);
+      box.appendChild(concatRow);
       if (noticeRow) box.appendChild(noticeRow);
       box.appendChild(askRow);
       box.appendChild(result);
@@ -406,7 +568,7 @@ var ReaderPopup = {
           let note = "";
           if (opts && opts.svc) {
             // 专用翻译引擎（Google/DeepL/百度…）：一次性结果，无流式
-            const rr = await TranslateSvc.translate(cleanText, { to: TranslateSvc.targetCode() });
+            const rr = await TranslateSvc.translate(textRef.v, { to: TranslateSvc.targetCode() });
             if (!result.isConnected) return null;
             if (stopped) { result.style.display = "none"; stopRow.style.display = "none"; return null; }
             if (!rr.ok) throw new Error(rr.error);
@@ -465,10 +627,10 @@ var ReaderPopup = {
         const useSvc = mode === "translate" && !!tv && !(aiReady && tv.isLLM());
         const cacheKey = mode + "|" +
           (useSvc ? "svc:" + tv.cfg().active + "|" : "") +
-          lang + "|" + cleanText;
+          lang + "|" + textRef.v;
         execute([
           { role: "system", content: Prefs.get("aiSystemPrompt", "") || "" },
-          { role: "user", content: this._buildPrompt(mode, cleanText) },
+          { role: "user", content: this._buildPrompt(mode, textRef.v) },
         ], cacheKey, { svc: useSvc });
       };
 
@@ -489,7 +651,7 @@ var ReaderPopup = {
             system += `\n\n当前用户正在阅读以下论文：\n标题：${meta.title}\n作者：${meta.creators}\n发表：${meta.pub} ${meta.year}`;
           } catch (e) { /* ignore */ }
         }
-        const userMsg = `【原文摘录】\n${cleanText}\n\n【问题】\n${question}` +
+        const userMsg = `【原文摘录】\n${textRef.v}\n\n【问题】\n${question}` +
           (I18n.isZh
             ? "\n\n要求：纯文本回答，禁止使用任何 Markdown 标记（如 **、#、- 列表、表格）。"
             : "\n\nAnswer in plain text — no Markdown formatting.");
@@ -553,7 +715,8 @@ var ReaderPopup = {
             ? Zotero.Items.getByLibraryAndKey(libraryID, annotation.id) : null;
           if (!anno) throw new Error("annotation not found");
           const prev = anno.annotationComment || "";
-          anno.annotationComment = prev ? prev + "\n\n" + lastAnswer : lastAnswer;
+          // B2：标记块写入——已有标记对则仅替换对内内容，手写内容原样保留
+          anno.annotationComment = this._replaceMarked(prev, lastAnswer);
           await anno.saveTx();
           status.textContent = I18n.t("popupWriteBackDone");
         } catch (e) {
@@ -566,7 +729,7 @@ var ReaderPopup = {
       // M2b：送入侧栏继续（pane 未渲染则提示先打开）
       paneBtn.addEventListener("click", () => {
         try {
-          const ok = AIChatPane.injectQuote(item, cleanText);
+          const ok = AIChatPane.injectQuote(item, textRef.v);
           status.textContent = ok ? "" : I18n.t("popupPaneUnavailable");
         } catch (e) {
           status.textContent = I18n.t("popupPaneUnavailable");
@@ -576,20 +739,54 @@ var ReaderPopup = {
       // 0.31.0：送入 AI 问答悬浮窗继续（悬浮窗总能唤起，无「先打开面板」前置条件）
       floatBtn.addEventListener("click", () => {
         try {
-          ChatFloat.injectQuote(item, cleanText);
+          ChatFloat.injectQuote(item, textRef.v);
         } catch (e) {
           Zotero.logError(e);
         }
       });
 
       append(box);
+      renderConcat();
+
+      // B1：当前浮窗接管缓冲；keyup 松开 Ctrl 时由本闭包做合并触发。
+      // 沿用「划词即自动翻译」开关语义：开关关时不自动触发、缓冲保留，
+      // 用户仍可在本浮窗用按钮对合并文本手动操作。
+      this._concat.run = () => {
+        if (!this._concat.segs.length) return;
+        syncConcatText();
+        updateSrc();
+        try {
+          if (trReady && Prefs.get("readerPopupAutoTranslate", false) &&
+              textRef.v.length >= 2 && textRef.v.length <= 2000) {
+            this._concatClear();
+            renderConcat();
+            runTask("translate");
+          }
+        } catch (e) { /* 合并触发失败不影响手动按钮 */ }
+      };
+      // 浮窗关闭即清缓冲（owner 令牌防止旧浮窗的监听误清新浮窗的缓冲）
+      const myToken = {};
+      this._concat.owner = myToken;
+      try {
+        const watch = setInterval(() => {
+          if (!box.isConnected) {
+            clearInterval(watch);
+            if (this._concat.owner === myToken) {
+              this._concatClear();
+              this._concat.run = null;
+            }
+          }
+        }, 600);
+      } catch (e) { /* 无定时器环境时跳过关闭监听 */ }
 
       // 划词即自动翻译：去重 + 800ms 限流 + 长度护栏
+      // （B1：Ctrl 拼接中的划词不触发，等 keyup 合并触发；无 Ctrl 划词若消费了
+      //   拼接缓冲，此处即以合并文本触发——同一条路径）
       try {
-        if (trReady && Prefs.get("readerPopupAutoTranslate", false) &&
-            cleanText.length >= 2 && cleanText.length <= 2000) {
+        if (!concatActive && trReady && Prefs.get("readerPopupAutoTranslate", false) &&
+            textRef.v.length >= 2 && textRef.v.length <= 2000) {
           const now = Date.now();
-          const autoKey = "translate|" + cleanText;
+          const autoKey = "translate|" + textRef.v;
           if (autoKey !== this._lastAutoKey && now - this._lastAutoTime >= 800) {
             this._lastAutoKey = autoKey;
             this._lastAutoTime = now;

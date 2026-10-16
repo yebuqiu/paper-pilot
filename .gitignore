@@ -8,6 +8,14 @@ __pycache__/
 # 账号后台运行时数据（用户/令牌/通道密钥/日志，绝不入库）
 server/data/
 
+# 项目内置运行时（二进制与令牌不入库，随移动硬盘携带；
+# 保留 runtime/README.md 与 cloudflared 运行器脚本 —— 与「心血管科药物」项目同规）
+runtime/node/
+runtime/cloudflared/cloudflared.exe
+runtime/cloudflared/token.txt*
+runtime/cloudflared/.brain-config.json
+runtime/cloudflared/logs/
+
 # 发行版安装包（Gitee raw 可直链下载；其余构建产物仍不入库）
 !dist/
 !dist/*.xpi

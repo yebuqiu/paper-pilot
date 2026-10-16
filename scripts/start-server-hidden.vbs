@@ -3,10 +3,12 @@
 ' note: cmd /c needs the whole command wrapped in an extra pair of quotes (same form as launcher.ps1 Start-Server)
 ' ASCII only. Used by launcher.ps1 auto-start (HKCU Run key) and can be double-clicked directly.
 ' v1 (2026-10-02): scan .workbuddy binaries for the newest node version instead of hardcoding
-Dim shell, fso, scriptDir, serverDir, logDir, nodeExe, logFile, cmdLine
+' v2 (2026-10-16): prefer project-local runtime\node\node.exe (portable, external-drive friendly)
+Dim shell, fso, scriptDir, projectDir, serverDir, logDir, nodeExe, logFile, cmdLine
 Set fso = CreateObject("Scripting.FileSystemObject")
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
-serverDir = fso.GetParentFolderName(scriptDir) & "\server"
+projectDir = fso.GetParentFolderName(scriptDir)
+serverDir = projectDir & "\server"
 logDir = serverDir & "\data"
 If Not fso.FolderExists(logDir) Then fso.CreateFolder(logDir)
 
@@ -35,7 +37,10 @@ Function FindLatestNode(versionsDir)
     FindLatestNode = bestPath
 End Function
 
-nodeExe = FindLatestNode("C:\Users\Administrator\.workbuddy\binaries\node\versions")
+nodeExe = projectDir & "\runtime\node\node.exe"
+If Not fso.FileExists(nodeExe) Then
+    nodeExe = FindLatestNode("C:\Users\Administrator\.workbuddy\binaries\node\versions")
+End If
 If nodeExe = "" Then nodeExe = "node"
 logFile = logDir & "\server-console.log"
 cmdLine = "cmd /c " & """" & """" & nodeExe & """" & " account-server.js >> " & """" & logFile & """" & " 2>&1" & """"

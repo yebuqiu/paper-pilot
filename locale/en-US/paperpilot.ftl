@@ -27,3 +27,11 @@ paperpilot-translate-section-header = Translate
 paperpilot-translate-section-sidenav = Translate
     .label = Translate
     .tooltiptext = Sidebar translation: select-to-translate, switch engines, full-text — all in one place
+
+paperpilot-refs-section-header = References
+    .label = References
+    .tooltiptext = References
+
+paperpilot-refs-section-sidenav = References
+    .label = References
+    .tooltiptext = References of this paper: parsed in the sidebar, one-click import with backlink

@@ -281,4 +281,183 @@ var TagCurator = {
     }
     pw.startCloseTimer(4500);
   },
+
+  /* ==================== 嵌套标签视图（E3，0.40.0，纯只读） ====================
+   * 把 `#a/b/c` 形态的标签渲染成可折叠树：节点显示条目数（total = 子树合计，
+   * count = 恰好等于该路径的标签自身条目数），点击节点列出命中条目。
+   * 全程不改任何标签数据 —— 与 run(false) 的「只读扫描」同一纪律。
+   *
+   * 说明：标签治理此前没有自己的窗口（run() 的产出是库内笔记），
+   * 嵌套视图是交互式 UI，无法塞进笔记，故给它一个独立只读窗口
+   * （chrome/content/tag-nested.xhtml），入口由 TagCurator.openNestedView() 提供。
+   */
+
+  NESTED_WINDOW_TYPE: "paperpilot:tag-nested",
+  NESTED_WINDOW_URL: "chrome://paperpilot/content/tag-nested.xhtml",
+  NESTED_WINDOW_NAME: "paperpilot-tag-nested",
+
+  /** 标签名 → 层级段（全角斜杠/反斜杠统一为 "/"，各段去空白，空段丢弃） */
+  _splitPath(name) {
+    return String(name == null ? "" : name)
+      .replace(/[／\\]+/g, "/")
+      .split("/")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  },
+
+  /**
+   * 嵌套树（纯函数，可单测）
+   * @param {Array<{name:string,count:number}>} tags
+   * @returns {Array<{name:string, path:string, count:number, total:number, children:Array}>}
+   *   count = 恰好等于该路径的标签自身条目数；total = 子树合计（含自身）。
+   *   无层级的单段标签作为顶层叶子节点也进树（信息完整，不影响层级结构）。
+   *   排序：total 降序，并列按段名字典序（稳定）。
+   */
+  buildNestedTree(tags) {
+    const counts = new Map();
+    for (const t of (tags || [])) {
+      if (!t || !t.name) continue;
+      const nm = String(t.name);
+      counts.set(nm, (counts.get(nm) || 0) + (Number(t.count) || 0));
+    }
+    const root = [];
+    const nodeByPath = new Map();
+    const getNode = (parentArr, path, seg) => {
+      let n = nodeByPath.get(path);
+      if (!n) {
+        n = { name: seg, path, count: 0, total: 0, children: [] };
+        nodeByPath.set(path, n);
+        parentArr.push(n);
+      }
+      return n;
+    };
+    for (const [name, cnt] of counts) {
+      const segs = this._splitPath(name);
+      if (!segs.length) continue;
+      let arr = root;
+      let path = "";
+      for (let i = 0; i < segs.length; i++) {
+        path = path ? path + "/" + segs[i] : segs[i];
+        const n = getNode(arr, path, segs[i]);
+        if (i === segs.length - 1) n.count += cnt;
+        arr = n.children;
+      }
+    }
+    const finalize = (nodes) => {
+      for (const n of nodes) {
+        finalize(n.children);
+        n.total = n.count + n.children.reduce((s, c) => s + c.total, 0);
+      }
+      nodes.sort((a, b) => (b.total - a.total) || a.name.localeCompare(b.name));
+    };
+    finalize(root);
+    return root;
+  },
+
+  /**
+   * 扫描全库（只读）：标签计数 + 每个树路径命中的条目清单。
+   * 一条 `a/b/c` 标签会同时计入 a、a/b、a/b/c 三个路径 —— 与树节点的
+   * total 语义一致，点击任一节点列出的就是「该子树下」的条目。
+   * @returns {Promise<{tags:Array, items:Object<string,Array<{id,title}>>}>}
+   */
+  async collectNestedData() {
+    const counts = new Map();
+    const itemsByPath = new Map(); // path -> Map(id -> title)
+    const addItem = (path, id, title) => {
+      if (!itemsByPath.has(path)) itemsByPath.set(path, new Map());
+      itemsByPath.get(path).set(id, title);
+    };
+    const s = new Zotero.Search();
+    s.libraryID = Zotero.Libraries.userLibraryID;
+    s.addCondition("itemType", "isNot", "attachment");
+    const ids = await s.search();
+    for (const id of ids) {
+      const item = await Zotero.Items.getAsync(id);
+      if (!item || item.deleted) continue;
+      let title = "";
+      try { title = item.getDisplayTitle() || ""; } catch (e) { title = ""; }
+      let tags = [];
+      try { tags = item.getTags() || []; } catch (e) { tags = []; }
+      for (const t of tags) {
+        const name = t && t.tag;
+        if (!name) continue;
+        counts.set(name, (counts.get(name) || 0) + 1);
+        const segs = this._splitPath(name);
+        let path = "";
+        for (const seg of segs) {
+          path = path ? path + "/" + seg : seg;
+          addItem(path, id, title);
+        }
+      }
+    }
+    const items = {};
+    for (const [path, m] of itemsByPath) {
+      items[path] = [...m.entries()].map(([id, title]) => ({ id, title }))
+        .sort((a, b) => a.title.localeCompare(b.title));
+    }
+    return {
+      tags: [...counts.entries()].map(([name, count]) => ({ name, count })),
+      items,
+    };
+  },
+
+  /** 点击条目：在主窗口条目树里选中（只读导航，不改数据） */
+  async _revealItem(id) {
+    try {
+      const zp = Zotero.getActiveZoteroPane();
+      if (zp && typeof zp.selectItem === "function") await zp.selectItem(id);
+    } catch (e) { /* ignore */ }
+  },
+
+  /** 打开（或复用）嵌套标签视图窗口 */
+  async openNestedView() {
+    const zh = I18n.isZh;
+    const pw = new Zotero.ProgressWindow({ closeOnClick: true });
+    pw.changeHeadline("PaperPilot · " + (zh ? "嵌套标签视图" : "Nested Tags"));
+    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+      zh ? "正在扫描标签层级…" : "Scanning tag hierarchy…");
+    progress.setProgress(30);
+    pw.show();
+    try {
+      const data = await this.collectNestedData();
+      const tree = this.buildNestedTree(data.tags);
+      progress.setProgress(90);
+      progress.setText((zh ? "共 " : "") + data.tags.length + (zh ? " 种标签" : " tags"));
+      const payload = {
+        Zotero,
+        isZh: zh,
+        tree,
+        items: data.items,
+        revealItem: (id) => this._revealItem(id),
+      };
+      // 单实例：已开则聚焦并刷新数据
+      try {
+        const en = Services.wm.getEnumerator(this.NESTED_WINDOW_TYPE);
+        if (en.hasMoreElements()) {
+          const win = en.getNext();
+          try { win.focus(); } catch (e) { /* ignore */ }
+          try {
+            if (typeof win.ppNestedLoad === "function") win.ppNestedLoad(payload);
+          } catch (e) { /* ignore */ }
+          pw.startCloseTimer(1800);
+          return win;
+        }
+      } catch (e) { /* ignore */ }
+      const win = Zotero.getMainWindow();
+      if (!win) { pw.startCloseTimer(1800); return null; }
+      const w = win.openDialog(
+        this.NESTED_WINDOW_URL,
+        this.NESTED_WINDOW_NAME,
+        "chrome,extracz,resizable,dialog=no,centerscreen",
+        payload
+      );
+      pw.startCloseTimer(1800);
+      return w;
+    } catch (e) {
+      progress.setError();
+      Zotero.logError(e);
+      pw.startCloseTimer(3000);
+      return null;
+    }
+  },
 };

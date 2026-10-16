@@ -94,6 +94,16 @@
     @keyframes ppwb-blink { 50% { opacity:0; } }
     /* 输入区 */
     .pp-wb-inputbar { background:var(--pp-surface); border-top:1px solid var(--pp-border); padding:10px 14px; }
+    /* 拖入条目的上下文 chips */
+    .pp-wb-ctx-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+    .pp-wb-ctx-chip {
+      display:inline-flex; align-items:center; gap:4px; max-width:240px;
+      padding:2px 4px 2px 10px; font-size:11px; border-radius:999px;
+      border:1px solid var(--pp-accent); background:var(--pp-accent-soft); color:var(--pp-text);
+    }
+    .pp-wb-ctx-chip span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pp-wb-ctx-chip button { border:none; background:transparent; color:var(--pp-muted); cursor:pointer; font-size:11px; padding:0 4px; line-height:1; }
+    .pp-wb-ctx-chip button:hover { color:var(--pp-danger); }
     .pp-wb-inputrow { display:flex; gap:8px; align-items:flex-end; }
     #pp-wb-input { flex:1; resize:none; font-size:13px; padding:8px 10px; border-radius:8px;
       border:1px solid var(--pp-border); background:var(--pp-bg); color:var(--pp-text); font-family:inherit; }
@@ -162,6 +172,8 @@
 
     <!-- 输入区 -->
     <html:div class="pp-wb-inputbar">
+      <!-- 拖入条目的上下文 chips（空时隐藏） -->
+      <html:div class="pp-wb-ctx-chips" id="pp-wb-ctx-chips" style="display:none;"></html:div>
       <html:div class="pp-wb-inputrow">
         <html:textarea id="pp-wb-input" rows="3"
           placeholder="提问…（Ctrl+Enter 发送，Esc 停止生成）"></html:textarea>

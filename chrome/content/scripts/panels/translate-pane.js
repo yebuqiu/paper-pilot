@@ -205,9 +205,15 @@ var TranslatePane = {
     const trBtn = H("button", { class: "pp-tr-btn pp-tr-primary", style: this._btnCss(true) },
       I18n.t("tpTranslate"));
     const clrBtn = H("button", { class: "pp-tr-btn", style: this._btnCss(false) }, I18n.t("tpClear"));
+    const cmpBtn = H("button", {
+      class: "pp-tr-btn",
+      style: this._btnCss(false),
+      title: zh ? "用多个引擎并行翻译同一段文本，同屏对比译文与耗时" : "Translate with multiple engines in parallel and compare",
+    }, zh ? "对比引擎" : "Compare");
     const count = H("span", { style: "font-size:11px;color:var(--fill-secondary,#888);margin-left:auto;" }, "");
     btnRow.appendChild(trBtn);
     btnRow.appendChild(clrBtn);
+    btnRow.appendChild(cmpBtn);
     btnRow.appendChild(count);
     root.appendChild(btnRow);
 
@@ -278,7 +284,7 @@ var TranslatePane = {
     root.appendChild(foot);
 
     body.appendChild(root);
-    st.refs = { engSel, engBadge, toSel, fromSel, input, trBtn, clrBtn, count, result, resMeta, copyBtn,
+    st.refs = { engSel, engBadge, toSel, fromSel, input, trBtn, clrBtn, cmpBtn, count, result, resMeta, copyBtn,
       fullBtn, barFill, fullStatus, pairList, twoColBtn, noteBtn, taBtn };
 
     /* ---- 事件 ---- */
@@ -305,6 +311,7 @@ var TranslatePane = {
       self._setResult(paneID, "", null);
     });
     trBtn.addEventListener("click", () => { if (!st.busy) self._translateSelection(paneID); });
+    cmpBtn.addEventListener("click", () => self._openCompare(paneID));
     copyBtn.addEventListener("click", () => {
       const t = st.refs.result.textContent || "";
       try {
@@ -520,6 +527,22 @@ var TranslatePane = {
         style: "white-space:pre-wrap;word-break:break-word;",
       }, p.dst));
       list.appendChild(row);
+    }
+  },
+
+  /** 把当前待译文本带入「多引擎同屏对比」小窗（C2） */
+  _openCompare(paneID) {
+    const st = this._state(paneID);
+    const text = String((st.refs && st.refs.input.value) || "").trim();
+    if (!text) { this._setResult(paneID, I18n.t("tpNoText"), { warn: true }); return; }
+    try {
+      const PP = Zotero.PaperPilot || {};
+      if (!PP.translateCompare || typeof PP.translateCompare.openWindow !== "function") {
+        throw new Error(I18n.isZh ? "对比模块未加载" : "Compare module not loaded");
+      }
+      PP.translateCompare.openWindow(text);
+    } catch (e) {
+      this._toast(paneID, (I18n.isZh ? "打开对比窗口失败：" : "Failed: ") + ((e && e.message) || e), true);
     }
   },
 

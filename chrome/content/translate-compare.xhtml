@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE window>
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="PaperPilot · 多引擎同屏对比"
+        windowtype="paperpilot:translate-compare"
+        width="900" height="560">
+  <script src="chrome://paperpilot/content/translate-compare.js"></script>
+  <vbox flex="1" style="padding:12px;">
+    <html:textarea id="pp-tc-input" rows="4"
+      style="width:100%;box-sizing:border-box;font-size:13px;line-height:1.5;padding:6px 8px;"
+      placeholder="输入或粘贴要对比翻译的文本"/>
+    <hbox style="gap:6px;align-items:center;margin:8px 0 4px 0;flex-wrap:wrap;">
+      <html:span id="pp-tc-eng-label" style="color:var(--fill-secondary,#666);flex:none;">参与引擎：</html:span>
+      <html:div id="pp-tc-engines" style="display:inline;"/>
+    </hbox>
+    <hbox style="gap:8px;align-items:center;">
+      <html:button id="pp-tc-run" style="font-weight:bold;">开始对比</html:button>
+      <html:span id="pp-tc-target" style="color:var(--fill-secondary,#666);font-size:12px;"></html:span>
+      <spacer flex="1"/>
+      <html:span id="pp-tc-status" style="color:var(--fill-secondary,#666);"></html:span>
+      <html:button id="pp-tc-close">关闭</html:button>
+    </hbox>
+    <html:div id="pp-tc-results"
+      style="display:flex;gap:8px;flex:1;overflow-x:auto;margin-top:10px;align-items:stretch;"/>
+  </vbox>
+</window>

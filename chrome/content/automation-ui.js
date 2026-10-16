@@ -169,8 +169,11 @@
       const errors = AU.validate(r);
       if (errors.length) head.appendChild(el("span", "color:#c0392b;font-size:11px;", zh ? "配置有误" : "invalid"));
       card.appendChild(head);
+      const extras = [];
+      if (String(r.hotkey || "").trim()) extras.push("⌨ " + String(r.hotkey).trim());
+      if (r.showInMenu === true) extras.push(zh ? "右键菜单" : "menu");
       card.appendChild(el("div", "color:var(--fill-secondary,#666);font-size:11.5px;margin-top:3px;",
-        "触发：" + s.trigger + " ｜ 条件：" + s.cond));
+        "触发：" + s.trigger + " ｜ 条件：" + s.cond + (extras.length ? " ｜ " + extras.join(" · ") : "")));
       card.appendChild(el("div", "color:var(--color-accent,#2563eb);font-size:11.5px;margin-top:2px;", "动作：" + s.act));
       const bar = el("div", "display:flex;gap:6px;margin-top:5px;");
       const be = el("button", "font-size:11.5px;padding:1px 8px;", zh ? "编辑" : "Edit");
@@ -199,7 +202,68 @@
     return {
       id: "r" + Date.now().toString(36), name: "", enabled: true,
       trigger: "manual", match: "all", conditions: [], actions: [{ type: "tag", tag: "" }],
+      hotkey: "", showInMenu: false,
     };
+  }
+
+  /* ---------------- 快捷键录制 ---------------- */
+
+  /** keydown 事件 → combo 串（如 "Ctrl+Shift+T"）；纯修饰键返回 null（继续等下一次按键） */
+  function comboFromEvent(ev) {
+    const key = ev.key || "";
+    if (["Control", "Alt", "Shift", "Meta"].includes(key)) return null;
+    const parts = [];
+    if (ev.ctrlKey) parts.push("Ctrl");
+    if (ev.altKey) parts.push("Alt");
+    if (ev.shiftKey) parts.push("Shift");
+    if (ev.metaKey) parts.push("Meta");
+    let k = key === " " ? "Space" : key;
+    if (k.indexOf("Arrow") === 0) k = k.slice(5); // ArrowUp → Up
+    if (k.length === 1) k = k.toUpperCase();
+    parts.push(k);
+    return parts.join("+");
+  }
+
+  let recording = null; // {done()} 录制进行中时非空
+
+  function stopRecording() {
+    if (!recording) return;
+    recording.done();
+    recording = null;
+  }
+
+  /** 录制下一次按键，成功后写入 rule.hotkey 并重绘编辑器 */
+  function startRecording(rule, btn) {
+    stopRecording();
+    btn.textContent = zh ? "请按快捷键…（Esc 取消）" : "Press keys… (Esc to cancel)";
+    const onKey = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.key === "Escape" && !ev.ctrlKey && !ev.altKey && !ev.shiftKey && !ev.metaKey) {
+        stopRecording();
+        renderEditor();
+        return;
+      }
+      const combo = comboFromEvent(ev);
+      if (!combo) return; // 只按了修饰键，继续等
+      stopRecording();
+      if (!validCombo(combo)) {
+        setStatus(zh ? "快捷键需要至少一个修饰键（Ctrl/Alt/Shift）+ 主键" : "Need a modifier + a key", true);
+        renderEditor();
+        return;
+      }
+      rule.hotkey = combo;
+      renderEditor();
+      renderList();
+      setStatus((zh ? "已录制快捷键：" : "Recorded: ") + combo);
+    };
+    const done = () => document.removeEventListener("keydown", onKey, true);
+    recording = { done };
+    document.addEventListener("keydown", onKey, true);
+  }
+
+  function validCombo(combo) {
+    try { return AU.isValidHotkey(combo); } catch (e) { return false; }
   }
 
   function renderEditor() {
@@ -224,6 +288,38 @@
     row2.appendChild(el("span", "color:var(--fill-secondary,#666);margin-left:8px;", zh ? "条件满足方式" : "Match"));
     row2.appendChild(sel([["all", zh ? "全部满足" : "all"], ["any", zh ? "任一满足" : "any"]], rule.match || "all", (v) => { rule.match = v; renderList(); }));
     editorEl.appendChild(row2);
+
+    // 快捷键 + 右键菜单
+    const row2b = el("div", "display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;");
+    row2b.appendChild(el("span", "color:var(--fill-secondary,#666);", zh ? "快捷键" : "Hotkey"));
+    const hkInput = el("input", "font-size:12.5px;padding:2px 6px;width:170px;color:var(--fill-primary,#222);");
+    hkInput.readOnly = true;
+    hkInput.value = String(rule.hotkey || "");
+    hkInput.placeholder = zh ? "（未设置）" : "(none)";
+    row2b.appendChild(hkInput);
+    const bRec = el("button", "font-size:12px;padding:1px 9px;", zh ? "录制" : "Record");
+    bRec.addEventListener("click", () => startRecording(rule, bRec));
+    row2b.appendChild(bRec);
+    const bClear = el("button", "font-size:12px;padding:1px 9px;", zh ? "清除" : "Clear");
+    bClear.addEventListener("click", () => {
+      stopRecording();
+      rule.hotkey = "";
+      renderEditor();
+      renderList();
+    });
+    row2b.appendChild(bClear);
+    const menuLab = el("label", "font-size:12.5px;display:inline-flex;align-items:center;gap:4px;margin-left:10px;");
+    const menuCb = el("input", "");
+    menuCb.type = "checkbox";
+    menuCb.checked = rule.showInMenu === true;
+    menuCb.addEventListener("change", () => { rule.showInMenu = menuCb.checked; renderList(); });
+    menuLab.appendChild(menuCb);
+    menuLab.appendChild(el("span", "", zh ? "出现在条目右键菜单" : "Show in item context menu"));
+    row2b.appendChild(menuLab);
+    editorEl.appendChild(row2b);
+    row2b.appendChild(el("span", "color:var(--fill-secondary,#888);font-size:11px;flex-basis:100%;",
+      zh ? "快捷键与右键菜单项在保存规则后生效；快捷键需至少一个修饰键（Ctrl/Alt/Shift）。"
+        : "Hotkey/menu take effect after saving; hotkey needs a modifier key."));
 
     // 条件
     editorEl.appendChild(el("div", "font-weight:600;margin:6px 0 4px;", zh ? "条件（留空=对所有条目生效）" : "Conditions"));
@@ -302,6 +398,7 @@
     const bar = el("div", "display:flex;gap:8px;align-items:center;flex-wrap:wrap;");
     const bs = el("button", "font-weight:bold;", zh ? "保存规则" : "Save rule");
     bs.addEventListener("click", () => {
+      stopRecording();
       const e2 = AU.validate(rule);
       if (e2.length) { setStatus((zh ? "校验失败：" : "Invalid: ") + e2[0], true); return; }
       const idx = rules.findIndex((r) => r.id === rule.id);

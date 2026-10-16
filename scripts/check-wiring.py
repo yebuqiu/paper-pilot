@@ -717,7 +717,11 @@ ok(len(re.findall(r"scrollTop\s*=", bl_js)) == 1,
 # 17.17~17.22 入口接线：三处指向双栏窗口，且原「双语笔记」出口保留
 ok("PdfDual.openForSelected" in menus_js,
    "17.17 右键菜单主入口指向左原右译对照窗口（PdfDual，0.36.0）")
-ok("BilingualTranslate.runForSelected()" in menus_js, "17.18 右键菜单仍保留原「AI 双语笔记」出口")
+# 0.42.0：「文本双栏」右键入口撤掉（与对照翻译重叠），功能中心 Hub 仍可达 → 改验 hub.js
+_hub_js_early = io.open(os.path.join(ROOT, "chrome", "content", "hub.js"), encoding="utf-8").read() \
+    if os.path.exists(os.path.join(ROOT, "chrome", "content", "hub.js")) else ""
+ok("BilingualTranslate.runForSelected()" not in menus_js and "bilingual" in _hub_js_early,
+   "17.18 文本双栏右键入口已撤（0.42.0），功能中心仍可达")
 ok("pdfDual.openForSelected" in wb_js, "17.19 工作台「全文对照翻译」chip 指向左原右译窗口")
 ok("pdfDual.openForSelected" in hub_js, "17.20 功能中心卡片指向左原右译窗口")
 ok("runForSelected()" in bl_mod, "17.21 原笔记流程仍在（未删）")
@@ -1222,8 +1226,8 @@ ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
 for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
     ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
 _item_reg_src = menus_js.split("GROUPS:")[0]
-ok(_item_reg_src.count("labelKey:") == 41,
-   "23.7 ★ 注册表恰好 41 条命令（实测 %d，功能一项不减；0.36.0 撤 pdf-inline 页内入口）" % _item_reg_src.count("labelKey:"))
+ok(_item_reg_src.count("labelKey:") == 47,
+   "23.7 ★ 注册表恰好 47 条命令（实测 %d；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login）" % _item_reg_src.count("labelKey:"))
 ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
@@ -1813,13 +1817,13 @@ _pfold_js = io.open(PFOLD_JS, encoding="utf-8").read() if os.path.exists(PFOLD_J
 ok("prefs-fold.js" in mainjs, "31.2 main.js 注册 prefs-fold.js（scripts 列表）")
 for _eid in ("pp-fold-expand", "pp-fold-collapse"):
     ok(_eid in xhtml_ids, "31.3 prefs.xhtml 含折叠工具条 #%s" % _eid)
-_FOLD_KEYS = ["account", "channels", "translate", "aiparams", "popup",
-              "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu"]
+_FOLD_KEYS = ["account", "cnki", "channels", "translate", "aiparams", "popup",
+              "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys"]
 _fold_found = re.findall(r'data-fold="([a-z]+)"', prefs_xhtml)
 ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
-   "31.4 prefs.xhtml 的 11 个折叠分组键齐全 → 实际: %s" % ",".join(sorted(set(_fold_found))))
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 11,
-   "31.5 折叠卡片共 11 张（不多不少，防止漏包一张）")
+   "31.4 prefs.xhtml 的 13 个折叠分组键齐全（0.43.1 +知网账号卡片）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 13,
+   "31.5 折叠卡片共 13 张（0.43.1 +知网账号；不多不少，防止漏包一张）")
 ok('pref("extensions.zotero.paperpilot.prefsFoldOpen", "");' in prefsdef,
    "31.6 prefs.js 有 prefsFoldOpen 默认值（空 = 全收起）")
 ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
@@ -1914,6 +1918,10 @@ ok('id="pp-pd-export"' in pd_xhtml and "<menulist" in pd_xhtml,
 for _v in ["pdf", "html", "md", "docx"]:
     ok('value="%s"' % _v in pd_xhtml, "33.7 导出菜单含 %s 项" % _v)
 ok("window.ppDualExport" in pd_view, "33.8 窗口导出入口 window.ppDualExport(kind)")
+ok('exp.addEventListener("command", onExportPick)' in pd_view,
+   "33.8b ★ 导出菜单绑 command（XUL menulist 事件名——0.39/0.40 只绑 change，真机点了没反应）")
+ok('exp.addEventListener("change", onExportPick)' in pd_view,
+   "33.8c 同时兜住 change（双绑且靠清空 value 幂等）")
 ok("A.exportAs(kind)" in pd_view, "33.9 窗口导出经注入回调回插件作用域")
 ok("setLabelAndText" in pd_view and 'opt("pp-pd-exp-pdf"' in pd_view,
    "33.10 ★ 菜单项文案走文案表（中英双语，不硬编码）")
@@ -2003,6 +2011,59 @@ _pf5 = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").
 ok("test/cn-ai.test.js" in _pf5, "35.17 preflight 含中文文献 AI 增强测试")
 ok(os.path.exists(os.path.join(ROOT, "test", "cn-ai.test.js")),
    "35.18 cn-ai 单测存在（test/cn-ai.test.js）")
+
+# ---------- 0.43.0 知网账号登录（CNAuth）与反爬基础 ----------
+ok("var CNAuth" in _cn_f and "loginSilent" in _cn_f and "loginInteractive" in _cn_f,
+   "36.1 CNAuth 模块在 cn-fetch.js（静默 + 交互双通道）")
+ok("TopLoginCore/api/LoginApi/LoginPo" in _cn_f and "SM2_PUBKEY" in _cn_f
+   and "t8b52yrsoyx66f35tk0p4nubrmrcglv5" in _cn_f and '"appID": "LoginWap"' in _cn_f,
+   "36.2 ★ 登录协议三要素齐全（LoginPo 端点 / SM2 公钥 / 签名密钥与 appID）")
+ok("cnkiUsername" in prefsdef and 'cnkiPassword", ""' in prefsdef,
+   "36.3 ★ 凭据 pref 默认空值（凭据只进本机 profile，绝不进 git）")
+ok("parseLoginCookie" in _cn_f and "parseLoginStatus" in _cn_f
+   and "Ecp_LoginStuts" in _cn_f and "c_m_Lin" in _cn_f,
+   "36.4 登录态判定走 cookie（Ecp_LoginStuts 主 + c_m_Lin 兜底，纯函数可离线测）")
+ok(os.path.exists(os.path.join(ROOT, "chrome", "content", "scripts", "vendor", "sm2.js")),
+   "36.5 vendor/sm2.js 存在（sm-crypto UMD，与知网官方登录页同款库）")
+_sm2f = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "vendor", "sm2.js"),
+                encoding="utf-8").read()
+ok("doEncrypt" in _sm2f and "exports.sm2" in _sm2f,
+   "36.6 vendor sm2 是 UMD 打包且含 doEncrypt（loadSubScript 式 scope 可挂载）")
+ok('UA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0)' in _cn_f
+   and "MIN_INTERVAL_MS: 3000" in _cn_f and "_cnkiHeaders" in _cn_f,
+   "36.7 ★ CNKI 全链路桌面 UA + kns 3s 限速（Zotero 默认 UA 会被 WAF 一眼识破）")
+ok("CNAuth.ensureLogin({ silent: true })" in _cn_f,
+   "36.8 抓取链路接入静默登录（搜索分支 + _tryCNKIPdf 两处）")
+ok('"menuCNLogin"' not in menus_js and "menuCNLogin:" in utils_js,
+   "36.9 ★ 0.43.1 登录类收敛：右键/工具菜单无 cn-login（文案保留供面板用）")
+ok("IpLoginPo" in _cn_f and "ipLogin" in _cn_f and "detectAccess" in _cn_f,
+   "36.14 ★ 校园网 IP 登录通道（IpLoginPo 无账号参数，validate.js SubmitCheck2 同款）+ 权限三态探测")
+ok(os.path.exists(os.path.join(ROOT, "test", "cn-auth.test.js")),
+   "36.10 cn-auth 单测存在（test/cn-auth.test.js）")
+ok("test/cn-auth.test.js" in _pf5,
+   "36.11 preflight 含知网登录测试")
+ok("PP.cnAuth.loginInteractive()" in hub_js,
+   "36.12 功能中心（Hub）保留「知网账号登录」入口卡（全能入口，与右键菜单分离）")
+ok("this.cnAuth = CNAuth" in mainjs,
+   "36.13 main.js 暴露 cnAuth（面板/Hub/排障经 Zotero.PaperPilot 访问）")
+# 设置面板「知网账号」卡片（0.43.1）
+_prefs_xhtml = io.open(os.path.join(ROOT, "chrome", "content", "prefs.xhtml"), encoding="utf-8").read()
+ok('data-fold="cnki"' in _prefs_xhtml and 'id="pp-cnki-login-btn"' in _prefs_xhtml
+   and 'id="pp-cnki-status"' in _prefs_xhtml and 'id="pp-cnki-detect-btn"' in _prefs_xhtml,
+   "36.15 ★ 设置面板有「知网账号」卡片（状态行 + 登录按钮 + 权限检测按钮）")
+ok('id="pp-cnki-verify-btn"' in _prefs_xhtml and 'id="pp-cnki-translators-btn"' in _prefs_xhtml,
+   "36.16 风控验证/转换器更新按钮在面板（菜单已撤）")
+ok(os.path.exists(os.path.join(ROOT, "chrome", "content", "prefs-cnki.js")),
+   "36.17 面板脚本 prefs-cnki.js 存在")
+ok("prefs-cnki.js" in mainjs,
+   "36.18 main.js 注册 prefs-cnki.js 到设置面板脚本列表")
+ok("loginFromPanel" in _cn_f,
+   "36.19 面板登录走 loginFromPanel（不弹对话框，面板已填凭据）")
+ok('data-fold="account"' in _prefs_xhtml and 'pp-cnki-status' in _prefs_xhtml,
+   "36.20 知网卡片在账号分类下（账号卡片之后）")
+ok("cnkiBootSelfTest" in prefsdef and "bootSelfTest" in _cn_f
+   and "cnkiBootSelfTest" in mainjs,
+   "36.21 ★ 启动自检三端接线（pref 默认关 / CNAuth.bootSelfTest / main.js 条件调度）")
 
 print("=" * 60)
 for p in passes:

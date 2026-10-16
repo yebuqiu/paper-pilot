@@ -124,10 +124,15 @@ pref("extensions.zotero.paperpilot.noteTemplatesCustom", "");
 pref("extensions.zotero.paperpilot.attachNamePattern", "{author} - {year} - {title}");
 pref("extensions.zotero.paperpilot.unpaywallEmail", "");
 // 0.27.0 新增：Sci-Hub / Sci-Net 补全文（Unpaywall 未命中时的补充渠道，可在设置关闭）
+// 0.43.0：默认镜像链 3 → 7（+ .ren/.ee/.hkvisa.net/.mksa.top，参考 2026 活跃开源项目
+// scihub-mcp 与 Zotero 中文社区镜像页）；旧默认值用户由 SciHub.upgradeMirrorsPref()
+// 启动时一次性迁移。新增出版商直连（doi.org → citation_pdf_url，校园 VPN/机构订阅
+// 兜底 Sci-Hub 停更后的新文献），独立于 Sci-Hub 开关
 pref("extensions.zotero.paperpilot.scihubEnabled", true);
-pref("extensions.zotero.paperpilot.scihubMirrors", "sci-hub.ru, sci-hub.se, sci-hub.st");
+pref("extensions.zotero.paperpilot.scihubMirrors", "sci-hub.ru, sci-hub.se, sci-hub.st, sci-hub.ren, sci-hub.ee, sci-hub.hkvisa.net, sci-hub.mksa.top");
 pref("extensions.zotero.paperpilot.scinetEnabled", true);
 pref("extensions.zotero.paperpilot.scinetUrl", "https://sci-net.xyz");
+pref("extensions.zotero.paperpilot.publisherDirectEnabled", true);
 // 0.43.0 新增：原生 Find Full Text 集成（fulltext-resolver.js）——启动时把 Unpaywall
 // 与 Sci-Hub/Sci-Net（尊重上面的开关）写进 Zotero 内置 extensions.zotero.findPDFs.resolvers，
 // 复用原生「查找全文」与「自动下载 PDF」流程；卸载时精确移除。关 = 完全不碰该 pref
@@ -155,6 +160,13 @@ pref("extensions.zotero.paperpilot.cnFetchCNKIExport", true);
 pref("extensions.zotero.paperpilot.cnFetchAIVision", false);
 pref("extensions.zotero.paperpilot.cnAIAutoThreshold", 0.9);
 pref("extensions.zotero.paperpilot.cnAIConfirmThreshold", 0.6);
+// 0.43.0 新增：知网个人账号登录（详情页下载按钮只在有权限的会话里渲染）。
+// 凭据只存本机 Zotero profile（prefs 数据库），**绝不进 git**；密码 base64 混淆。
+pref("extensions.zotero.paperpilot.cnkiUsername", "");
+pref("extensions.zotero.paperpilot.cnkiPassword", "");
+// 0.43.1 新增：知网链路启动自检（发版前真机功能验证：权限三态/登录/搜索探测 → boot 日志）。
+// 默认关；开一次验证完记得关（每次启动都会打一次知网接口）。
+pref("extensions.zotero.paperpilot.cnkiBootSelfTest", false);
 // 0.14.7 新增：设置界面敏感信息默认掩码（接口地址明文开关）
 pref("extensions.zotero.paperpilot.uiShowFullUrl", false);
 // 0.16.0 新增：界面主题（"" = 跟随 Zotero 原生；主题 id 见 ui-theme.js THEMES）
@@ -185,6 +197,8 @@ pref("extensions.zotero.paperpilot.pdfThemeCustomOpacity", 30);
 // 任一处切换即时生效并持久化；置 false 可完全隐藏两个入口
 // （主题仍可在 视图 → 外观主题 菜单里切换）
 pref("extensions.zotero.paperpilot.themeButtonEnabled", true);
+// 0.42.0：主窗口收藏夹工具栏的主题按钮默认不注入（入口收敛到设置面板/视图菜单），开此恢复
+pref("extensions.zotero.paperpilot.themeMainButtonEnabled", false);
 // 0.21.0 新增：多篇 PDF 并排对比
 // 同时打开的 PDF 上限（2-6，默认 4：2×2 网格在常规屏幕上每页仍可读）
 pref("extensions.zotero.paperpilot.compareMaxPanes", 4);

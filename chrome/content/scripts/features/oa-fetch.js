@@ -1,10 +1,15 @@
-/* PaperPilot 全文补全（多源链：Unpaywall → Sci-Hub → Sci-Net）
+/* PaperPilot 全文补全（多源链：Unpaywall → Sci-Hub → Sci-Net → 出版商直连）
  * 0.11.0：Unpaywall 合法开放获取渠道 —— 有 DOI 无 PDF 的条目查 OA 版本并导入。
  * 0.27.0：未命中时按设置可选接力 Sci-Hub / Sci-Net 补充渠道（features/scihub.js）：
- *         Sci-Hub 按镜像顺序探测（sci-hub.ru → .se → .st），未收录的新文献兜底 Sci-Net。
+ *         Sci-Hub 按镜像顺序探测，未收录的新文献兜底 Sci-Net。
+ * 0.43.0：链尾新增出版商直连（SciHub.fetchFromPublisher，参考 zotero-scihub-resolver）——
+ *         doi.org 跳出版商落地页取 citation_pdf_url；校园 VPN / 机构订阅下可补
+ *         Sci-Hub 停更后的新文献。独立开关 publisherDirectEnabled，且不受
+ *         「Sci-Hub 验证/不可达暂停」影响（doi.org 与镜像站可达性无关）。
  *         渠道默认开启、可在插件设置中关闭；被要求人机验证时在 Zotero 中打开验证页，
  *         完成验证（cookie 存于 Zotero 会话）后重跑即可。仅供个人学术研究用途。
- * pref：unpaywallEmail / scihubEnabled / scihubMirrors / scinetEnabled / scinetUrl。
+ * pref：unpaywallEmail / scihubEnabled / scihubMirrors / scinetEnabled / scinetUrl
+ *      / publisherDirectEnabled。
  */
 /* global Zotero, Prefs, I18n, ItemSel, CitationColumn, SciHub, PathUtils, IOUtils */
 
@@ -58,9 +63,11 @@ var OAFetch = {
 
   /**
    * 单条目补全文。
-   * ctx：{ email, scihub, scinet } —— 渠道开关（captcha/unreachable 后的「本次运行停试」由调用方控制）
+   * ctx：{ email, scihub, scinet, pubDirect } —— 渠道开关（captcha/unreachable 后的
+   * 「本次运行停试」由调用方控制；pubDirect 独立于 scihubBlocked，doi.org 可达性与镜像无关）
    * 返回 { status }，status ∈
    *   "has-pdf" | "no-doi" | "added"（Unpaywall） | "added-scihub" | "added-scinet"
+   *   | "added-pub"（出版商直连）
    *   | "not-found" | "captcha" | "unreachable" | "error"
    * captcha / unreachable 附带 { host, pageUrl }（供调用方打开验证页）。
    */
@@ -89,7 +96,7 @@ var OAFetch = {
       try { Zotero.debug("PaperPilot oaFetch: Unpaywall 查询失败 - " + (e && e.message)); } catch (e2) { /* ignore */ }
     }
 
-    // ② Sci-Hub（补充渠道，按镜像顺序探测）
+    // ② Sci-Hub（补充渠道，按镜像顺序探测；不可达镜像有会话级冷却记忆）
     let s1 = null;
     if (ctx.scihub) {
       try { s1 = await SciHub.fetchPdf(doi); }
@@ -117,6 +124,24 @@ var OAFetch = {
       }
       if (s2.status === "captcha") {
         return { status: "captcha", host: s2.host, pageUrl: s2.pageUrl };
+      }
+    }
+
+    // ③' 出版商直连（链尾兜底；独立于 Sci-Hub 的暂停状态——doi.org 是另一条链路，
+    //     校园 VPN / 机构订阅下常能补到 Sci-Hub 停更后的新文献）
+    if (ctx.pubDirect) {
+      let s3 = null;
+      try { s3 = await SciHub.fetchFromPublisher(doi); }
+      catch (e) { s3 = { status: "error", message: String((e && e.message) || e) }; }
+      if (s3.status === "ok") {
+        await this._importBytes(item, s3.bytes, "Full Text PDF (Publisher)");
+        return { status: "added-pub" };
+      }
+      if (s3.status === "captcha") {
+        return { status: "captcha", host: s3.host, pageUrl: s3.pageUrl };
+      }
+      if (s3.status === "unreachable") {
+        try { Zotero.debug("PaperPilot oaFetch: 出版商直连不可达 - " + (s3.message || "")); } catch (e2) { /* ignore */ }
       }
     }
 
@@ -158,12 +183,14 @@ var OAFetch = {
     const email = String(Prefs.get("unpaywallEmail", "") || "").trim() || "paperpilot@users.noreply.local";
     const useScihub = Prefs.get("scihubEnabled", true) !== false;
     const useScinet = useScihub && Prefs.get("scinetEnabled", true) !== false;
+    const usePubDirect = Prefs.get("publisherDirectEnabled", true) !== false;
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
     pw.changeHeadline("PaperPilot · " + I18n.t("menuOaFetch"));
     pw.show();
-    let nOA = 0, nSci = 0, nSnet = 0, nHas = 0, nMiss = 0, nNoDoi = 0, nErr = 0;
-    let scihubBlocked = false;   // 验证拦截 / 不可达后，本次运行不再尝试补充渠道
+    let nOA = 0, nSci = 0, nSnet = 0, nPub = 0, nHas = 0, nMiss = 0, nNoDoi = 0, nErr = 0;
+    let scihubBlocked = false;   // 验证拦截 / 不可达后，本次运行不再尝试 Sci-Hub/Sci-Net
+    // （出版商直连不受 scihubBlocked 影响：doi.org 与镜像站可达性无关）
     let captchaHandled = false;
     let unreachHandled = false;
     let first = true;
@@ -179,11 +206,13 @@ var OAFetch = {
           email,
           scihub: useScihub && !scihubBlocked,
           scinet: useScinet && !scihubBlocked,
+          pubDirect: usePubDirect,
         });
         const st = r && r.status;
         if (st === "added") { nOA++; progress.setText(zh ? "已补全文 PDF（开放获取）" : "PDF added (OA)"); }
         else if (st === "added-scihub") { nSci++; progress.setText(zh ? "已补全文 PDF（Sci-Hub）" : "PDF added (Sci-Hub)"); }
         else if (st === "added-scinet") { nSnet++; progress.setText(zh ? "已补全文 PDF（Sci-Net）" : "PDF added (Sci-Net)"); }
+        else if (st === "added-pub") { nPub++; progress.setText(zh ? "已补全文 PDF（出版商直连）" : "PDF added (Publisher)"); }
         else if (st === "has-pdf") { nHas++; progress.setText(zh ? "已有 PDF" : "Has PDF"); }
         else if (st === "no-doi") { nNoDoi++; progress.setText(zh ? "无 DOI" : "No DOI"); }
         else if (st === "captcha") {
@@ -216,9 +245,10 @@ var OAFetch = {
       if (!first) await new Promise((r) => setTimeout(r, 600)); // 礼貌限速
       first = false;
     }
-    let sum = (zh ? "合计：已补 " : "Done: added ") + (nOA + nSci + nSnet) +
+    let sum = (zh ? "合计：已补 " : "Done: added ") + (nOA + nSci + nSnet + nPub) +
       (zh ? "（OA " : " (OA ") + nOA + (zh ? " / Sci-Hub " : " / Sci-Hub ") + nSci +
-      (zh ? " / Sci-Net " : " / Sci-Net ") + nSnet + ")" +
+      (zh ? " / Sci-Net " : " / Sci-Net ") + nSnet +
+      (zh ? " / 出版商 " : " / Publisher ") + nPub + ")" +
       (zh ? "，已有 " : ", has ") + nHas +
       (zh ? "，未找到 " : ", miss ") + nMiss +
       (zh ? "，无 DOI " : ", no DOI ") + nNoDoi;

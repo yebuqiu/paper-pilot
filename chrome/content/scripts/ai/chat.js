@@ -1,5 +1,5 @@
 /* PaperPilot PDF 全文提取 + 问答逻辑 */
-/* global Zotero, IOUtils, Prefs, AIClient, TranslateSvc, I18n */
+/* global Zotero, IOUtils, Prefs, AIClient, TranslateSvc, TranslateX, I18n */
 
 var AIChat = {
   // 附件全文缓存（存未截断原文，截断在使用时按当前 pref 值进行；FIFO 淘汰）
@@ -225,9 +225,11 @@ var AIChat = {
       const to = TranslateSvc.targetCode();
       const head = I18n.isZh ? { t: "标题", a: "摘要" } : { t: "Title", a: "Abstract" };
       const out = [];
+      let titleTrans;
       if (meta.title) {
         const rt = await TranslateSvc.translate(meta.title, { to });
         if (!rt.ok) throw new Error(rt.error);
+        titleTrans = rt.text;
         out.push(head.t + "\n" + rt.text);
       }
       let body = abstract;
@@ -240,6 +242,8 @@ var AIChat = {
       const ra = await TranslateSvc.translate(body, { to });
       if (!ra.ok) throw new Error(ra.error);
       out.push(head.a + "\n" + ra.text);
+      // 引擎路径：标题/摘要译文天然分离，直接写回 extra（供「标题译文」列渲染）
+      await this._writeBackTA(item, { title: titleTrans, abstract: ra.text });
       return out.join("\n\n");
     }
 
@@ -251,10 +255,12 @@ var AIChat = {
         "专业术语首次出现时保留英文原词并括号标注；数字、单位与统计量原样保留。" +
         "按「标题」「摘要」两节输出。\n\n" +
         `标题：${meta.title}\n\n摘要：${abstract}`;
-      return AIClient.chat([
+      const text = await AIClient.chat([
         { role: "system", content: system },
         { role: "user", content: q },
       ]);
+      await this._writeBackTA(item, this._parseTASections(text));
+      return text;
     }
     // 回退：无摘要字段，翻译 PDF 开篇
     const fullText = await this.getFullText(item);
@@ -264,10 +270,36 @@ var AIChat = {
       "学术语气、忠实原文、不增删内容；专业术语首次出现时保留英文原词并括号标注；" +
       "数字、单位与统计量原样保留。按「标题」「摘要」两节输出：\n\n" +
       fullText.slice(0, 3000);
-    return AIClient.chat([
+    const text = await AIClient.chat([
       { role: "system", content: system },
       { role: "user", content: q },
     ]);
+    await this._writeBackTA(item, this._parseTASections(text));
+    return text;
+  },
+
+  /** 解析 LLM 合并输出为 {title, abstract}（识别不出则不动 extra） */
+  _parseTASections(text) {
+    if (typeof TranslateX === "undefined" || !TranslateX) return {};
+    const sec = TranslateX.parseSections(text);
+    const out = {};
+    if (sec.title) out.title = sec.title;
+    if (sec.abstract) out.abstract = sec.abstract;
+    return out;
+  },
+
+  /**
+   * 译文写回 extra（pref translateWriteBack 开关，默认开）。
+   * 写回是附加动作：失败绝不打断笔记生成主流程。
+   */
+  async _writeBackTA(item, translations) {
+    try {
+      if (!Prefs.get("translateWriteBack", true)) return;
+      if (typeof TranslateX === "undefined" || !TranslateX) return;
+      await TranslateX.writeBackTranslations(item, translations || {});
+    } catch (e) {
+      try { Zotero.debug("PaperPilot: 译文写回 extra 失败 " + (e && e.message || e)); } catch (e2) { /* ignore */ }
+    }
   },
 
   /** 一键深度解读：五段式结构化解读（全文优先，无全文回退摘要） */

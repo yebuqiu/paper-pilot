@@ -24,8 +24,11 @@ if (!(Test-Path $logDir))   { New-Item -ItemType Directory -Path $logDir | Out-N
 # (PaperPilotGuard honors the marker and would otherwise resurrect a stopped server)
 Remove-Item (Join-Path $logDir "stopped-account.flag") -Force -ErrorAction SilentlyContinue
 
-# locate node.exe: newest managed runtime version, else PATH
+# locate node.exe: project-local runtime first (portable), then newest
+# managed runtime version, else PATH
 function Find-LatestNode {
+    $local = Join-Path $projectDir "runtime\node\node.exe"
+    if (Test-Path $local) { return $local }
     $base = "C:\Users\Administrator\.workbuddy\binaries\node\versions"
     if (Test-Path $base) {
         $best = $null; $bestKey = -1
@@ -61,12 +64,15 @@ if (Test-ServerPort) {
 
 $nodeExe = Find-LatestNode
 # cmd /c needs the whole command wrapped in an extra pair of quotes (same form as vbs/launcher)
-$cmdLine = 'cmd /c ""' + $nodeExe + '" account-server.js >> "' + $logFile + '" 2>&1"'
+# 2026-10-16 fix: previous form built 'cmd /c ...' then Substring("cmd /c ".Length) --
+# that STRIPPED the /c switch, cmd.exe hung on an interactive prompt with the command
+# as an argument and node never started (silent: port stayed down, log untouched).
+$cmdArgs = '/c ""' + $nodeExe + '" account-server.js >> "' + $logFile + '" 2>&1"'
 
 try {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = "cmd.exe"
-    $psi.Arguments = $cmdLine.Substring("cmd /c ".Length)
+    $psi.Arguments = $cmdArgs
     $psi.WorkingDirectory = $serverDir
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
@@ -79,10 +85,11 @@ try {
     exit 1
 }
 
+# external-drive cold start is slow (runtime node first-read + AV scan): allow 30s
 $ok = $false
-for ($i = 0; $i -lt 20; $i++) {
+for ($i = 0; $i -lt 60; $i++) {
     Start-Sleep -Milliseconds 500
     if (Test-ServerPort) { $ok = $true; break }
 }
 if ($ok) { Write-Output "account server is up on 127.0.0.1:8000" }
-else     { Write-Output "FATAL: 8000 not answering after 10s (see $logFile)"; exit 2 }
+else     { Write-Output "FATAL: 8000 not answering after 30s (see $logFile)"; exit 2 }

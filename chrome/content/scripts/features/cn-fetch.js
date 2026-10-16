@@ -26,6 +26,28 @@ var CNFetch = {
     try { _ppDiag("cn-fetch: " + msg); } catch (e) { /* ignore */ }
   },
 
+  // ================= 反爬基础（0.43.0：全链路桌面 UA + kns 3s 限速） =================
+  // 根因（2026-10 真机排查）：Zotero.HTTP 默认 UA 是 "Zotero/x.x"，知网 WAF 一眼识破，
+  // 403/软拦频发。所有知网请求统一带桌面浏览器 UA（scihub.js DESKTOP_UA 同款思路），
+  // 并对 kns.cnki.net 保持 3s 最小间隔（对齐 ref-sources 的官方建议×2 口径）。
+  UA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+  MIN_INTERVAL_MS: 3000,
+  _lastReqAt: 0,
+
+  /** 任意两次知网请求启动间隔 ≥ MIN_INTERVAL_MS（防触发风控；搜索/导出/详情/下载共用） */
+  async _throttle() {
+    const gap = Date.now() - this._lastReqAt;
+    if (gap < this.MIN_INTERVAL_MS) {
+      await new Promise((r) => setTimeout(r, this.MIN_INTERVAL_MS - gap));
+    }
+    this._lastReqAt = Date.now();
+  },
+
+  /** 带桌面 UA 的请求头合并（extra 覆盖同名键） */
+  _cnkiHeaders(extra) {
+    return Object.assign({ "User-Agent": this.UA }, extra || {});
+  },
+
   // ================= 文本处理 =================
 
   _normalizeTitle(t) {
@@ -267,8 +289,11 @@ var CNFetch = {
     };
     let resp;
     try {
+      await this._throttle();
       resp = await Zotero.HTTP.request("POST", "https://kns.cnki.net/kns8s/brief/grid", {
-        body: this._formEncode(post), headers, timeout: 10000, successCodes: [200, 403],
+        body: this._formEncode(post),
+        headers: this._cnkiHeaders(headers),
+        timeout: 10000, successCodes: [200, 403],
       });
     } catch (e) {
       this._diag("cnki request failed: " + (e && e.message));
@@ -332,19 +357,20 @@ var CNFetch = {
   async _getExportEndNote(exportID) {
     if (!exportID) return "";
     try {
+      await this._throttle();
       const resp = await Zotero.HTTP.request(
         "POST",
         "https://kns.cnki.net/dm8/API/GetExport",
         {
           body: "filename=" + encodeURIComponent(exportID) +
             "&uniplatform=NZKPT&displaymode=GBTREFER%2Celearning%2CEndNote",
-          headers: {
+          headers: this._cnkiHeaders({
             "Accept": "text/plain, */*; q=0.01",
             "Accept-Language": "zh-CN,en-US;q=0.7,en;q=0.3",
             "Content-Type": "application/x-www-form-urlencoded",
             "Origin": "https://www.cnki.net",
             "Referer": "https://kns.cnki.net/",
-          },
+          }),
           timeout: 10000,
           successCodes: [200, 403],
         },
@@ -551,7 +577,11 @@ var CNFetch = {
     if (this._cnkiSeeded) return;
     this._cnkiSeeded = true;
     try {
-      await Zotero.HTTP.request("GET", "https://kns.cnki.net/kns8s/", { timeout: 8000 });
+      await this._throttle();
+      // 预热也带桌面 UA：无 UA 的 GET 是最容易被 WAF 标记的流量
+      await Zotero.HTTP.request("GET", "https://kns.cnki.net/kns8s/", {
+        headers: this._cnkiHeaders(), timeout: 8000,
+      });
       this._diag("cnki session seeded");
     } catch (e) {
       this._diag("cnki seed failed: " + (e && e.message));
@@ -574,9 +604,10 @@ var CNFetch = {
 
   /** 下载 URL → bytes，校验 %PDF magic；返回 {bytes} 或 {fail:true} */
   async _downloadPDFBytes(url, referer) {
+    await this._throttle();
     const resp = await Zotero.HTTP.request("GET", url, {
       responseType: "arraybuffer",
-      headers: referer ? { "Referer": referer } : undefined,
+      headers: this._cnkiHeaders(referer ? { "Referer": referer } : null),
       timeout: 45000,
     });
     const bytes = new Uint8Array(resp.response);
@@ -636,8 +667,12 @@ var CNFetch = {
     }
   },
 
-  /** CNKI 机构权限通道：详情页 → .btn-dlpdf → 下载（共享验证后的 cookie 会话） */
+  /** CNKI 权限通道：详情页 → .btn-dlpdf → 下载（共享验证后的 cookie 会话） */
   async _tryCNKIPdf(item, pick) {
+    // 0.43.0：下载按钮只在有权限的会话里渲染——个人账号先静默登录
+    // （机构 IP 会话已满足条件，静默登录会因 isLoggedIn 直接跳过）
+    try { await CNAuth.ensureLogin({ silent: true }); }
+    catch (e) { this._diag("ensureLogin before pdf: " + (e && e.message)); }
     const pages = [];
     if (pick.dbname && pick.filename) {
       pages.push("https://kns.cnki.net/kcms/detail/detail.aspx?dbname=" +
@@ -648,8 +683,9 @@ var CNFetch = {
     for (const u of pages) {
       let resp;
       try {
+        await this._throttle();
         resp = await Zotero.HTTP.request("GET", u, {
-          headers: { "Referer": "https://kns.cnki.net/kns8s/" },
+          headers: this._cnkiHeaders({ "Referer": "https://kns.cnki.net/kns8s/" }),
           timeout: 15000, successCodes: [200, 403],
         });
       } catch (e) {
@@ -720,6 +756,10 @@ var CNFetch = {
     const exactHit = results.some((r) => this._isTitleMatch(r.articleTitle, searchTitle));
     if (!exactHit && Prefs.get("cnFetchUseCNKI", true) && !this._batchBlocked) {
       await this._seedCNKI();
+      // 0.43.0：有已存凭据则先静默登录（登录态能显著降低风控概率，
+      // 且是 PDF 下载权限的前提）；静默失败不弹窗，走匿名路径
+      try { await CNAuth.ensureLogin({ silent: true }); }
+      catch (e) { this._diag("ensureLogin error: " + (e && e.message)); }
       let r2 = await this._searchCNKI(searchTitle, searchAuthor);
       // no-content 软拦 vs 真空结果：热词探测一次定真伪（每批至多一次）。
       // 0.42.1：探测通过但本题 0 结果时重试一次原搜索——no-content 也可能是
@@ -1325,5 +1365,594 @@ var CNVerify = {
           zh ? "✓ 知网验证已通过，可以重新抓取了。" : "✓ CNKI verification passed — fetch again now.");
       } catch (e) { /* ignore */ }
     });
+  },
+};
+
+/* ==================== 知网账号登录（0.43.0，CNAuth） ====================
+ * 背景：详情页 .btn-dlpdf 只在有下载权限的会话（机构 IP 或个人账号登录）里渲染；
+ * 个人账号不登录永远拿不到 PDF。本模块给抓取链路补上「个人知网账号」通道。
+ *
+ * 登录协议（2026-10 从 login.cnki.net/login 逆向，validate.js 复刻）：
+ *   1. GET 登录页（platform=kns）→ 种 Ecp_ClientId 等基础 cookie；
+ *   2. POST https://login.cnki.net/TopLoginCore/api/LoginApi/LoginPo
+ *      body = JSON {userName, pwd: '04'+SM2(密码), isAutoLogin, p:0,
+ *                   verifyType:3, isEncry:2, fingerprint:'', platform:'kns'}
+ *      请求头 = timestamp / nonce / signature / appID:LoginWap / ClientID（见 _signHeaders）；
+ *   3. 低风险会话免滑块直接返回 {IsSuccess:true}；风控要求滑块时返回验证错误 →
+ *      回退交互窗口（viewer 打开官方登录页 + 注入自动填充，滑块由用户拖，加密
+ *      全部由官方页面 JS 完成）。
+ *
+ * 会话与凭据：
+ *   - 登录成功 cookie（c_m_Lin 等）落默认 cookie 罐，Zotero.HTTP 与 viewer 共享，
+ *     搜索/导出/详情/下载全部自动带上——与 CNVerify 同一个罐，互不干扰；
+ *   - 凭据存 Zotero prefs（cnkiUsername / cnkiPassword），**只在本机 profile，
+ *     绝不进 git**；密码 base64 混淆存放（防随手翻看，不防真攻击者）；
+ *   - SM2 加密用知网自带的 sm-crypto UMD（vendor/sm2.js，MIT）懒加载，官方同款实现。
+ * 纯函数（md5/signHeaders/obfuscate）有离线单测：test/cn-auth.test.js。
+ */
+var CNAuth = {
+  LOGIN_PAGE: "https://login.cnki.net/login/?platform=kns",
+  LOGIN_API: "https://login.cnki.net/TopLoginCore/api/LoginApi/LoginPo",
+  /** IP 登录（校园网/机构授权）：validate.js SubmitCheck2 同款，无账号参数，按请求源 IP 识别机构权限 */
+  IP_LOGIN_API: "https://login.cnki.net/TopLoginCore/api/LoginApi/IpLoginPo",
+  KNS_HOME: "https://kns.cnki.net/kns8s/",
+  // validate.js 同款 SM2 公钥（未压缩点，04 开头）
+  SM2_PUBKEY: "0483A64E242DD5491FB89F510A8F39BF37E5FA01057B91661412748D9F3B163387644B9366CFD3E729E955B013598A55791398CF530BCD7F2B9E6DE514E45567B5",
+  SIGN_SECRET: "t8b52yrsoyx66f35tk0p4nubrmrcglv5",
+  _sm2Lib: null,
+  _loginOkAt: 0, // 登录成功时间戳（10 分钟内不重复探测/登录）
+  _ipCheckedAt: 0, // IP 登录探测节流（30 分钟内不重复试，避免无谓打接口）
+
+  _diag(msg) {
+    try { _ppDiag("cn-auth: " + msg); } catch (e) { /* ignore */ }
+  },
+
+  // ================= 凭据（prefs，本机 profile；不进 git） =================
+
+  /** 密码 base64 混淆（防随手翻看 prefs 的场景；非安全加密） */
+  obfuscate(p) {
+    try { return btoa(unescape(encodeURIComponent(String(p || "")))); }
+    catch (e) { return ""; }
+  },
+  deobfuscate(s) {
+    try { return decodeURIComponent(escape(atob(String(s || "")))); }
+    catch (e) { return ""; }
+  },
+
+  /** 已保存的凭据 → {u, p}；未保存返回 null */
+  creds() {
+    let u = "", p = "";
+    try {
+      u = String(Prefs.get("cnkiUsername", "") || "").trim();
+      p = this.deobfuscate(Prefs.get("cnkiPassword", ""));
+    } catch (e) { return null; }
+    return (u && p) ? { u, p } : null;
+  },
+
+  saveCreds(u, p) {
+    try {
+      Prefs.set("cnkiUsername", String(u || "").trim());
+      Prefs.set("cnkiPassword", this.obfuscate(p));
+      return true;
+    } catch (e) { return false; }
+  },
+
+  // ================= MD5（纯函数；login.cnki.net 签名同款） =================
+
+  /** 紧凑 MD5 实现（hex 输出；RFC 1321，公有领域风格逐轮展开） */
+  md5(str) {
+    function rl(n, c) { return (n << c) | (n >>> (32 - c)); }
+    function ad(x, y) { const l = (x & 0xffff) + (y & 0xffff);
+      return (((x >> 16) + (y >> 16) + (l >> 16)) << 16) | (l & 0xffff); }
+    function cmn(q, a, b, x, s, t) { return ad(rl(ad(ad(a, q), ad(x, t)), s), b); }
+    function ff(a, b, c, d, x, s, t) { return cmn((b & c) | (~b & d), a, b, x, s, t); }
+    function gg(a, b, c, d, x, s, t) { return cmn((b & d) | (c & ~d), a, b, x, s, t); }
+    function hh(a, b, c, d, x, s, t) { return cmn(b ^ c ^ d, a, b, x, s, t); }
+    function ii(a, b, c, d, x, s, t) { return cmn(c ^ (b | ~d), a, b, x, s, t); }
+    // UTF-8 字节化
+    const bytes = [];
+    const s = String(str);
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x80) bytes.push(c);
+      else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+      else bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+    }
+    const n = bytes.length;
+    // RFC 1321 padding：0x80 + 0 填充至 ≡56 (mod 64) + 8 字节小端长度。
+    // 先 padding 再统一分块（消息 56~64 字节时会多出一个块，两份轮函数的老写法会漏）
+    const bitLen = n * 8;
+    bytes.push(0x80);
+    while (bytes.length % 64 !== 56) bytes.push(0);
+    bytes.push(bitLen & 0xff, (bitLen >>> 8) & 0xff, (bitLen >>> 16) & 0xff, (bitLen >>> 24) & 0xff,
+      0, 0, 0, 0);
+    const state = [0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476];
+    let i;
+    for (i = 0; i < bytes.length; i += 64) {
+      const X = new Array(16);
+      for (let j = 0; j < 16; j++) {
+        X[j] = bytes[i + j * 4] | (bytes[i + j * 4 + 1] << 8) |
+          (bytes[i + j * 4 + 2] << 16) | (bytes[i + j * 4 + 3] << 24);
+      }
+      const [a0, b0, c0, d0] = state;
+      let a = a0, b = b0, c = c0, d = d0;
+      a = ff(a, b, c, d, X[0], 7, 0xd76aa478); d = ff(d, a, b, c, X[1], 12, 0xe8c7b756);
+      c = ff(c, d, a, b, X[2], 17, 0x242070db); b = ff(b, c, d, a, X[3], 22, 0xc1bdceee);
+      a = ff(a, b, c, d, X[4], 7, 0xf57c0faf); d = ff(d, a, b, c, X[5], 12, 0x4787c62a);
+      c = ff(c, d, a, b, X[6], 17, 0xa8304613); b = ff(b, c, d, a, X[7], 22, 0xfd469501);
+      a = ff(a, b, c, d, X[8], 7, 0x698098d8); d = ff(d, a, b, c, X[9], 12, 0x8b44f7af);
+      c = ff(c, d, a, b, X[10], 17, 0xffff5bb1); b = ff(b, c, d, a, X[11], 22, 0x895cd7be);
+      a = ff(a, b, c, d, X[12], 7, 0x6b901122); d = ff(d, a, b, c, X[13], 12, 0xfd987193);
+      c = ff(c, d, a, b, X[14], 17, 0xa679438e); b = ff(b, c, d, a, X[15], 22, 0x49b40821);
+      a = gg(a, b, c, d, X[1], 5, 0xf61e2562); d = gg(d, a, b, c, X[6], 9, 0xc040b340);
+      c = gg(c, d, a, b, X[11], 14, 0x265e5a51); b = gg(b, c, d, a, X[0], 20, 0xe9b6c7aa);
+      a = gg(a, b, c, d, X[5], 5, 0xd62f105d); d = gg(d, a, b, c, X[10], 9, 0x02441453);
+      c = gg(c, d, a, b, X[15], 14, 0xd8a1e681); b = gg(b, c, d, a, X[4], 20, 0xe7d3fbc8);
+      a = gg(a, b, c, d, X[9], 5, 0x21e1cde6); d = gg(d, a, b, c, X[14], 9, 0xc33707d6);
+      c = gg(c, d, a, b, X[3], 14, 0xf4d50d87); b = gg(b, c, d, a, X[8], 20, 0x455a14ed);
+      a = gg(a, b, c, d, X[13], 5, 0xa9e3e905); d = gg(d, a, b, c, X[2], 9, 0xfcefa3f8);
+      c = gg(c, d, a, b, X[7], 14, 0x676f02d9); b = gg(b, c, d, a, X[12], 20, 0x8d2a4c8a);
+      a = hh(a, b, c, d, X[5], 4, 0xfffa3942); d = hh(d, a, b, c, X[8], 11, 0x8771f681);
+      c = hh(c, d, a, b, X[11], 16, 0x6d9d6122); b = hh(b, c, d, a, X[14], 23, 0xfde5380c);
+      a = hh(a, b, c, d, X[1], 4, 0xa4beea44); d = hh(d, a, b, c, X[4], 11, 0x4bdecfa9);
+      c = hh(c, d, a, b, X[7], 16, 0xf6bb4b60); b = hh(b, c, d, a, X[10], 23, 0xbebfbc70);
+      a = hh(a, b, c, d, X[13], 4, 0x289b7ec6); d = hh(d, a, b, c, X[0], 11, 0xeaa127fa);
+      c = hh(c, d, a, b, X[3], 16, 0xd4ef3085); b = hh(b, c, d, a, X[6], 23, 0x04881d05);
+      a = hh(a, b, c, d, X[9], 4, 0xd9d4d039); d = hh(d, a, b, c, X[12], 11, 0xe6db99e5);
+      c = hh(c, d, a, b, X[15], 16, 0x1fa27cf8); b = hh(b, c, d, a, X[2], 23, 0xc4ac5665);
+      a = ii(a, b, c, d, X[0], 6, 0xf4292244); d = ii(d, a, b, c, X[7], 10, 0x432aff97);
+      c = ii(c, d, a, b, X[14], 15, 0xab9423a7); b = ii(b, c, d, a, X[5], 21, 0xfc93a039);
+      a = ii(a, b, c, d, X[12], 6, 0x655b59c3); d = ii(d, a, b, c, X[3], 10, 0x8f0ccc92);
+      c = ii(c, d, a, b, X[10], 15, 0xffeff47d); b = ii(b, c, d, a, X[1], 21, 0x85845dd1);
+      a = ii(a, b, c, d, X[8], 6, 0x6fa87e4f); d = ii(d, a, b, c, X[15], 10, 0xfe2ce6e0);
+      c = ii(c, d, a, b, X[6], 15, 0xa3014314); b = ii(b, c, d, a, X[13], 21, 0x4e0811a1);
+      a = ii(a, b, c, d, X[4], 6, 0xf7537e82); d = ii(d, a, b, c, X[11], 10, 0xbd3af235);
+      c = ii(c, d, a, b, X[2], 15, 0x2ad7d2bb); b = ii(b, c, d, a, X[9], 21, 0xeb86d391);
+      state[0] = ad(state[0], a); state[1] = ad(state[1], b);
+      state[2] = ad(state[2], c); state[3] = ad(state[3], d);
+    }
+    const hex = (x) => {
+      let h = "";
+      for (let k = 0; k < 4; k++) h += ((x >>> (k * 8)) & 0xff).toString(16).padStart(2, "0");
+      return h;
+    };
+    return hex(state[0]) + hex(state[1]) + hex(state[2]) + hex(state[3]);
+  },
+
+  /**
+   * createSign 复刻（validate.js 同款）：query 串（已 URL 编码）→ 请求签名头。
+   * 签名 = md5(timestamp + nonce + SECRET + 按 key 小写排序的 "k=v" 无分隔拼接 + clientId)，
+   * 其中值取 decodeURIComponent 后的明文；timestamp/nonce 原样回传（服务端重算校验）。
+   */
+  signHeaders(query, clientId, now) {
+    const ts = now == null ? Date.now() : now;
+    const params = {};
+    for (const kv of String(query || "").split("&")) {
+      if (!kv) continue;
+      const eq = kv.indexOf("=");
+      if (eq < 0) continue;
+      const k = kv.slice(0, eq);
+      if (!k) continue;
+      let v = kv.slice(eq + 1);
+      try { v = decodeURIComponent(v); } catch (e) { /* 保留原值 */ }
+      params[k] = v;
+    }
+    const sorted = Object.keys(params).sort((a, b) =>
+      a.toLowerCase() > b.toLowerCase() ? 1 : -1);
+    const sortedParams2 = sorted.map((k) => k + "=" + params[k]).join("");
+    const nonce = Math.sin(ts).toString().substr(6);
+    const sig = this.md5(String(ts + nonce + this.SIGN_SECRET + sortedParams2 +
+      (clientId || "")).replace(/ /g, ""));
+    return {
+      timestamp: String(ts), nonce, signature: sig,
+      "appID": "LoginWap", "ClientID": clientId || "",
+    };
+  },
+
+  // ================= SM2（vendor/sm2.js 懒加载，官方同款） =================
+
+  /** 懒加载 sm-crypto（UMD）。特权作用域：loadSubScript 到独立 scope，取 scope.sm2 */
+  sm2() {
+    if (this._sm2Lib) return this._sm2Lib;
+    try {
+      const rootURI = (Zotero.PaperPilot && Zotero.PaperPilot.rootURI) || "";
+      if (!rootURI) throw new Error("no rootURI");
+      const scope = { module: undefined, exports: undefined, define: undefined, self: undefined };
+      Services.scriptloader.loadSubScript(
+        rootURI + "chrome/content/scripts/vendor/sm2.js?v=1", scope);
+      this._sm2Lib = scope.sm2 || null;
+    } catch (e) {
+      this._diag("sm2 load failed: " + (e && e.message));
+      this._sm2Lib = null;
+    }
+    return this._sm2Lib;
+  },
+
+  /** 密码加密：'04' + sm2.doEncrypt(pwd, 公钥, 0)（ecpSm2Encrypt 同款） */
+  encryptPwd(pwd) {
+    const sm2 = this.sm2();
+    if (!sm2) return "";
+    try { return "04" + sm2.doEncrypt(String(pwd || ""), this.SM2_PUBKEY, 0); }
+    catch (e) { this._diag("sm2 encrypt failed: " + (e && e.message)); return ""; }
+  },
+
+  // ================= 登录态探测（cookie 罐） =================
+
+  /** 从默认 cookie 罐取 cnki.net 域某 cookie 值（登录 cookie 落点与 viewer 共享） */
+  _cookie(name) {
+    try {
+      for (const host of ["cnki.net", "login.cnki.net", "kns.cnki.net"]) {
+        for (const c of Services.cookies.getCookiesFromHost(host, {})) {
+          if (c.name === name) return String(c.value || "");
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return "";
+  },
+
+  /**
+   * 登录用户名（未登录返回 ""）。2026-10 真值验证：登录成功种的是
+   * Ecp_LoginStuts（JSON cookie，含 UserName/ShowName/UserType）；
+   * 老环境另有 c_m_Lin（"username,ts,0" 形态）——两个都探。
+   */
+  loginName() {
+    const st = this.parseLoginStatus(this._cookie("Ecp_LoginStuts"));
+    return st || this.parseLoginCookie(this._cookie("c_m_Lin"));
+  },
+
+  /** Ecp_LoginStuts cookie 值 → 用户名（纯函数，离线单测）；URL 编码 JSON */
+  parseLoginStatus(v) {
+    const s = String(v || "").trim();
+    if (!s) return "";
+    try {
+      const j = JSON.parse(s);
+      return (j && j.UserName) ? String(j.UserName).trim() : "";
+    } catch (e) {
+      return ""; // 损坏/半截 cookie 视为未登录
+    }
+  },
+
+  /** c_m_Lin cookie 值 → 用户名（纯函数，离线单测）；"username,ts,0" 或 "username" */
+  parseLoginCookie(v) {
+    const s = String(v || "");
+    if (!s) return "";
+    const name = s.split(",")[0].trim();
+    return name || "";
+  },
+
+  isLoggedIn() { return !!this.loginName(); },
+
+  /** 10 分钟内刚登录过（免重复探测） */
+  recentlyLoggedIn() {
+    return !!(this._loginOkAt && (Date.now() - this._loginOkAt) < 10 * 60 * 1000);
+  },
+
+  // ================= 登录编排 =================
+
+  /**
+   * 启动自检（pref cnkiBootSelfTest=true 触发，默认关）：
+   * 权限三态（IP/账号/无）→ 静默登录 → 搜索探测 → 全写 boot 日志。
+   * 用途：发版前的真机功能级验证——不开 GUI 也能拿到链路结论。
+   */
+  async bootSelfTest() {
+    const tick = (m) => { try { _ppDiag("cnki selftest: " + m); } catch (e) { /* ignore */ } };
+    try {
+      const acc = await this.detectAccess();
+      tick("access=" + acc.type +
+        (acc.name ? "(" + acc.name + ")" : "") +
+        (acc.ip ? " ip=" + acc.ip : "") +
+        (acc.error ? " err=" + String(acc.error).slice(0, 60) : ""));
+      const ok = await this.ensureLogin({ silent: true });
+      tick("ensureLogin(silent)=" + ok + " loginName=" + (this.loginName() || "(none)"));
+      // 搜索探测（CNVerify.probe 走真实 _searchCNKI 热词）
+      const searchOk = await CNVerify.probe();
+      tick("searchProbe=" + searchOk);
+      tick("done");
+    } catch (e) {
+      tick("error: " + (e && (e.stack || e.message) || e));
+    }
+  },
+
+  /**
+   * 抓取链路统一入口。优先级（越靠前越低成本、越不打扰用户）：
+   *   ① 已登录 → 直接过；
+   *   ② 校园网/机构 IP 登录（IpLoginPo，无账号参数，30 分钟节流）——
+   *      在校园网环境里这一步零配置直接建立机构会话；
+   *   ③ 已存凭据 → 账号静默登录（SM2 + 签名）；
+   *   ④ silent 模式到此为止（不弹窗）；交互模式弹密码对话框。
+   */
+  async ensureLogin(opts) {
+    const o = opts || {};
+    if (this.isLoggedIn() || this.recentlyLoggedIn()) return true;
+    // 校园网/机构 IP：会话级节流（每 30 分钟最多试一次，拿到会话后不再重复）
+    try {
+      if (Date.now() - this._ipCheckedAt > 30 * 60 * 1000) {
+        this._ipCheckedAt = Date.now();
+        const ip = await this.ipLogin();
+        if (ip.ok) { this._loginOkAt = Date.now(); return true; }
+        this._diag("ipLogin no access: " + (ip.error || ""));
+      }
+    } catch (e) { this._diag("ipLogin error: " + (e && e.message)); }
+    if (o.silent) {
+      const c = this.creds();
+      if (!c) return false;
+      try { return await this.loginSilent(c.u, c.p); }
+      catch (e) { this._diag("silent login error: " + (e && e.message)); return false; }
+    }
+    return await this.loginInteractive();
+  },
+
+  /**
+   * IP 登录（validate.js SubmitCheck2 同款）：POST IpLoginPo（无凭据）。
+   * 授权 IP（校园网/机构段）→ IsSuccess:true + 机构会话 cookie 落罐；
+   * 非授权 IP → {ErrorCode:5024, ErrorMsg:"…不在许可范围之内。您当前IP为：x.x.x.x"}。
+   * 返回 {ok, ip?, error?}；IP 登录本身就是无副作用的权限探测器。
+   */
+  async ipLogin() {
+    await CNFetch._throttle();
+    // 预热登录页种 Ecp_ClientId（与账号登录共用）
+    try {
+      await Zotero.HTTP.request("GET", this.LOGIN_PAGE, {
+        headers: CNFetch._cnkiHeaders({ "Referer": "https://kns.cnki.net/" }),
+        timeout: 15000,
+      });
+    } catch (e) { this._diag("ipLogin warmup failed: " + (e && e.message)); }
+    const clientId = this._cookie("Ecp_ClientId");
+    const query = "isAutoLogin=true&isForceLogin=false&p=0&verifyType=3";
+    const sign = this.signHeaders(query, clientId);
+    await CNFetch._throttle();
+    let resp;
+    try {
+      resp = await Zotero.HTTP.request("POST", this.IP_LOGIN_API, {
+        body: JSON.stringify({ isAutoLogin: true, isForceLogin: false, p: 0, verifyType: 3 }),
+        headers: CNFetch._cnkiHeaders(Object.assign({
+          "Content-Type": "application/json",
+          "Accept": "application/json, text/plain, */*",
+          "Origin": "https://login.cnki.net",
+          "Referer": "https://login.cnki.net/login/?platform=kns",
+        }, sign)),
+        timeout: 15000,
+        successCodes: [200, 403, 400, 500],
+      });
+    } catch (e) {
+      return { ok: false, error: "transport: " + ((e && e.message) || e) };
+    }
+    let j = null;
+    try { j = JSON.parse(resp.responseText); } catch (e) { /* 非 JSON → 风控页 */ }
+    if (!j) return { ok: false, error: "non-json response" };
+    if (!j.IsSuccess) {
+      // ErrorCode 5024 = IP 不在许可范围（ErrorMsg 里含当前 IP）
+      const ipMatch = /([\d.]+)/.exec(j.ErrorMsg || "");
+      return { ok: false, ip: ipMatch ? ipMatch[1] : "", error: j.ErrorMsg || "no access" };
+    }
+    // 授权 IP：机构会话已落罐；访问 kns 首页完成跨平台同步
+    try {
+      await CNFetch._throttle();
+      await Zotero.HTTP.request("GET", this.KNS_HOME, {
+        headers: CNFetch._cnkiHeaders({ "Referer": "https://login.cnki.net/login/?platform=kns" }),
+        timeout: 15000,
+      });
+    } catch (e) { /* 非关键 */ }
+    this._diag("ipLogin ok (机构 IP 授权): " + (j.ShowName || j.UserName || ""));
+    return { ok: true, name: j.ShowName || j.UserName || "" };
+  },
+
+  /**
+   * 权限状态探测（设置面板状态行用）：
+   *   → {type:"account", name} 账号已登录
+   *   → {type:"ip", name?}     当前 IP 在机构授权段（校园网）
+   *   → {type:"none", ip?, error?} 无任何权限
+   */
+  async detectAccess() {
+    if (this.isLoggedIn()) {
+      return { type: "account", name: this.loginName() };
+    }
+    const ip = await this.ipLogin();
+    if (ip.ok) return { type: "ip", name: ip.name };
+    return { type: "none", ip: ip.ip || "", error: ip.error || "" };
+  },
+
+  /**
+   * 静默登录（无窗口）：GET 登录页种 cookie → 签名 POST LoginPo → 激活 kns 会话。
+   * 低风险会话（IP 可信、无 ecp_showcode）免滑块直接成功；要求滑块时返回 false，
+   * 由调用方回退交互登录。
+   */
+  async loginSilent(username, password) {
+    await CNFetch._throttle();
+    // ① 登录页预热（种 Ecp_ClientId 等基础 cookie；失败不阻断——老会话可能已有）
+    try {
+      await Zotero.HTTP.request("GET", this.LOGIN_PAGE, {
+        headers: CNFetch._cnkiHeaders({ "Referer": "https://kns.cnki.net/" }),
+        timeout: 15000,
+      });
+    } catch (e) {
+      this._diag("login page warmup failed: " + (e && e.message));
+    }
+    const clientId = this._cookie("Ecp_ClientId");
+
+    // ② 构造请求（参数集与 validate.js SubmitCheck 完全同构）
+    const encPwd = this.encryptPwd(password);
+    if (!encPwd) { this._diag("sm2 unavailable"); return false; }
+    const body = {
+      userName: String(username || "").trim(),
+      pwd: encPwd,
+      isAutoLogin: true, p: 0, verifyType: 3,
+      isEncry: 2, fingerprint: "", platform: "kns",
+    };
+    // signUrl 参数 = body 各键（除 fingerprint 空值也算）；与官方拼接顺序一致
+    const query = "userName=" + encodeURIComponent(body.userName) +
+      "&pwd=" + encodeURIComponent(encPwd) +
+      "&isAutoLogin=true&p=0&verifyType=3" +
+      "&platform=kns&isEncry=2&fingerprint=";
+    const sign = this.signHeaders(query, clientId);
+
+    // ③ 签名 POST（cookie 会话由底层共享罐自动带上）
+    await CNFetch._throttle();
+    let resp;
+    try {
+      resp = await Zotero.HTTP.request("POST", this.LOGIN_API, {
+        body: JSON.stringify(body),
+        headers: CNFetch._cnkiHeaders(Object.assign({
+          "Content-Type": "application/json",
+          "Accept": "application/json, text/plain, */*",
+          "Origin": "https://login.cnki.net",
+          "Referer": "https://login.cnki.net/login/?platform=kns",
+        }, sign)),
+        timeout: 15000,
+        successCodes: [200, 403, 400, 500],
+      });
+    } catch (e) {
+      this._diag("loginPo transport failed: " + (e && e.message));
+      return false;
+    }
+    let j = null;
+    try { j = JSON.parse(resp.responseText); } catch (e) { /* 非 JSON → 风控页 */ }
+    if (!j || !j.IsSuccess) {
+      this._diag("loginPo rejected: " + (resp.status) + " " +
+        ((j && (j.ErrorMsg || j.Message)) || (resp.responseText || "").slice(0, 80)));
+      return false;
+    }
+    this._loginOkAt = Date.now();
+    this._diag("loginPo ok, uid=" + (j.Uid || "?"));
+    // ④ 激活 kns 会话（跨平台 cookie 同步；同域名 SSO 跳转）
+    try {
+      await CNFetch._throttle();
+      await Zotero.HTTP.request("GET", this.KNS_HOME, {
+        headers: CNFetch._cnkiHeaders({
+          "Referer": "https://login.cnki.net/login/?platform=kns",
+        }),
+        timeout: 15000,
+      });
+    } catch (e) { /* 非关键 */ }
+    this._diag("login as " + this.loginName());
+    return !!this.loginName();
+  },
+
+  /**
+   * 设置面板登录（面板里已填凭据，不再弹对话框）：
+   * 存凭据 → 静默登录（免滑块直接成）→ 失败开官方登录页自动填充（滑块用户拖）。
+   */
+  async loginFromPanel(username, password) {
+    this.saveCreds(username, password);
+    this._loginOkAt = 0;
+    try {
+      if (await this.loginSilent(username, password)) {
+        this._notify(true);
+        return true;
+      }
+    } catch (e) { this._diag("panel silent login error: " + (e && e.message)); }
+    return await this._loginViaWindow(username, password);
+  },
+
+  /**
+   * 交互登录：密码对话框（预填已存凭据）→ 先静默 → 滑块时开 viewer 窗口自动填充
+   * （加密/滑块由官方页面 JS 完成，用户只需拖一下滑块）→ cookie 观察等 c_m_Lin。
+   */
+  async loginInteractive() {
+    const zh = I18n.isZh;
+    const win = Zotero.getMainWindow();
+    if (!win) return false;
+    const saved = this.creds();
+    const user = { value: saved ? saved.u : "" };
+    const pass = { value: saved ? saved.p : "" };
+    const ok = Services.prompt.promptUsernameAndPassword(win,
+      "PaperPilot · " + (zh ? "知网账号登录" : "CNKI account login"),
+      zh ? "输入知网账号密码（仅存本机，用于登录后抓取 PDF 全文；如遇滑块请在打开的页面中完成）："
+         : "Enter your CNKI credentials (stored locally only; complete the slider if shown):",
+      user, pass, null, {});
+    if (!ok || !user.value || !pass.value) return false;
+    this.saveCreds(user.value, pass.value);
+    this._loginOkAt = 0;
+
+    if (await this.loginSilent(user.value, pass.value)) {
+      this._notify(true);
+      return true;
+    }
+    // 静默被滑块拦 → 官方登录页自动填充
+    return await this._loginViaWindow(user.value, pass.value);
+  },
+
+  /** viewer 窗口登录：注入填充 + 调官方 SubmitCheck（滑块用户拖）+ cookie 观察 */
+  async _loginViaWindow(username, password) {
+    const zh = I18n.isZh;
+    let win = null;
+    try { win = Zotero.openInViewer(this.LOGIN_PAGE); }
+    catch (e) { this._diag("openInViewer failed: " + (e && e.message)); }
+    if (!win) return false;
+
+    const inject = () => {
+      try {
+        const doc = win.document;
+        const XHTML = "http://www.w3.org/1999/xhtml";
+        const u = doc.getElementById("TextBoxUserName");
+        const p = doc.getElementById("TextBoxPwd");
+        if (u) u.value = username;
+        if (p) p.value = password;
+        const agree = doc.getElementById("agreement");
+        if (agree && !agree.checked) agree.click();
+        // 引导卡片：告诉用户发生了什么（账号已自动填好，点「登 录」/拖滑块）
+        const box = doc.createElementNS(XHTML, "div");
+        box.setAttribute("style",
+          "position:fixed;top:10px;right:10px;z-index:10000;padding:12px 14px;" +
+          "background:#ffffff;border:2px solid #2e7d32;border-radius:8px;" +
+          "box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:sans-serif;");
+        const hint = doc.createElementNS(XHTML, "div");
+        hint.textContent = zh
+          ? "PaperPilot：账号密码已自动填好——请点击页面上的「登 录」按钮；若弹出滑块请完成拖动。登录成功后本窗口会自动关闭。"
+          : "PaperPilot: credentials filled — click the login button; complete the slider if shown.";
+        hint.setAttribute("style", "font-size:12px;color:#333;max-width:240px;");
+        box.appendChild(hint);
+        (doc.documentElement || doc.body).appendChild(box);
+      } catch (e) {
+        this._diag("inject login failed: " + (e && e.message));
+      }
+    };
+    try {
+      if (win.document && win.document.readyState === "complete") inject();
+      else win.addEventListener("load", inject, { once: true });
+    } catch (e) { /* ignore */ }
+
+    // cookie 观察驱动（与 CNVerify._waitSession 同款）：c_m_Lin 出现 = 登录成功
+    const pw = new Zotero.ProgressWindow({ closeOnClick: false });
+    pw.changeHeadline("PaperPilot · " + (zh ? "知网登录" : "CNKI login"));
+    const line = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+      zh ? "请在打开的知网页面完成登录（滑块若弹出请拖动）…最长等待 5 分钟"
+         : "Complete the login in the opened page (drag slider if shown)… up to 5 min");
+    pw.show();
+    const deadline = Date.now() + 5 * 60 * 1000;
+    await new Promise((r) => setTimeout(r, 5000)); // 先留 5s 给页面加载
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 2500));
+      if (this.isLoggedIn()) break;
+      try { if (win.closed) break; } catch (e) { break; }
+    }
+    const ok = this.isLoggedIn();
+    if (ok) {
+      this._loginOkAt = Date.now();
+      line.setText(zh ? "✓ 知网登录成功：" + this.loginName() : "✓ Logged in: " + this.loginName());
+      line.setProgress(100);
+      pw.startCloseTimer(2500);
+      try { win.close(); } catch (e) { /* ignore */ }
+    } else {
+      line.setError();
+      line.setText(zh ? "等待超时——可稍后从菜单重新发起「知网账号登录」"
+                      : "Timed out — retry from the menu later");
+      pw.startCloseTimer(4000);
+    }
+    this._notify(ok);
+    return ok;
+  },
+
+  _notify(ok) {
+    const zh = I18n.isZh;
+    try {
+      const pw = new Zotero.ProgressWindow({ closeOnClick: true });
+      pw.changeHeadline("PaperPilot · " + (zh ? "知网登录" : "CNKI login"));
+      const line = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+        ok ? (zh ? "✓ 登录成功，抓取全文将使用账号权限" : "✓ Logged in — fetch will use account access")
+           : (zh ? "✗ 登录未完成" : "✗ Login not completed"));
+      line.setProgress(ok ? 100 : 0);
+      pw.startCloseTimer(3000);
+    } catch (e) { /* ignore */ }
   },
 };
