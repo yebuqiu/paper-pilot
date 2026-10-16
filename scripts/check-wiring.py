@@ -1768,6 +1768,12 @@ ok("ProgressWindow" in un_js, "29.13 用 Zotero 原生通知（与插件其它�
 ok("updateNoticeEnabled" in prefsdef,
    "29.14 prefs.js 含 updateNoticeEnabled 默认值")
 ok("update-notice.test.js" in _pf3, "29.15 preflight 含更新提示测试")
+# 0.44.1：更新内容展示（用户报「以前能看到更新了哪些内容」）
+ok("updateNoticeLastSeen" in un_js and "updateNoticeLastSeen" in prefsdef,
+   "29.16 ★ 记录「上次运行版本」pref（静默更新完成后的“已更新到”提示）")
+ok("entryOf" in un_js and "whatsNewOf" in un_js and "_notifyUpdated" in un_js,
+   "29.17 ★ whatsNew 摘要解析与更新完成提示（纯函数可单测）")
+ok("本次更新内容" in un_js, "29.18 更新完成提示展示「本次更新内容」摘要")
 
 
 # ---------- 30. XHTML 的 XML 合法性（插件 0.37.2） ----------

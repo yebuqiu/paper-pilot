@@ -172,6 +172,70 @@ async function main() {
   UN.unregister();
   eq(UN._timer, null, "9.3 unregister 清掉定时器");
 
+  /* ---- 11. 0.44.1：whatsNew 摘要 + 「已更新到」提示（静默更新完成场景） ---- */
+  const LIST2 = {
+    addons: { "paperpilot@dev.local": { updates: [
+      { version: "0.44.0", update_link: "https://example.invalid/a.xpi", whatsNew: "第一条说明\n第二条说明" },
+      { version: "0.44.1", update_link: "https://example.invalid/b.xpi" },
+    ] } },
+  };
+  eq(UN.whatsNewOf(LIST2, "0.44.0"), "第一条说明\n第二条说明", "11.1 whatsNewOf 取到摘要");
+  eq(UN.whatsNewOf(LIST2, "0.44.1"), "", "11.2 无 whatsNew 字段 → 空串");
+  eq(UN.whatsNewOf(LIST2, "9.9.9"), "", "11.3 版本不在清单 → 空串（不抛）");
+  eq(UN.whatsNewOf(null, "0.44.0"), "", "11.4 null 清单 → 空串（不抛）");
+  ok(!!UN.entryOf(LIST2, "v0.44.0"), "11.5 entryOf 容忍 v 前缀");
+  eq(UN._whatsNewLines("a\n\nb\nc\nd\ne").length, 4, "11.5b 摘要最多 4 行");
+
+  // 刚更新完（seen=0.44.0 → 装机运行 0.44.1）：弹「已更新到」+ 记录 lastSeen
+  reset();
+  Prefs.set("updateNoticeLastSeen", "0.44.0");
+  httpReply = { ok: LIST2 };
+  r = await UN.check("0.44.1");
+  eq(r.updated, true, "11.6 ★ 静默更新完成 → updated=true");
+  eq(notices.length, 1, "11.7 弹出一个提示窗");
+  ok(notices[0].lines.some((l) => l.indexOf("已更新到") >= 0 && l.indexOf("0.44.1") >= 0),
+    "11.8 文案含「已更新到 v0.44.1」");
+  ok(notices[0].lines.some((l) => l.indexOf("暂无详细说明") >= 0),
+    "11.9 条目无 whatsNew → 显示「暂无详细说明」兜底");
+  eq(PrefStore.get(PFX + "updateNoticeLastSeen"), "0.44.1", "11.10 lastSeen 已更新为当前版本");
+
+  // 升级且有 whatsNew：提示里带「本次更新内容」+ 摘要行
+  reset();
+  Prefs.set("updateNoticeLastSeen", "0.44.1");
+  httpReply = { ok: { addons: { "paperpilot@dev.local": { updates: [
+    { version: "0.44.2", update_link: "z", whatsNew: "升级说明X\n修复Y" },
+  ] } } } };
+  r = await UN.check("0.44.2");
+  eq(r.updated, true, "11.10b 升级到带摘要版本 → updated=true");
+  ok(notices[0].lines.some((l) => l.indexOf("本次更新内容") >= 0), "11.10c 含「本次更新内容」行");
+  ok(notices[0].lines.some((l) => l.indexOf("升级说明X") >= 0), "11.10d 含摘要正文行");
+
+  // 同版本再启动：seen==current → 不再弹「已更新到」
+  reset();
+  Prefs.set("updateNoticeLastSeen", "0.44.1");
+  httpReply = { ok: LIST2 };
+  r = await UN.check("0.44.1");
+  eq(r.updated, false, "11.11 ★ 同版本不再重复「已更新到」");
+  eq(notices.length, 0, "11.12 无提示");
+
+  // 首次运行（无历史记录）：静默记录，不弹
+  reset();
+  httpReply = { ok: LIST2 };
+  r = await UN.check("0.44.1");
+  eq(r.updated, false, "11.13 ★ 首次运行（无历史）→ 静默");
+  eq(notices.length, 0, "11.14 不弹窗");
+  eq(PrefStore.get(PFX + "updateNoticeLastSeen"), "0.44.1", "11.14b 静默记录 lastSeen");
+
+  // 有新版且清单带 whatsNew：发现新版本提示里带摘要
+  reset();
+  httpReply = { ok: { addons: { "paperpilot@dev.local": { updates: [
+    { version: "0.44.1", update_link: "x" },
+    { version: "0.44.2", update_link: "y", whatsNew: "新功能A\n修复B" },
+  ] } } } };
+  r = await UN.check("0.44.1");
+  eq(r.notified, true, "11.15 有新版且未提示过 → 提示");
+  ok(notices[0].lines.some((l) => l.indexOf("新功能A") >= 0), "11.16 ★ 新版本提示带 whatsNew 摘要");
+
   /* ---- 10. UPDATE_URL 必须与 manifest 一致（防止两处漂移） ---- */
   const mf = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.json'), 'utf8'));
   const u = mf.applications && mf.applications.zotero && mf.applications.zotero.update_url;

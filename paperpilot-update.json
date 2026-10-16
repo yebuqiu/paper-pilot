@@ -710,7 +710,19 @@
               "strict_min_version": "6.999",
               "strict_max_version": "99.*"
             }
-          }
+          },
+          "whatsNew": "防窥屏升级：接口地址与密钥完全隐藏；「清除凭据/退出登录」一体化\n新增实验功能「第三方文献源」（Pro 试用、默认关闭）"
+        },
+        {
+          "version": "0.44.1",
+          "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/releases/download/v0.44.1/paper-pilot-0.44.1.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "更新提示升级：检测到新版本或更新完成后，都会显示「本次更新了哪些内容」摘要（每版只提示一次）\n修复：静默更新后不再“毫无提示”"
         }
       ]
     }

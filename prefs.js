@@ -120,6 +120,9 @@ pref("extensions.zotero.paperpilot.pdfInlineSelfTest", false);
 // Zotero 原生通知（Zotero 自身的插件更新是静默的，用户感知不到）。同一版本只提示一次；
 // 网络失败静默；可在「设置 → 增强功能」里关掉
 pref("extensions.zotero.paperpilot.updateNoticeEnabled", true);
+// 0.44.1：上次「运行过」的版本——即使更新是 Zotero 静默完成的，下次启动也会弹一次
+// 「已更新到 vX + 本次更新内容」（每版只提示一次）；空 = 尚未记录（首次静默）
+pref("extensions.zotero.paperpilot.updateNoticeLastSeen", "");
 pref("extensions.zotero.paperpilot.noteTemplatesCustom", "");
 pref("extensions.zotero.paperpilot.attachNamePattern", "{author} - {year} - {title}");
 pref("extensions.zotero.paperpilot.unpaywallEmail", "");
