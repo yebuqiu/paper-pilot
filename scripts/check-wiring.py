@@ -807,7 +807,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.8.0'" in srv, "18.31 服务端版本号已随批次更新（1.8.0）")
+ok("version: '1.8.1'" in srv, "18.31 服务端版本号已随批次更新（1.8.1）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -858,6 +858,22 @@ ok(not _dupid, "18.43b ★ admin.html 无重复 DOM id" + ("" if not _dupid else
 _pf3 = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
 ok("test/pricing.test.js" in _pf3, "18.45 preflight 含 AI 计费单价测试")
 ok("test/metering.test.js" in _pf3, "18.46 preflight 含网关计量测试")
+ok("test/ai-auth-failure.test.js" in _pf3, "18.47 preflight 含官方通道401判别测试")
+
+# --- 18.48 上游 401 不透传（1.8.x 修复，根因见下） ---
+# 起因：服务端网关把上游通道（Prism 等）的 401 原样透传给插件；插件把官方网关的
+# 任何 401 视为「账号令牌失效」并清除本地会话 → 上游密钥一失效，用户切个模型就
+# 表现为「整个插件掉登录、无法使用」。修复 = 服务端 401/403 翻译为 502 + 客户端
+# 只认「登录已过期」应答体才清会话，双保险。
+_srv3 = io.open(os.path.join(ROOT, "server", "account-server.js"), encoding="utf-8").read()
+ok("UPSTREAM_AUTH" in _srv3 and "上游模型通道鉴权失败" in _srv3,
+   "18.48 ★ 网关把上游 401/403 翻译为 502 UPSTREAM_AUTH（不透传）")
+_cli3 = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "ai", "client.js"), encoding="utf-8").read()
+ok(re.search(r'_maybeAuthFailure\(status, bodyText\)', _cli3) is not None
+   and 'indexOf("登录已过期")' in _cli3,
+   "18.49 ★ 客户端仅应答体含「登录已过期」才清会话")
+ok("authfail-model" in io.open(os.path.join(ROOT, "test", "metering.test.js"), encoding="utf-8").read(),
+   "18.50 计量测试覆盖上游 401 场景")
 
 # ---------- 19. 余额域（服务端 1.6.0：注册赠送 / 充值 / 按成本扣减） ----------
 BAL_LIB = os.path.join(ROOT, "server", "lib", "balance.js")
@@ -905,7 +921,7 @@ ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余�
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.8.0'" in srv, "19.24 服务端版本随批次推进（1.8.0）")
+ok("version: '1.8.1'" in srv, "19.24 服务端版本随批次推进（1.8.1）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -1065,7 +1081,7 @@ ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/p
 for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
     ok(k in html, "21.31 admin.html 含 %s" % k)
 
-ok("version: '1.8.0'" in srv, "21.32 服务端版本 1.7.1")
+ok("version: '1.8.1'" in srv, "21.32 服务端版本 1.8.1")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 22. 多引擎翻译（插件 0.28.0） ----------

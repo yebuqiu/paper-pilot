@@ -490,7 +490,7 @@ var Channels = {
     } catch (e) {
       const status = e && e.xmlhttp && e.xmlhttp.status;
       return {
-        error: status ? ("HTTP " + status + (status === 401 || status === 403 ? "（密钥无效或未授权）" : "")) : this._netError(e),
+        error: status ? this._httpErrorText(c, status) : this._netError(e),
         retryable: !status || status >= 500 || status === 429,
       };
     }
@@ -499,12 +499,21 @@ var Channels = {
       try { data = JSON.parse(req.responseText); } catch (e) { return { error: "应答不是合法 JSON", retryable: true }; }
     }
     if (req.status >= 400) {
-      return { error: "HTTP " + req.status + (req.status === 401 || req.status === 403 ? "（密钥无效或未授权）" : ""), retryable: req.status >= 500 || req.status === 429 };
+      return { error: this._httpErrorText(c, req.status), retryable: req.status >= 500 || req.status === 429 };
     }
     const msg = data && data.choices && data.choices[0] && data.choices[0].message;
     const text = msg && msg.content ? String(msg.content).trim() : "";
     if (!text) return { error: "模型返回内容为空", retryable: true };
     return { text, model: data.model || c.model, latencyMs: Date.now() - t0 };
+  },
+
+  /** 实测/探测的 HTTP 错误文案：官方通道 401 = 登录令牌失效（网关自身语义），
+   *  与自定义通道的「密钥无效」区分开——官方通道用户手里没有密钥，文案不能误导。 */
+  _httpErrorText(c, status) {
+    if (status === 401 && c && c.channelId === this.OFFICIAL_ID) {
+      return "HTTP 401（登录状态已过期，请重新登录账号）";
+    }
+    return "HTTP " + status + (status === 401 || status === 403 ? "（密钥无效或未授权）" : "");
   },
 
   _netError(e) {

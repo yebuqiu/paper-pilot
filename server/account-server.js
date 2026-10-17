@@ -25,6 +25,9 @@
  *   **1.8.0 起取消「赠送调用次数」：不再有每日次数上限，AI 调用统一由余额扣费**；
  *   enforce=true 时余额不足返回 402 + 充值引导（enforce=false 为观察模式，只记账不拦）。
  *   管理员可充值/调账（audit: balance.adjust）。
+ * 网关健壮性（1.8.1）：上游通道 401/403（密钥失效/模型未授权）**翻译为 502 UPSTREAM_AUTH**，
+ *   不再原样透传——插件会把网关 401 视为「账号令牌失效」清会话，透传会让用户
+ *   「切个模型就整个插件掉登录」。
  * 在线支付（1.7.0）：易支付/码支付接入，充值订单可自助下单→扫码→**自动到账**。
  *   配置存 data/pay.json，商户密钥用 AES-256-GCM 加密（主密钥 data/.secret.key，均不进备份）。
  *   ★ 回调地址由 **PP_PUBLIC_URL** 决定（不按 Host 头推断——公网 Host 可伪造）。
@@ -1238,6 +1241,31 @@ function gatewayChat(req, res, user) {
     };
 
     const upReq = mod.request(u, { method: 'POST', headers, timeout }, (upRes) => {
+      // ★ 上游 401/403 绝不原样透传（1.8.x 修复）：
+      //   客户端把官方网关返回的 401 视为「账号令牌失效」并清除本地会话——
+      //   上游通道密钥失效/模型未授权若原样透传，会被误当用户掉登录，
+      //   表现为「切换模型后整个插件无法使用」。翻译为 502 并附上游摘要。
+      if (upRes.statusCode === 401 || upRes.statusCode === 403) {
+        const echunks = [];
+        let esize = 0;
+        upRes.on('data', (ch) => { if (esize < 8192) { echunks.push(ch); esize += ch.length; } });
+        upRes.on('end', () => {
+          let detail = '';
+          try {
+            const t = Buffer.concat(echunks).toString('utf8');
+            try { const j = JSON.parse(t); detail = (j && j.error && (j.error.message || j.error)) || t; }
+            catch (e) { detail = t; }
+          } catch (e) { /* ignore */ }
+          detail = String(detail || '').replace(/\s+/g, ' ').slice(0, 200);
+          log('gateway: upstream auth failure ' + upRes.statusCode
+            + ' channel=' + c.id + ' model=' + requestedModel + (detail ? ' :: ' + detail : ''));
+          json(res, 502, { ok: false, code: 'UPSTREAM_AUTH',
+            error: '上游模型通道鉴权失败（HTTP ' + upRes.statusCode
+              + '）：服务端通道密钥无效或该模型未在上游开通，请联系管理员检查通道配置'
+              + (detail ? '；上游应答：' + detail : '') });
+        });
+        return;
+      }
       const passHeaders = {};
       for (const [k, v] of Object.entries(upRes.headers)) {
         if (['connection', 'transfer-encoding', 'keep-alive'].includes(k)) continue;
@@ -1932,7 +1960,7 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'GET' && url === '/api/health') {
       return json(res, 200, {
-        ok: true, service: 'paperpilot-account-server', version: '1.8.0',
+        ok: true, service: 'paperpilot-account-server', version: '1.8.1',
         uptime: Math.round(process.uptime()), now: new Date().toISOString(),
         mail: mail.configured() ? 'on' : 'off',
         users: usersStore.data.users.length,

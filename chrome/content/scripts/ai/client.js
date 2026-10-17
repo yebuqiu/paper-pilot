@@ -78,10 +78,14 @@ var AIClient = {
   },
 
   /** 官方通道鉴权失败：异步失效会话 + 弹窗，不阻塞当前错误返回。
-   *  0.15.1：仅 401（令牌确实无效）触发；403 多为 WAF/反代拦截，不清会话 */
-  _maybeAuthFailure(status) {
+   *  0.15.1：仅 401（令牌确实无效）触发；403 多为 WAF/反代拦截，不清会话。
+   *  1.8.x 起再收紧：必须应答体确为网关自身的「登录已过期」才清会话——
+   *  旧版服务端会把**上游通道**的 401 原样透传（密钥失效/模型未授权），
+   *  那种 401 与用户登录态无关，清会话会造成「切个模型就整个插件掉登录」。 */
+  _maybeAuthFailure(status, bodyText) {
     if (status !== 401) return;
     if (typeof Account === "undefined" || !Account) return;
+    if (String(bodyText || "").indexOf("登录已过期") < 0) return;
     try {
       Account.handleAuthFailure("官方模型请求被拒绝（HTTP " + status + "）").catch(() => {});
     } catch (e) { /* ignore */ }
@@ -130,7 +134,15 @@ var AIClient = {
       });
     } catch (e) {
       const status = e && e.xmlhttp && e.xmlhttp.status;
-      if (cfg.channelId === "official") this._maybeAuthFailure(status);
+      if (cfg.channelId === "official") {
+        // 取应答体判别「网关自身的登录失效」还是「上游 401 透传」（后者不清会话）
+        let bodyText = "";
+        try {
+          const r = e.xmlhttp && e.xmlhttp.response;
+          bodyText = typeof r === "string" ? r : (r ? JSON.stringify(r) : (e.xmlhttp.responseText || ""));
+        } catch (_) { /* ignore */ }
+        this._maybeAuthFailure(status, bodyText);
+      }
       throw this._wrapError(e);
     }
 
@@ -214,10 +226,10 @@ var AIClient = {
       });
 
       if (!resp.ok) {
-        if (cfg.channelId === "official") this._maybeAuthFailure(resp.status);
         let detail = "";
         try {
           const txt = await resp.text();
+          if (cfg.channelId === "official") this._maybeAuthFailure(resp.status, txt);
           try {
             const j = JSON.parse(txt);
             detail = (j && j.error && (j.error.message || j.error)) || txt;

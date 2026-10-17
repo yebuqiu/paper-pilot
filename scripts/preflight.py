@@ -110,6 +110,7 @@ NODE_SUITES = [
     ("套餐 AI 能力", "test/ai-tier.test.js"),
     ("AI 计费单价", "test/pricing.test.js"),
     ("网关计量", "test/metering.test.js"),
+    ("官方通道401判别", "test/ai-auth-failure.test.js"),
     ("余额域", "test/balance.test.js"),
     ("在线支付", "test/pay.test.js"),
     ("arXiv 核心(插件侧)", "test/arxiv-core.test.js"),

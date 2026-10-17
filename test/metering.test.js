@@ -54,6 +54,11 @@ const upstream = http.createServer((req, res) => {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: { message: 'bad request' } }));
     }
+    if (asked === 'authfail-model') {
+      // 上游通道密钥失效：真实上游（含 Prism 网关）此时返回 401
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: { message: 'Invalid upstream API key' } }));
+    }
     // 上游把 auto/别名解析成真实模型名（真实上游就是这么干的）
     const real = (asked === 'auto' || asked === 'upstream-default') ? 'glm-5.3-flash' : asked;
     const withUsage = real !== 'nousage-model';
@@ -138,7 +143,7 @@ const todayKey = () => mod.isoDay(Date.now());
         id: 'fake', name: 'fake', provider: 'custom',
         baseUrl: 'http://127.0.0.1:' + UPSTREAM_PORT + '/v1',
         apiKey: 'sk-fake', model: 'glm-5.3-flash',
-        models: ['auto', 'glm-5.3-flash', 'nousage-model', 'fail-model'],
+        models: ['auto', 'glm-5.3-flash', 'nousage-model', 'fail-model', 'authfail-model'],
       }],
       active: 'fake',
     }, null, 2), 'utf8');
@@ -214,6 +219,21 @@ const todayKey = () => mod.isoDay(Date.now());
     eq(us.count, 3, 'D3 ★ 上游 4xx 不计次（保持旧口径）');
     eq(us.missingUsage, 1, 'D4 4xx 也不计入计量盲区');
 
+    /* ---------- D2. 上游 401/403：翻译为 502，绝不原样透传 ----------
+     * 透传上游 401 会让客户端误判「账号令牌失效」并清除本地会话
+     * （用户表现为「切个模型整个插件掉登录」）——这是 1.8.x 修复的根因场景。 */
+    const r401 = await req('POST', '/v1/chat/completions',
+      { model: 'authfail-model', messages: [{ role: 'user', content: 'hi' }] }, tok);
+    eq(r401.status, 502, 'D5 ★ 上游 401 → 网关 502（不透传 401）');
+    ok(r401.json && r401.json.code === 'UPSTREAM_AUTH', 'D6 错误码 UPSTREAM_AUTH', r401.json);
+    ok(r401.json && /上游模型通道鉴权失败/.test(r401.json.error || ''), 'D7 文案指向上游通道而非用户登录');
+    ok(r401.json && /Invalid upstream API key/.test(r401.json.error || ''), 'D8 附上游应答摘要');
+    // 令牌不受上游 401 影响：后续网关调用仍正常
+    const rAuth = await req('GET', '/v1/models', null, tok);
+    eq(rAuth.status, 200, 'D9 ★ 上游 401 后用户令牌仍然有效');
+    us = usageOf('meter@test.local');
+    eq(us.count, 3, 'D10 上游 401 同样不计次');
+
     /* ---------- E. 未配价模型 ---------- */
     await req('POST', '/v1/chat/completions',
       { model: 'auto', messages: [{ role: 'user', content: 'hi' }] }, tok);
@@ -277,7 +297,7 @@ const todayKey = () => mod.isoDay(Date.now());
 
     /* ---------- I. health 暴露计量状态 ---------- */
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.8.0', 'I1 服务端版本 1.8.0');
+    eq(h.version, '1.8.1', 'I1 服务端版本 1.8.0');
     eq(h.pricedModels, 1, 'I2 health 报告已配价模型数');
     eq(h.meteringGaps, 2, 'I3 health 报告计量盲区累计');
   } catch (e) {
