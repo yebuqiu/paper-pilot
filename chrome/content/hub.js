@@ -27,7 +27,7 @@
           { t: zh ? "AI 问答侧栏" : "Chat sidebar", d: zh ? "选中条目后在右侧栏「AI 问答」直接提问" : "Auto: ask in the sidebar", info: true },
           { t: zh ? "划词浮窗" : "Selection popup", d: zh ? "阅读器内划词即翻译/解读/追问（设置中可配置）" : "Auto: translate/explain/ask in reader", info: true },
           { t: zh ? "PDF 速览" : "PDF glance", d: zh ? "侧栏显示摘要与全文开篇，无需打开 PDF" : "Auto: abstract + opening in sidebar", info: true },
-          { t: zh ? "入库自动精读" : "Auto-read on import", d: zh ? "新条目入库自动生成总结笔记（需在「自动化规则」窗口开启，受每日额度与分类白名单限制）" : "Automatically summarize new items (opt-in, quota-limited)", run: () => PP.autoRead.runForSelected() },
+          { t: zh ? "入库自动精读" : "Auto-read on import", d: zh ? "新条目入库自动生成总结笔记（需在「自动化规则」窗口开启，受每日上限与分类白名单限制）" : "Automatically summarize new items (opt-in, capped daily)", run: () => PP.autoRead.runForSelected() },
         ],
       },
       {

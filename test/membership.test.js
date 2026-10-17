@@ -72,8 +72,9 @@ function daysBetween(iso) { return Math.round((Date.parse(iso) - Date.now()) / D
     ok((r.json.priceOptions || []).length >= 3, '1.3 价格档位已下发', r.json.priceOptions);
     const freePlan = r.json.plans.find((p) => p.id === 'Free');
     const proPlan = r.json.plans.find((p) => p.id === 'Pro');
-    eq(freePlan.dailyLimit, 100, '1.4 Free 每日额度 = 100');
-    eq(proPlan.dailyLimit, 3000, '1.5 Pro 每日额度 = 3000');
+    eq(freePlan.dailyLimit, undefined, '1.4 免费版不再下发每日次数上限（赠送调用次数已取消）');
+    eq(proPlan.dailyLimit, undefined, '1.5 专业版同样没有每日次数上限');
+    eq(proPlan.monthlyGrantMicro, 20000000, '1.5b ★ Pro 每月赠送 ¥20 AI 额度（统一余额扣费）');
     eq(proPlan.purchasable, true, '1.6 Pro 可购买');
     eq(freePlan.purchasable, false, '1.7 Free 不可购买');
 
@@ -85,7 +86,7 @@ function daysBetween(iso) { return Math.round((Date.parse(iso) - Date.now()) / D
     let token = userId.json.token;
     ok(!!token, '2.3 登录拿到令牌');
     eq(userId.json.user.membership.plan, 'Free', '2.4 新用户默认 Free');
-    eq(userId.json.user.dailyLimit, 100, '2.5 新用户额度 100');
+    eq(userId.json.user.balance.grantedMicro, 6000000, '2.5 注册赠送 ¥6 AI 额度（机制替代赠送调用次数）');
     eq(userId.json.user.membership.expiresAt, null, '2.6 Free 无到期日');
 
     /* 3. 下单 */
@@ -129,7 +130,7 @@ function daysBetween(iso) { return Math.round((Date.parse(iso) - Date.now()) / D
     /* 6. /me 反映 Pro */
     r = await req('GET', '/api/auth/me', undefined, token);
     eq(r.json.user.plan, 'Pro', '6.1 /me 返回 Pro');
-    eq(r.json.user.dailyLimit, 3000, '6.2 Pro 额度 3000');
+    eq(r.json.user.balance.planMicro, 20000000, '6.2 ★ Pro 每月 ¥20 额度已发放到余额');
     ok(r.json.user.membership.daysLeft >= 89, '6.3 剩余天数 ≥ 89', r.json.user.membership.daysLeft);
 
     /* 7. 激活码：生成 → 兑换 → 续期叠加 */
@@ -176,17 +177,18 @@ function daysBetween(iso) { return Math.round((Date.parse(iso) - Date.now()) / D
     r = await req('GET', '/api/auth/me', undefined, token);
     eq(r.status, 200, '9.2 过期不踢下线（仍 200）');
     eq(r.json.user.plan, 'Free', '9.3 过期后有效等级回落 Free');
-    eq(r.json.user.dailyLimit, 100, '9.4 额度同步回落到 100');
+    eq(r.json.user.dailyLimit, undefined, '9.4 客户端契约不再含 dailyLimit（无次数上限）');
     eq(r.json.user.membership.expired, true, '9.5 membership.expired 标记为真');
     eq(r.json.user.membership.daysLeft, 0, '9.6 剩余天数 0');
 
-    /* 10. 套餐配置可后台调整 */
-    r = await req('PUT', '/api/admin/membership', { plans: { Free: { dailyLimit: 150 } } });
-    eq(r.status, 200, '10.1 改 Free 额度');
-    r = await req('GET', '/api/auth/me', undefined, token);
-    eq(r.json.user.dailyLimit, 150, '10.2 改配置即刻生效（无需重启）');
-    r = await req('PUT', '/api/admin/membership', { plans: { Free: { dailyLimit: 100 } } });
-    eq(r.json.plans.plans.find((p) => p.id === 'Free').dailyLimit, 100, '10.3 改回 100');
+    /* 10. 套餐配置可后台调整（每月额度；旧的每日次数已废弃） */
+    r = await req('PUT', '/api/admin/membership', { plans: { Free: { monthlyGrantMicro: 2000000 } } });
+    eq(r.status, 200, '10.1 改 Free 每月额度');
+    eq(r.json.plans.plans.find((p) => p.id === 'Free').monthlyGrantMicro, 2000000, '10.2 配置即时生效（无需重启）');
+    r = await req('PUT', '/api/admin/membership', { plans: { Free: { monthlyGrantMicro: 0, dailyLimit: 150 } } });
+    eq(r.json.plans.plans.find((p) => p.id === 'Free').dailyLimit, undefined,
+      '10.3 ★ 旧的 dailyLimit 提交上来也被忽略（机制已取消，不写回）');
+    eq(r.json.plans.plans.find((p) => p.id === 'Free').monthlyGrantMicro, 0, '10.4 每月额度已改回 0');
 
     /* 11. 未登录访问会员接口 */
     r = await req('GET', '/api/membership');

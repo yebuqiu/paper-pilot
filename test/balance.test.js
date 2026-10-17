@@ -90,7 +90,7 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
 
     eq(bal.newCfg().signupGrantMicro, yuan(6), 'A1 默认注册赠送 ¥6');
     eq(bal.newCfg().signupValidDays, 30, 'A2 默认赠送有效期 30 天');
-    eq(bal.newCfg().enforce, false, 'A3 默认观察模式（不拦截）');
+    eq(bal.newCfg().enforce, true, 'A3 默认开启余额拦截（1.8.0：没有次数上限，余额是唯一阀门）');
 
     const cfg = bal.newCfg();
     const u = {};
@@ -159,8 +159,9 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
     // precheck 双模式
     const cfgEnf = Object.assign(bal.newCfg(), { enforce: true, minBalanceMicro: yuan(1) });
     const u6 = {};
-    eq(bal.precheck(u6, cfg, {}, Date.now()).allowed, true, 'A29 观察模式恒放行（余额 0）');
-    eq(bal.precheck(u6, cfg, { highTier: true }, Date.now()).allowed, true,
+    const cfgObs = Object.assign(bal.newCfg(), { enforce: false });
+    eq(bal.precheck(u6, cfgObs, {}, Date.now()).allowed, true, 'A29 观察模式恒放行（余额 0）');
+    eq(bal.precheck(u6, cfgObs, { highTier: true }, Date.now()).allowed, true,
       'A29b ★ 观察模式下高级模型也放行（只记账不拦——曾因漏判 enforce 把观察模式变成拦截）');
     eq(bal.precheck(u6, cfgEnf, {}, Date.now()).allowed, false, 'A30 enforce 开启后余额不足被拦');
     const pc = bal.precheck(u6, cfgEnf, {}, Date.now());
@@ -171,6 +172,9 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
     eq(bal.precheck(u6, cfgEnf, {}, Date.now()).allowed, true, 'A33 基础模型：赠送额度计入阈值判定（6 元 ≥ 1 元）');
     const cfgEnf0 = Object.assign(bal.newCfg(), { enforce: true });
     eq(bal.precheck(u6, cfgEnf0, {}, Date.now()).allowed, true, 'A34 基础模型：有赠送且阈值为 0 → 放行');
+    // ★ 1.8.0：阈值为 0 时「余额恰好为 0」也必须拦（否则等于每次都能再白嫖一次）
+    eq(bal.precheck({}, cfgEnf0, {}, Date.now()).allowed, false,
+      'A34b ★ 余额为 0 + 阈值 0 → 仍然拦（余额 > 0 才放行）');
     eq(bal.precheck(u6, cfgEnf0, { highTier: true }, Date.now()).allowed, false,
       'A35 ★ 高级模型只有赠送额度 → 拦（赠送限基础模型）');
     eq(bal.precheck(u6, cfgEnf0, { highTier: true }, Date.now()).code, 'BALANCE_REQUIRED_FOR_HIGH_TIER',
@@ -266,6 +270,8 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
       set: { 'base-model': { inPer1k: 0.01, outPer1k: 0.01 }, 'pro-model': { inPer1k: 0.01, outPer1k: 0.01 } },
     });
     eq(r.status, 200, 'B1 配价成功');
+    // 1.8.0：默认 enforce=true；本测试前半段要覆盖「观察模式」，显式关掉
+    await req('PUT', '/api/admin/pricing', { balance: { enforce: false } });
 
     await req('POST', '/api/auth/register', { email: 'bal@test.local', password: 'pw12345678' });
     const tok = (await req('POST', '/api/auth/login', { email: 'bal@test.local', password: 'pw12345678' })).json.token;
@@ -358,15 +364,23 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
     ok(!(await req('POST', '/api/admin/orders/' + co.json.order.id + '/fulfill', {})).json.ok,
       'B32 重复核销被拒（幂等）');
 
-    /* ---- dailyLimit 只在观察模式生效（订阅去无限化的落点） ---- */
+    /* ---- 1.8.0：没有每日次数上限，余额是唯一阀门 ---- */
     const uid2b = userOnDisk('bal2@test.local').id;
+    // 旧的用户级 dailyLimit 覆盖已取消：提交也不生效（不再有 429 次数上限）
     await req('PUT', '/api/admin/users/' + uid2b, { dailyLimit: 1 });
     await req('PUT', '/api/admin/pricing', { balance: { enforce: false } });
     r = await req('POST', '/v1/chat/completions', { model: 'base-model', messages: [] }, tok2);
-    eq(r.status, 429, 'B33 观察模式下仍按次数上限拦截');
+    eq(r.status, 200, 'B33 ★ 观察模式下即使「次数=1」也不再拦截（机制已取消）');
     await req('PUT', '/api/admin/pricing', { balance: { enforce: true } });
     r = await req('POST', '/v1/chat/completions', { model: 'base-model', messages: [] }, tok2);
-    eq(r.status, 200, 'B34 ★ 开启 enforce 后次数上限不再生效（额度改由余额承担）');
+    eq(r.status, 200, 'B34 开启 enforce 后按余额放行（该账号仍有注册赠送）');
+    // 把余额花光 → 基础模型被余额拦（不再有任何次数兜底）
+    const me2b = (await req('GET', '/api/auth/me', null, tok2)).json.user;
+    await req('POST', '/api/admin/users/' + uid2b + '/balance',
+      { micro: -me2b.balance.totalMicro, kind: 'adjust', reason: '清零测试' });
+    r = await req('POST', '/v1/chat/completions', { model: 'base-model', messages: [] }, tok2);
+    eq(r.status, 402, 'B34b ★ 余额为 0 → 402（取消次数上限后余额必须真正拦截）');
+    eq(r.json.code, 'INSUFFICIENT_BALANCE', 'B34c 402 带 INSUFFICIENT_BALANCE');
 
     // 管理端视图带流水 + 审计
     const adm = (await req('GET', '/api/admin/users')).json.users.find((x) => x.email === 'bal@test.local');
@@ -387,9 +401,22 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
 
     // health
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.7.1', 'B42 服务端版本 1.7.1');
+    eq(h.version, '1.8.0', 'B42 服务端版本 1.8.0');
     eq(h.balanceEnforce, true, 'B43 health 暴露 enforce 状态');
     eq(h.signupGrantMicro, yuan(6), 'B44 health 暴露注册赠送额度');
+
+    /* ---- ★ 1.8.0：auto 恒按基础档计费（通道默认模型即使在高级清单里也不能拦死免费用户） ---- */
+    const chFile = path.join(WORK, 'channels.json');
+    const chDoc = JSON.parse(fs.readFileSync(chFile, 'utf8'));
+    chDoc.highTierModels = ['base-model', 'pro-model'];   // 故意把 auto 解析目标也列进高级清单
+    fs.writeFileSync(chFile, JSON.stringify(chDoc, null, 2), 'utf8');
+    mod.reloadStores();
+    await req('POST', '/api/auth/register', { email: 'auto@test.local', password: 'pw12345678' });
+    const tokA = (await req('POST', '/api/auth/login', { email: 'auto@test.local', password: 'pw12345678' })).json.token;
+    r = await req('POST', '/v1/chat/completions', { model: 'auto', messages: [] }, tokA);
+    eq(r.status, 200, 'B45 ★ auto 仍按基础档放行（只有注册赠送也能用）');
+    const meA = (await req('GET', '/api/auth/me', null, tokA)).json.user;
+    eq(meA.balance.grantedMicro, yuan(6) - 2000, 'B46 auto 从注册赠送扣费（未按高级档跳过赠送）');
   } catch (e) {
     fails.push('异常中断：' + ((e && e.stack) || e));
   } finally {

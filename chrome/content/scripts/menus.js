@@ -8,7 +8,7 @@
  *   - menuMode / menuHiddenGroups / menuQuickItems 三个 pref 变更即时重建菜单。
  * 设计口径：只做「重组」不做「删减」——被折叠的功能仍可从功能中心（Hub）、
  * 工具菜单分组、classic 模式三处到达，任何入口都不失联。 */
-/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats, ThirdSource */
+/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats, ThirdSource */
 
 var Menus = {
   _nodes: [], // 记录注入的 DOM 节点，shutdown 时移除
@@ -247,7 +247,31 @@ var Menus = {
         });
       } catch (e) { /* 状态读取失败不影响打开 */ }
     });
+    // 0.46.0 尾部维护项：重置阅读进度（非 radio——它是命令不是状态；
+    // 不进 ITEM_REGISTRY，radio 打点逻辑保持只认三种状态）
+    subPopup.appendChild(this._xul(doc, "menuseparator"));
+    const reset = this._xul(doc, "menuitem");
+    reset.id = "paperpilot-itemmenu-progress-reset";
+    reset.setAttribute("label", I18n.t("menuResetProgress"));
+    reset.addEventListener("command", () => Menus.resetProgressForSelected());
+    subPopup.appendChild(reset);
     popup.appendChild(sub);
+  },
+
+  /** 0.46.0 重置阅读进度（清位置记录 + 原生「上次读到」归零；标注是用户资产不动） */
+  async resetProgressForSelected() {
+    try {
+      const n = await ReadingProgress.resetForSelected();
+      const pw = new Zotero.ProgressWindow({ closeOnClick: true });
+      pw.changeHeadline("PaperPilot · " + I18n.t("menuResetProgress"));
+      const p = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+        n > 0 ? I18n.t("progressResetDone") : I18n.t("progressResetNone"));
+      p.setProgress(100);
+      pw.show();
+      pw.startCloseTimer(2600);
+    } catch (e) {
+      Zotero.logError(e);
+    }
   },
 
   /** 星标评级：radio 子菜单，popupshowing 时按当前选中条目打点（0.42.0） */
@@ -533,6 +557,9 @@ var Menus = {
       () => ReadingState.markForSelected("在读"));
     this._menuItem(doc, popup, "paperpilot-itemmenu-state-done", "menuStateDone",
       () => ReadingState.markForSelected("已读"));
+    // 0.46.0 与 grouped 模式对齐：状态区尾部的重置入口
+    this._menuItem(doc, popup, "paperpilot-itemmenu-progress-reset", "menuResetProgress",
+      () => Menus.resetProgressForSelected());
     popup.appendChild(this._xul(doc, "menuseparator"));
     // 0.42.0 星标评级
     this._menuItem(doc, popup, "paperpilot-itemmenu-rating-1", "menuRating1", () => this.setRatingForSelected(1));

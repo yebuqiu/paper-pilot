@@ -19,11 +19,11 @@
  *   上游没返 usage → 计入 missingUsage（未知成本，不是 0），后台看板显著提示。
  * 余额域（1.6.0）：user.balance = { grantedMicro（注册赠送,有期）/ planMicro（订阅额度,当期不结转）
  *   / paidMicro（充值,永不过期）/ ledger }。
- *   注册自动赠送（signupGrantMicro，默认 ¥6/30 天，限基础模型）；Pro 每月发放订阅额度
+ *   注册自动赠送（signupGrantMicro，默认 ¥6/30 天，限基础模型）；Pro 每月发放 ¥20 订阅额度
  *   （plans[].monthlyGrantMicro，现场推导不发定时任务，只按期号判重＝不结转）；
  *   网关按真实成本扣减（注册赠送 → 订阅额度 → 充值，越保值越晚扣；高级模型跳过注册赠送）；
- *   enforce=false 为观察模式只记账不拦，开启后余额低于阈值返回 402 + 充值引导
- *   （同时 dailyLimit 次数上限自动失效，额度改由余额承担）。
+ *   **1.8.0 起取消「赠送调用次数」：不再有每日次数上限，AI 调用统一由余额扣费**；
+ *   enforce=true 时余额不足返回 402 + 充值引导（enforce=false 为观察模式，只记账不拦）。
  *   管理员可充值/调账（audit: balance.adjust）。
  * 在线支付（1.7.0）：易支付/码支付接入，充值订单可自助下单→扫码→**自动到账**。
  *   配置存 data/pay.json，商户密钥用 AES-256-GCM 加密（主密钥 data/.secret.key，均不进备份）。
@@ -32,7 +32,7 @@
  * 登录设备（1.4.7）：令牌带 sid/设备/来源 IP 与最近活动；用户可自查并踢出设备，
  *   GET  /api/plans                 公开 → {plans, priceOptions, priceItems, upcoming, cycles, pay}
  *   GET  /api/membership            Bearer → {membership(等级/到期/剩余天数/额度/历史), user(含用量趋势)}
- *   GET  /api/auth/me               Bearer → user 内附带 usage:{today,limit,last7,days[30]}
+ *   GET  /api/auth/me               Bearer → user 内附带 usage:{today,last7,days[30]}（纯统计）
  *                                              + cost:{today,last7,last30,missingUsage,last}
  *                                     （1.7.1 起 cost.last = 最近一次扣费 {at,micro,text,reason}，
  *                                      供插件回答后显示「本次消耗 ¥x / 剩余 ¥y」——只放行这一条流水）
@@ -111,8 +111,9 @@
  *      与插件本地通道互不相干）
  *
  * 启动：node account-server.js [--port=8000]（或环境变量 PP_PORT）
- * 用量：官方网关每成功转发一次 chat/completions，当日计数 +1；超 dailyLimit 返回 429。
- *      1.5.0 起同一入口还记录 token 与成本（见 user.usage.inTok/outTok/costMicro/byModel）。
+ * 用量：官方网关每成功转发一次 chat/completions，当日计数 +1（仅统计，无次数上限）；
+ *      1.5.0 起同一入口还记录 token 与成本（见 user.usage.inTok/outTok/costMicro/byModel），
+ *      费用从账号余额扣减（见 balance.js）。
  *      数据：server/data/pricing.json（模型单价，元/千 token）。
  */
 'use strict';
@@ -189,8 +190,8 @@ function limitOf(envKey, dft) {
 }
 const LOGIN_MAX = limitOf('PP_LOGIN_MAX', 10);     // 登录限速（每 IP 每分钟）
 const REDEEM_MAX = limitOf('PP_REDEEM_MAX', 10);   // 激活码兑换限速（每 IP 每分钟，防撞码）
-// 每日额度不再写死在这里：0.23.0 起由 membership.json 的套餐配置驱动
-// （membership.dailyLimitFor），管理员在用户级的 dailyLimit 覆盖优先级最高。
+// AI 用量不再有每日次数上限（1.8.0 取消「赠送调用次数」）：官方模型的放行与计费
+// 统一由余额承担（见 lib/balance.js），这里只保留网关自身的全局限速。
 const REG_MAX = 5;                       // 公开注册限速（每 IP 每分钟）
 const MAIL_MAX = 3;                      // 验证/重置邮件请求限速（每 IP 每分钟）
 const GATEWAY_MAX = 20;                  // 网关全局限速（每 IP 每分钟，防高频薅上游 Key）
@@ -609,15 +610,9 @@ function planEffective(user) {
 }
 
 /**
- * 每日额度（0.23.0 起由套餐配置驱动）：
- *   管理员在用户级显式设置的 dailyLimit 优先 → 否则取该等级在 membership.json
- *   里配置的 dailyLimit。等级/额度调整只需改后台配置，无需动代码。
+ * 今日官方模型调用次数（**纯统计**，1.8.0 起不再作为额度上限）。
+ * 放行与计费统一走余额（lib/balance.js）；次数仅用于看板与用户用量趋势。
  */
-function dailyLimitOf(user) {
-  if (Number(user.dailyLimit) > 0) return Number(user.dailyLimit);
-  return membership.dailyLimitFor(membershipStore.data, planEffective(user));
-}
-
 function dailyUsedOf(user) {
   return user.usage && user.usage.date === today() ? Number(user.usage.count) || 0 : 0;
 }
@@ -659,6 +654,9 @@ function costViewOf(user) {
   });
   return {
     today: one(t), last7: one(d7), last30: one(d30),
+    // 1.8.0：近 7 天按日消耗（微元），供插件画「最近消耗」趋势——
+    // 只给金额，不给次数上限（次数上限已取消）。
+    days: usageSeriesDays(user, 7, 'costMicro').map((d) => ({ date: d.date, micro: d.value })),
     // ★ 上游未返回 usage 的次数：成本是「未知」而不是 0，必须让界面说清楚
     missingUsage: Number((user.usage && user.usage.missingUsage) || 0),
     currency: pricingStore.data.currency || 'CNY',
@@ -673,14 +671,12 @@ function userForClient(user) {
     email: user.email,
     name: user.nickname || user.email,
     plan: planEffective(user),
-    dailyUsed: dailyUsedOf(user),
-    dailyLimit: dailyLimitOf(user),
     status: user.status === 'pending' ? 'pending' : 'active',
     membership: membership.membershipOf(membershipStore.data, user),
-    // 1.4.3 用量趋势（近 30 天按日；days 供前端画图，last7 为近 7 天合计）
+    // 用量趋势（近 30 天按日调用次数）：**纯统计**，1.8.0 起不再有次数上限，
+    // 放行与计费统一由 balance 承担（旧客户端读不到 limit 时按 0 处理，不会显示配额）。
     usage: {
       today: dailyUsedOf(user),
-      limit: dailyLimitOf(user),
       last7: usageDays(user, 7).reduce((s, d) => s + d.count, 0),
       days: usageDays(user, USAGE_KEEP_DAYS),
     },
@@ -1165,13 +1161,8 @@ function gatewayChat(req, res, user) {
     // 1.6.0 现场补发当期订阅额度（幂等）——用户只要在用就会拿到当月额度
     ensurePlanGrant(user);
 
-    // ★ 次数额度（dailyLimit）只在**观察模式**下生效：
-    //   观察模式 = 次数管、余额只记账；开启 enforce 后改由余额管，
-    //   否则"订阅去无限化"就是空话（用户既拿每月额度、又享受每日 3000 次）。
-    if (!balanceCfg().enforce && dailyUsedOf(user) >= dailyLimitOf(user)) {
-      return json(res, 429, { ok: false,
-        error: '今日官方模型用量已达上限（' + dailyLimitOf(user) + ' 次），明日自动重置；或在设置中配置自己的模型通道' });
-    }
+    // ★ 1.8.0 起**没有每日次数上限**（「赠送调用次数」已取消）：
+    //   AI 调用统一由余额扣费，能否放行见下方 balance.precheck（enforce 时不足 → 402）。
 
     // 模型映射与 extraBody 合并（不覆盖调用方已有键）
     const upstreamBody = Object.assign({}, body);
@@ -1189,9 +1180,11 @@ function gatewayChat(req, res, user) {
     const payload = Buffer.from(JSON.stringify(upstreamBody), 'utf8');
 
     // 1.6.0 余额 pre-check：放在 auto 解析之后，高级模型判定才准确。
-    // enforce=false（观察模式）恒放行，只记账不拦——真实成本数据没跑够之前
-    // 任何阈值都是拍脑袋，先观察、配准价、再开。
-    const isHighTier = highTierModels().includes(String(upstreamBody.model));
+    // ★ 1.8.0：`auto` 不算高级档——它恒映射通道默认模型，是全体用户的兜底入口
+    //   （与「auto 恒定免费」同一条铁律）。否则通道默认模型一旦被写进 highTierModels，
+    //   开着 enforce 就会把**所有**免费用户的 auto 请求一起拦死。
+    //   enforce=false（观察模式）恒放行，只记账不拦。
+    const isHighTier = !!asked && highTierModels().includes(String(upstreamBody.model));
     const gate = balance.precheck(user, balanceCfg(), { highTier: isHighTier });
     if (!gate.allowed) {
       return json(res, 402, { ok: false, code: gate.code, error: gate.error,
@@ -1283,7 +1276,9 @@ function gatewayChat(req, res, user) {
           // 必须在 countUsage 之前：countUsage 内部的 usersStore.save() 会把余额一并落盘。
           if (cost && cost.micro > 0) {
             balance.consume(user, cost.micro, {
-              highTier: highTierModels().includes(billModel),
+              // ★ 与上方 pre-check 用**同一个判定**（isHighTier，auto 恒基础档）：
+              //   两处若各算一遍，auto 会在放行时算基础、扣费时算高级——扣减顺序错位。
+              highTier: isHighTier,
               reason: 'AI 调用 ' + billModel,
             });
           }
@@ -1728,7 +1723,7 @@ function userAdminOut(u) {
   return {
     id: u.id, email: u.email, nickname: u.nickname || '', plan: planEffective(u),
     planRaw: u.plan || 'Free', expiresAt: u.expiresAt || null,
-    dailyLimit: dailyLimitOf(u), dailyUsed: dailyUsedOf(u),
+    dailyUsed: dailyUsedOf(u),   // 今日调用次数（纯统计，无上限）
     membership: membership.membershipOf(membershipStore.data, u),
     // 1.4.3 用量趋势（后台用户列表 / CSV 导出用）
     usage7: usageDays(u, 7).reduce((s, d) => s + d.count, 0),
@@ -1870,7 +1865,6 @@ async function adminCreateUser(input) {
   const user = {
     id: uid('u'), email, nickname: nickname || email.split('@')[0],
     salt, hash: hashPassword(password, salt), plan, expiresAt,
-    dailyLimit: input.dailyLimit > 0 ? Number(input.dailyLimit) : null,
     createdAt: new Date().toISOString(), lastLoginAt: null, usage: { date: today(), count: 0 },
   };
   usersStore.data.users.push(user);
@@ -1890,9 +1884,8 @@ function adminUpdateUser(id, input) {
     const t = new Date(input.expiresAt).getTime();
     user.expiresAt = (input.expiresAt && !Number.isNaN(t)) ? input.expiresAt : null;
   }
-  if (input.dailyLimit !== undefined) {
-    user.dailyLimit = Number(input.dailyLimit) > 0 ? Number(input.dailyLimit) : null;
-  }
+  // 1.8.0：不再支持用户级 dailyLimit 覆盖（AI 用量统一由余额计费）
+  if (user.dailyLimit !== undefined) delete user.dailyLimit;
   // 等级或到期日被改动 → 同步会员对象（覆盖式，不做叠加）
   if (input.plan !== undefined || input.expiresAt !== undefined) syncMembershipFromLegacy(user);
   usersStore.save();
@@ -1939,7 +1932,7 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'GET' && url === '/api/health') {
       return json(res, 200, {
-        ok: true, service: 'paperpilot-account-server', version: '1.7.1',
+        ok: true, service: 'paperpilot-account-server', version: '1.8.0',
         uptime: Math.round(process.uptime()), now: new Date().toISOString(),
         mail: mail.configured() ? 'on' : 'off',
         users: usersStore.data.users.length,
@@ -2551,8 +2544,8 @@ const server = http.createServer(async (req, res) => {
           const r = adminUpdateUser(id, input);
           if (r.error) return json(res, 404, { ok: false, error: r.error });
           auditLog(req, 'user.update', { target: r.user.email,
-            before: pre ? { nickname: pre.nickname, plan: pre.plan, expiresAt: pre.expiresAt, dailyLimit: pre.dailyLimit } : null,
-            after: { nickname: r.user.nickname, plan: r.user.planRaw, expiresAt: r.user.expiresAt, dailyLimit: r.user.dailyLimit } });
+            before: pre ? { nickname: pre.nickname, plan: pre.plan, expiresAt: pre.expiresAt } : null,
+            after: { nickname: r.user.nickname, plan: r.user.planRaw, expiresAt: r.user.expiresAt } });
           return json(res, 200, { ok: true, user: r.user });
         }
         if (method === 'DELETE') {
@@ -3001,7 +2994,7 @@ const server = http.createServer(async (req, res) => {
         if (input.plans && typeof input.plans === 'object') {
           for (const [pid, p] of Object.entries(input.plans)) {
             if (!doc.plans[pid] || !p || typeof p !== 'object') continue;
-            if (p.dailyLimit !== undefined) doc.plans[pid].dailyLimit = Math.max(0, Number(p.dailyLimit) || 0);
+            // 1.8.0：每日次数上限已取消（旧字段提交上来一律忽略，避免把废弃配置写回）
             if (p.price !== undefined) doc.plans[pid].price = Math.max(0, Number(p.price) || 0);
             if (p.name !== undefined) doc.plans[pid].name = String(p.name).slice(0, 20);
             if (p.tagline !== undefined) doc.plans[pid].tagline = String(p.tagline).slice(0, 60);

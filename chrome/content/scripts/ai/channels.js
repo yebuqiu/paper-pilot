@@ -101,7 +101,7 @@ var Channels = {
     const idx = doc.channels.findIndex((c) => c && c.id === this.OFFICIAL_ID);
     const official = {
       id: this.OFFICIAL_ID,
-      name: "PaperPilot 官方模型（登录后免费）",
+      name: "PaperPilot 官方模型（按额度计费）",
       provider: this.OFFICIAL_ID,
       baseUrl: "", // 运行时取 Account.gatewayUrl()，不落盘防服务器地址变更后过期
       apiKey: "",  // 运行时取登录令牌，绝不落盘
@@ -282,7 +282,7 @@ var Channels = {
     this._ensureOfficial(doc);
     if (!doc.channels.some((c) => c && c.id === id)) return { ok: false, error: "通道不存在" };
     if (id === this.OFFICIAL_ID && !Account.isLoggedIn()) {
-      return { ok: false, error: "请先登录 PaperPilot 账号后再使用官方模型（登录后免费）" };
+      return { ok: false, error: "请先登录 PaperPilot 账号后再使用官方模型（调用从 AI 额度扣费）" };
     }
     doc.active = id;
     this._save(doc);

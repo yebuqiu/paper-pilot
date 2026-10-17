@@ -88,12 +88,14 @@ const iso = (days) => new Date(Date.now() + days * 86400e3).toISOString();
 
 function mockUser() {
   return {
-    email: 'a@b.c', name: '测试甲', plan: membershipPlan,
-    dailyUsed: 3, dailyLimit: membershipPlan === 'Pro' ? 3000 : 100, status: 'active',
+    email: 'a@b.c', name: '测试甲', plan: membershipPlan, status: 'active',
     membership: membershipPlan === 'Pro'
-      ? { plan: 'Pro', name: '专业版', expiresAt: iso(90), dailyLimit: 3000,
+      ? { plan: 'Pro', name: '专业版', expiresAt: iso(90),
           source: 'order', activatedAt: new Date().toISOString() }
-      : { plan: 'Free', name: '免费版', expiresAt: null, dailyLimit: 100, source: '', activatedAt: null },
+      : { plan: 'Free', name: '免费版', expiresAt: null, source: '', activatedAt: null },
+    balance: { totalMicro: 26000000, grantedMicro: 6000000, planMicro: 20000000, paidMicro: 0,
+      text: '¥26.00', grantedText: '¥6.00', planText: '¥20.00', paidText: '¥0',
+      enforce: true, minBalanceMicro: 0, overdraft: false },
   };
 }
 

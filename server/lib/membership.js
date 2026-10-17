@@ -56,11 +56,12 @@ const MAX_MONTHS = 36;
 const DEFAULT_PLANS = {
   Free: {
     id: 'Free', name: '免费版', rank: 0, price: 0, currency: 'CNY',
-    dailyLimit: 100, highTierModels: false,
-    monthlyGrantMicro: 0,                       // 1.6.0：Free 无订阅额度
+    highTierModels: false,
+    monthlyGrantMicro: 0,                       // 免费版没有月度额度，只有注册赠送
     tagline: '登录即用，个人日常够用',
     features: [
       '注册赠送 ¥6 额度（30 天内有效，限基础模型）',
+      'auto 与基础模型（deepseek-v4-flash）',
       '全部核心功能（期刊分区列 / 标签治理 / 附件体检 / 库内问答 / PDF 对比…）',
       '可接入自己的 OpenAI 兼容接口，不受额度限制',
       '社区支持',
@@ -68,9 +69,9 @@ const DEFAULT_PLANS = {
   },
   Pro: {
     id: 'Pro', name: '专业版', rank: 1, price: 29, currency: 'CNY',
-    dailyLimit: 3000, highTierModels: true,
-    // 1.6.0 订阅去无限化：Pro 的权益从「每日 3000 次」改为「每月发放额度」
-    // ★ 20000000 微元 = ¥20。**待人均成本数据校准**（后台可改，见 plans 编辑）。
+    highTierModels: true,
+    // ★ 20000000 微元 = ¥20。AI 调用**统一从余额扣费**，不再有每日次数上限。
+    //   后台可改（会员管理 → 每月订阅额度）；不结转，当月未用完即作废。
     monthlyGrantMicro: 20000000,
     tagline: '高频写论文/做综述时用',
     features: [
@@ -136,7 +137,7 @@ const DEFAULT_PAY = {
  * 全局 AI 策略（1.4.9）。
  * trialDays = 新用户「全模型试用」天数：以 user.createdAt 为起点现场计算，
  *   **不需要落盘、不需要迁移**；改成 0 即整体关闭。
- *   试用只放开「高级模型」的可用性，不动每日额度（额度仍按套餐来）。
+ *   试用只放开「高级模型」的可用性，不动余额（扣费仍按余额来）。
  */
 const DEFAULT_AI = {
   trialDays: 7,
@@ -205,6 +206,8 @@ function normalize(doc) {
     else out.plans[id] = Object.assign(clone(DEFAULT_PLANS[id]), out.plans[id]);
     // 1.6.0 订阅额度：非负整数微元（0 = 该档不发订阅额度）
     out.plans[id].monthlyGrantMicro = Math.max(0, Math.round(Number(out.plans[id].monthlyGrantMicro) || 0));
+    // 1.8.0 取消「赠送调用次数」：旧配置里的每日次数上限一律清掉（幂等迁移）
+    delete out.plans[id].dailyLimit;
   }
   // ---- 价格表：priceItems 权威源 ----
   if (!Array.isArray(out.priceItems) || !out.priceItems.length) {
@@ -578,13 +581,6 @@ function trialState(createdAt, trialDays, now) {
   return out;
 }
 
-/** 某等级的每日官方模型额度（管理员在用户级显式设置的 dailyLimit 优先级更高） */
-function dailyLimitFor(doc, planId) {
-  const p = planOf(doc, planId);
-  const n = Number(p.dailyLimit);
-  return n > 0 ? n : 100;
-}
-
 /** 价格档位查询；未配置的月数按「单价 × 月数」兜底 */
 /**
  * 兼容包装：老调用方只要 {months, price, label}。
@@ -617,7 +613,6 @@ function plansForClient(doc, now) {
     .map((p) => ({
       id: p.id, name: p.name, rank: Number(p.rank) || 0,
       price: Number(p.price) || 0, currency: p.currency || 'CNY',
-      dailyLimit: dailyLimitFor(doc, p.id),
       highTierModels: !!p.highTierModels,
       monthlyGrantMicro: Number(p.monthlyGrantMicro) || 0,   // 1.6.0 订阅每月发放额度
       tagline: p.tagline || '',
@@ -689,7 +684,6 @@ function membershipOf(doc, user) {
     perpetual,
     expiresAt: expMs ? new Date(expMs).toISOString() : null,
     daysLeft: expMs ? Math.max(0, Math.ceil((expMs - now) / DAY_MS)) : null,
-    dailyLimit: dailyLimitFor(doc, plan),
     source: m.source || (expMs ? 'legacy' : ''),
     activatedAt: m.activatedAt || null,
     history: Array.isArray(m.history) ? m.history.slice(-10) : [],
@@ -1109,7 +1103,7 @@ module.exports = {
   DEFAULT_PLANS, DEFAULT_PRICE_OPTIONS, DEFAULT_PAY, DEFAULT_AI,
   CYCLE_PRESETS, PRICE_STATE_TEXT,
   newDoc, normalize, newCode, normCode,
-  planOf, dailyLimitFor, priceOf, clampMonths, plansForClient, trialState, trialDaysFor,
+  planOf, priceOf, clampMonths, plansForClient, trialState, trialDaysFor,
   // v3 价格表
   cycleOfMonths, cycleName, isoOrNull, priceState, sanitizePriceItem,
   migratePriceOptions, derivePriceOptions, priceItemOut,

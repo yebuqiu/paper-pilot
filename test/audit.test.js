@@ -161,8 +161,8 @@ const readAuditFile = () => {
     await req('PUT', `/api/admin/prices/${created.id}`, { price: 369 });
     await req('DELETE', `/api/admin/prices/${created.id}`);
 
-    // 会员配置
-    await req('PUT', '/api/admin/membership', { plans: { Free: { dailyLimit: 120 } } });
+    // 会员配置（每月额度；旧的每日次数已取消）
+    await req('PUT', '/api/admin/membership', { plans: { Free: { monthlyGrantMicro: 2000000 } } });
 
     // 激活码
     const codes = (await req('POST', '/api/admin/codes', { plan: 'Pro', months: 1, count: 2, note: '测试' })).json.codes;
@@ -236,7 +236,7 @@ const readAuditFile = () => {
 
     /* ---- health ---- */
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.7.1', 'B23 服务端版本');
+    eq(h.version, '1.8.0', 'B23 服务端版本');
     ok(typeof h.auditBytes === 'number' && h.auditBytes > 0, 'B24 health 暴露审计日志体积', h.auditBytes);
   } catch (e) {
     fails.push('异常中断：' + ((e && e.stack) || e));

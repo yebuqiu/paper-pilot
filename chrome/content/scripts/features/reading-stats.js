@@ -177,8 +177,9 @@ var ReadingStats = {
 
   /* ================== 心跳采集 ================== */
 
-  /** 当前焦点阅读器对应的常规条目（拿不到返回 null） */
-  activeItem() {
+  /** 当前焦点阅读器实例（拿不到返回 null）——0.46.0 抽出：
+   * 焦点解析只有这一份（ReadingProgress 心跳也复用它，不另起一套判定） */
+  activeReader() {
     try {
       let reader = null;
       if (Zotero.Reader && typeof Zotero.Reader.getActiveReader === "function") {
@@ -196,6 +197,16 @@ var ReadingStats = {
           }
         }
       }
+      return reader || null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  /** 当前焦点阅读器对应的常规条目（拿不到返回 null） */
+  activeItem() {
+    try {
+      const reader = this.activeReader();
       if (!reader) return null;
       const itemID = reader.itemID;
       if (!itemID) return null;

@@ -36,13 +36,35 @@ set "tmpvbs=%TEMP%\paperpilot-launcher-bridge.vbs"
 wscript.exe "%tmpvbs%"
 set "rc=%ERRORLEVEL%"
 del "%tmpvbs%" >nul 2>&1
+if not "%rc%"=="0" goto :pp_fail
 
-if not "%rc%"=="0" (
-  echo.
-  echo   [提示] 控制台未能正常拉起（wscript 返回 %rc%）。
-  echo   可在本目录打开 PowerShell 手工运行：
-  echo     powershell -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0scripts\launcher.ps1"
-  echo.
-  pause
+rem wscript 是异步的：返回 0 只代表「已提交」，不代表控制台真的起来了。
+rem 用 launcher 写下的 PID + tasklist 做存活确认（最多等约 12 秒）。
+for /l %%i in (1,1,12) do (
+  call :pp_probe
+  if defined ppok goto :pp_ready
+  >nul "%SystemRoot%\System32\ping.exe" -n 2 127.0.0.1
 )
-exit /b %rc%
+goto :pp_fail
+
+:pp_probe
+set "ppok="
+set "pppid="
+if exist "%TEMP%\paperpilot-launcher.pid" set /p pppid=<"%TEMP%\paperpilot-launcher.pid"
+if not defined pppid exit /b 0
+"%SystemRoot%\System32\tasklist.exe" /FI "PID eq %pppid%" /NH 2>nul | "%SystemRoot%\System32\find.exe" "%pppid%" >nul
+if not errorlevel 1 set "ppok=1"
+exit /b 0
+
+:pp_ready
+exit /b 0
+
+:pp_fail
+echo.
+echo   [提示] 控制台没有启动成功（12 秒内未检测到运行中的控制台进程）。
+echo   启动日志：%TEMP%\paperpilot-launcher-boot.log
+echo   可把日志发给维护者；也可在本目录手工运行：
+echo     powershell -NoProfile -STA -ExecutionPolicy Bypass -File "%~dp0scripts\launcher.ps1"
+echo.
+pause
+exit /b 2

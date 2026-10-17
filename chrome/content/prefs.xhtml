@@ -36,13 +36,13 @@
   <html:div class="pp-card pp-fold" data-fold="account" data-search-strings-raw="账号 登录 注册 会员 余额 订单 激活码 设备 account login register membership balance order redeem">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">👤</html:span><html:span class="pp-card-title">PaperPilot 账号</html:span>
-      <html:span class="pp-card-desc">登录后免费使用官方 AI 模型；登录状态本地持久化，会话过期自动提醒</html:span>
+      <html:span class="pp-card-desc">登录后使用官方 AI 模型（按 AI 额度扣费）；登录状态本地持久化，会话过期自动提醒</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
       <!-- 未登录：登录表单（0.15.0 起不再提供服务器地址入口，固定连接官方服务） -->
       <html:div id="pp-login-view">
-        <html:div class="pp-hint" style="margin-top:10px;">登录账号即可免费使用官方模型；没有账号点「注册账号」——直接在下面填表注册，不用跳浏览器。</html:div>
+        <html:div class="pp-hint" style="margin-top:10px;">登录账号即可使用官方模型（注册赠送 ¥6 额度，专业版每月发放 ¥20 额度）；没有账号点「注册账号」——直接在下面填表注册，不用跳浏览器。</html:div>
         <html:div class="pp-grid2">
           <html:div class="pp-field">
             <html:label class="pp-label">邮箱</html:label>
@@ -115,7 +115,7 @@
           <!-- 到期/已过期提醒横幅（0.24.4：剩余 ≤7 天出现，点击直接打开续费面板） -->
           <html:div id="pp-mb-renew" class="pp-mb-renew" style="display:none;"></html:div>
           <html:div id="pp-mb-features" class="pp-mb-features"></html:div>
-          <!-- 用量趋势（0.24.4：今日/额度 + 近 7 天迷你柱状图 + 近 7 天合计） -->
+          <!-- 消耗趋势（0.46.0：今日/近 7 天金额 + 近 7 天迷你柱状图；不再显示调用次数上限） -->
           <html:div id="pp-mb-usage" class="pp-mb-usage" style="display:none;"></html:div>
           <!-- ===== 0.26.0 AI 额度余额（注册赠送 / 订阅额度 / 充值） ===== -->
           <html:div id="pp-bal-block" class="pp-bal" style="display:none;">
@@ -606,7 +606,7 @@
   <html:div class="pp-cat-label">条目与文献</html:div>
 
   <!-- ============ 5 · 条目数据列 ============ -->
-  <html:div class="pp-card pp-fold" data-fold="columns" data-search-strings-raw="列 分区 被引量 标题译文 阅读进度 评级 column rank citation progress rating translation">
+  <html:div class="pp-card pp-fold" data-fold="columns" data-search-strings-raw="列 分区 被引量 标题译文 阅读进度 进度条 高能 评级 column rank citation progress rating translation">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">📊</html:span><html:span class="pp-card-title">条目数据列</html:span>
       <html:span class="pp-card-desc">在条目列表显示期刊分区与被引量两列；右键列表表头可勾选显示</html:span>
@@ -694,22 +694,85 @@
         </html:div>
       </html:div>
 
-      <!-- 5.3 标题译文 / 阅读进度 / 评级（0.42.0） -->
+      <!-- 5.3 标题译文 / 评级（0.42.0；阅读进度 0.46.0 起独立为下方 5.4） -->
       <html:div class="pp-sub">
         <html:div class="pp-sub-title">更多数据列（0.42.0 新增）</html:div>
-        <html:div class="pp-sub-desc">译文列显示「AI 翻译标题与摘要」写回的译文；进度列按阅读统计估算；评级列显示 ★（右键条目 → 评级 设置）</html:div>
+        <html:div class="pp-sub-desc">译文列显示「AI 翻译标题与摘要」写回的译文；评级列显示 ★（右键条目 → 评级 设置）</html:div>
         <html:label class="pp-check">
           <html:input type="checkbox" preference="extensions.zotero.paperpilot.titleTranslationColumnEnabled" id="pp-ttcol-enabled"/>
           <html:span>启用标题译文列（即时生效）</html:span>
         </html:label>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.progressColumnEnabled" id="pp-progcol-enabled"/>
-          <html:span>启用阅读进度列（按阅读时长与页数估算，无数据时留空）</html:span>
-        </html:label>
-        <html:label class="pp-check">
           <html:input type="checkbox" preference="extensions.zotero.paperpilot.ratingColumnEnabled" id="pp-ratingcol-enabled"/>
           <html:span>启用评级列（★，可在标签页按星筛选）</html:span>
         </html:label>
+      </html:div>
+
+      <!-- 5.4 阅读进度（0.46.0 进度条 2.0：主形态＝标题列内嵌，无需勾选任何列） -->
+      <html:div class="pp-sub">
+        <html:div class="pp-sub-title">阅读进度（画在标题列背景）</html:div>
+        <html:div class="pp-sub-desc">进度直接显示在每条文献的标题背后，装完即见、不用勾选任何列：进度 = 读到哪一页 ÷ 总页数（自动融合阅读器实时页码、Zotero 原生「上次读到」与标注所在页），都没有时按阅读时长估算。数据只存本机（位置随 Zotero 账号同步的部分除外），不上传</html:div>
+        <html:label class="pp-check">
+          <html:input type="checkbox" preference="extensions.zotero.paperpilot.progressRowEnabled" id="pp-progrow-enabled"/>
+          <html:span>在标题列显示阅读进度（推荐；装完插件即见）</html:span>
+        </html:label>
+        <html:div class="pp-grid2">
+          <html:div class="pp-field">
+            <html:label class="pp-label">标题内样式</html:label>
+            <html:select preference="extensions.zotero.paperpilot.progressRowStyle" id="pp-progrow-style" class="pp-select">
+              <html:option value="heat">高能进度条（每页一格，读得越久颜色越深；还没有每页数据时自动整体填充）</html:option>
+              <html:option value="fill">整体填充（标题背景按进度百分比铺色）</html:option>
+            </html:select>
+          </html:div>
+          <html:div class="pp-field">
+            <html:label class="pp-label">进度口径</html:label>
+            <html:select preference="extensions.zotero.paperpilot.progressBasis" id="pp-progcol-basis" class="pp-select">
+              <html:option value="auto">自动（位置优先，无位置按时长估算）</html:option>
+              <html:option value="position">仅阅读位置（读到第几页）</html:option>
+              <html:option value="time">仅阅读时长（0.42.0 行为）</html:option>
+            </html:select>
+          </html:div>
+        </html:div>
+        <html:label class="pp-check" style="margin-top:6px;">
+          <html:input type="checkbox" preference="extensions.zotero.paperpilot.progressAutoFinish" id="pp-progcol-autofinish"/>
+          <html:span>进度反向驱动阅读状态（有进度：未读 → 在读；位置进度达到阈值：自动标记已读；时长口径不触发「已读」）</html:span>
+        </html:label>
+        <html:div class="pp-grid2">
+          <html:div class="pp-field">
+            <html:label class="pp-label">自动「已读」阈值（%，80-100）</html:label>
+            <html:input type="number" preference="extensions.zotero.paperpilot.progressAutoFinishPct" id="pp-progcol-finishpct" class="pp-input" min="80" max="100" step="5"/>
+          </html:div>
+          <html:div class="pp-field" style="align-self:end;">
+            <html:div class="pp-hint">悬停标题可看「读到第几页 / 累计分钟」；某篇想从头读：右键条目 → 阅读状态 → 重置阅读进度（标注不受影响）</html:div>
+          </html:div>
+        </html:div>
+      </html:div>
+
+      <!-- 5.5 「阅读进度」数据列（可选：默认隐藏，点列头按进度排序用） -->
+      <html:div class="pp-sub">
+        <html:div class="pp-sub-title">「阅读进度」数据列（可选）</html:div>
+        <html:div class="pp-sub-desc">标题内嵌进度已覆盖日常查看；这个列是给想「点列头按进度排序」的用户的可选位——右键条目列表表头勾选「阅读进度」后生效</html:div>
+        <html:label class="pp-check">
+          <html:input type="checkbox" preference="extensions.zotero.paperpilot.progressColumnEnabled" id="pp-progcol-enabled"/>
+          <html:span>注册「阅读进度」列（即时生效；列可见性仍在表头右键菜单里控制）</html:span>
+        </html:label>
+        <html:label class="pp-check">
+          <html:input type="checkbox" preference="extensions.zotero.paperpilot.progressColorByState" id="pp-progcol-colorstate"/>
+          <html:span>列内进度条按阅读状态着色（已读绿色 / 在读跟随主题强调色 / 未读中性灰）</html:span>
+        </html:label>
+        <html:div class="pp-grid2">
+          <html:div class="pp-field">
+            <html:label class="pp-label">列内进度条样式</html:label>
+            <html:select preference="extensions.zotero.paperpilot.progressBarStyle" id="pp-progcol-style" class="pp-select">
+              <html:option value="bar">线性填充条 + 百分比（默认）</html:option>
+              <html:option value="gradient">渐变填充条（蓝 → 绿）</html:option>
+              <html:option value="percent">仅百分比标注（最紧凑）</html:option>
+            </html:select>
+          </html:div>
+          <html:div class="pp-field" style="align-self:end;">
+            <html:div class="pp-hint">列仅负责排序与精确数值展示；行内（标题背景）显示不受这里开关影响</html:div>
+          </html:div>
+        </html:div>
       </html:div>
 
     </html:div>
@@ -755,6 +818,30 @@
           <html:div class="pp-field">
             <html:label class="pp-label">AI 打标签每次建议个数</html:label>
             <html:input type="number" preference="extensions.zotero.paperpilot.autoTagMax" class="pp-input"/>
+          </html:div>
+        </html:div>
+        <html:div class="pp-field" style="margin-top:8px;">
+          <html:label class="pp-check">
+            <html:input type="checkbox" preference="extensions.zotero.paperpilot.autoTagUseVocab" id="pp-autotag-vocab"/>
+            <html:span>AI 打标签优先复用库内已有标签（把全库高频标签喂给 AI，从源头减少同义变体，建议开启）</html:span>
+          </html:label>
+          <html:label class="pp-check" style="margin-top:4px;">
+            <html:input type="checkbox" preference="extensions.zotero.paperpilot.autoTagCache" id="pp-autotag-cache"/>
+            <html:span>缓存 AI 标签建议（标题/摘要等未变化时命中缓存，不重复消耗 AI 额度）</html:span>
+          </html:label>
+        </html:div>
+        <html:div class="pp-grid2">
+          <html:div class="pp-field">
+            <html:label class="pp-label">AI 标签语言</html:label>
+            <html:select preference="extensions.zotero.paperpilot.autoTagLang" id="pp-autotag-lang" class="pp-select">
+              <html:option value="auto">跟随界面语言</html:option>
+              <html:option value="zh">中文</html:option>
+              <html:option value="en">English</html:option>
+            </html:select>
+          </html:div>
+          <html:div class="pp-field">
+            <html:label class="pp-label">建议默认勾选的置信度（0 到 1）</html:label>
+            <html:input type="number" preference="extensions.zotero.paperpilot.autoTagConfidenceThreshold" id="pp-autotag-threshold" class="pp-input" min="0" max="1" step="0.1"/>
           </html:div>
         </html:div>
       </html:div>

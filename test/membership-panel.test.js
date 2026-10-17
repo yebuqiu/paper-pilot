@@ -5,7 +5,7 @@
  * 无人环境点不了。这里用「迷你 DOM + 假 Account」把它**真跑一遍**，断言：
  *   #4 价格档位来自价格表（周期名 + 折合月单价）、未生效价格以灰底预告出现且不可点；
  *   #5 剩余 ≤7 天出现续费横幅、已到期转红、默认档位取「上次购买的周期」；
- *   #11 用量块画出近 7 天柱状图并显示今日/额度与近 7 天合计；老服务端（无趋势）时整块隐藏。
+ *   #11 消耗块画出近 7 天柱状图并显示今日/近 7 天金额（次数上限已取消）；老服务端（无趋势）时整块隐藏。
  *
  * 运行：node test/membership-panel.test.js
  */
@@ -100,8 +100,8 @@ const isoDay = (n) => {
 };
 
 const PLANS_PAYLOAD = {
-  plans: [{ id: 'Free', name: '免费版', rank: 0, dailyLimit: 100, features: ['每日 100 次'] },
-    { id: 'Pro', name: '专业版', rank: 1, dailyLimit: 3000, features: ['每日 3000 次', '全部官方模型'] }],
+  plans: [{ id: 'Free', name: '免费版', rank: 0, features: ['注册赠送 ¥6 额度'] },
+    { id: 'Pro', name: '专业版', rank: 1, monthlyGrantMicro: 20000000, features: ['每月发放 ¥20 AI 额度', '全部官方模型'] }],
   priceOptions: [{ plan: 'Pro', months: 1, price: 29, label: '1 个月' }],
   priceItems: [
     { id: 'p1', plan: 'Pro', cycle: 'monthly', cycleName: '按月', months: 1, price: 29, perMonth: 29, label: '按月' },
@@ -122,21 +122,25 @@ const PLANS_PAYLOAD = {
 function fakeAccount(over) {
   const base = Object.assign({
     isLoggedIn: () => true,
-    user: () => ({ email: 'me@test.local', name: '我', plan: 'Pro', dailyUsed: 5, dailyLimit: 3000 }),
+    user: () => ({ email: 'me@test.local', name: '我', plan: 'Pro' }),
     expiresAt: () => Date.now() + 30 * DAY,
     serverUrl: () => 'https://pp.example.com',
     persistStatus: { attempted: 1, ok: true },
     membership: () => ({ plan: 'Pro', name: '专业版', rawPlan: 'Pro', expired: false,
-      expiresAt: Date.now() + 3 * DAY, dailyLimit: 3000, source: 'order',
+      expiresAt: Date.now() + 3 * DAY, source: 'order',
       history: [{ plan: 'Pro', months: 1, at: '2026-09-01T00:00:00Z' },
         { plan: 'Pro', months: 12, at: '2026-10-01T00:00:00Z' }] }),
     isPro: () => true,
     membershipDaysLeft: () => 3,
     renewalReminder: () => ({ daysLeft: 3, expired: false, expiresAt: Date.now() + 3 * DAY, key: 'k' }),
     lastPurchasedMonths: () => 12,
-    usage: () => ({
-      today: 5, limit: 3000, last7: 12,
-      days: Array.from({ length: 30 }, (_, i) => ({ date: isoDay(i - 29), count: i % 4 })),
+    // 0.46.0 消耗趋势：按金额（微元）画图，不再有次数/上限
+    cost: () => ({
+      today: { costMicro: 50000, text: '¥0.05' },
+      last7: { costMicro: 170000, text: '¥0.17' },
+      last30: null,
+      days: Array.from({ length: 7 }, (_, i) => ({ date: isoDay(i - 6), micro: i === 6 ? 50000 : 20000 })),
+      last: null,
     }),
     // 0.26.0 AI 额度余额（默认三档都有值，便于断言分档展示）
     balance: () => ({
@@ -216,9 +220,10 @@ const flush = () => new Promise((r) => setImmediate(r));
   ok(!/expired/.test(renew.className), 'A4 未到期时不是危险样式', renew.className);
 
   const usage = registry.get('pp-mb-usage');
-  ok(usage.style.display !== 'none', 'A5 用量块出现');
-  has(usage.textContent, '今日 5 / 3000', 'A6 显示今日/额度');
-  has(usage.textContent, '近 7 天合计 12', 'A7 显示近 7 天合计');
+  ok(usage.style.display !== 'none', 'A5 消耗块出现');
+  has(usage.textContent, '今日 ¥0.05', 'A6 显示今日消耗金额');
+  has(usage.textContent, '近 7 天 ¥0.17', 'A7 显示近 7 天消耗合计');
+  ok(!/次/.test(usage.textContent), 'A7b ★ 不再出现调用次数/次数上限文案');
   const bars = usage.byClass('pp-mb-bar');
   eq(bars.length, 7, 'A8 画出 7 根柱子');
   const cols = usage.byClass('pp-mb-bar-col');
@@ -258,7 +263,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     isPro: () => false,
     renewalReminder: () => ({ daysLeft: 0, expired: true, expiresAt: Date.now() - 2 * DAY, key: 'e' }),
     membership: () => ({ plan: 'Free', name: '免费版', rawPlan: 'Pro', expired: true,
-      expiresAt: Date.now() - 2 * DAY, dailyLimit: 100, source: 'order', history: [{ plan: 'Pro', months: 1 }] }),
+      expiresAt: Date.now() - 2 * DAY, source: 'order', history: [{ plan: 'Pro', months: 1 }] }),
   }));
   const rb2 = registry.get('pp-mb-renew');
   ok(rb2.style.display !== 'none', 'C1 已过期 → 横幅仍出现');
@@ -269,7 +274,7 @@ const flush = () => new Promise((r) => setImmediate(r));
   ({ registry } = boot({
     isPro: () => false,
     membership: () => ({ plan: 'Free', name: '免费版', rawPlan: 'Free', expired: false,
-      expiresAt: 0, dailyLimit: 100, source: '', history: [] }),
+      expiresAt: 0, source: '', history: [] }),
     membershipDaysLeft: () => Infinity,
     renewalReminder: () => null,
     lastPurchasedMonths: () => null,
@@ -277,11 +282,11 @@ const flush = () => new Promise((r) => setImmediate(r));
   eq(registry.get('pp-mb-renew').style.display, 'none', 'D1 免费用户不显示到期横幅');
   ok(registry.get('pp-mb-upgrade').textContent.indexOf('升级') >= 0, 'D2 按钮仍显示「升级专业版」');
 
-  /* ============ E. 老服务端（无用量趋势）：整块隐藏而不是画空图 ============ */
+  /* ============ E. 老服务端（无消耗趋势）：整块隐藏而不是画空图 ============ */
   ({ registry } = boot({
-    usage: () => ({ today: 5, limit: 3000, last7: 0, days: [] }),
+    cost: () => ({ today: null, last7: null, last30: null, days: [], last: null }),
   }));
-  eq(registry.get('pp-mb-usage').style.display, 'none', 'E1 无趋势数据 → 用量块隐藏');
+  eq(registry.get('pp-mb-usage').style.display, 'none', 'E1 无趋势数据 → 消耗块隐藏');
   eq(registry.get('pp-mb-renew').style.display, '', 'E2 到期提醒不受影响（仍显示）');
 
   /* ============ F. 优惠码：试算 → 展示折后价 → 下单带券 ============ */
@@ -603,10 +608,11 @@ const flush = () => new Promise((r) => setImmediate(r));
     has(detail, '注册赠送 ¥6.00', 'J3 明细含注册赠送（带剩余天数）');
     has(detail, '剩 21 天', 'J4 注册赠送标注剩余天数');
     has(detail, '订阅额度 ¥1.00', 'J5 明细含订阅额度（标注本月底作废）');
-    has(detail, '本月底作废', 'J6 订阅额度明示「不结转」');
+    has(detail, '不结转', 'J6 订阅额度明示「不结转」');
     has(detail, '充值 ¥19.10', 'J7 明细含充值并标注永不过期');
     has(detail, '永不过期', 'J8 充值额度明示不过期');
-    has(registry.get('pp-bal-note').textContent, '注册赠送额度仅限基础模型', 'J9 说明条讲清模型限制');
+    has(registry.get('pp-bal-note').textContent, '按实际用量从余额扣费（无调用次数上限）', 'J9 说明条讲清计费口径');
+    has(registry.get('pp-bal-note').textContent, '注册赠送仅限基础模型', 'J9b 说明条讲清模型限制');
 
     // ---- J10~J12：观察模式 / 透支 / 额度不足 三种状态各说各的话 ----
     ({ registry } = boot({

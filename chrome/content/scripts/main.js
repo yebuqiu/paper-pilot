@@ -1,7 +1,7 @@
 /* PaperPilot 主入口：装配各模块
  * 由 bootstrap.js 通过 Services.scriptloader 加载，共享 bootstrap 作用域
  */
-/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, _ppDiag */
+/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, _ppDiag */
 
 Zotero.PaperPilot = {
   id: null,
@@ -121,6 +121,10 @@ Zotero.PaperPilot = {
       // 0.23.0 笔记关系图谱 + 阅读行为统计（阶段 2 第二批）
       "features/note-graph.js",
       "features/reading-stats.js",
+      // 0.46.0 阅读进度 2.0：位置进度数据域（心跳捕获 + 原生上次位置 + 标注页融合）。
+      // 须排在 reading-stats.js 之后（复用其焦点解析 activeReader）与
+      // progress-column.js 之前（列的 lookup 走它的 compute/entryOf）
+      "features/reading-progress.js",
       // 0.25.0 arXiv 核心：由 scripts/build-arxiv-core.py 从 tools/arxiv/src 生成
       // （纯函数、不含 Zotero 依赖；必须按依赖序排在 discovery.js 之前。
       //  改了 tools 侧逻辑要重跑生成器，preflight 会拦住忘记生成的情况。）
@@ -256,6 +260,8 @@ Zotero.PaperPilot = {
     // 0.23.0 笔记关系图谱 + 阅读统计
     this.noteGraph = NoteGraph;
     this.readingStats = ReadingStats;
+    // 0.46.0 阅读进度数据域（设置面板/右键重置/排障经此访问）
+    this.readingProgress = ReadingProgress;
     // 0.24.0 阶段 3：元数据体检 / 文献发现 / MCP
     this.metaRules = MetaRules;
     this.discovery = Discovery;
@@ -485,6 +491,14 @@ Zotero.PaperPilot = {
         await this._diag("progress column FAILED: " + (e && (e.stack || e.message) || e));
       }
     }
+    // 0.46.0 行内显示：进度画在标题列背景（主显示形态，独立于上面的列开关——
+    // 用户关掉列也要能看）。挂不上（主窗口未就绪）时 registerRow 内部会等 uiReady 重试
+    try {
+      const rowOk = await ProgressColumn.registerRow();
+      await this._diag("progress row overlay " + (rowOk ? "patched" : "deferred"));
+    } catch (e) {
+      await this._diag("progress row overlay FAILED: " + (e && (e.stack || e.message) || e));
+    }
     if (Prefs.get("ratingColumnEnabled", true)) {
       try {
         await RatingColumn.register(id);
@@ -605,6 +619,15 @@ Zotero.PaperPilot = {
       await this._diag("reading stats heartbeat started");
     } catch (e) {
       await this._diag("reading stats FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
+    // 0.46.0 阅读进度 2.0：位置采集心跳（60s 捕获焦点阅读器当前页）+ 标注位置 Notifier
+    // （列的渲染已由上面 ProgressColumn 注册；本模块只管数据采集，与列开关解耦）
+    try {
+      ReadingProgress.register();
+      await this._diag("reading progress collector registered");
+    } catch (e) {
+      await this._diag("reading progress FAILED: " + (e && (e.stack || e.message) || e));
     }
 
     // 0.24.0 MCP 对外供给：注册 Zotero 本地端点 /paperpilot/mcp
@@ -792,7 +815,7 @@ Zotero.PaperPilot = {
     // （FF140 实证：addObserver(..., weak=true) 直接抛错拖死 startup）。
     // 改用 Zotero.Prefs.registerObserver——Zotero 自己在主作用域持有单个
     // nsIObserver 再分发，按「完整 pref key」注册（无前缀监听，逐 key 注册）。
-    this._prefObserverSymbols = ["rankDataPath", "rankColumnEnabled", "easyScholarEnabled", "easyScholarKey", "citationColumnEnabled", "rankDataSets", "rankMaxBadges", "rankBadgeStyle", "uiTheme", "uiThemeCustom", "uiWallpaper", "uiWallpaperPath", "uiWallpaperUrl", "uiWallpaperOpacity", "pdfTheme", "pdfThemeCustomColor", "pdfThemeCustomOpacity", "themeButtonEnabled", "themeMainButtonEnabled", "quickBarButtonEnabled", "titleTranslationColumnEnabled", "progressColumnEnabled", "ratingColumnEnabled", "fulltextResolverEnabled", "scihubEnabled", "scinetEnabled", "scihubMirrors", "scinetUrl", "unpaywallEmail", "automationRules"].map((key) =>
+    this._prefObserverSymbols = ["rankDataPath", "rankColumnEnabled", "easyScholarEnabled", "easyScholarKey", "citationColumnEnabled", "rankDataSets", "rankMaxBadges", "rankBadgeStyle", "uiTheme", "uiThemeCustom", "uiWallpaper", "uiWallpaperPath", "uiWallpaperUrl", "uiWallpaperOpacity", "pdfTheme", "pdfThemeCustomColor", "pdfThemeCustomOpacity", "themeButtonEnabled", "themeMainButtonEnabled", "quickBarButtonEnabled", "titleTranslationColumnEnabled", "progressColumnEnabled", "progressRowEnabled", "progressRowStyle", "progressBarStyle", "progressBasis", "progressColorByState", "ratingColumnEnabled", "fulltextResolverEnabled", "scihubEnabled", "scinetEnabled", "scihubMirrors", "scinetUrl", "unpaywallEmail", "automationRules"].map((key) =>
       Zotero.Prefs.registerObserver(Prefs.PREFIX + key, () => {
         this._onPrefChanged(key).catch((e) => {
           try { Zotero.logError(e); } catch (_) { /* ignore */ }
@@ -861,6 +884,21 @@ Zotero.PaperPilot = {
       } else if (!enabled && ProgressColumn._registered) {
         ProgressColumn.unregister();
       }
+    } else if (key === "progressBarStyle" || key === "progressBasis" || key === "progressColorByState") {
+      // 0.46.0 进度样式/口径/着色变化：立即重绘（同 rank 列的修复口径——
+      // 只 refreshColumns() 在部分版本不会重取 dataProvider，须补 redraw）
+      try { Zotero.ItemTreeManager.refreshColumns(); } catch (e) { /* ignore */ }
+      try { Zotero.Notifier.trigger("redraw", "item", []); } catch (e) { /* ignore */ }
+    } else if (key === "progressRowEnabled") {
+      // 行内显示开关：挂/停装饰层并重建行（wrapper 被别家包过时仅停装饰，安全）
+      if (Prefs.get("progressRowEnabled", true)) {
+        await ProgressColumn.registerRow();
+      } else {
+        ProgressColumn.unregisterRow();
+      }
+      ProgressColumn.refreshRow();
+    } else if (key === "progressRowStyle") {
+      ProgressColumn.refreshRow();
     } else if (key === "ratingColumnEnabled") {
       const enabled = Prefs.get("ratingColumnEnabled", true);
       if (enabled && !RatingColumn._registered) {
@@ -916,6 +954,8 @@ Zotero.PaperPilot = {
     try { Automation.unregister(); } catch (e) { Zotero.logError(e); }
     try { AutoRead.unregister(); } catch (e) { Zotero.logError(e); }
     try { ReadingStats.stop(); } catch (e) { Zotero.logError(e); }
+    try { ReadingProgress.unregister(); } catch (e) { Zotero.logError(e); }
+    try { ProgressColumn.unregisterRow(); } catch (e) { Zotero.logError(e); }
     try { Discovery.stop(); } catch (e) { Zotero.logError(e); }
     try { MCP.unregister(); } catch (e) { Zotero.logError(e); }
     try { ReadingState.unregister(); } catch (e) { Zotero.logError(e); }

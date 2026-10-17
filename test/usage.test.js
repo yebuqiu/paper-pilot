@@ -7,7 +7,7 @@
  *   纯函数 —— bumpUsage 累计 / 跨天重置当日计数 / daily 保留历史；
  *            pruneUsageDaily 只留最近 N 天（并清掉非法键）；
  *            usageDays 补零、长度正确、能兼容只有 {date,count} 的旧数据。
- *   接口   —— /api/auth/me 与 /api/membership 下发 usage{ today,limit,last7,days[30] }；
+ *   接口   —— /api/auth/me 与 /api/membership 下发 usage{ today,last7,days[30] }（纯统计，无次数上限）；
  *            /api/admin/users 带 usage7 / usage30 / usageDaily。
  */
 'use strict';
@@ -125,7 +125,7 @@ const dayShift = (n) => mod.isoDay(Date.now() + n * 86400e3);
     eq(me.usage.today, 0, 'B4 新账号今日用量 0');
     eq(me.usage.last7, 0, 'B5 新账号近 7 天合计 0');
     eq(me.usage.days[29].date, mod.today(), 'B6 末位是今天');
-    eq(me.dailyUsed, 0, 'B7 旧字段 dailyUsed 仍在（向后兼容）');
+    eq(me.dailyLimit, undefined, 'B7 客户端契约不再含 dailyLimit（赠送调用次数已取消）');
 
     // 直接改盘再重载，模拟"昨天用了 5 次、今天用了 2 次"
     const usersFile = path.join(WORK, 'users.json');

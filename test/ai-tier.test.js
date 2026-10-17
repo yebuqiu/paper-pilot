@@ -305,7 +305,7 @@ async function chat(token, model) {
 
     // 「过期不踢下线」：额度与登录态不受影响
     eq(uf2.plan, 'Free', 'G14 仍在线（试用结束不踢下线）');
-    ok(typeof uf2.dailyLimit === 'number' && uf2.dailyLimit > 0, 'G15 每日额度不受试用影响', uf2.dailyLimit);
+    ok(!!uf2.balance && typeof uf2.balance.totalMicro === 'number', 'G15 余额不受试用影响', uf2.balance && uf2.balance.totalMicro);
     const g16 = await req('GET', '/api/sessions', null, tFree);
     eq(g16.status, 200, 'G16 会话仍然有效（只收模型，不动登录）');
 
@@ -339,7 +339,7 @@ async function chat(token, model) {
 
     // health
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.7.1', 'H5 服务端版本 1.7.1');
+    eq(h.version, '1.8.0', 'H5 服务端版本 1.8.0');
     eq(h.highTierModels, 3, 'H6 health 给出高级模型数量（auto 也配了 → 3 条配置）');
     eq(h.publishedModels, ALL_PUBLISHED.length, 'H7 上线清单数量不受影响');
 

@@ -18,25 +18,115 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName Microsoft.VisualBasic
 try { [void][System.Windows.Forms.Application]::EnableVisualStyles() } catch {}
 
-# DPI 感知（须在创建任何窗口前调用）
-Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;public class DpiAware{[DllImport("user32.dll")]public static extern bool SetProcessDPIAware();}'
-[void][DpiAware]::SetProcessDPIAware()
+# ---------------- 启动日志 / 致命错误兜底 ----------------
+# bat 用 wscript 隐藏拉起本脚本：如果脚本在窗口出现前就失败，用户只会看到「双击没反应」。
+# 这里把每个启动阶段写进 %TEMP%\paperpilot-launcher-boot.log，并用 trap 弹窗（默认桌面，
+# 避免隐藏进程的弹窗被其他窗口盖住）。
+$script:BootLog = Join-Path $env:TEMP 'paperpilot-launcher-boot.log'
+function Write-Boot([string]$msg) {
+  try {
+    $line = '[' + (Get-Date).ToString('HH:mm:ss.fff') + '] ' + $msg + "`r`n"
+    [System.IO.File]::AppendAllText($script:BootLog, $line, (New-Object System.Text.UTF8Encoding($false)))
+  } catch { }
+}
+Write-Boot ('boot: pid=' + $PID + ' ps=' + $PSVersionTable.PSVersion.ToString())
 
-# 单实例锁：重复双击直接提示并退出
+trap {
+  $detail = 'FATAL: ' + $_.Exception.ToString()
+  Write-Boot $detail
+  try {
+    [System.Windows.Forms.MessageBox]::Show(
+      '控制台启动失败：' + $_.Exception.Message + "`n`n日志：" + $script:BootLog,
+      'PaperPilot 后台', 'OK', 'Error', 'Button1', 'DefaultDesktopOnly') | Out-Null
+  } catch { }
+  exit 1
+}
+
+# DPI 感知 + 窗口查找（重复启动时把已有窗口拉到前台，而不是弹一个看不见的提示）
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public class PpWin32 {
+  [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+  // 第一参数用 IntPtr：PowerShell 的 $null 传给 string 参数会marshal成空串而不是 NULL，
+  // FindWindow 用空串找不到任何窗口（曾导致重复启动判断永远失败）。
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(IntPtr lpClassName, string lpWindowName);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+}
+'@
+[void][PpWin32]::SetProcessDPIAware()
+
+# 全局异常兜底：WinForms 的事件处理器里一旦抛出未捕获异常，进程会**静默退出**。
+# 这里统一记录到 %TEMP%\paperpilot-launcher-error.log 并弹窗，避免“点一下窗口就没了”。
+try {
+  [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
+  [System.Windows.Forms.Application]::add_ThreadException({
+    param($s, $e)
+    $log = Join-Path $env:TEMP 'paperpilot-launcher-error.log'
+    try {
+      $line = '[' + (Get-Date).ToString('o') + '] ' + $e.Exception.ToString() + "`r`n"
+      [System.IO.File]::AppendAllText($log, $line, (New-Object System.Text.UTF8Encoding($false)))
+    } catch { }
+    try {
+      [System.Windows.Forms.MessageBox]::Show(
+        '界面异常：' + $e.Exception.Message + "`n`n日志：" + $log,
+        'PaperPilot 控制台', 'OK', 'Error', 'Button1', 'DefaultDesktopOnly') | Out-Null
+    } catch { }
+  })
+} catch { }
+
+# 单实例锁：已在运行则把窗口拉到前台；正在启动则等 5 秒；确实找不到才提示。
 $script:mutex = New-Object System.Threading.Mutex($false, 'PaperPilotLauncherMutex')
 if (-not $script:mutex.WaitOne(0)) {
-  [System.Windows.Forms.MessageBox]::Show('控制台已在运行（可能已最小化到系统托盘），请点击托盘图标恢复窗口。', 'PaperPilot 后台', 'OK', 'Information') | Out-Null
-  exit
+  $hwnd = [PpWin32]::FindWindow([IntPtr]::Zero, 'PaperPilot 后台 · 控制台')
+  if ($hwnd -eq [IntPtr]::Zero) {
+    for ($i = 0; $i -lt 10; $i++) {
+      Start-Sleep -Milliseconds 500
+      $hwnd = [PpWin32]::FindWindow([IntPtr]::Zero, 'PaperPilot 后台 · 控制台')
+      if ($hwnd -ne [IntPtr]::Zero) { break }
+    }
+  }
+  if ($hwnd -ne [IntPtr]::Zero) {
+    [void][PpWin32]::ShowWindow($hwnd, 9)
+    [void][PpWin32]::SetForegroundWindow($hwnd)
+    # 把已有实例的 PID 写进 pid 文件：bat 用它做「是否真的起来了」的存活判断。
+    try {
+      $ownerPid = [uint32]0
+      [void][PpWin32]::GetWindowThreadProcessId($hwnd, [ref]$ownerPid)
+      if ($ownerPid -gt 0) {
+        [System.IO.File]::WriteAllText((Join-Path $env:TEMP 'paperpilot-launcher.pid'), [string]$ownerPid,
+          (New-Object System.Text.UTF8Encoding($false)))
+      }
+    } catch { }
+    Write-Boot 'duplicate launch: activated existing window'
+    exit 0
+  }
+  Write-Boot 'duplicate launch: mutex held but no window found'
+  [System.Windows.Forms.MessageBox]::Show(
+    '控制台已在运行，但窗口没找到（可能正在启动或卡在初始化）。' + "`n`n请等 10 秒再双击；仍然不行就查看日志：" + $script:BootLog,
+    'PaperPilot 后台', 'OK', 'Warning', 'Button1', 'DefaultDesktopOnly') | Out-Null
+  exit 0
 }
+try {
+  [System.IO.File]::WriteAllText((Join-Path $env:TEMP 'paperpilot-launcher.pid'), [string]$PID,
+    (New-Object System.Text.UTF8Encoding($false)))
+} catch { }
+Write-Boot 'mutex acquired'
 
 # ---------------- 配置 ----------------
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $ServerDir   = Join-Path $ProjectRoot 'server'
 $DataDir     = Join-Path $ServerDir 'data'
 $ServerLog   = Join-Path $DataDir 'server-console.log'
+# stdout 与 Node 自身日志分开：cmd 的 >> 会独占句柄，若指向 server-console.log
+# 会把服务端 log() 的 appendFileSync 锁死（1.8.0 排障实测），故单独落一份。
+$StdoutLog   = Join-Path $DataDir 'server-stdout.log'
 $Port        = 8000
 $AdminPage   = 'http://127.0.0.1:' + $Port + '/admin'
 $HealthUrl   = 'http://127.0.0.1:' + $Port + '/api/health'
+Write-Boot ('root=' + $ProjectRoot)
 
 # ---------------- 公网通道（Cloudflare 隧道，项目内自包含 2026-10-16） ----------------
 # 依赖全部在 runtime\cloudflared\（cloudflared.exe + token.txt + 运行器），
@@ -71,6 +161,7 @@ function Resolve-NodeExe {
   return 'node'
 }
 $NodeExe = Resolve-NodeExe
+Write-Boot ('node=' + $NodeExe)
 
 # ---------------- 进程/网络检测 ----------------
 function Start-HiddenProcess($fileName, $arguments, $workDir) {
@@ -91,6 +182,41 @@ function Get-PortOwnerPid {
   return 0
 }
 
+# ★ 快探测：TCP 连接 150ms 就够（Get-NetTCPConnection 在本机要 200~800ms，
+#   每 3 秒跑一次会把 UI 拖出可感知的卡顿）。PID 只用于展示，缓存 15 秒。
+function Test-PortOpen([int]$p, [int]$TimeoutMs = 150) {
+  $c = $null
+  try {
+    $c = New-Object System.Net.Sockets.TcpClient
+    $iar = $c.BeginConnect('127.0.0.1', $p, $null, $null)
+    if ($iar.AsyncWaitHandle.WaitOne($TimeoutMs)) { $c.EndConnect($iar); return $true }
+    return $false
+  } catch { return $false } finally { if ($c) { try { $c.Close() } catch {} } }
+}
+
+$script:portPidCache = 0
+function Get-PortOwnerPidCached {
+  # PID 只为展示：拿到一次就一直用（进程活着就返回）；停止/重启时主动清缓存。
+  # 不再按时间轮询 Get-NetTCPConnection——那是本机最慢的一步。
+  if ($script:portPidCache -gt 0) {
+    try { [void](Get-Process -Id $script:portPidCache -ErrorAction Stop); return $script:portPidCache } catch { $script:portPidCache = 0 }
+  }
+  $p = Get-PortOwnerPid
+  $script:portPidCache = $p
+  return $p
+}
+function Clear-PortPidCache { $script:portPidCache = 0 }
+
+$script:srvProcCache = @()
+$script:srvProcAt = [datetime]::MinValue
+function Get-ServerProcessCached {
+  # 仅在端口不通时用于识别「进程在但端口未起」；60 秒一次足够，避免停止状态每拍跑 CIM
+  if (((Get-Date) - $script:srvProcAt).TotalSeconds -lt 60) { return $script:srvProcCache }
+  $script:srvProcCache = @(Get-ServerProcess)
+  $script:srvProcAt = Get-Date
+  return $script:srvProcCache
+}
+
 # 兜底判定：命令行匹配（识别"进程在但端口未通"的启动窗口期/僵尸）
 function Get-ServerProcess {
   try {
@@ -103,7 +229,8 @@ function Get-ServerProcess {
 
 function Test-Health {
   try {
-    $r = Invoke-RestMethod -Uri $HealthUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+    # 1s：健康检查在 UI 定时器里每 3s 跑一次，超时越长越容易拖住窗口
+    $r = Invoke-RestMethod -Uri $HealthUrl -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop
     return ($null -ne $r -and $r.ok)
   } catch { return $false }
 }
@@ -118,17 +245,21 @@ function Get-ProcessStart([int]$procId) {
 
 # 服务状态机：running（端口通且健康）/ degraded（端口通但健康不过且进程超 30 秒）
 #             starting（启动窗口期）/ stopped
-function Get-ServerState {
-  $portPid = Get-PortOwnerPid
-  if ($portPid -gt 0) {
-    if (Test-Health) { return @{ State = 'running'; PortPid = $portPid } }
-    $started = Get-ProcessStart $portPid
+# HealthOk：调用方从健康快照传入（$true/$false/$null），避免重复 HTTP；
+# 端口探测用 150ms TCP 连接，不再每拍跑 Get-NetTCPConnection。
+function Get-ServerState([object]$HealthOk = $null) {
+  if (Test-PortOpen $Port 150) {
+    $portPid = Get-PortOwnerPidCached
+    if ($HealthOk -eq $true) { return @{ State = 'running'; PortPid = $portPid } }
+    if ($null -eq $HealthOk -and (Test-Health)) { return @{ State = 'running'; PortPid = $portPid } }
     $age = 999
+    $started = $null
+    if ($portPid -gt 0) { $started = Get-ProcessStart $portPid }
     if ($started) { $age = ((Get-Date) - $started).TotalSeconds }
     if ($age -lt 30) { return @{ State = 'starting'; PortPid = $portPid } }
     return @{ State = 'degraded'; PortPid = $portPid }
   }
-  if ((Get-ServerProcess).Count -gt 0) { return @{ State = 'starting'; PortPid = 0 } }
+  if ((Get-ServerProcessCached).Count -gt 0) { return @{ State = 'starting'; PortPid = 0 } }
   return @{ State = 'stopped'; PortPid = 0 }
 }
 
@@ -142,12 +273,32 @@ function Get-TunnelProcess {
   } catch { return ,@() }
 }
 
+# CIM 查询在进程多/杀软扫描时可达数百毫秒：UI 每拍都用缓存，只有用户主动操作才强制刷新。
+$script:tunProcCache = @()
+$script:tunProcAt = [datetime]::MinValue
+function Get-TunnelProcessCached([int]$MaxAgeSec = 30) {
+  if (((Get-Date) - $script:tunProcAt).TotalSeconds -lt $MaxAgeSec) { return $script:tunProcCache }
+  $script:tunProcCache = @(Get-TunnelProcess)
+  $script:tunProcAt = Get-Date
+  return $script:tunProcCache
+}
+function Clear-TunnelProcessCache { $script:tunProcAt = [datetime]::MinValue }
+
 function Test-TunnelReady {
   # 就绪判据 = /ready 的 readyConnections > 0（端口通 ≠ 健康）。
-  # 1 秒短超时 + 调用方隔拍：隧道「进程活着但连不上边缘」时 /ready 会阻塞良久
-  # （2026-10-08 实踩：3s 拍拖住 UI 线程 → 窗口完全无法点击）。
+  # ★ 400ms 硬超时：隧道「进程活着但连不上边缘」时 /ready 会挂很久，
+  #   用 Invoke-RestMethod 的 1 秒超时也会拖住 UI；这里用 WebRequest 精确到毫秒。
   try {
-    $r = Invoke-RestMethod -Uri $TunnelReadyUrl -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop
+    $req = [System.Net.WebRequest]::Create($TunnelReadyUrl)
+    $req.Timeout = 400
+    $req.ReadWriteTimeout = 400
+    $req.Proxy = $null
+    $resp = $req.GetResponse()
+    $sr = New-Object System.IO.StreamReader($resp.GetResponseStream())
+    $txt = $sr.ReadToEnd()
+    $sr.Close()
+    $resp.Close()
+    $r = $txt | ConvertFrom-Json
     return ([int]$r.readyConnections -gt 0)
   } catch { return $false }
 }
@@ -158,6 +309,7 @@ function Start-Tunnel {
   if (-not (Test-Path $TunnelTokenFile)) { return 'no-token' }
   try {
     Start-HiddenProcess 'cmd.exe' ('/c "' + $TunnelBat + '"') $CfDir
+    Clear-TunnelProcessCache
     return 'started'
   } catch {
     return 'error:' + $_.Exception.Message
@@ -169,11 +321,14 @@ function Stop-Tunnel {
   foreach ($p in (Get-TunnelProcess)) {
     try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $killed++ } catch {}
   }
+  Clear-TunnelProcessCache
   return $killed
 }
 
 # ---------------- 后台启停 ----------------
 function Start-Server {
+  Clear-PortPidCache
+  $script:srvProcAt = [datetime]::MinValue
   $portPid = Get-PortOwnerPid
   if ($portPid -gt 0) {
     $name = Get-ProcName $portPid
@@ -189,7 +344,13 @@ function Start-Server {
       $rotName = 'server-console-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log'
       Move-Item $ServerLog (Join-Path $DataDir $rotName) -Force -ErrorAction SilentlyContinue
     }
-    $cmdArgs = '/c ""' + $NodeExe + '" account-server.js >> "' + $ServerLog + '" 2>&1"'
+    if ((Test-Path $StdoutLog) -and (Get-Item $StdoutLog).Length -gt 20MB) {
+      $rotName2 = 'server-stdout-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log'
+      Move-Item $StdoutLog (Join-Path $DataDir $rotName2) -Force -ErrorAction SilentlyContinue
+    }
+    # ★ stdout/stderr 走独立文件：不能和 Node 的 server-console.log 共用，
+    #   否则 cmd 的独占写句柄会让服务端 log() 静默失败。
+    $cmdArgs = '/c ""' + $NodeExe + '" account-server.js >> "' + $StdoutLog + '" 2>&1"'
     Start-HiddenProcess 'cmd.exe' $cmdArgs $ServerDir
     return 'started'
   } catch {
@@ -212,6 +373,8 @@ function Stop-Server {
   if ($killed -gt 0) {
     try { Set-Content (Join-Path $DataDir 'stopped-account.flag') 'stopped by launcher' -Encoding ASCII } catch {}
   }
+  Clear-PortPidCache
+  $script:srvProcAt = [datetime]::MinValue
   return $killed
 }
 
@@ -690,7 +853,7 @@ function Show-ChannelManager {
   Refresh-CmList
   [void]$dlg.ShowDialog($form)
   $dlg.Dispose()
-  Update-ChannelLine
+  Update-ChannelUI $true
 }
 
 # ---------------- 通道 新增/编辑 表单 ----------------
@@ -1157,13 +1320,14 @@ function Show-UserList {
   $lv.View = 'Details'; $lv.FullRowSelect = $true; $lv.HideSelection = $false
   $lv.Location = New-Object System.Drawing.Point(12, 12)
   $lv.Size = New-Object System.Drawing.Size(916, 320)
-  [void]$lv.Columns.Add('邮箱', 195)
-  [void]$lv.Columns.Add('昵称', 90)
-  [void]$lv.Columns.Add('等级', 55)
-  [void]$lv.Columns.Add('会员到期', 150)
-  [void]$lv.Columns.Add('今日用量', 80)
-  [void]$lv.Columns.Add('活跃设备', 80)
-  [void]$lv.Columns.Add('最近登录', 105)
+  [void]$lv.Columns.Add('邮箱', 180)
+  [void]$lv.Columns.Add('昵称', 80)
+  [void]$lv.Columns.Add('等级', 48)
+  [void]$lv.Columns.Add('会员到期', 130)
+  [void]$lv.Columns.Add('AI 余额', 90)
+  [void]$lv.Columns.Add('今日调用', 68)
+  [void]$lv.Columns.Add('活跃设备', 68)
+  [void]$lv.Columns.Add('最近登录', 100)
   [void]$dlg.Controls.Add($lv)
 
   $script:ulRows = @()
@@ -1177,7 +1341,11 @@ function Show-UserList {
         [void]$it.SubItems.Add([string]($u.nickname))
         [void]$it.SubItems.Add([string]($u.plan))
         [void]$it.SubItems.Add((Get-MembershipText $u))
-        [void]$it.SubItems.Add(($u.dailyUsed.ToString() + ' / ' + $u.dailyLimit.ToString()))
+        # 1.8.0：取消每日次数上限 —— 只显示余额（微元文案由服务端格式化）与今日调用次数
+        $balTxt = '—'
+        if ($u.balance -and $u.balance.text) { $balTxt = [string]$u.balance.text }
+        [void]$it.SubItems.Add($balTxt)
+        [void]$it.SubItems.Add([string]$u.dailyUsed)
         # 1.4.7 登录设备：超过阈值加「!」提示（可能是账号共享，只提示不处罚）
         $sess = '—'
         if ($null -ne $u.sessionsActive) {
@@ -1857,16 +2025,23 @@ function Show-MembershipManager {
       $freePlan = $r.plans.plans | Where-Object { $_.id -eq 'Free' } | Select-Object -First 1
       $proPlan = $r.plans.plans | Where-Object { $_.id -eq 'Pro' } | Select-Object -First 1
       if ($freePlan) {
-        $txtFreeLimit.Text = [string]$freePlan.dailyLimit
+        # 1.8.0：每日次数已取消，改为「每月额度」（微元 → 元）
+        $fg = 0.0
+        if ($freePlan.monthlyGrantMicro) { $fg = [double]$freePlan.monthlyGrantMicro / 1000000 }
+        $txtFreeGrant.Text = $fg.ToString('0.00')
         $chkFreeHi.Checked = [bool]$freePlan.highTierModels
       }
+      # ★ 先用服务端返回值刷新 $script:mbAiTrialDays，再写控件 —— 顺序反了会把 0 写进文本框，
+      #   随后点「保存配置」就把 7 天试用误关成 0（2026-10-17 实踩，已恢复）。
+      if ($r.plans.ai) { $script:mbAiTrialDays = [int]$r.plans.ai.trialDays }
       $txtTrialDays.Text = [string]$script:mbAiTrialDays
       if ($proPlan) {
-        $txtProLimit.Text = [string]$proPlan.dailyLimit
+        $pg = 0.0
+        if ($proPlan.monthlyGrantMicro) { $pg = [double]$proPlan.monthlyGrantMicro / 1000000 }
+        $txtProGrant.Text = $pg.ToString('0.00')
         $txtProPrice.Text = [string]$proPlan.price
         $chkProHi.Checked = [bool]$proPlan.highTierModels
       }
-      if ($r.plans.ai) { $script:mbAiTrialDays = [int]$r.plans.ai.trialDays }
       $txtPayChannel.Text = [string]$r.plans.pay.channel
       $txtPayQr.Text = [string]$r.plans.pay.qrImage
       $txtPayText.Text = [string]$r.plans.pay.qrText
@@ -2214,10 +2389,10 @@ function Show-MembershipManager {
     return $t
   }
 
-  New-PLabel $pgPlan '免费版 · 每日额度（次）' 16 20
-  $txtFreeLimit = New-PInput $pgPlan 190 17 120
-  New-PLabel $pgPlan '专业版 · 每日额度（次）' 16 54
-  $txtProLimit = New-PInput $pgPlan 190 51 120
+  New-PLabel $pgPlan '免费版 · 每月额度（¥）' 16 20
+  $txtFreeGrant = New-PInput $pgPlan 190 17 120
+  New-PLabel $pgPlan '专业版 · 每月额度（¥）' 16 54
+  $txtProGrant = New-PInput $pgPlan 190 51 120
   New-PLabel $pgPlan '专业版 · 单月价（¥）' 16 88
   $txtProPrice = New-PInput $pgPlan 190 85 120
   $lblPrice = New-Object System.Windows.Forms.Label
@@ -2258,11 +2433,18 @@ function Show-MembershipManager {
     if (-not [int]::TryParse($txtTrialDays.Text.Trim(), [ref]$td)) { $td = 0 }
     if ($td -lt 0) { $td = 0 }
     $script:planTrialDays = $td
+    # 每月额度（元）→ 微元；非法/空按 0
+    $fg = 0.0
+    if (-not [double]::TryParse($txtFreeGrant.Text.Trim(), [ref]$fg)) { $fg = 0 }
+    if ($fg -lt 0) { $fg = 0 }
+    $pg = 0.0
+    if (-not [double]::TryParse($txtProGrant.Text.Trim(), [ref]$pg)) { $pg = 0 }
+    if ($pg -lt 0) { $pg = 0 }
     try {
       $body = @{
         plans = @{
-          Free = @{ dailyLimit = [int]$txtFreeLimit.Text; highTierModels = [bool]$chkFreeHi.Checked }
-          Pro = @{ dailyLimit = [int]$txtProLimit.Text; price = [int]$txtProPrice.Text; highTierModels = [bool]$chkProHi.Checked }
+          Free = @{ monthlyGrantMicro = [int][Math]::Round($fg * 1000000); highTierModels = [bool]$chkFreeHi.Checked }
+          Pro = @{ monthlyGrantMicro = [int][Math]::Round($pg * 1000000); price = [int]$txtProPrice.Text; highTierModels = [bool]$chkProHi.Checked }
         }
         ai = @{ trialDays = $script:planTrialDays }
         pay = @{
@@ -2281,7 +2463,7 @@ function Show-MembershipManager {
   New-MbBtn $pgPlan '关闭' 760 316 96 { $dlg.Close() }
 
   $lblPTip = New-Object System.Windows.Forms.Label
-  $lblPTip.Text = '额度改为按套餐配置下发：用户在用户级被管理员单独设过 dailyLimit 的，仍以用户级为准。' + "`n" + '「新用户全模型试用」从注册时间起算，试用期内免费用户也能用高级模型（额度不变）；「可用高级模型」需配合通道窗体里的分级清单。' + "`n" + '同一套配置也作用于 Web 管理页（/admin → 会员管理）。'
+  $lblPTip.Text = '1.8.0 起取消「每日调用次数」：AI 调用统一从余额扣费（注册赠送 → 每月额度 → 充值），余额不足返回 402。' + "`n" + '「每月额度」= 该档每月发放的金额（¥，0 = 不发，不结转）；专业版默认 ¥20。' + "`n" + '「新用户全模型试用」从注册时间起算，试用期内免费用户也能用高级模型（余额口径不变）；同一套配置也作用于 Web 管理页。'
   $lblPTip.ForeColor = [System.Drawing.Color]::DimGray
   $lblPTip.SetBounds(16, 360, 830, 54)
   [void]$pgPlan.Controls.Add($lblPTip)
@@ -2480,123 +2662,1107 @@ function Set-Startup([bool]$enable) {
   }
 }
 
-# ---------------- 主界面 ----------------
+# ---------------- 随控制台自动拉起后台与通道（1.8.1） ----------------
+# 默认开启：双击 bat 后不需要再点两个「启动」。偏好存 HKCU，换盘不影响。
+$script:PrefKey = 'HKCU:\Software\PaperPilot'
+function Get-AutoBootServices {
+  try {
+    $p = Get-ItemProperty -Path $script:PrefKey -Name AutoStartServices -ErrorAction Stop
+    return ([int]$p.AutoStartServices -ne 0)
+  } catch { return $true }
+}
+function Set-AutoBootServices([bool]$on) {
+  try {
+    if (-not (Test-Path $script:PrefKey)) { New-Item -Path $script:PrefKey -Force | Out-Null }
+    Set-ItemProperty -Path $script:PrefKey -Name AutoStartServices -Value ([int]$on)
+  } catch { }
+}
+
+function Start-ServicesOnBoot {
+  if (-not (Get-AutoBootServices)) {
+    Write-Boot 'auto-start disabled by pref'
+    return
+  }
+  $h = Get-HealthCached 2
+  $st = Get-ServerState ($null -ne $h)
+  if ($st.State -eq 'stopped') {
+    $r = Start-Server
+    $ok = -not ([string]$r).StartsWith('error:') -and -not ([string]$r).StartsWith('occupied:')
+    Write-LauncherAudit 'auto-start-server' ([string]$r) $ok
+    Write-Boot ('auto start server: ' + $r)
+    if ($r -eq 'started') { $lblMsg.Text = '已自动启动账号后台，等待就绪（约 10~30 秒）…' }
+    elseif ($r -eq 'already') { $lblMsg.Text = '账号后台已在运行' }
+    elseif ($r -eq 'starting') { $lblMsg.Text = '账号后台正在启动中…' }
+    elseif (([string]$r).StartsWith('occupied:')) { $lblMsg.Text = '端口 8000 被其他程序占用，未能自动启动后台' }
+  }
+  # 进程未起才拉通道；有进程但未连边不重复拉（避免多开）
+  $tp = Get-TunnelProcessCached 0
+  if ($tp.Count -eq 0) {
+    $tr = Start-Tunnel
+    Write-LauncherAudit 'auto-start-tunnel' ([string]$tr) ($tr -eq 'started' -or $tr -eq 'already')
+    Write-Boot ('auto start tunnel: ' + $tr)
+    if ($tr -eq 'started') { $lblMsg.Text = ([string]$lblMsg.Text + ' · 已发起公网通道').Trim() }
+    elseif ($tr -eq 'no-token') { $lblMsg.Text = '公网通道缺少 token.txt，未自动启动（见维护页自检）' }
+    elseif ($tr -eq 'missing') { $lblMsg.Text = '公网通道缺少运行器，未自动启动（见维护页自检）' }
+  }
+  $script:healthAt = [datetime]::MinValue
+  $script:tunProcAt = [datetime]::MinValue
+  $script:tunTick = 0
+}
+
+# ============================================================
+# 主界面（v1.8.0 重构：侧栏导航 + 五页 + 状态卡 / 运维面板）
+# ------------------------------------------------------------
+# 设计依据见 docs/启动控制台-v1.8.0-重构设计.md：
+#   1) 1.8.0 取消每日调用次数 → 控制台不再出现「次数/上限」，改为余额口径
+#   2) 计费阀门（enforce / 注册赠送 / Pro 每月 ¥20 / 在线支付）必须一眼可见
+#   3) 把 health 里的告警/计量/快照信号落到「运维与告警」页
+#   4) 控制台自己的启停/快照动作写本地审计（launcher-audit.jsonl）
+# ============================================================
+$script:ColBg     = [System.Drawing.Color]::FromArgb(245, 247, 250)
+$script:ColCard   = [System.Drawing.Color]::White
+$script:ColText   = [System.Drawing.Color]::FromArgb(30, 41, 59)
+$script:ColMuted  = [System.Drawing.Color]::FromArgb(100, 116, 139)
+$script:ColSide   = [System.Drawing.Color]::FromArgb(15, 23, 42)
+$script:ColSideHi = [System.Drawing.Color]::FromArgb(30, 41, 59)
+$script:ColAccent = [System.Drawing.Color]::FromArgb(37, 99, 235)
+$script:ColGreen  = [System.Drawing.Color]::FromArgb(15, 110, 86)
+$script:ColRed    = [System.Drawing.Color]::FromArgb(163, 45, 45)
+$script:ColAmber  = [System.Drawing.Color]::FromArgb(184, 134, 11)
+$script:ColOrange = [System.Drawing.Color]::FromArgb(196, 90, 27)
+
+$script:ApiBase = 'http://127.0.0.1:' + $Port
+$script:StdoutLog = $StdoutLog
+$script:health = $null
+$script:healthAt = [datetime]::MinValue
+$script:plans = $null
+$script:plansAt = [datetime]::MinValue
+$script:channels = $null
+$script:channelsAt = [datetime]::MinValue
+$script:opsAt = [datetime]::MinValue
+$script:pages = [ordered]@{}
+$script:navButtons = [ordered]@{}
+$script:pageMeta = [ordered]@{}
+$script:ui = @{}
+$script:activePage = 'overview'
+$script:busy = $false
+$script:svcState = 'stopped'
+$script:tunProcCount = 0
+$script:lastSvcState = ''
+$script:lastTunState = ''
+$script:lastBacklogOverdue = $false
+
+# ---------------- 通用控件工厂 ----------------
+function New-UiLabel {
+  param($Parent, [string]$Text, [int]$X, [int]$Y, [int]$W, [int]$H,
+        [double]$Size = 9, [bool]$Bold = $false, $Color = $null)
+  $l = New-Object System.Windows.Forms.Label
+  $l.Text = $Text
+  $l.SetBounds($X, $Y, $W, $H)
+  $style = [System.Drawing.FontStyle]::Regular
+  if ($Bold) { $style = [System.Drawing.FontStyle]::Bold }
+  $l.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', [float]$Size, $style)
+  if ($Color -is [System.Drawing.Color]) { $l.ForeColor = $Color } else { $l.ForeColor = $script:ColText }
+  $l.AutoEllipsis = $true
+  [void]$Parent.Controls.Add($l)
+  return $l
+}
+
+function New-UiButton {
+  param($Parent, [string]$Text, [int]$X, [int]$Y, [int]$W, [int]$H, $Handler)
+  $b = New-Object System.Windows.Forms.Button
+  $b.Text = $Text
+  $b.SetBounds($X, $Y, $W, $H)
+  $b.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+  if ($null -ne $Handler) { $b.add_Click($Handler) }
+  [void]$Parent.Controls.Add($b)
+  return $b
+}
+
+function New-UiGroup {
+  param($Parent, [string]$Text, [int]$X, [int]$Y, [int]$W, [int]$H)
+  $g = New-Object System.Windows.Forms.GroupBox
+  $g.Text = $Text
+  $g.SetBounds($X, $Y, $W, $H)
+  $g.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
+  $g.ForeColor = $script:ColText
+  [void]$Parent.Controls.Add($g)
+  return $g
+}
+
+function New-UiCard {
+  param($Parent, [string]$Title, [int]$X, [int]$Y, [int]$W, [int]$H)
+  $p = New-Object System.Windows.Forms.Panel
+  $p.SetBounds($X, $Y, $W, $H)
+  $p.BackColor = $script:ColCard
+  $p.BorderStyle = 'FixedSingle'
+  [void]$Parent.Controls.Add($p)
+  $t = New-UiLabel $p $Title 12 8 ($W - 24) 18 8.5 $false $script:ColMuted
+  $v = New-UiLabel $p '—' 12 28 ($W - 24) 26 11 $true $script:ColText
+  $d = New-UiLabel $p '' 12 56 ($W - 24) 32 8 $false $script:ColMuted
+  return @{ Panel = $p; Value = $v; Detail = $d }
+}
+
+function New-UiStat {
+  param($Parent, [string]$Title, [int]$X, [int]$Y, [int]$W)
+  $p = New-Object System.Windows.Forms.Panel
+  $p.SetBounds($X, $Y, $W, 64)
+  $p.BackColor = $script:ColCard
+  $p.BorderStyle = 'FixedSingle'
+  [void]$Parent.Controls.Add($p)
+  $t = New-UiLabel $p $Title 10 7 ($W - 20) 16 8 $false $script:ColMuted
+  $v = New-UiLabel $p '—' 10 25 ($W - 20) 30 14 $true $script:ColText
+  return @{ Panel = $p; Value = $v }
+}
+
+function Set-UiCard {
+  param($Card, [string]$Value, [string]$Detail, $Color)
+  if ($null -eq $Card) { return }
+  $Card.Value.Text = $Value
+  # 防御：颜色参数异常时退回默认色，绝不让一次刷新把整个 UI 打崩
+  if ($Color -is [System.Drawing.Color]) { $Card.Value.ForeColor = $Color }
+  $Card.Detail.Text = $Detail
+}
+
+function Set-UiStat {
+  param($Stat, [string]$Value, $Color)
+  if ($null -eq $Stat) { return }
+  $Stat.Value.Text = $Value
+  if ($Color -is [System.Drawing.Color]) { $Stat.Value.ForeColor = $Color }
+}
+
+# ---------------- 控制台本地操作审计 ----------------
+$script:LauncherAuditFile = Join-Path $DataDir 'launcher-audit.jsonl'
+
+function Write-LauncherAudit {
+  param([string]$Action, [string]$Detail, [bool]$Ok = $true)
+  try {
+    if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
+    $obj = [ordered]@{ at = (Get-Date).ToString('o'); action = $Action; detail = $Detail; ok = $Ok; user = [string]$env:USERNAME }
+    $line = ($obj | ConvertTo-Json -Compress)
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::AppendAllText($script:LauncherAuditFile, $line + "`n", $enc)
+    $lines = [System.IO.File]::ReadAllLines($script:LauncherAuditFile, [System.Text.Encoding]::UTF8)
+    if ($lines.Length -gt 500) {
+      $keep = $lines[($lines.Length - 500)..($lines.Length - 1)]
+      [System.IO.File]::WriteAllLines($script:LauncherAuditFile, $keep, $enc)
+    }
+  } catch { }
+}
+
+function Read-LauncherAudit {
+  param([int]$Limit = 8)
+  try {
+    if (-not (Test-Path $script:LauncherAuditFile)) { return @() }
+    $lines = [System.IO.File]::ReadAllLines($script:LauncherAuditFile, [System.Text.Encoding]::UTF8)
+    $out = @()
+    for ($i = $lines.Length - 1; $i -ge 0 -and $out.Count -lt $Limit; $i--) {
+      if (-not $lines[$i]) { continue }
+      try { $out += ($lines[$i] | ConvertFrom-Json) } catch { }
+    }
+    return $out
+  } catch { return @() }
+}
+
+# ---------------- HTTP / 缓存 ----------------
+function Invoke-UiApi {
+  param([string]$Method, [string]$Path, $Body, [int]$TimeoutSec = 4)
+  $params = @{
+    Method = $Method
+    Uri = ($script:ApiBase + $Path)
+    UseBasicParsing = $true
+    TimeoutSec = $TimeoutSec
+    ErrorAction = 'Stop'
+  }
+  if ($null -ne $Body) {
+    $params.ContentType = 'application/json; charset=utf-8'
+    $params.Body = ($Body | ConvertTo-Json -Compress -Depth 6)
+  }
+  return Invoke-RestMethod @params
+}
+
+function Get-HealthCached {
+  param([int]$MaxAgeSec = 6)
+  if ($script:health -and ((Get-Date) - $script:healthAt).TotalSeconds -lt $MaxAgeSec) { return $script:health }
+  try {
+    $h = Invoke-UiApi 'GET' '/api/health' $null 1
+    $script:health = $h
+    $script:healthAt = Get-Date
+    return $h
+  } catch {
+    $script:health = $null
+    return $null
+  }
+}
+
+function Get-ChannelsCached {
+  param([int]$MaxAgeSec = 60)
+  if ($script:channels -and ((Get-Date) - $script:channelsAt).TotalSeconds -lt $MaxAgeSec) { return $script:channels }
+  try {
+    $r = Invoke-UiApi 'GET' '/api/admin/channels' $null 2
+    $script:channels = $r
+    $script:channelsAt = Get-Date
+    return $r
+  } catch { return $null }
+}
+
+# ---------------- 版本 / 安装包 ----------------
+$script:PluginVersion = '—'
+try {
+  $mfPath = Join-Path $ProjectRoot 'manifest.json'
+  $mf = [System.IO.File]::ReadAllText($mfPath, [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+  $script:PluginVersion = [string]$mf.version
+} catch { }
+
+function Get-LatestXpi {
+  try {
+    return (Get-ChildItem (Join-Path $ProjectRoot 'dist') -Filter '*.xpi' -ErrorAction Stop |
+      Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+  } catch { return $null }
+}
+
+# ---------------- 页面骨架 ----------------
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'PaperPilot 后台 · 控制台'
-$form.ClientSize = New-Object System.Drawing.Size(472, 672)
+$form.ClientSize = New-Object System.Drawing.Size(1000, 700)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedSingle'
 $form.MaximizeBox = $false
 $form.MinimizeBox = $true
 $form.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 9)
 $form.Icon = $script:appIcon
+$form.BackColor = $script:ColBg
 
-$script:tickCount = 0
-$script:pendingSince = $null
-$script:timeoutNotified = $false
-$script:tunTick = 0
-$script:tunReady = $false
+# 左侧导航
+$side = New-Object System.Windows.Forms.Panel
+$side.SetBounds(0, 0, 196, 700)
+$side.BackColor = $script:ColSide
+[void]$form.Controls.Add($side)
 
-$lblTitle = New-Object System.Windows.Forms.Label
-$lblTitle.Text = 'PaperPilot 账号后台'
-$lblTitle.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 14, [System.Drawing.FontStyle]::Bold)
-$lblTitle.TextAlign = 'MiddleCenter'
-$lblTitle.SetBounds(0, 10, 472, 30)
+$logo = New-Object System.Windows.Forms.PictureBox
+$logo.SetBounds(18, 18, 30, 30)
+$logo.SizeMode = 'Zoom'
+try { $logo.Image = $script:appIcon.ToBitmap() } catch { }
+[void]$side.Controls.Add($logo)
+[void](New-UiLabel $side 'PaperPilot' 56 15 126 22 12 $true ([System.Drawing.Color]::White))
+[void](New-UiLabel $side '后台控制台' 56 38 126 18 8.5 $false ([System.Drawing.Color]::FromArgb(148, 163, 184)))
 
-$lblSub = New-Object System.Windows.Forms.Label
-$lblSub.Text = '账号 · 公网通道 · 官方模型网关 —— 一站式控制台'
-$lblSub.ForeColor = [System.Drawing.Color]::DimGray
-$lblSub.TextAlign = 'MiddleCenter'
-$lblSub.SetBounds(0, 40, 472, 18)
-
-$lampSvc = New-Object System.Windows.Forms.Label
-$lampSvc.Text = '●'
-$lampSvc.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 12)
-$lampSvc.ForeColor = [System.Drawing.Color]::Gray
-$lampSvc.TextAlign = 'MiddleCenter'
-$lampSvc.SetBounds(16, 60, 22, 24)
-
-$lblSvc = New-Object System.Windows.Forms.Label
-$lblSvc.Text = '正在检测后台状态…'
-$lblSvc.SetBounds(42, 63, 416, 20)
-
-$lampTun = New-Object System.Windows.Forms.Label
-$lampTun.Text = '●'
-$lampTun.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 12)
-$lampTun.ForeColor = [System.Drawing.Color]::Gray
-$lampTun.TextAlign = 'MiddleCenter'
-$lampTun.SetBounds(16, 84, 22, 24)
-
-$lblTun = New-Object System.Windows.Forms.Label
-$lblTun.Text = '正在检测公网通道…'
-$lblTun.SetBounds(42, 87, 416, 20)
-
-function New-Group([string]$text, [int]$y, [int]$h) {
-  $g = New-Object System.Windows.Forms.GroupBox
-  $g.Text = $text
-  $g.Location = New-Object System.Drawing.Point(14, $y)
-  $g.Size = New-Object System.Drawing.Size(444, $h)
-  $form.Controls.Add($g)
-  return $g
-}
-function New-Btn($parent, [string]$text, [int]$x, [int]$y, [int]$w, $handler) {
+$navDefs = @(
+  @{ id = 'overview'; text = '总览' },
+  @{ id = 'services'; text = '服务与通道' },
+  @{ id = 'billing'; text = '计费与会员' },
+  @{ id = 'ops'; text = '运维与告警' },
+  @{ id = 'about'; text = '维护与关于' }
+)
+$navY = 84
+foreach ($n in $navDefs) {
   $b = New-Object System.Windows.Forms.Button
-  $b.Text = $text
-  $b.Location = New-Object System.Drawing.Point($x, $y)
-  $b.Size = New-Object System.Drawing.Size($w, 30)
-  $b.add_Click($handler)
-  $parent.Controls.Add($b)
-  return $b
+  $b.Text = $n.text
+  $b.SetBounds(10, $navY, 176, 42)
+  $b.FlatStyle = 'Flat'
+  $b.FlatAppearance.BorderSize = 0
+  $b.FlatAppearance.MouseOverBackColor = $script:ColSideHi
+  $b.TextAlign = 'MiddleLeft'
+  $b.Padding = New-Object System.Windows.Forms.Padding(16, 0, 0, 0)
+  $b.Font = New-Object System.Drawing.Font('Microsoft YaHei UI', 10)
+  $b.BackColor = $script:ColSide
+  $b.ForeColor = [System.Drawing.Color]::FromArgb(203, 213, 225)
+  $b.Tag = $n.id
+  $b.add_Click({ param($s, $e) Show-UiPage ([string]$s.Tag) })
+  [void]$side.Controls.Add($b)
+  $script:navButtons[$n.id] = $b
+  $navY += 48
 }
 
-foreach ($c in @($lblTitle, $lblSub, $lampSvc, $lblSvc, $lampTun, $lblTun)) { [void]$form.Controls.Add($c) }
+$script:ui.sideSrv = New-UiLabel $side '服务端 —' 18 606 162 18 8.5 $false ([System.Drawing.Color]::FromArgb(148, 163, 184))
+$script:ui.sidePlug = New-UiLabel $side '插件 0.45.1' 18 626 162 18 8.5 $false ([System.Drawing.Color]::FromArgb(148, 163, 184))
+[void](New-UiLabel $side '移动硬盘便携版' 18 652 162 16 8 $false ([System.Drawing.Color]::FromArgb(100, 116, 139)))
 
-# 分组 1：账号后台控制
-$grpCtl = New-Group '账号后台控制（端口 8000，插件默认对接地址）' 110 92
-$btnStart = New-Btn $grpCtl '启动后台' 10 26 98 {
-  $r = Start-Server
-  Show-StartResult $r
-  Update-All
-}
-$btnStop = New-Btn $grpCtl '停止后台' 116 26 98 {
-  $n = Stop-Server
-  if ($n -gt 0) { $lblMsg.Text = '已停止账号后台服务' } else { $lblMsg.Text = '后台未在运行' }
-  Update-All
-}
-$btnRestart = New-Btn $grpCtl '重启后台' 222 26 98 {
-  [void](Stop-Server)
-  Start-Sleep -Seconds 1
-  $r = Start-Server
-  Show-StartResult $r
-  Update-All
-}
-$btnLog = New-Btn $grpCtl '查看服务日志' 328 26 104 {
-  if (Test-Path $ServerLog) { Invoke-Item $ServerLog }
-  else { [System.Windows.Forms.MessageBox]::Show('暂无日志文件（服务经本控制台启动后才会产生）', '提示') | Out-Null }
-}
-$lblCtlTip = New-Object System.Windows.Forms.Label
-$lblCtlTip.Text = '服务数据：server\data\（users.json / channels.json / membership.json / 日志）· 关闭控制台不影响已启动的服务'
-$lblCtlTip.ForeColor = [System.Drawing.Color]::DimGray
-$lblCtlTip.SetBounds(10, 64, 424, 20)
-[void]$grpCtl.Controls.Add($lblCtlTip)
+# 右侧内容区
+$content = New-Object System.Windows.Forms.Panel
+$content.SetBounds(196, 0, 804, 700)
+$content.BackColor = $script:ColBg
+[void]$form.Controls.Add($content)
 
-# 分组 2：公网通道（Cloudflare 隧道，项目内自包含 —— runtime\cloudflared）
-$grpTun = New-Group '公网通道（pp.xinglintools.top → 本机 8000）' 210 62
-$btnTunStart = New-Btn $grpTun '启动' 10 24 80 {
-  $r = Start-Tunnel
-  if ($r -eq 'started') { $lblMsg.Text = '已发起公网通道启动，约 10~30 秒就绪（状态灯变绿前请勿重复点击）' }
-  elseif ($r -eq 'already') { $lblMsg.Text = '公网通道已在运行' }
-  elseif ($r -eq 'no-token') { [System.Windows.Forms.MessageBox]::Show('缺少令牌文件：runtime\cloudflared\token.txt' + "`n" + '可运行 scripts\tunnel\refresh-token.ps1 从 _brain 重新提取。', '无法启动', 'OK', 'Warning') | Out-Null }
-  elseif ($r -eq 'missing') { [System.Windows.Forms.MessageBox]::Show('缺少运行器：runtime\cloudflared\cloudflared-run-paperpilot.bat' + "`n" + '（cloudflared.exe 是否随盘携带？）', '无法启动', 'OK', 'Warning') | Out-Null }
-  else { $lblMsg.Text = '启动失败：' + $r }
-  Update-All
+$header = New-Object System.Windows.Forms.Panel
+$header.SetBounds(0, 0, 804, 64)
+$header.BackColor = $script:ColCard
+[void]$content.Controls.Add($header)
+
+$lblPageTitle = New-UiLabel $header '总览' 24 9 430 28 15 $true $script:ColText
+$lblPageSub = New-UiLabel $header '' 24 38 470 18 8.5 $false $script:ColMuted
+
+$script:ui.pillSvc = New-UiLabel $header '● 后台 检测中' 500 22 100 20 9 $false $script:ColMuted
+$script:ui.pillTun = New-UiLabel $header '● 通道 检测中' 604 22 100 20 9 $false $script:ColMuted
+$script:ui.pillLlm = New-UiLabel $header '● 模型 检测中' 704 22 90 20 9 $false $script:ColMuted
+
+$body = New-Object System.Windows.Forms.Panel
+$body.SetBounds(0, 64, 804, 596)
+$body.BackColor = $script:ColBg
+[void]$content.Controls.Add($body)
+
+$footer = New-Object System.Windows.Forms.Panel
+$footer.SetBounds(0, 660, 804, 40)
+$footer.BackColor = $script:ColCard
+[void]$content.Controls.Add($footer)
+
+# 注意：$lblMsg 必须是脚本级普通变量 —— Show-StartResult 里直接读 $lblMsg
+$lblMsg = New-UiLabel $footer '' 16 10 540 20 9 $false $script:ColMuted
+$script:ui.lblRefresh = New-UiLabel $footer '尚未刷新' 600 10 188 20 8.5 $false $script:ColMuted
+$script:ui.lblRefresh.TextAlign = 'MiddleRight'
+
+function New-UiPage {
+  param([string]$Id, [string]$Title, [string]$Sub)
+  $p = New-Object System.Windows.Forms.Panel
+  $p.SetBounds(0, 0, 804, 596)
+  $p.BackColor = $script:ColBg
+  $p.AutoScroll = $true
+  $p.Visible = $false
+  [void]$body.Controls.Add($p)
+  $script:pages[$Id] = $p
+  $script:pageMeta[$Id] = @{ Title = $Title; Sub = $Sub }
+  return $p
 }
-$btnTunStop = New-Btn $grpTun '停止' 98 24 80 {
-  $n = Stop-Tunnel
-  if ($n -gt 0) { $lblMsg.Text = ('已停止公网通道（结束 ' + $n + ' 个进程）') } else { $lblMsg.Text = '公网通道本来未在运行' }
-  Update-All
+
+# ============================================================
+# 页面 1 · 总览
+# ============================================================
+$pgOverview = New-UiPage 'overview' '总览' '账号 · 公网通道 · 官方模型网关 —— 一眼看清四个关键状态'
+
+$script:ui.svcCard = New-UiCard $pgOverview '账号后台 :8000' 16 14 184 96
+$script:ui.tunCard = New-UiCard $pgOverview '公网通道' 212 14 184 96
+$script:ui.llmCard = New-UiCard $pgOverview 'AI 模型通道' 408 14 184 96
+$script:ui.billCard = New-UiCard $pgOverview '计费阀门' 604 14 184 96
+
+$script:ui.statUsers = New-UiStat $pgOverview '用户数' 16 124 122
+$script:ui.statOrders = New-UiStat $pgOverview '待核销订单' 146 124 122
+$script:ui.statGaps = New-UiStat $pgOverview '未配价模型' 276 124 122
+$script:ui.statDevices = New-UiStat $pgOverview '活跃设备' 406 124 122
+$script:ui.statBacklog = New-UiStat $pgOverview '告警积压' 536 124 122
+$script:ui.statSnapshots = New-UiStat $pgOverview '数据快照' 666 124 122
+
+$gQuick = New-UiGroup $pgOverview '快捷操作' 16 202 772 92
+$script:ui.btnStart = New-UiButton $gQuick '启动后台' 12 28 100 30 { Do-StartServer }
+$script:ui.btnStop = New-UiButton $gQuick '停止后台' 120 28 100 30 { Do-StopServer $true }
+$script:ui.btnRestart = New-UiButton $gQuick '重启后台' 228 28 100 30 { Do-RestartServer }
+[void](New-UiButton $gQuick '打开管理页' 336 28 108 30 { Do-OpenAdmin })
+[void](New-UiButton $gQuick '测试公网' 452 28 96 30 { Do-TestSite })
+[void](New-UiButton $gQuick '刷新状态' 556 28 96 30 { $script:healthAt = [datetime]::MinValue; Update-All })
+[void](New-UiButton $gQuick '计费与会员' 660 28 100 30 { Show-UiPage 'billing' })
+[void](New-UiLabel $gQuick '停止/重启会中断正在进行的 AI 请求；关闭窗口只最小化到托盘，不影响服务。' 12 60 744 18 8 $false $script:ColMuted)
+
+$gEvents = New-UiGroup $pgOverview '最近事件（控制台操作审计）' 16 306 772 274
+$script:ui.evtList = New-Object System.Windows.Forms.ListView
+$script:ui.evtList.View = 'Details'
+$script:ui.evtList.FullRowSelect = $true
+$script:ui.evtList.GridLines = $true
+$script:ui.evtList.HeaderStyle = 'Nonclickable'
+$script:ui.evtList.SetBounds(12, 24, 748, 238)
+[void]$script:ui.evtList.Columns.Add('时间', 140)
+[void]$script:ui.evtList.Columns.Add('动作', 130)
+[void]$script:ui.evtList.Columns.Add('结果', 60)
+[void]$script:ui.evtList.Columns.Add('详情', 400)
+[void]$gEvents.Controls.Add($script:ui.evtList)
+$script:ui.evtEmpty = New-UiLabel $gEvents '暂无控制台操作记录 —— 启动 / 停止 / 重启 / 快照 / 巡检后会出现在这里。' 24 120 720 24 9 $false $script:ColMuted
+$script:ui.evtEmpty.TextAlign = 'MiddleCenter'
+
+# ============================================================
+# 页面 2 · 服务与通道
+# ============================================================
+$pgServices = New-UiPage 'services' '服务与通道' '启停账号后台 / 公网隧道 / AI 模型通道，并做依赖自检'
+
+$gSvc = New-UiGroup $pgServices '账号后台（127.0.0.1:8000）' 16 12 772 150
+$script:ui.svcLine = New-UiLabel $gSvc '检测中…' 14 24 744 24 10 $true $script:ColMuted
+$script:ui.svcMeta = New-UiLabel $gSvc '' 14 50 744 18 8.5 $false $script:ColMuted
+$script:ui.btnSvcStart = New-UiButton $gSvc '启动后台' 12 76 100 30 { Do-StartServer }
+$script:ui.btnSvcStop = New-UiButton $gSvc '停止后台' 120 76 100 30 { Do-StopServer $true }
+$script:ui.btnSvcRestart = New-UiButton $gSvc '重启后台' 228 76 100 30 { Do-RestartServer }
+[void](New-UiButton $gSvc '服务日志' 336 76 96 30 { Do-OpenLog $ServerLog '服务日志' })
+[void](New-UiButton $gSvc '标准输出' 440 76 96 30 { Do-OpenLog $script:StdoutLog '标准输出日志' })
+[void](New-UiButton $gSvc '打开管理页' 544 76 108 30 { Do-OpenAdmin })
+[void](New-UiButton $gSvc '数据目录' 660 76 100 30 { if (Test-Path $DataDir) { Invoke-Item $DataDir } else { $lblMsg.Text = '数据目录尚未创建' } })
+[void](New-UiLabel $gSvc '服务日志 = Node 业务/审计日志；标准输出 = 进程 stdout/stderr（崩溃栈）。' 12 114 744 18 8 $false $script:ColMuted)
+
+$gTun = New-UiGroup $pgServices '公网通道（pp.xinglintools.top → 127.0.0.1:8000）' 16 174 772 150
+$script:ui.tunLine = New-UiLabel $gTun '检测中…' 14 24 744 24 10 $true $script:ColMuted
+$script:ui.tunMeta = New-UiLabel $gTun '' 14 50 744 18 8.5 $false $script:ColMuted
+[void](New-UiButton $gTun '启动通道' 12 76 100 30 { Do-StartTunnel })
+[void](New-UiButton $gTun '停止通道' 120 76 100 30 { Do-StopTunnel $true })
+[void](New-UiButton $gTun '测试访问' 228 76 100 30 { Do-TestSite })
+[void](New-UiButton $gTun '通道日志' 336 76 96 30 { Do-OpenLog $TunnelLog '通道日志' })
+[void](New-UiButton $gTun '刷新状态' 440 76 96 30 { $script:tunTick = 0; Update-All })
+[void](New-UiLabel $gTun '依赖：cloudflared.exe / token.txt / 运行器均在 runtime\cloudflared（换盘丢失令牌 → refresh-token.ps1）。' 12 114 744 18 8 $false $script:ColMuted)
+
+$gLlm = New-UiGroup $pgServices 'AI 模型通道（官方网关上游）' 16 336 772 150
+$script:ui.llmLine = New-UiLabel $gLlm '检测中…' 14 24 744 24 10 $true $script:ColMuted
+$script:ui.llmMeta = New-UiLabel $gLlm '' 14 50 744 18 8.5 $false $script:ColMuted
+[void](New-UiButton $gLlm '通道管理' 12 76 120 30 { Show-ChannelManager })
+[void](New-UiButton $gLlm '打开管理页' 140 76 120 30 { Do-OpenAdmin })
+[void](New-UiButton $gLlm '刷新通道' 268 76 100 30 { $script:channelsAt = [datetime]::MinValue; $script:healthAt = [datetime]::MinValue; Update-All })
+[void](New-UiLabel $gLlm '上线模型 = 插件可见范围；高级模型 = 仅专业版；auto 恒可用且按基础档计费。' 12 114 744 18 8 $false $script:ColMuted)
+
+[void](New-UiLabel $pgServices '端口：账号后台 8000 · 隧道指标 20250｜站点：https://pp.xinglintools.top｜数据：server\data（users / channels / membership / pricing / 日志）' 16 494 772 40 8 $false $script:ColMuted)
+
+# ============================================================
+# 页面 3 · 计费与会员（服务端 1.8.0 口径）
+# ============================================================
+$pgBilling = New-UiPage 'billing' '计费与会员' '1.8.0：取消每日次数上限，AI 调用统一从余额扣费'
+
+$gBill = New-UiGroup $pgBilling '计费口径（服务端 1.8.0）' 16 12 772 150
+$script:ui.billEnforce = New-UiLabel $gBill '余额拦截：检测中…' 14 24 744 20 9 $true $script:ColMuted
+$script:ui.billGrant = New-UiLabel $gBill '注册赠送：检测中…' 14 48 744 20 9 $false $script:ColText
+$script:ui.billPro = New-UiLabel $gBill '专业版月度额度：检测中…' 14 72 744 20 9 $false $script:ColText
+$script:ui.billPay = New-UiLabel $gBill '在线支付：检测中…' 14 96 744 20 9 $false $script:ColText
+[void](New-UiLabel $gBill '扣减顺序：注册赠送 → 订阅额度 → 充值；高级模型跳过注册赠送；余额为 0 也会被拦（402）。' 14 120 744 20 8 $false $script:ColMuted)
+
+$gPlans = New-UiGroup $pgBilling '套餐与价格（/api/plans）' 16 174 772 190
+$script:ui.planList = New-Object System.Windows.Forms.ListView
+$script:ui.planList.View = 'Details'
+$script:ui.planList.FullRowSelect = $true
+$script:ui.planList.GridLines = $true
+$script:ui.planList.HeaderStyle = 'Nonclickable'
+$script:ui.planList.SetBounds(12, 24, 748, 120)
+[void]$script:ui.planList.Columns.Add('等级', 90)
+[void]$script:ui.planList.Columns.Add('每月额度', 130)
+$script:ui.planList.Columns.Add('高级模型', 90) | Out-Null
+[void]$script:ui.planList.Columns.Add('价格档位', 420)
+[void]$gPlans.Controls.Add($script:ui.planList)
+[void](New-UiButton $gPlans '会员管理（订单/激活码/价格/套餐）' 12 152 300 28 { Show-MembershipManager })
+[void](New-UiButton $gPlans '用户列表（余额/设备/密码）' 320 152 240 28 { Show-UserList })
+[void](New-UiButton $gPlans '打开网页管理页' 568 152 180 28 { Do-OpenAdmin })
+
+$gBillHealth = New-UiGroup $pgBilling '计费数据健康' 16 376 772 120
+$script:ui.billPriced = New-UiLabel $gBillHealth '已配价模型：—' 14 26 360 20 9 $false $script:ColText
+$script:ui.billGaps = New-UiLabel $gBillHealth '未配价模型：—' 14 52 360 20 9 $false $script:ColText
+$script:ui.billRecharge = New-UiLabel $gBillHealth '充值档位：—' 14 78 360 20 9 $false $script:ColText
+$script:ui.billCost = New-UiLabel $gBillHealth '成本看板：后台 → 会员管理 → 成本与用量（按模型 / 按天 / Top 消耗）' 390 26 370 60 9 $false $script:ColMuted
+[void](New-UiButton $gBillHealth '刷新计费数据' 390 84 130 26 { $script:healthAt = [datetime]::MinValue; $script:plansAt = [datetime]::MinValue; Update-BillingUI $true })
+
+[void](New-UiLabel $pgBilling '说明：1.8.0 起没有「每日调用次数」；套餐页只配「每月额度（¥）」与高级模型开关。auto 恒可用，且按基础档计费（不会被通道默认模型误判为高级档）。' 16 506 772 40 8 $false $script:ColMuted)
+
+# ============================================================
+# 页面 4 · 运维与告警
+# ============================================================
+$pgOps = New-UiPage 'ops' '运维与告警' '积压 / 计量缺口 / 快照 / 管理审计 —— 出问题时先看这一页'
+
+$gAlert = New-UiGroup $pgOps '订单积压与告警' 16 12 772 128
+$script:ui.alertBacklog = New-UiLabel $gAlert '积压：检测中…' 14 24 560 22 10 $true $script:ColMuted
+$script:ui.alertOldest = New-UiLabel $gAlert '' 14 50 560 20 8.5 $false $script:ColMuted
+$script:ui.alertMail = New-UiLabel $gAlert '' 14 74 560 36 8.5 $false $script:ColMuted
+[void](New-UiButton $gAlert '立即巡检' 596 24 160 30 { Do-AlertCheck })
+[void](New-UiButton $gAlert '告警日志' 596 62 160 28 { Do-OpenLog (Join-Path $DataDir 'alerts.log') '告警日志' })
+
+$gHealth = New-UiGroup $pgOps '数据健康' 16 152 772 146
+$script:ui.healthGaps = New-UiLabel $gHealth '未配价模型：—' 14 26 360 20 9 $false $script:ColText
+$script:ui.healthPriced = New-UiLabel $gHealth '已配价模型：—' 14 52 360 20 9 $false $script:ColText
+$script:ui.healthDevices = New-UiLabel $gHealth '活跃设备：—' 14 78 360 20 9 $false $script:ColText
+$script:ui.healthAudit = New-UiLabel $gHealth '审计体积：—' 14 104 360 20 9 $false $script:ColText
+$script:ui.healthSnap = New-UiLabel $gHealth '快照：—' 390 26 370 20 9 $false $script:ColText
+$script:ui.healthMailSvc = New-UiLabel $gHealth '邮件服务：—' 390 52 370 20 9 $false $script:ColText
+$script:ui.healthBacklogMini = New-UiLabel $gHealth '积压超时：—' 390 78 370 20 9 $false $script:ColText
+[void](New-UiLabel $gHealth '「未配价模型」> 0 表示有调用按兜底价记账；「缺 usage」> 0 表示上游没回 token，成本未知。' 14 116 744 18 8 $false $script:ColMuted)
+
+$gSnap = New-UiGroup $pgOps '数据快照' 16 310 772 96
+$script:ui.snapLine = New-UiLabel $gSnap '最近快照：—' 14 24 480 20 9 $false $script:ColText
+[void](New-UiButton $gSnap '立即快照' 14 50 120 30 { Do-Snapshot })
+[void](New-UiButton $gSnap '备份目录' 144 50 110 30 { $p = Join-Path $DataDir 'backup'; if (Test-Path $p) { Invoke-Item $p } else { $lblMsg.Text = '备份目录尚未创建' } })
+[void](New-UiLabel $gSnap '改配置 / 回滚前先打一份；回滚仍在网页管理页（需二次确认）。' 270 54 494 20 8 $false $script:ColMuted)
+
+$gAudit = New-UiGroup $pgOps '最近管理审计（服务端 /api/admin/audit）' 16 418 772 160
+$script:ui.auditList = New-Object System.Windows.Forms.ListView
+$script:ui.auditList.View = 'Details'
+$script:ui.auditList.FullRowSelect = $true
+$script:ui.auditList.GridLines = $true
+$script:ui.auditList.HeaderStyle = 'Nonclickable'
+$script:ui.auditList.SetBounds(12, 24, 748, 96)
+[void]$script:ui.auditList.Columns.Add('时间', 130)
+[void]$script:ui.auditList.Columns.Add('动作', 140)
+[void]$script:ui.auditList.Columns.Add('对象', 220)
+[void]$script:ui.auditList.Columns.Add('结果', 60)
+[void]$gAudit.Controls.Add($script:ui.auditList)
+[void](New-UiButton $gAudit '打开审计文件' 610 126 150 26 { Do-OpenLog (Join-Path $DataDir 'audit.log') '管理审计' })
+
+# ============================================================
+# 页面 5 · 维护与关于
+# ============================================================
+$pgAbout = New-UiPage 'about' '维护与关于' '自启、目录、运行环境与版本 —— 换盘迁移时看这一页'
+
+$gMaint = New-UiGroup $pgAbout '维护' 16 12 772 128
+$script:ui.btnStartup = New-UiButton $gMaint '开机自启：…' 14 26 170 30 {
+  $new = -not (Get-StartupEnabled)
+  Set-Startup $new
+  $script:ui.btnStartup.Text = '开机自启：' + $(if ($new) { '开' } else { '关' })
+  Write-LauncherAudit 'startup-toggle' ($(if ($new) { 'on' } else { 'off' })) $true
+  [System.Windows.Forms.MessageBox]::Show($(if ($new) { '已开启：重启电脑后账号后台与公网通道将自动启动' } else { '已关闭' }), '开机自启', 'OK', 'Information') | Out-Null
 }
-$btnTunTest = New-Btn $grpTun '测试访问' 186 24 96 {
+[void](New-UiButton $gMaint '数据目录' 196 26 110 30 { if (Test-Path $DataDir) { Invoke-Item $DataDir } else { $lblMsg.Text = '数据目录尚未创建' } })
+[void](New-UiButton $gMaint '项目目录' 316 26 110 30 { Invoke-Item $ProjectRoot })
+[void](New-UiButton $gMaint '安装包（dist）' 436 26 130 30 {
+  $xpi = Get-LatestXpi
+  if ($xpi) {
+    $r = [System.Windows.Forms.MessageBox]::Show('最新安装包：' + $xpi.Name + "`n`n在 Zotero 中安装：工具 → 附加组件 → 齿轮 → Install Add-on From File…`n是否现在打开所在文件夹？", '插件安装包', 'YesNo', 'Information')
+    if ($r -eq 'Yes') { Invoke-Item $xpi.DirectoryName }
+  } else { $lblMsg.Text = 'dist 目录下暂无 .xpi 安装包' }
+})
+[void](New-UiButton $gMaint '打开网页管理页' 576 26 170 30 { Do-OpenAdmin })
+$script:ui.chkAutoBoot = New-Object System.Windows.Forms.CheckBox
+$script:ui.chkAutoBoot.Text = '启动控制台时自动拉起账号后台与公网通道（默认开）'
+$script:ui.chkAutoBoot.SetBounds(14, 68, 420, 22)
+$script:ui.chkAutoBoot.Checked = Get-AutoBootServices
+$script:ui.chkAutoBoot.add_Click({
+  Set-AutoBootServices $script:ui.chkAutoBoot.Checked
+  Write-LauncherAudit 'auto-boot-toggle' ($(if ($script:ui.chkAutoBoot.Checked) { 'on' } else { 'off' })) $true
+  $lblMsg.Text = '已' + $(if ($script:ui.chkAutoBoot.Checked) { '开启' } else { '关闭' }) + '：控制台启动时自动拉起后台与通道（下次启动生效）'
+})
+[void]$gMaint.Controls.Add($script:ui.chkAutoBoot)
+[void](New-UiLabel $gMaint '关闭窗口 = 最小化到托盘驻留；「退出程序」才会结束控制台（不影响已启动的服务与通道）。' 14 96 744 22 8 $false $script:ColMuted)
+
+$gEnv = New-UiGroup $pgAbout '运行环境（换盘自检）' 16 152 772 146
+$script:ui.envNode = New-UiLabel $gEnv 'Node：—' 14 26 744 20 9 $false $script:ColText
+$script:ui.envCf = New-UiLabel $gEnv 'cloudflared：—' 14 52 744 20 9 $false $script:ColText
+$script:ui.envToken = New-UiLabel $gEnv '隧道令牌：—' 14 78 744 20 9 $false $script:ColText
+$script:ui.envRuntime = New-UiLabel $gEnv '运行时目录：—' 14 104 744 20 9 $false $script:ColText
+[void](New-UiLabel $gEnv '以上依赖全部在项目内（runtime\node、runtime\cloudflared），换电脑/换盘符无需安装。' 14 120 744 16 7.5 $false $script:ColMuted)
+
+$gVer = New-UiGroup $pgAbout '版本' 16 310 772 120
+$script:ui.verServer = New-UiLabel $gVer '服务端：—' 14 26 360 20 9 $false $script:ColText
+$script:ui.verPlugin = New-UiLabel $gVer '插件（manifest）：—' 14 52 360 20 9 $false $script:ColText
+$script:ui.verXpi = New-UiLabel $gVer '最新安装包：—' 14 78 360 20 9 $false $script:ColText
+$script:ui.verSite = New-UiLabel $gVer '站点：https://pp.xinglintools.top' 390 26 370 20 9 $false $script:ColMuted
+[void](New-UiButton $gVer '刷新版本信息' 390 70 140 28 { $script:healthAt = [datetime]::MinValue; Update-AboutUI })
+
+[void](New-UiLabel $pgAbout '运维缺口（后续迭代，见设计文档 §5）：批量用户操作、控制台口令、一键诊断包、版本更新检查、守护自愈、成本阈值告警。' 16 444 772 36 8 $false $script:ColMuted)
+
+# ============================================================
+# 导航 / 页面切换
+# ============================================================
+function Show-UiPage {
+  param([string]$Id)
+  if (-not $script:pages.Contains($Id)) { return }
+  $script:activePage = $Id
+  foreach ($k in $script:pages.Keys) { $script:pages[$k].Visible = ($k -eq $Id) }
+  foreach ($k in $script:navButtons.Keys) {
+    $b = $script:navButtons[$k]
+    if ($k -eq $Id) {
+      $b.BackColor = $script:ColAccent
+      $b.ForeColor = [System.Drawing.Color]::White
+    } else {
+      $b.BackColor = $script:ColSide
+      $b.ForeColor = [System.Drawing.Color]::FromArgb(203, 213, 225)
+    }
+  }
+  $meta = $script:pageMeta[$Id]
+  $lblPageTitle.Text = $meta.Title
+  $lblPageSub.Text = $meta.Sub
+  if ($Id -eq 'billing') { Update-BillingUI $true }
+  elseif ($Id -eq 'ops') { Update-OpsUI $true }
+  elseif ($Id -eq 'about') { Update-AboutUI }
+  elseif ($Id -eq 'services') { Update-ChannelUI $true }
+}
+
+# ============================================================
+# 状态刷新
+# ============================================================
+function Format-Uptime([datetime]$Started) {
+  $span = (Get-Date) - $Started
+  if ($span.TotalHours -ge 1) { return ('{0}小时{1}分' -f [int]$span.TotalHours, $span.Minutes) }
+  if ($span.TotalMinutes -ge 1) { return ('{0}分{1}秒' -f $span.Minutes, $span.Seconds) }
+  return ('{0}秒' -f [int]$span.TotalSeconds)
+}
+
+function Notify-Transition {
+  param([string]$Text, [string]$Level = 'Warning')
+  if (-not $tray.Visible) { return }
+  try { $tray.ShowBalloonTip(3000, 'PaperPilot 后台', $Text, $Level) } catch { }
+}
+
+function Update-StatusUI {
+  $h = Get-HealthCached 6
+  $st = Get-ServerState ($null -ne $h)
+  $script:svcState = $st.State
+  $ver = '—'
+  if ($h -and $h.version) { $ver = [string]$h.version }
+
+  if ($st.State -eq 'running') {
+    $up = ''
+    $started = Get-ProcessStart $st.PortPid
+    if ($started) { $up = ' · 已运行 ' + (Format-Uptime $started) }
+    Set-UiCard $script:ui.svcCard '运行中' ('PID ' + $st.PortPid + $up) $script:ColGreen
+    $script:ui.svcLine.Text = '● 运行中'
+    $script:ui.svcLine.ForeColor = $script:ColGreen
+    $script:ui.svcMeta.Text = 'PID ' + $st.PortPid + $up + ' · 服务端 v' + $ver
+    $script:ui.pillSvc.Text = '● 后台 运行中'
+    $script:ui.pillSvc.ForeColor = $script:ColGreen
+    $script:ui.btnSvcStart.Enabled = $false
+    $script:ui.btnSvcStop.Enabled = $true
+    $script:ui.btnSvcRestart.Enabled = $true
+    $script:ui.btnStart.Enabled = $false
+    $script:ui.btnStop.Enabled = $true
+    $script:ui.btnRestart.Enabled = $true
+    $script:timeoutNotified = $false
+  } elseif ($st.State -eq 'degraded') {
+    Set-UiCard $script:ui.svcCard '服务异常' '端口在听但健康检查不过（建议重启）' $script:ColOrange
+    $script:ui.svcLine.Text = '● 服务异常：端口在听但 /api/health 不过'
+    $script:ui.svcLine.ForeColor = $script:ColOrange
+    $script:ui.svcMeta.Text = 'PID ' + $st.PortPid + ' · 可能是依赖或数据文件异常'
+    $script:ui.pillSvc.Text = '● 后台 异常'
+    $script:ui.pillSvc.ForeColor = $script:ColOrange
+    $script:ui.btnSvcStart.Enabled = $false
+    $script:ui.btnSvcStop.Enabled = $true
+    $script:ui.btnSvcRestart.Enabled = $true
+    $script:ui.btnStart.Enabled = $false
+    $script:ui.btnStop.Enabled = $true
+    $script:ui.btnRestart.Enabled = $true
+  } elseif ($st.State -eq 'starting') {
+    Set-UiCard $script:ui.svcCard '启动中' '等待端口 ' + $Port + ' 就绪…' $script:ColAmber
+    $script:ui.svcLine.Text = '● 启动中：等待端口 ' + $Port + ' 就绪…'
+    $script:ui.svcLine.ForeColor = $script:ColAmber
+    $script:ui.svcMeta.Text = '冷启动（移动硬盘 + 杀软扫描）可能需要 10~30 秒'
+    $script:ui.pillSvc.Text = '● 后台 启动中'
+    $script:ui.pillSvc.ForeColor = $script:ColAmber
+    $script:ui.btnSvcStart.Enabled = $false
+    $script:ui.btnSvcStop.Enabled = $true
+    $script:ui.btnSvcRestart.Enabled = $true
+    $script:ui.btnStart.Enabled = $false
+    $script:ui.btnStop.Enabled = $true
+    $script:ui.btnRestart.Enabled = $true
+    if ($script:pendingSince -and ((Get-Date) - $script:pendingSince).TotalSeconds -gt 40 -and -not $script:timeoutNotified) {
+      $script:timeoutNotified = $true
+      $lblMsg.Text = '启动耗时较长：请查 server\data\server-console.log 与 server-stdout.log'
+    }
+  } else {
+    Set-UiCard $script:ui.svcCard '未运行' '插件将无法登录 / 使用官方 AI' $script:ColRed
+    $script:ui.svcLine.Text = '● 未运行'
+    $script:ui.svcLine.ForeColor = $script:ColRed
+    $script:ui.svcMeta.Text = '端口 ' + $Port + ' 无 node 监听'
+    $script:ui.pillSvc.Text = '● 后台 未运行'
+    $script:ui.pillSvc.ForeColor = $script:ColRed
+    $script:ui.btnSvcStart.Enabled = $true
+    $script:ui.btnSvcStop.Enabled = $false
+    $script:ui.btnSvcRestart.Enabled = $false
+    $script:ui.btnStart.Enabled = $true
+    $script:ui.btnStop.Enabled = $false
+    $script:ui.btnRestart.Enabled = $false
+  }
+
+  if ($script:lastSvcState -and $script:lastSvcState -ne $st.State) {
+    if ($st.State -eq 'stopped') { Notify-Transition '账号后台已停止：插件将无法登录 / 使用官方 AI' 'Warning' }
+    elseif ($st.State -eq 'degraded') { Notify-Transition '账号后台异常：端口在听但健康检查不过，建议重启' 'Warning' }
+    elseif ($st.State -eq 'running' -and $script:lastSvcState -ne 'starting') { Notify-Transition '账号后台已恢复运行' 'Info' }
+  }
+  $script:lastSvcState = $st.State
+  if ($h) { $script:ui.sideSrv.Text = '服务端 ' + $ver } else { $script:ui.sideSrv.Text = '服务端 未连接' }
+  $stateTxt = '未运行'
+  if ($st.State -eq 'running') { $stateTxt = '运行中' }
+  elseif ($st.State -eq 'starting') { $stateTxt = '启动中' }
+  elseif ($st.State -eq 'degraded') { $stateTxt = '异常' }
+  try { $tray.Text = 'PaperPilot 后台 · ' + $stateTxt } catch { }
+}
+
+function Update-TunnelUI {
+  $script:tunTick = [int]$script:tunTick + 1
+  # 3 拍（约 9 秒）探一次 /ready，400ms 硬超时；进程列表缓存 10 秒
+  if (($script:tunTick % 3) -eq 1) { $script:tunReady = Test-TunnelReady }
+  $proc = Get-TunnelProcessCached 30
+  $script:tunProcCount = $proc.Count
+  if ($script:tunReady) {
+    Set-UiCard $script:ui.tunCard '已连接' $SiteUrl $script:ColGreen
+    $script:ui.tunLine.Text = '● 已连接边缘：' + $SiteUrl
+    $script:ui.tunLine.ForeColor = $script:ColGreen
+    $script:ui.tunMeta.Text = 'readyConnections > 0 · 进程 ' + $proc.Count + ' 个'
+    $script:ui.pillTun.Text = '● 通道 正常'
+    $script:ui.pillTun.ForeColor = $script:ColGreen
+    $script:lastTunState = 'ready'
+  } elseif ($proc.Count -gt 0) {
+    Set-UiCard $script:ui.tunCard '未连边' '进程在，尚未连接边缘（稍候/重启）' $script:ColOrange
+    $script:ui.tunLine.Text = '● 进程在，尚未连接边缘（久不绿可重启通道）'
+    $script:ui.tunLine.ForeColor = $script:ColOrange
+    $script:ui.tunMeta.Text = '进程 ' + $proc.Count + ' 个 · 指标端口 ' + $TunnelMetricsPort
+    $script:ui.pillTun.Text = '● 通道 未连边'
+    $script:ui.pillTun.ForeColor = $script:ColOrange
+    if ($script:lastTunState -eq 'ready') { Notify-Transition '公网通道已断开边缘连接（公网将不可达）' 'Warning' }
+    $script:lastTunState = 'pending'
+  } else {
+    Set-UiCard $script:ui.tunCard '未运行' '插件将无法连接账号服务器' $script:ColRed
+    $script:ui.tunLine.Text = '● 未运行（公网入口不可达）'
+    $script:ui.tunLine.ForeColor = $script:ColRed
+    $script:ui.tunMeta.Text = '无 cloudflared 进程（指标端口 ' + $TunnelMetricsPort + '）'
+    $script:ui.pillTun.Text = '● 通道 未运行'
+    $script:ui.pillTun.ForeColor = $script:ColRed
+    if ($script:lastTunState -eq 'ready') { Notify-Transition '公网通道已停止：插件将无法连接账号服务器' 'Warning' }
+    $script:lastTunState = 'stopped'
+  }
+}
+
+function Update-ChannelUI {
+  param([bool]$Force = $false)
+  $h = Get-HealthCached 10
+  if (-not $h) {
+    Set-UiCard $script:ui.llmCard '后台未连接' '启动后查看活动通道' $script:ColMuted
+    $script:ui.llmLine.Text = '后台未连接'
+    $script:ui.llmLine.ForeColor = $script:ColMuted
+    $script:ui.llmMeta.Text = ''
+    $script:ui.pillLlm.Text = '● 模型 —'
+    $script:ui.pillLlm.ForeColor = $script:ColMuted
+    return
+  }
+  $n = [int]$h.channels
+  $published = 0
+  $high = 0
+  try { $published = [int]$h.publishedModels } catch { }
+  try { $high = [int]$h.highTierModels } catch { }
+  if ($n -le 0) {
+    Set-UiCard $script:ui.llmCard '暂无通道' '官方调用将返回 503' $script:ColOrange
+    $script:ui.llmLine.Text = '● 暂无通道：请在「通道管理」新增上游'
+    $script:ui.llmLine.ForeColor = $script:ColOrange
+    $script:ui.llmMeta.Text = '上线模型 ' + $published + ' · 高级模型 ' + $high
+    $script:ui.pillLlm.Text = '● 模型 无通道'
+    $script:ui.pillLlm.ForeColor = $script:ColOrange
+    return
+  }
+  $ch = $null
+  if ($Force) { $script:channelsAt = [datetime]::MinValue }
+  $ch = Get-ChannelsCached 60
+  $name = [string]$h.active
+  $model = '—'
+  if ($ch) {
+    foreach ($c in @($ch.channels)) { if ($c.id -eq $ch.active) { $name = [string]$c.name; $model = [string]$c.model; break } }
+  }
+  if (-not $h.active) {
+    Set-UiCard $script:ui.llmCard '未设活动通道' '官方调用将返回 503' $script:ColOrange
+    $script:ui.llmLine.Text = '● 未设置活动通道（共 ' + $n + ' 个）'
+    $script:ui.llmLine.ForeColor = $script:ColOrange
+    $script:ui.llmMeta.Text = '上线模型 ' + $published + ' · 高级模型 ' + $high
+    $script:ui.pillLlm.Text = '● 模型 未启用'
+    $script:ui.pillLlm.ForeColor = $script:ColOrange
+    return
+  }
+  Set-UiCard $script:ui.llmCard '已就绪' ($name + '（' + $model + '）') $script:ColGreen
+  $script:ui.llmLine.Text = '● 活动通道：' + $name + '（' + $model + '）'
+  $script:ui.llmLine.ForeColor = $script:ColGreen
+  $script:ui.llmMeta.Text = '共 ' + $n + ' 个通道 · 上线模型 ' + $published + ' · 高级模型 ' + $high
+  $script:ui.pillLlm.Text = '● 模型 就绪'
+  $script:ui.pillLlm.ForeColor = $script:ColGreen
+}
+
+function Update-OverviewUI {
+  $h = $script:health
+  if ($h) {
+    Set-UiStat $script:ui.statUsers ([string]$h.users) $script:ColText
+    Set-UiStat $script:ui.statOrders ([string]$h.ordersAwaitingReview) $(if ([int]$h.ordersAwaitingReview -gt 0) { $script:ColOrange } else { $script:ColText })
+    Set-UiStat $script:ui.statGaps ([string]$h.meteringGaps) $(if ([int]$h.meteringGaps -gt 0) { $script:ColOrange } else { $script:ColText })
+    Set-UiStat $script:ui.statDevices ([string]$h.sessionsActive) $(if ($h.devicesOverLimit) { $script:ColOrange } else { $script:ColText })
+    Set-UiStat $script:ui.statBacklog ([string]$h.backlogCount) $(if ($h.backlogOverdue) { $script:ColRed } elseif ([int]$h.backlogCount -gt 0) { $script:ColAmber } else { $script:ColText })
+    Set-UiStat $script:ui.statSnapshots ([string]$h.snapshots) $script:ColText
+
+    if ($h.balanceEnforce) {
+      Set-UiCard $script:ui.billCard '余额拦截 开' '注册 ¥6 · Pro ¥20/月' $script:ColGreen
+    } else {
+      Set-UiCard $script:ui.billCard '余额拦截 关' '等于不限量（仅压测）' $script:ColOrange
+    }
+    if ($h.backlogOverdue -and -not $script:lastBacklogOverdue) {
+      Notify-Transition ('订单积压超时：' + $h.backlogCount + ' 单待核销') 'Warning'
+    }
+    $script:lastBacklogOverdue = [bool]$h.backlogOverdue
+  } else {
+    foreach ($s in @($script:ui.statUsers, $script:ui.statOrders, $script:ui.statGaps, $script:ui.statDevices, $script:ui.statBacklog, $script:ui.statSnapshots)) {
+      Set-UiStat $s '—' $script:ColMuted
+    }
+    Set-UiCard $script:ui.billCard '后台未连接' '启动后查看计费阀门' $script:ColMuted
+  }
+}
+
+function MicroText([object]$Micro) {
+  $n = 0.0
+  try { $n = [double]$Micro } catch { $n = 0 }
+  $y = $n / 1000000
+  if ($y -ge 1) { return ('¥{0:0.00}' -f $y) }
+  if ($y -gt 0) { return ('¥' + ([string]([math]::Round($y, 4))).TrimEnd('0').TrimEnd('.')) }
+  return '¥0'
+}
+
+function Update-BillingUI {
+  param([bool]$Force = $false)
+  $h = Get-HealthCached 10
+  if (-not $h) {
+    $script:ui.billEnforce.Text = '余额拦截：后台未连接'
+    $script:ui.billEnforce.ForeColor = $script:ColMuted
+    $script:ui.billGrant.Text = '注册赠送：—'
+    $script:ui.billPro.Text = '专业版月度额度：—'
+    $script:ui.billPay.Text = '在线支付：—'
+    $script:ui.planList.Items.Clear()
+    $script:ui.billPriced.Text = '已配价模型：—'
+    $script:ui.billGaps.Text = '未配价模型：—'
+    $script:ui.billRecharge.Text = '充值档位：—'
+    return
+  }
+  if ($Force -or -not $script:plans -or ((Get-Date) - $script:plansAt).TotalSeconds -gt 60) {
+    try {
+      $script:plans = Invoke-UiApi 'GET' '/api/plans' $null 4
+      $script:plansAt = Get-Date
+    } catch { }
+  }
+  $p = $script:plans
+
+  if ($h.balanceEnforce) {
+    $script:ui.billEnforce.Text = '余额拦截：开启（余额不足 → 402，余额为 0 也拦）'
+    $script:ui.billEnforce.ForeColor = $script:ColGreen
+  } else {
+    $script:ui.billEnforce.Text = '余额拦截：关闭 —— 取消次数上限后等于不限量，仅压测用'
+    $script:ui.billEnforce.ForeColor = $script:ColOrange
+  }
+  $script:ui.billGrant.Text = '注册赠送：' + (MicroText $h.signupGrantMicro) + ' / 30 天（限基础模型）'
+
+  $proGrant = 0
+  $freeGrant = 0
+  if ($p) {
+    foreach ($pl in @($p.plans)) {
+      if ($pl.id -eq 'Pro') { $proGrant = [double]$pl.monthlyGrantMicro }
+      if ($pl.id -eq 'Free') { $freeGrant = [double]$pl.monthlyGrantMicro }
+    }
+  }
+  $script:ui.billPro.Text = '专业版月度额度：' + (MicroText $proGrant) + ' / 月（不结转；免费版 ' + (MicroText $freeGrant) + '）'
+
+  if ($h.onlinePay) {
+    $script:ui.billPay.Text = '在线支付：已启用（充值可自助下单 → 扫码 → 自动到账）'
+    $script:ui.billPay.ForeColor = $script:ColGreen
+  } else {
+    $script:ui.billPay.Text = '在线支付：未配置（走收款码 + 人工核销；可在网页管理页的在线支付网关开启）'
+    $script:ui.billPay.ForeColor = $script:ColMuted
+  }
+
+  $script:ui.billPriced.Text = '已配价模型：' + [string]$h.pricedModels + ' 条'
+  $script:ui.billGaps.Text = '未配价模型：' + [string]$h.meteringGaps + ' 次调用缺 usage'
+  $script:ui.billGaps.ForeColor = $(if ([int]$h.meteringGaps -gt 0) { $script:ColOrange } else { $script:ColText })
+  $rc = 0
+  if ($p -and $p.rechargeOptions) { $rc = @($p.rechargeOptions).Count }
+  $script:ui.billRecharge.Text = '充值档位：' + $rc + ' 个'
+
+  $script:ui.planList.Items.Clear()
+  if ($p) {
+    foreach ($pl in @($p.plans)) {
+      $it = New-Object System.Windows.Forms.ListViewItem([string]$pl.name + '（' + [string]$pl.id + '）')
+      [void]$it.SubItems.Add((MicroText ([double]$pl.monthlyGrantMicro)) + ' / 月')
+      [void]$it.SubItems.Add($(if ($pl.highTierModels) { '可用' } else { '不可用' }))
+      $priceTxt = '—'
+      if ($pl.id -eq 'Pro' -and $p.priceOptions) {
+        $arr = @()
+        foreach ($po in @($p.priceOptions)) { $arr += ([string]$po.label + ' ¥' + [string]$po.price) }
+        if ($arr.Count -gt 0) { $priceTxt = $arr -join ' ｜ ' }
+      } elseif ($pl.id -eq 'Free') {
+        $priceTxt = '免费'
+      }
+      [void]$it.SubItems.Add($priceTxt)
+      [void]$script:ui.planList.Items.Add($it)
+    }
+  }
+}
+
+function Update-OpsUI {
+  param([bool]$Force = $false)
+  $h = Get-HealthCached 10
+  if (-not $h) {
+    $script:ui.alertBacklog.Text = '积压：后台未连接'
+    $script:ui.alertBacklog.ForeColor = $script:ColMuted
+    $script:ui.alertOldest.Text = ''
+    $script:ui.alertMail.Text = ''
+    $script:ui.healthGaps.Text = '未配价模型：—'
+    $script:ui.healthPriced.Text = '已配价模型：—'
+    $script:ui.healthDevices.Text = '活跃设备：—'
+    $script:ui.healthAudit.Text = '审计体积：—'
+    $script:ui.healthSnap.Text = '快照：—'
+    $script:ui.healthMailSvc.Text = '邮件服务：—'
+    $script:ui.healthBacklogMini.Text = '积压超时：—'
+    $script:ui.snapLine.Text = '最近快照：—'
+    $script:ui.auditList.Items.Clear()
+    return
+  }
+
+  $overdue = [bool]$h.backlogOverdue
+  $script:ui.alertBacklog.Text = '待核销积压：' + [string]$h.backlogCount + ' 单' + $(if ($overdue) { '（已超时）' } else { '' })
+  $script:ui.alertBacklog.ForeColor = $(if ($overdue) { $script:ColRed } elseif ([int]$h.backlogCount -gt 0) { $script:ColAmber } else { $script:ColGreen })
+  $script:ui.alertOldest.Text = '最久等待：' + [string]$h.backlogOldestMinutes + ' 分钟 · 巡检间隔 5 分钟'
+  $script:ui.alertMail.Text = '邮件告警：见下方「邮件服务」；积压/设备超限会写 alerts.log 并按配置发邮件。'
+
+  $script:ui.healthGaps.Text = '未配价模型：' + [string]$h.meteringGaps + ' 次调用缺 usage'
+  $script:ui.healthGaps.ForeColor = $(if ([int]$h.meteringGaps -gt 0) { $script:ColOrange } else { $script:ColText })
+  $script:ui.healthPriced.Text = '已配价模型：' + [string]$h.pricedModels + ' 条'
+  $script:ui.healthDevices.Text = '活跃设备：' + [string]$h.sessionsActive + ' 台' + $(if ($h.devicesOverLimit) { '（超阈值）' } else { '' })
+  $script:ui.healthDevices.ForeColor = $(if ($h.devicesOverLimit) { $script:ColOrange } else { $script:ColText })
+  $script:ui.healthAudit.Text = '审计体积：' + (Format-Bytes $h.auditBytes)
+  $script:ui.healthSnap.Text = '快照：' + [string]$h.snapshots + ' 份'
+  $script:ui.healthMailSvc.Text = '邮件服务：' + $(if ($h.mail -eq 'on') { '已配置' } else { '未配置（只写 alerts.log）' })
+  $script:ui.healthMailSvc.ForeColor = $(if ($h.mail -eq 'on') { $script:ColText } else { $script:ColMuted })
+  $script:ui.healthBacklogMini.Text = '积压超时：' + $(if ($overdue) { '是（' + [string]$h.backlogOldestMinutes + ' 分钟）' } else { '否' })
+
+  if (-not $Force -and ((Get-Date) - $script:opsAt).TotalSeconds -lt 20) { return }
+  $script:opsAt = Get-Date
+
+  try {
+    $b = Invoke-UiApi 'GET' '/api/admin/backups' $null 4
+    if ($b.items -and @($b.items).Count -gt 0) {
+      $first = @($b.items)[0]
+      $script:ui.snapLine.Text = '最近快照：' + [string]$first.id + ' · ' + [string]$first.reason + ' · ' + (Format-Bytes $first.size)
+    } else { $script:ui.snapLine.Text = '最近快照：暂无' }
+  } catch { }
+
+  try {
+    $a = Invoke-UiApi 'GET' '/api/admin/alerts' $null 4
+    if ($a.alerts) {
+      $rcp = @($a.alerts.recipients).Count
+      if ($rcp -gt 0) {
+        $script:ui.alertMail.Text = '邮件告警：已配置（收件人 ' + $rcp + ' 个）'
+      } elseif ($a.alerts.mailConfigured) {
+        $script:ui.alertMail.Text = '邮件服务已就绪，但未设告警收件人（只写 alerts.log；pp.env 加 PP_ALERT_EMAIL）'
+        $script:ui.alertMail.ForeColor = $script:ColOrange
+      } else {
+        $script:ui.alertMail.Text = '邮件告警：未配置 —— 只在 alerts.log 留痕（pp.env 加 PP_ALERT_EMAIL）'
+        $script:ui.alertMail.ForeColor = $script:ColMuted
+      }
+    }
+  } catch { }
+
+  try {
+    $au = Invoke-UiApi 'GET' '/api/admin/audit?limit=8' $null 4
+    $script:ui.auditList.Items.Clear()
+    foreach ($e in @($au.items)) {
+      $when = ''
+      try { $when = ([datetime]$e.at).ToLocalTime().ToString('MM-dd HH:mm') } catch { $when = [string]$e.at }
+      $it = New-Object System.Windows.Forms.ListViewItem($when)
+      [void]$it.SubItems.Add([string]$e.actionText)
+      [void]$it.SubItems.Add([string]$e.target)
+      [void]$it.SubItems.Add($(if ($e.ok -eq $false) { '失败' } else { '成功' }))
+      [void]$script:ui.auditList.Items.Add($it)
+    }
+  } catch { }
+}
+
+function Update-AboutUI {
+  $h = Get-HealthCached 10
+  $ver = '未运行'
+  if ($h -and $h.version) { $ver = 'v' + [string]$h.version + '（运行中）' }
+  $script:ui.verServer.Text = '服务端：' + $ver
+  $script:ui.verPlugin.Text = '插件（manifest）：v' + $script:PluginVersion
+  $xpi = Get-LatestXpi
+  if ($xpi) { $script:ui.verXpi.Text = '最新安装包：' + $xpi.Name } else { $script:ui.verXpi.Text = '最新安装包：dist 下暂无' }
+  $script:ui.envNode.Text = 'Node：' + $NodeExe
+  $cfExe = Join-Path $CfDir 'cloudflared.exe'
+  $cfRun = Join-Path $CfDir 'cloudflared-run-paperpilot.bat'
+  $okCf = (Test-Path $cfExe) -and (Test-Path $cfRun)
+  $script:ui.envCf.Text = 'cloudflared：' + $(if ($okCf) { '就绪（exe + 运行器）' } else { '缺失（检查 runtime\cloudflared）' })
+  $script:ui.envCf.ForeColor = $(if ($okCf) { $script:ColText } else { $script:ColRed })
+  $okTok = Test-Path $TunnelTokenFile
+  $script:ui.envToken.Text = '隧道令牌：' + $(if ($okTok) { '存在（token.txt）' } else { '缺失（运行 scripts\tunnel\refresh-token.ps1）' })
+  $script:ui.envToken.ForeColor = $(if ($okTok) { $script:ColText } else { $script:ColRed })
+  $script:ui.envRuntime.Text = '运行时目录：' + (Join-Path $ProjectRoot 'runtime')
+  $script:ui.sidePlug.Text = '插件 ' + $script:PluginVersion
+}
+
+function Update-All {
+  $script:tickCount = [int]$script:tickCount + 1
+  Update-StatusUI
+  Update-TunnelUI
+  Update-ChannelUI $false
+  Update-OverviewUI
+  if ($script:activePage -eq 'billing') { Update-BillingUI $false }
+  if ($script:activePage -eq 'ops' -and ($script:tickCount % 5 -eq 1)) { Update-OpsUI $false }
+  if ($script:tickCount % 5 -eq 1) { Fill-LauncherEvents }
+  $script:ui.lblRefresh.Text = '刷新 ' + (Get-Date -Format 'HH:mm:ss')
+}
+
+# ============================================================
+# 操作封装（按钮 / 托盘共用）
+# ============================================================
+function Do-StartServer {
+  if ($script:busy) { return }
+  $script:busy = $true
+  try {
+    $r = Start-Server
+    $ok = -not ($r -eq 'error:') -and -not ([string]$r).StartsWith('occupied:')
+    Write-LauncherAudit 'start-server' ([string]$r) $ok
+    Show-StartResult $r
+    Start-Sleep -Milliseconds 300
+    Update-All
+  } finally { $script:busy = $false }
+}
+
+function Do-StopServer {
+  param([bool]$Confirm = $false)
+  if ($script:busy) { return }
+  if ($Confirm) {
+    $ans = [System.Windows.Forms.MessageBox]::Show('停止后：插件将无法登录 / 使用官方 AI，公网通道也会失去后端。确定停止？', '停止账号后台', 'YesNo', 'Warning')
+    if ($ans -ne 'Yes') { return }
+  }
+  $script:busy = $true
+  try {
+    $n = Stop-Server
+    Write-LauncherAudit 'stop-server' ('killed=' + $n) $true
+    if ($n -gt 0) { $lblMsg.Text = '已停止账号后台服务' } else { $lblMsg.Text = '后台未在运行' }
+    $script:health = $null
+    $script:channels = $null
+    Update-All
+  } finally { $script:busy = $false }
+}
+
+function Do-RestartServer {
+  if ($script:busy) { return }
+  $ans = [System.Windows.Forms.MessageBox]::Show('重启会中断正在进行的 AI 请求。确定重启？', '重启账号后台', 'YesNo', 'Warning')
+  if ($ans -ne 'Yes') { return }
+  $script:busy = $true
+  try {
+    $n = Stop-Server
+    for ($i = 0; $i -lt 20; $i++) {
+      if ((Get-PortOwnerPid) -eq 0) { break }
+      Start-Sleep -Milliseconds 500
+    }
+    Start-Sleep -Milliseconds 300
+    $r = Start-Server
+    Write-LauncherAudit 'restart-server' ('killed=' + $n + ' / ' + [string]$r) $true
+    Show-StartResult $r
+    $script:health = $null
+    $script:channels = $null
+    Update-All
+  } finally { $script:busy = $false }
+}
+
+function Do-StartTunnel {
+  if ($script:busy) { return }
+  $script:busy = $true
+  try {
+    $r = Start-Tunnel
+    Write-LauncherAudit 'start-tunnel' ([string]$r) ($r -eq 'started' -or $r -eq 'already')
+    if ($r -eq 'started') { $lblMsg.Text = '已发起公网通道启动，约 10~30 秒就绪（状态灯变绿前请勿重复点击）' }
+    elseif ($r -eq 'already') { $lblMsg.Text = '公网通道已在运行' }
+    elseif ($r -eq 'no-token') {
+      [System.Windows.Forms.MessageBox]::Show('缺少令牌文件：runtime\cloudflared\token.txt' + "`n" + '可运行 scripts\tunnel\refresh-token.ps1 从 _brain 重新提取。', '无法启动', 'OK', 'Warning') | Out-Null
+    }
+    elseif ($r -eq 'missing') {
+      [System.Windows.Forms.MessageBox]::Show('缺少运行器：runtime\cloudflared\cloudflared-run-paperpilot.bat' + "`n" + '（cloudflared.exe 是否随盘携带？）', '无法启动', 'OK', 'Warning') | Out-Null
+    }
+    else { $lblMsg.Text = '启动失败：' + [string]$r }
+    $script:tunTick = 0
+    Update-All
+  } finally { $script:busy = $false }
+}
+
+function Do-StopTunnel {
+  param([bool]$Confirm = $false)
+  if ($script:busy) { return }
+  if ($Confirm) {
+    $ans = [System.Windows.Forms.MessageBox]::Show('停止后公网入口 pp.xinglintools.top 将不可达（插件无法连接账号服务器）。确定停止？', '停止公网通道', 'YesNo', 'Warning')
+    if ($ans -ne 'Yes') { return }
+  }
+  $script:busy = $true
+  try {
+    $n = Stop-Tunnel
+    Write-LauncherAudit 'stop-tunnel' ('killed=' + $n) $true
+    if ($n -gt 0) { $lblMsg.Text = '已停止公网通道（结束 ' + $n + ' 个进程）' } else { $lblMsg.Text = '公网通道本来未在运行' }
+    $script:tunTick = 0
+    Update-All
+  } finally { $script:busy = $false }
+}
+
+function Do-TestSite {
   try {
     $r = Invoke-RestMethod -Uri ($SiteUrl + '/api/health') -UseBasicParsing -TimeoutSec 8 -ErrorAction Stop
     [System.Windows.Forms.MessageBox]::Show(('公网访问正常' + "`n" + $SiteUrl + "`n" + '服务：' + [string]$r.service + ' v' + [string]$r.version), '测试通过', 'OK', 'Information') | Out-Null
@@ -2604,170 +3770,81 @@ $btnTunTest = New-Btn $grpTun '测试访问' 186 24 96 {
     [System.Windows.Forms.MessageBox]::Show('公网访问失败：检查通道是否启动（状态灯）+ 账号后台是否运行（8000）', '测试失败', 'OK', 'Warning') | Out-Null
   }
 }
-$btnTunLog = New-Btn $grpTun '通道日志' 290 24 142 {
-  if (Test-Path $TunnelLog) { Invoke-Item $TunnelLog }
-  else { [System.Windows.Forms.MessageBox]::Show('暂无通道日志（隧道启动后才会产生）', '提示') | Out-Null }
-}
 
-# 分组 3：AI 模型通道
-$grpLlm = New-Group 'AI 模型通道（官方网关上游）' 280 110
-$lblLlm = New-Object System.Windows.Forms.Label
-$lblLlm.Text = '检测中…'
-$lblLlm.Location = New-Object System.Drawing.Point(10, 22)
-$lblLlm.Size = New-Object System.Drawing.Size(424, 36)
-[void]$grpLlm.Controls.Add($lblLlm)
-$btnChMgr = New-Btn $grpLlm '通道管理（增/删/切换/实测）' 10 64 208 { Show-ChannelManager }
-$btnChPage = New-Btn $grpLlm '打开浏览器管理页' 226 64 208 {
+function Do-OpenAdmin {
   if (-not (Require-ServerRunning)) { return }
   Open-Url $AdminPage
 }
 
-# 分组 4：账号管理（0.23.0：新增「会员管理」入口 —— 订单核销 / 激活码 / 套餐与收款）
-$grpUser = New-Group '账号管理' 398 96
-$btnReg = New-Btn $grpUser '注册账号' 10 24 208 { Show-RegisterUser }
-$btnUsers = New-Btn $grpUser '用户列表（会员/密码/删除）' 226 24 208 { Show-UserList }
-$btnMember = New-Btn $grpUser '会员管理（订单核销 / 激活码 / 价格 / 收款 / 审计）' 10 58 424 { Show-MembershipManager }
-
-# 分组 5：维护
-$grpOps = New-Group '维护' 502 94
-$btnStartup = New-Btn $grpOps '开机自启：…' 10 24 118 {
-  $new = -not (Get-StartupEnabled)
-  Set-Startup $new
-  $btnStartup.Text = '开机自启：' + $(if ($new) { '开' } else { '关' })
-  if ($new) { $state = '已开启：重启电脑后账号后台与公网通道将自动启动' } else { $state = '已关闭' }
-  [System.Windows.Forms.MessageBox]::Show($state, '开机自启', 'OK', 'Information') | Out-Null
-}
-$btnData = New-Btn $grpOps '数据目录' 142 24 98 {
-  if (Test-Path $DataDir) { Invoke-Item $DataDir }
-  else { $lblMsg.Text = '数据目录尚未创建（启动服务后自动生成）' }
-}
-$btnProj = New-Btn $grpOps '项目目录' 248 24 98 { Invoke-Item $ProjectRoot }
-$btnXpi = New-Btn $grpOps '安装包' 354 24 80 {
-  $xpi = Get-ChildItem (Join-Path $ProjectRoot 'dist') -Filter '*.xpi' -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
-  if ($xpi) {
-    $r = [System.Windows.Forms.MessageBox]::Show('最新安装包：' + $xpi.Name + "`n`n在 Zotero 中安装：工具 → 附加组件 → 齿轮 → Install Add-on From File…`n是否现在打开所在文件夹？", '插件安装包', 'YesNo', 'Information')
-    if ($r -eq 'Yes') { Invoke-Item $xpi.DirectoryName }
-  } else { $lblMsg.Text = 'dist 目录下暂无 .xpi 安装包' }
-}
-$lblOpsTip = New-Object System.Windows.Forms.Label
-$lblOpsTip.Text = "公网通道与账号后台的依赖全部在 runtime\ 目录（随移动硬盘走，换电脑无需安装）。`n关闭窗口=最小化到托盘；「退出程序」才会结束控制台（不影响已启动的服务与通道）"
-$lblOpsTip.Location = New-Object System.Drawing.Point(10, 62)
-$lblOpsTip.Size = New-Object System.Drawing.Size(424, 28)
-$lblOpsTip.ForeColor = [System.Drawing.Color]::DimGray
-[void]$grpOps.Controls.Add($lblOpsTip)
-
-# 底部操作
-$btnTray = New-Btn $form '最小化到托盘' 14 604 150 { Hide-ToTray }
-$btnTray.Height = 32
-$btnExit = New-Btn $form '退出程序' 174 604 110 { Exit-App }
-$btnExit.Height = 32
-
-$lblMsg = New-Object System.Windows.Forms.Label
-$lblMsg.Text = ''
-$lblMsg.ForeColor = [System.Drawing.Color]::DimGray
-$lblMsg.TextAlign = 'MiddleLeft'
-$lblMsg.SetBounds(16, 642, 440, 20)
-[void]$form.Controls.Add($lblMsg)
-
-# ---------------- 状态刷新 ----------------
-$green  = [System.Drawing.Color]::FromArgb(0x0F, 0x6E, 0x56)
-$red    = [System.Drawing.Color]::FromArgb(0xA3, 0x2D, 0x2D)
-$yellow = [System.Drawing.Color]::FromArgb(0xB8, 0x86, 0x0B)
-$orange = [System.Drawing.Color]::FromArgb(0xC4, 0x5A, 0x1B)
-
-function Format-Uptime([datetime]$started) {
-  $span = (Get-Date) - $started
-  if ($span.TotalHours -ge 1) { return ('{0}小时{1}分' -f [int]$span.TotalHours, $span.Minutes) }
-  if ($span.TotalMinutes -ge 1) { return ('{0}分{1}秒' -f $span.Minutes, $span.Seconds) }
-  return ('{0}秒' -f [int]$span.TotalSeconds)
+function Do-OpenLog {
+  param([string]$Path, [string]$Label)
+  if (Test-Path $Path) { Invoke-Item $Path }
+  else { $lblMsg.Text = $Label + '尚未产生：' + $Path }
 }
 
-function Update-ServiceStatus {
-  $st = Get-ServerState
-  if ($st.State -eq 'running') {
-    $lampSvc.ForeColor = $green
-    $up = ''
-    $started = Get-ProcessStart $st.PortPid
-    if ($started) { $up = '，已运行 ' + (Format-Uptime $started) }
-    $lblSvc.Text = '运行中（PID ' + $st.PortPid + $up + '）'
-    $btnStart.Enabled = $false
-    $btnStop.Enabled = $true
-    $btnRestart.Enabled = $true
-    $script:timeoutNotified = $false
-  } elseif ($st.State -eq 'degraded') {
-    $lampSvc.ForeColor = $orange
-    $lblSvc.Text = '服务异常：端口在听但健康检查不过（建议重启）'
-    $btnStart.Enabled = $false
-    $btnStop.Enabled = $true
-    $btnRestart.Enabled = $true
-  } elseif ($st.State -eq 'starting') {
-    $lampSvc.ForeColor = $yellow
-    $lblSvc.Text = '服务启动中，等待端口 ' + $Port + ' 就绪…'
-    $btnStart.Enabled = $false
-    $btnStop.Enabled = $true
-    $btnRestart.Enabled = $true
-    if ($script:pendingSince -and ((Get-Date) - $script:pendingSince).TotalSeconds -gt 40 -and -not $script:timeoutNotified) {
-      $script:timeoutNotified = $true
-      $lblMsg.Text = '启动耗时较长，若持续无响应请查 server\data\server-console.log'
-    }
-  } else {
-    $lampSvc.ForeColor = $red
-    $lblSvc.Text = '未运行'
-    $btnStart.Enabled = $true
-    $btnStop.Enabled = $false
-    $btnRestart.Enabled = $false
-  }
-}
-
-function Update-ChannelLine {
+function Do-Snapshot {
+  if (-not (Require-ServerRunning)) { return }
   try {
-    $r = Invoke-AdminApi 'GET' '/api/admin/channels'
-    $n = @($r.channels).Count
-    $act = $null
-    foreach ($c in @($r.channels)) { if ($c.id -eq $r.active) { $act = $c; break } }
-    if ($act) {
-      $lblLlm.Text = '活动通道：' + $act.name + '（' + $act.model + '）· 共 ' + $n + ' 个'
-      $lblLlm.ForeColor = $green
-    } elseif ($n -gt 0) {
-      $lblLlm.Text = '⚠ 未设置活动通道（官方调用将返回 503）· 共 ' + $n + ' 个'
-      $lblLlm.ForeColor = $orange
-    } else {
-      $lblLlm.Text = '暂无通道——请在「通道管理」中新增上游（如 DeepSeek / 通义 / 本地网关）'
-      $lblLlm.ForeColor = $orange
-    }
+    $r = Invoke-UiApi 'POST' '/api/admin/backups' @{ note = '控制台手动快照' } 10
+    $id = ''
+    if ($r.snapshot) { $id = [string]$r.snapshot.id }
+    Write-LauncherAudit 'snapshot' $id $true
+    $lblMsg.Text = '已创建快照：' + $id
+    $script:opsAt = [datetime]::MinValue
+    $script:healthAt = [datetime]::MinValue
+    Update-OpsUI $true
+    [System.Windows.Forms.MessageBox]::Show('快照已创建：' + $id, '数据快照', 'OK', 'Information') | Out-Null
   } catch {
-    $lblLlm.Text = '后台未连接（启动服务后可管理模型通道）'
-    $lblLlm.ForeColor = [System.Drawing.Color]::Gray
+    $msg = Get-HttpErrorDetail $_
+    Write-LauncherAudit 'snapshot' $msg $false
+    $lblMsg.Text = '快照失败：' + $msg
+    [System.Windows.Forms.MessageBox]::Show($msg, '快照失败', 'OK', 'Warning') | Out-Null
   }
 }
 
-function Update-TunnelStatus {
-  # 隔拍探测（奇拍刷新、偶拍用上次结果兜底）：隧道「进程活着但连不上边缘」时
-  # /ready 响应慢，每拍阻塞会拖住整个 UI（2026-10-08 同类项目实踩）。
-  $script:tunTick = [int]$script:tunTick + 1
-  if (($script:tunTick % 2) -eq 1) { $script:tunReady = Test-TunnelReady }
-  $tunProc = Get-TunnelProcess
-  if ($script:tunReady) {
-    $lampTun.ForeColor = $green
-    $lblTun.Text = '公网通道：运行中（已连接 pp.xinglintools.top）'
-  } elseif ($tunProc.Count -gt 0) {
-    $lampTun.ForeColor = $orange
-    $lblTun.Text = '公网通道：进程在，尚未连接边缘（稍候自动刷新；久不绿可重启通道）'
-  } else {
-    $lampTun.ForeColor = $red
-    $lblTun.Text = '公网通道：未运行（插件将无法连接账号服务器）'
+function Do-AlertCheck {
+  if (-not (Require-ServerRunning)) { return }
+  try {
+    $r = Invoke-UiApi 'POST' '/api/admin/alerts/check' @{} 15
+    $backlog = 0
+    if ($r.result -and $r.result.backlog) { $backlog = [int]$r.result.backlog.backlogCount }
+    $mailed = '未发'
+    if ($r.result -and $r.result.mailed) { $mailed = '已发' }
+    Write-LauncherAudit 'alert-check' ('backlog=' + $backlog) $true
+    $lblMsg.Text = '巡检完成：积压 ' + $backlog + ' 单，邮件' + $mailed
+    $script:healthAt = [datetime]::MinValue
+    $script:opsAt = [datetime]::MinValue
+    Update-OpsUI $true
+    [System.Windows.Forms.MessageBox]::Show('巡检完成' + "`n" + '待核销积压：' + $backlog + ' 单' + "`n" + '邮件告警：' + $mailed, '告警巡检', 'OK', 'Information') | Out-Null
+  } catch {
+    $msg = Get-HttpErrorDetail $_
+    Write-LauncherAudit 'alert-check' $msg $false
+    $lblMsg.Text = '巡检失败：' + $msg
+    [System.Windows.Forms.MessageBox]::Show($msg, '巡检失败', 'OK', 'Warning') | Out-Null
   }
 }
 
-function Update-All {
-  $script:tickCount++
-  Update-ServiceStatus
-  Update-TunnelStatus
-  if ($script:tickCount % 5 -eq 1) { Update-ChannelLine }
+function Fill-LauncherEvents {
+  $lv = $script:ui.evtList
+  if (-not $lv) { return }
+  $lv.Items.Clear()
+  foreach ($e in (Read-LauncherAudit 8)) {
+    $when = ''
+    try { $when = ([datetime]$e.at).ToLocalTime().ToString('MM-dd HH:mm:ss') } catch { $when = [string]$e.at }
+    $it = New-Object System.Windows.Forms.ListViewItem($when)
+    [void]$it.SubItems.Add([string]$e.action)
+    [void]$it.SubItems.Add($(if ($e.ok -eq $false) { '失败' } else { '成功' }))
+    [void]$it.SubItems.Add([string]$e.detail)
+    [void]$lv.Items.Add($it)
+  }
+  $has = $lv.Items.Count -gt 0
+  $lv.Visible = $has
+  if ($script:ui.evtEmpty) { $script:ui.evtEmpty.Visible = -not $has }
 }
 
-# ---------------- 系统托盘 ----------------
+# ============================================================
+# 系统托盘
+# ============================================================
 $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Icon = $script:appIcon
 $tray.Text = 'PaperPilot 后台 · 控制台'
@@ -2778,6 +3855,7 @@ $miShow = $menu.Items.Add('显示主窗口')
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 $miStart = $menu.Items.Add('启动后台')
 $miStop = $menu.Items.Add('停止后台')
+$miAdmin = $menu.Items.Add('打开管理页')
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 $miExit = $menu.Items.Add('退出程序')
 $tray.ContextMenuStrip = $menu
@@ -2806,21 +3884,16 @@ function Show-MainWindow {
 function Exit-App {
   $script:allowExit = $true
   $timer.Stop()
+  try { $script:bootTimer.Stop() } catch { }
   $tray.Visible = $false
   $tray.Dispose()
   $form.Close()
 }
 
 $miShow.add_Click({ Show-MainWindow })
-$miStart.add_Click({
-  $r = Start-Server
-  Show-StartResult $r
-  Update-All
-})
-$miStop.add_Click({
-  [void](Stop-Server)
-  Update-All
-})
+$miStart.add_Click({ Do-StartServer })
+$miStop.add_Click({ Do-StopServer $false })
+$miAdmin.add_Click({ Do-OpenAdmin })
 $miExit.add_Click({ Exit-App })
 
 $tray.add_MouseClick({
@@ -2842,18 +3915,55 @@ $form.add_Resize({
 })
 
 $form.add_Shown({
-  Update-All
-  $btnStartup.Text = '开机自启：' + $(if (Get-StartupEnabled) { '开' } else { '关' })
+  # 支持从快捷方式/排障脚本直达某一页：set PP_LAUNCHER_START_PAGE=billing
+  $startPage = [string]$env:PP_LAUNCHER_START_PAGE
+  if (-not $startPage -or -not $script:pages.Contains($startPage)) { $startPage = 'overview' }
+  Show-UiPage $startPage
+  $script:ui.btnStartup.Text = '开机自启：' + $(if (Get-StartupEnabled) { '开' } else { '关' })
+  $script:ui.chkAutoBoot.Checked = Get-AutoBootServices
+  Fill-LauncherEvents
+  Update-AboutUI
+  Write-Boot 'form shown'
+  # ★ 先让窗口画出来，再自动拉起后台/通道并做首次网络探测：
+  #   这些操作有 1~3 秒的 IO，放在 Shown 里会让窗口「出来了但点不动」。
+  $script:bootTimer.Start()
+})
+
+$script:bootTimer = New-Object System.Windows.Forms.Timer
+$script:bootTimer.Interval = 250
+$script:bootTimer.Add_Tick({
+  $script:bootTimer.Stop()
+  try {
+    Start-ServicesOnBoot
+    Update-All
+    Fill-LauncherEvents
+    Write-Boot 'auto-start + first refresh done'
+  } catch {
+    Write-Boot ('first refresh failed: ' + $_.Exception.Message + ' @ ' + $_.ScriptStackTrace)
+    $lblMsg.Text = '首次刷新失败：' + $_.Exception.Message
+  }
 })
 
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 3000
+$script:lastRefreshErr = ''
 $timer.Add_Tick({
-  try { Update-All } catch {}
+  try {
+    Update-All
+    $script:lastRefreshErr = ''
+  } catch {
+    $msg = $_.Exception.Message
+    if ($script:lastRefreshErr -ne $msg) {
+      $script:lastRefreshErr = $msg
+      Write-Boot ('refresh failed: ' + $msg + ' @ ' + $_.ScriptStackTrace)
+    }
+    $lblMsg.Text = '界面刷新失败：' + $msg
+  }
 })
 $timer.Start()
+Write-Boot 'ui built; entering message loop'
 
 [void][System.Windows.Forms.Application]::Run($form)
 $timer.Stop()
 $form.Dispose()
-try { $script:mutex.ReleaseMutex() } catch {}
+try { $script:mutex.ReleaseMutex() } catch { }

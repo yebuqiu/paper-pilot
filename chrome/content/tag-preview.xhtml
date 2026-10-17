@@ -4,12 +4,13 @@
         xmlns:html="http://www.w3.org/1999/xhtml"
         title="PaperPilot · AI 标签"
         windowtype="paperpilot:dialog"
-        width="420" height="380">
+        width="500" height="470">
   <script src="chrome://paperpilot/content/tag-preview.js"></script>
   <vbox flex="1" style="padding:12px;">
     <label id="pp-tag-title" value="" style="font-weight:bold;"/>
-    <label value="勾选要写入的标签：" style="margin-top:6px;"/>
+    <label value="勾选要写入的标签（灰字为依据，百分比为 AI 置信度；低置信度请仔细核对）：" style="margin-top:6px;"/>
     <vbox id="pp-tag-list" flex="1" style="overflow-y:auto;border:1px solid #999;padding:8px;margin:6px 0;"/>
+    <label id="pp-tag-existing" value="" style="color:#888;font-size:12px;margin:2px 0;"/>
     <hbox style="gap:8px;">
       <html:button id="pp-tag-all">全选</html:button>
       <html:button id="pp-tag-none">清空</html:button>

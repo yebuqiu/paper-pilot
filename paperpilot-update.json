@@ -756,6 +756,17 @@
             }
           },
           "whatsNew": "第三方文献源：面板文案统一为「入口」（原「网点」）、检索提示行不再留空"
+        },
+        {
+          "version": "0.46.0",
+          "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/releases/download/v0.46.0/paper-pilot-0.46.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "阅读进度 2.0：进度直接画在条目标题背后（高能进度条——每页一格、读得越久颜色越深），不用勾选任何列；自动吸收 Zotero 原生「上次读到」与标注位置；进度达标自动标已读。另：AI 打标签升级（置信度 + 词表 + 缓存）、会员与计费口径对齐服务端 1.8.0"
         }
       ]
     }

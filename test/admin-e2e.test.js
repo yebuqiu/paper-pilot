@@ -149,7 +149,7 @@ function req(method, p, body, token, extraHeaders) {
       'E5.6 导出 CSV 文件名规范', download.suggestedFilename());
     const csv = fs.readFileSync(await download.path(), 'utf8');
     ok(csv.charCodeAt(0) === 0xFEFF, 'E5.7 CSV 带 BOM（Excel 里中文不乱码）');
-    ok(/邮箱,等级,今日用量,近7天,活跃设备数,近30天/.test(csv), 'E5.8 CSV 表头含新增的用量与设备列',
+    ok(/邮箱,等级,今日调用,近7天,活跃设备数,近30天/.test(csv), 'E5.8 CSV 表头含调用量与设备列',
       csv.split(/\r?\n/)[0].slice(0, 80));
     // 表头列数必须与数据行列数一致，否则 Excel 里整张表会错位
     const csvHead = csv.split(/\r?\n/)[0].replace(/^\ufeff/, '').split(',');
@@ -194,8 +194,7 @@ function req(method, p, body, token, extraHeaders) {
     ok(kUnused3 === '1', 'E7.2 未使用激活码 KPI 降为 1', kUnused3);
 
     /* ---- 套餐配置保存 ---- */
-    await page.fill('#p-free-limit', '150');
-    await page.fill('#p-pro-limit', '2500');
+    await page.fill('#p-pro-grant', '20');
     await page.fill('#p-pay-channel', '微信收款码');
     await page.fill('#p-pay-qr', 'https://example.com/qr.png');
     await page.click('button:has-text("保存配置")');
@@ -207,7 +206,9 @@ function req(method, p, body, token, extraHeaders) {
     ok(health.json.plans && health.json.plans.indexOf('Pro') >= 0, 'E8.1 健康检查反映套餐域已就绪', health.json.plans);
     const plans = await req('GET', '/api/plans');
     const free = plans.json.plans.find((p) => p.id === 'Free');
-    ok(free.dailyLimit === 150, 'E8.2 保存后 Free 额度变为 150（即时生效）', free.dailyLimit);
+    ok(free.dailyLimit === undefined, 'E8.2 ★ 套餐不再下发每日次数（赠送调用次数已取消）', free.dailyLimit);
+    const pro = plans.json.plans.find((p) => p.id === 'Pro');
+    ok(pro.monthlyGrantMicro === 20000000, 'E8.2b Pro 每月额度 ¥20 保存后即时生效', pro.monthlyGrantMicro);
     ok(plans.json.pay.qrImage === 'https://example.com/qr.png', 'E8.3 收款码图片地址已保存', plans.json.pay);
 
     /* ---- 用户行「开通/续期」弹窗 ---- */
@@ -324,7 +325,6 @@ function req(method, p, body, token, extraHeaders) {
     ok(prRows2 === 3, 'E18.1 删除后回到 3 条', prRows2);
 
     /* ---- 套餐额度保存仍可用（原有能力不回归） ---- */
-    await page.fill('#p-free-limit', '150');
     await page.click('button:has-text("保存配置")');
     await page.waitForFunction(() => {
       var t = document.getElementById('p-msg');
@@ -705,9 +705,9 @@ function req(method, p, body, token, extraHeaders) {
     eq(f403.json.code, 'MODEL_REQUIRES_PRO', 'E24.25 带可编程识别的 code');
     ok(/需要专业版/.test(f403.json.error), 'E24.26 文案说明原因', f403.json.error);
 
-    // 「过期不踢下线」：只是收模型，会话与额度不受影响
-    ok(typeof fme2.json.user.dailyLimit === 'number' && fme2.json.user.dailyLimit > 0,
-      'E24.27 试用结束不影响每日额度', fme2.json.user.dailyLimit);
+    // 「过期不踢下线」：只是收模型，会话与余额不受影响
+    ok(!!fme2.json.user.balance && typeof fme2.json.user.balance.totalMicro === 'number',
+      'E24.27 试用结束不影响余额（AI 计费口径）', fme2.json.user.balance && fme2.json.user.balance.totalMicro);
     const fSess = await req('GET', '/api/sessions', null, ftok);
     eq(fSess.status, 200, 'E24.28 会话仍然有效（收回模型 ≠ 踢下线）');
 

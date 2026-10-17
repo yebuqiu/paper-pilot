@@ -82,7 +82,7 @@ var I18n = (() => {
     chatSaved: zh ? "已保存为笔记" : "Saved as note",
     chatEmptyHistory: zh ? "还没有可保存的对话" : "Nothing to save yet",
     chatNoKey: zh
-      ? "请先在 编辑 → 设置 → PaperPilot 中登录账号（官方模型免费），或在「AI 模型通道」中配置自己的接口"
+      ? "请先在 编辑 → 设置 → PaperPilot 中登录账号（官方模型按 AI 额度扣费），或在「AI 模型通道」中配置自己的接口"
       : "Log in under Edit → Settings → PaperPilot (official model is free), or configure your own channel",
     chatNoPdf: zh
       ? "该条目没有可读取的 PDF 全文（扫描件请先 OCR）"
@@ -121,6 +121,10 @@ var I18n = (() => {
     titleTranslationColumnLabel: zh ? "标题译文" : "Title Translation",
     progressColumnLabel: zh ? "阅读进度" : "Progress",
     ratingColumnLabel: zh ? "评级" : "Rating",
+    // 0.46.0 阅读进度 2.0：右键「阅读状态」子菜单尾部维护项
+    menuResetProgress: zh ? "重置阅读进度" : "Reset Reading Progress",
+    progressResetDone: zh ? "已重置所选条目的阅读进度（下次从第 1 页开始）" : "Reading progress reset",
+    progressResetNone: zh ? "所选条目没有可重置的进度记录" : "Nothing to reset",
     menuRating: zh ? "评级" : "Rating",
     menuRating1: "★",
     menuRating2: "★★",
@@ -353,7 +357,7 @@ var I18n = (() => {
     tpNoText: zh ? "请先划词或粘贴要翻译的文本" : "Select or paste text first",
     tpNoPairs: zh ? "还没有全文译文，请先点「开始」" : "No full-text result yet — click Start first",
     chatNotLoggedIn: zh
-      ? "官方模型需要登录：请在 设置 → PaperPilot 登录账号（登录后免费使用），或在「AI 模型通道」中配置自己的接口"
+      ? "官方模型需要登录：请在 设置 → PaperPilot 登录账号（调用从 AI 额度扣费），或在「AI 模型通道」中配置自己的接口"
       : "The official model requires login: open Settings → PaperPilot to log in, or configure your own channel",
     chatNoKeyConfigured: zh
       ? "当前模型通道缺少 API Key：请在 设置 → PaperPilot → AI 模型通道 中补全"

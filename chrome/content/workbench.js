@@ -728,7 +728,7 @@
       if (!text) return;
       if (!PP.aiClient.hasKey()) {
         addNotice(zh
-          ? "请先在 设置 → PaperPilot 登录账号（官方模型免费），或在「AI 模型通道」配置自己的接口"
+          ? "请先在 设置 → PaperPilot 登录账号（官方模型按 AI 额度扣费），或在「AI 模型通道」配置自己的接口"
           : "Log in under Settings → PaperPilot, or configure your own AI channel", true);
         return;
       }

@@ -41,6 +41,13 @@ pref("extensions.zotero.paperpilot.readerPopupEnabled", true);
 pref("extensions.zotero.paperpilot.customPrompts", "");
 pref("extensions.zotero.paperpilot.matrixMaxItems", 8);
 pref("extensions.zotero.paperpilot.autoTagMax", 6);
+// 0.46.0 AI 打标签 v2：受控词表（复用库内已有标签）/ 结果缓存 / 标签语言 / 置信度预选阈值
+pref("extensions.zotero.paperpilot.autoTagUseVocab", true);
+pref("extensions.zotero.paperpilot.autoTagCache", true);
+pref("extensions.zotero.paperpilot.autoTagLang", "auto");
+pref("extensions.zotero.paperpilot.autoTagConfidenceThreshold", 0.7);
+// 建议缓存数据（指纹→建议，LRU 上限 100 条；autoTagCache=false 时不读写）
+pref("extensions.zotero.paperpilot.autoTagCacheData", "");
 // 0.6.0 新增：Semantic Scholar 被引量列
 pref("extensions.zotero.paperpilot.citationColumnEnabled", true);
 // 标题译文列（读 extra 中 PP Title Translation 行，由「翻译标题与摘要」写回）
@@ -307,3 +314,24 @@ pref("extensions.zotero.paperpilot.thirdSourceLastTest", "");
 pref("extensions.zotero.paperpilot.thirdSourceEntitlements", "");
 // 0.44.2：网点检测缓存（{at, list:[{id,ok,ms}]}，面板「检测入口」后写入）
 pref("extensions.zotero.paperpilot.thirdSourceEndpointCheck", "");
+// 0.46.0 阅读进度 2.0（条目列表进度条）：三源融合的位置进度（心跳捕获当前页 +
+// Zotero 原生上次阅读位置 + 标注页），时长折算作兜底。数据只存本机 pref，不上传。
+// readingProgress = {schema, items:{<条目key>:{p:最远页,t:总页数,a:更新ms,
+// d:{<页>:分钟}}}}（LRU 3000 条；d = 每页时长，高能进度条的燃料）
+pref("extensions.zotero.paperpilot.readingProgress", "");
+// ★ 主显示形态：进度直接画在「标题」列背景（对齐 zotero-style 高能进度条挂法），
+// 无需勾选任何列。progressRowEnabled 默认开；heat = 每页一格读得越久颜色越深
+// （无每页数据时自动回退整体填充），fill = 整体按百分比铺色
+pref("extensions.zotero.paperpilot.progressRowEnabled", true);
+pref("extensions.zotero.paperpilot.progressRowStyle", "heat");
+// 进度口径：auto = 位置优先、无位置时长兜底（默认）/ position = 仅位置 / time = 仅时长（0.42.0 旧行为）
+pref("extensions.zotero.paperpilot.progressBasis", "auto");
+// 「阅读进度」数据列（默认隐藏，表头右键勾选；主要用于点列头按进度排序）
+// 列内样式：bar = 线性填充（默认）/ gradient = 蓝→绿渐变填充 / percent = 仅百分比标注
+pref("extensions.zotero.paperpilot.progressBarStyle", "bar");
+// 按阅读状态着色：已读绿（--accent-green）/ 在读强调色 / 未读中性灰；关 = 统一强调色
+pref("extensions.zotero.paperpilot.progressColorByState", true);
+// 进度反向驱动阅读状态：有进度且未读 → 自动「在读」；位置进度 ≥ 阈值且页数真实 → 自动「已读」
+pref("extensions.zotero.paperpilot.progressAutoFinish", true);
+// 「已读」达标阈值（80-100，百分整数；Mozilla pref 无浮点，同 aiTemperature 存法）
+pref("extensions.zotero.paperpilot.progressAutoFinishPct", 95);

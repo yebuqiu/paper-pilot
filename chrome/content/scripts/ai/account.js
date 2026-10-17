@@ -46,7 +46,7 @@
  *
  * 服务端契约（OpenAI 兼容网关 + 鉴权 + 会员）：
  *   POST {server}/api/auth/login    {email,password}
- *     → 200 {ok:true, token, expiresAt(ISO), user:{email,name,plan,dailyUsed,dailyLimit,membership}}
+ *     → 200 {ok:true, token, expiresAt(ISO), user:{email,name,plan,membership,usage,balance}}
  *   POST {server}/api/auth/logout   Authorization: Bearer <token> → 200 {ok:true}
  *   GET  {server}/api/auth/me       Bearer → 200 {ok:true, user:{...}, expiresAt?}（返回即滑动续期）
  *   POST {server}/api/auth/register {email,password,nickname} → 200 {ok,user,notice}
@@ -588,7 +588,6 @@ var Account = {
         rawPlan: m.rawPlan || m.plan,
         expired: !!m.expired,
         expiresAt: m.expiresAt ? (Number(m.expiresAt) || Date.parse(m.expiresAt) || 0) : 0,
-        dailyLimit: Number(m.dailyLimit) > 0 ? Number(m.dailyLimit) : 0,
         source: m.source || "",
         activatedAt: m.activatedAt || "",
         perpetual: !!m.perpetual,   // 0.24.5 永久会员（无到期日）
@@ -599,23 +598,8 @@ var Account = {
     // 兼容旧服务端：只有 plan/expiresAt 字段
     const exp = typeof u.expiresAt === "number" ? u.expiresAt : (u.expiresAt ? Date.parse(u.expiresAt) || 0 : 0);
     return { plan: u.plan || "Free", name: u.plan || "Free", rawPlan: u.plan || "Free", expired: false,
-      expiresAt: exp, dailyLimit: Number(u.dailyLimit) > 0 ? Number(u.dailyLimit) : 0, source: "", activatedAt: "",
+      expiresAt: exp, source: "", activatedAt: "",
       perpetual: !!u.plan && u.plan !== "Free" && !exp, history: [] };
-  },
-
-  /** 用量（近 30 天按日 + 近 7 天合计）；离线时回落本地缓存字段 */
-  usage() {
-    const u = this.user();
-    const us = (u && u.usage) || null;
-    if (us && Array.isArray(us.days) && us.days.length) {
-      return {
-        today: Number(us.today) || 0,
-        limit: Number(us.limit) || 0,
-        last7: Number(us.last7) || us.days.slice(-7).reduce((s, d) => s + (Number(d && d.count) || 0), 0),
-        days: us.days,
-      };
-    }
-    return { today: Number(u && u.dailyUsed) || 0, limit: Number(u && u.dailyLimit) || 0, last7: 0, days: [] };
   },
 
   /**
@@ -699,6 +683,11 @@ var Account = {
       today: c.today || null,
       last7: c.last7 || null,
       last30: c.last30 || null,
+      // 0.46.0：近 7 天按日消耗（微元）——取消次数上限后，趋势图改看金额
+      days: Array.isArray(c.days) ? c.days.filter((d) => d && d.date).map((d) => ({
+        date: String(d.date),
+        micro: Number(d.micro) || 0,
+      })) : [],
       missingUsage: Number(c.missingUsage) || 0,
       last,
     };

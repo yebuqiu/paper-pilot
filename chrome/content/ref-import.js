@@ -530,6 +530,17 @@
     if (p.mode === "refs") onLoadReferences();
   };
 
-  wire();
-  if (payload.mode === "refs") onLoadReferences();
+  // 时序守卫（0.45.99 真机教训，tag-preview 同款）：脚本可能在 DOM 解析前执行，
+  // 此时 $() 全部返回 null、wire() 静默绑不上 → 整个对话框死按钮。
+  // 等 DOMContentLoaded 再绑定；readyState 已过 loading 则立即绑定。
+  function boot() {
+    wire();
+    if (payload.mode === "refs") onLoadReferences();
+  }
+  const rs = (typeof document !== "undefined" && document.readyState) || "complete";
+  if (rs === "loading" || rs === "uninitialized") {
+    window.addEventListener("DOMContentLoaded", boot, { once: true });
+  } else {
+    boot();
+  }
 })();

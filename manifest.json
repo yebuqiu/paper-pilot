@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "PaperPilot 文献副驾",
-  "version": "0.45.1",
+  "version": "0.46.0",
   "description": "PaperPilot 文献副驾 · 文献管理增强套件：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.45.1 更新：第三方文献源面板文案统一（「网点」→「入口」）、检索提示行不留空；v0.45.0：实验功能「第三方文献源」加强——入口扩为四组 27 个公开入口（中文库 / 英文全文 / 预印本 / 学术搜索：知网镜像、万方、维普、PubScholar、Sci-Hub、PubMed、Europe PMC、DOAJ、CORE、arXiv 系、Google 学术镜像等），可输入 DOI 或标题直接落到检索结果；面板去掉来源注释，只保留实验提示。v0.44.2：插件列表显示更新内容摘要。v0.44.1：更新提示显示本次更新内容。",
   "author": "you",
   "icons": {

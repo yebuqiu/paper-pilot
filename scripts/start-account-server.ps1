@@ -15,7 +15,9 @@ $projectDir = Split-Path -Parent $scriptDir
 $serverDir  = Join-Path $projectDir "server"
 $serverJs   = Join-Path $serverDir "account-server.js"
 $logDir     = Join-Path $serverDir "data"
-$logFile    = Join-Path $logDir  "server-console.log"
+# stdout/stderr 走独立文件：cmd 的 >> 会独占写句柄，若指向 server-console.log
+# 会让 Node 自己的 log()（appendFileSync）静默失败（1.8.0 实测）。
+$logFile    = Join-Path $logDir  "server-stdout.log"
 
 if (!(Test-Path $serverJs)) { Write-Output "FATAL: account-server.js missing at $serverJs"; exit 1 }
 if (!(Test-Path $logDir))   { New-Item -ItemType Directory -Path $logDir | Out-Null }

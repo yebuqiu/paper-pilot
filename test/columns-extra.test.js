@@ -192,6 +192,8 @@ eq(TX.readLine('PP Title Translation: 带:冒号', TX.TITLE_PREFIX), '带:冒号
   eq(PC.minutesOf({ id: 202, key: 'KEYCCC', isRegularItem: () => true }), 0, '② 无记录条目 0 分钟');
 
   // lookup：页数未缓存时先走启发，页数预置后走精确
+  // 0.46.0 起无记录返回 ""（不再是 null）："" 在 Zotero 自定义列的字符串排序里
+  // 自动沉底（empty-last），也让「点列头排序」时无进度条目不出现在最前
   PC._pageCache.clear();
   const lk1 = PC.lookup(itemA);
   eq(lk1.heuristic, true, '② lookup 页数未缓存 → 启发分支');
@@ -200,10 +202,13 @@ eq(TX.readLine('PP Title Translation: 带:冒号', TX.TITLE_PREFIX), '带:冒号
   const lk2 = PC.lookup(itemA);
   eq(lk2.heuristic, false, '② 页数缓存命中 → 精确分支');
   eq(lk2.pct, 12 / (24 * 1.5), '② 精确分支数值正确');
-  eq(PC.lookup({ id: 203, key: 'KEYCCC', isRegularItem: () => true }), null, '② 无记录 → null');
-  eq(PC.lookup({ id: 204, isRegularItem: () => false }), null, '② 非常规条目 → null');
+  eq(typeof String(lk2), 'string', '② 数据对象带排序键（String() 可用）');
+  eq(PC.lookupForColumn({ id: 203, key: 'KEYCCC', isRegularItem: () => true }), '', '② 无记录 → ""（可排序沉底）');
+  eq(PC.lookupForColumn({ id: 204, isRegularItem: () => false }), '', '② 非常规条目 → ""');
   Prefs.set('progressColumnEnabled', false);
-  eq(PC.lookup(itemA), null, '② pref 关闭 → 列留空');
+  // 0.46.0：列开关只门控列（lookupForColumn）；行内显示走另一条数据链（lookup 不受影响）
+  eq(PC.lookupForColumn(itemA), '', '② 列 pref 关闭 → 列留空');
+  ok(typeof PC.lookup(itemA) === 'object', '② ★ 列关闭不影响 lookup 本体（行内显示仍可用）');
   PrefStore.delete('progressColumnEnabled');
 
   // 列 pref 关闭时标题译文列/评级列也留空（对齐开关语义）

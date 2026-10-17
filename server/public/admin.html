@@ -218,7 +218,7 @@
         </div></div>
       <table id="user-table">
         <thead><tr>
-          <th>邮箱</th><th>昵称</th><th>等级</th><th>会员到期</th><th>AI 余额</th><th>今日用量</th>
+          <th>邮箱</th><th>昵称</th><th>等级</th><th>会员到期</th><th>AI 余额</th><th>今日调用</th>
           <th title="最近 7 天官方模型调用次数合计">近 7 天</th>
           <th title="最近 7 天内有请求的登录设备数（超过阈值标红，仅提示不处罚）">活跃设备</th>
           <th>最近登录</th><th style="width:330px">操作</th>
@@ -319,14 +319,12 @@
         （按 月单价 × 月数 计价），正常都应由价格表决定。
       </p>
       <div class="grid2">
-        <div class="field"><label>免费版 · 每日额度（次）</label><input id="p-free-limit" type="number" min="0" style="width:140px"></div>
-        <div class="field"><label>专业版 · 每日额度（次）</label><input id="p-pro-limit" type="number" min="0" style="width:140px"></div>
         <div class="field"><label>专业版 · 兜底月单价（¥）</label><input id="p-pro-price" type="number" min="0" style="width:140px"></div>
         <div class="field"><label>专业版 · 每月订阅额度（¥，0 = 不发）</label>
           <input id="p-pro-grant" type="number" min="0" step="0.01" style="width:140px">
           <div class="hint" style="margin-top:4px">
-            订阅去无限化的落点：Pro 每月发放这笔额度（<b>不结转</b>，可用于全部模型含高级）。
-            ⚠ 金额应先跑出真实人均成本再定，当前默认 ¥20 是占位值。
+            Pro 每月发放这笔 AI 额度（<b>不结转</b>，可用于全部模型含高级）。
+            默认 ¥20；AI 调用统一从余额扣费，<b>没有每日次数上限</b>。
           </div></div>
         <div class="field"><label>免费版 · 每月订阅额度（¥）</label>
           <input id="p-free-grant" type="number" min="0" step="0.01" style="width:140px">
@@ -514,8 +512,8 @@
       <h2>余额与赠送配置（1.6.0）</h2>
       <p class="hint" style="margin:0 0 10px">
         <b>「余额不足时拦截」不勾 = 观察模式</b>：网关照常按成本扣减并记账（含透支），但余额用尽也放行。
-        真实成本数据没跑够之前，任何拦截阈值都是拍脑袋——先观察、配准单价，再勾选开启按量计费。
-        赠送额度只限基础模型；高级模型只消耗充值余额；充值余额<b>永不过期</b>。
+        ⚠ 1.8.0 起已没有「每日调用次数」上限，取消勾选等于<b>不设任何用量上限</b>，仅建议压测时使用。
+        注册赠送额度只限基础模型；高级模型消耗订阅额度或充值余额；充值余额<b>永不过期</b>。
       </p>
       <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
         <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
@@ -1659,7 +1657,7 @@ function loadUsers() {
         '<td class="mono">' + (u.balance ? esc(u.balance.text)
           + (u.balance.paidMicro < 0 ? ' <span class="badge red" title="并发窗口透支：下次请求会被拦">透支</span>' : '')
           : '—') + '</td>' +
-        '<td>' + u.dailyUsed + ' / ' + u.dailyLimit + '</td>' +
+        '<td>' + u.dailyUsed + '</td>' +
         '<td>' + (u.usage7 == null ? '—' : u.usage7) + '</td>' +
         '<td>' + (u.sessionsActive == null ? '—'
           : (u.sessionsOverLimit
@@ -1690,7 +1688,7 @@ function exportUsageCSV() {
     var users = r.users || [];
     var days = (users[0] && users[0].usageDaily ? users[0].usageDaily : []).map(function (d) { return d.date; });
     // 表头必须与下面的 row 顺序严格一致（活跃设备数插在「近7天」与「近30天」之间）
-    var lines = [['邮箱', '等级', '今日用量', '近7天', '活跃设备数', '近30天'].concat(days).map(csvCell).join(',')];
+    var lines = [['邮箱', '等级', '今日调用', '近7天', '活跃设备数', '近30天'].concat(days).map(csvCell).join(',')];
     users.forEach(function (u) {
       var byDate = {};
       (u.usageDaily || []).forEach(function (d) { byDate[d.date] = d.count; });
@@ -1941,14 +1939,12 @@ function renderPlanForm() {
   var byId = {};
   (mb.plans.plans || []).forEach(function (p) { byId[p.id] = p; });
   if (byId.Free) {
-    $('p-free-limit').value = byId.Free.dailyLimit;
     $('p-free-hi').checked = !!byId.Free.highTierModels;
     if ($('p-free-grant')) $('p-free-grant').value = ((Number(byId.Free.monthlyGrantMicro) || 0) / 1e6).toFixed(2);
   }
   // 试用天数来自 mb.ai（**不是 r**：本函数没有 r 作用域，写成 r.ai 会抛 ReferenceError）
   if ($('p-trial-days')) $('p-trial-days').value = (mb.ai && mb.ai.trialDays) || 0;
   if (byId.Pro) {
-    $('p-pro-limit').value = byId.Pro.dailyLimit;
     $('p-pro-hi').checked = !!byId.Pro.highTierModels;
     $('p-pro-price').value = byId.Pro.price;
     if ($('p-pro-grant')) $('p-pro-grant').value = ((Number(byId.Pro.monthlyGrantMicro) || 0) / 1e6).toFixed(2);
@@ -2126,13 +2122,11 @@ function savePlans() {
       note: $('p-pay-note').value.trim(),
     },
   };
-  body.plans.Free = { dailyLimit: Number($('p-free-limit').value) || 0,
-    highTierModels: !!$('p-free-hi').checked,
+  body.plans.Free = { highTierModels: !!$('p-free-hi').checked,
     monthlyGrantMicro: Math.round((Number($('p-free-grant').value) || 0) * 1e6),
     features: readFeatures('p-free-feats') };
   body.ai = { trialDays: Math.max(0, Math.min(365, Number($('p-trial-days').value) || 0)) };
   body.plans.Pro = {
-    dailyLimit: Number($('p-pro-limit').value) || 0,
     highTierModels: !!$('p-pro-hi').checked,
     price: Number($('p-pro-price').value) || 0,
     // 1.6.0 订阅去无限化：每月发放的额度（元 → 微元）

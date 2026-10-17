@@ -79,9 +79,6 @@
     $("pp-account-badge").textContent = String(name).trim().charAt(0).toUpperCase() || "P";
     const bits = [];
     if (u.plan) bits.push("套餐：" + u.plan);
-    if (typeof u.dailyUsed === "number") {
-      bits.push("今日官方模型用量：" + u.dailyUsed + (typeof u.dailyLimit === "number" ? "/" + u.dailyLimit : ""));
-    }
     if (A.expiresAt()) bits.push("会话有效期至 " + fmtDate(A.expiresAt()));
     bits.push("服务器 " + displayUrl(A.serverUrl()).replace(/^https?:\/\//, ""));
     $("pp-account-meta").textContent = bits.join(" ｜ ");
@@ -497,7 +494,7 @@
       for (const f of feats.slice(0, 6)) fbox.appendChild(el("div", { class: "pp-mb-feat" }, "· " + f));
     } else {
       fbox.appendChild(el("div", { class: "pp-mb-feat" },
-        isPro ? "专业版权益加载中…" : "免费版：官方模型每日 100 次 · 全部核心功能"));
+        isPro ? "专业版权益加载中…" : "免费版：注册赠送 ¥6 额度（30 天）· 全部核心功能"));
       ensurePlans(false).catch(() => { /* 拉不到就保持占位 */ });
     }
 
@@ -523,31 +520,36 @@
     renderPersistWarn();
   }
 
-  /** 0.24.4 用量趋势：今日/额度 + 近 7 天迷你柱状图 + 近 7 天合计（纯 CSS 高度绘图，无外部依赖） */
+  /**
+   * 消耗趋势（0.46.0）：今日 / 近 7 天金额 + 近 7 天迷你柱状图。
+   * 取消「赠送调用次数」后不再展示次数与上限，统一看**余额扣费的金额**；
+   * 旧服务端没有 cost.days → 整块隐藏（绝不显示假数据）。
+   */
   function renderMbUsage() {
     const box = $("pp-mb-usage");
     const A = account();
     if (!box || !A) return;
     if (!A.isLoggedIn()) { box.style.display = "none"; return; }
-    const us = A.usage();
-    const days = (us && us.days) || [];
-    if (!days.length) { box.style.display = "none"; return; }   // 老服务端没有趋势数据 → 整块隐藏
+    const c = A.cost ? A.cost() : null;
+    const days = (c && Array.isArray(c.days)) ? c.days : [];
+    if (!days.length) { box.style.display = "none"; return; }
     box.style.display = "";
     box.innerHTML = "";
+    const todayMicro = (c.today && Number(c.today.costMicro)) || 0;
+    const weekMicro = days.reduce((s, d) => s + (Number(d && d.micro) || 0), 0);
     box.appendChild(el("div", { class: "pp-mb-usage-head" },
-      "用量：今日 " + us.today + (us.limit > 0 ? " / " + us.limit : "")
-      + " 次 · 近 7 天合计 " + us.last7 + " 次"));
+      "AI 消耗：今日 " + microTxt(todayMicro) + " · 近 7 天 " + microTxt(weekMicro)));
 
     const last = days.slice(-7);
-    const max = Math.max(1, last.reduce((m, d) => Math.max(m, Number(d && d.count) || 0), 0));
+    const max = Math.max(1, last.reduce((m, d) => Math.max(m, Number(d && d.micro) || 0), 0));
     const bars = el("div", { class: "pp-mb-bars" });
     for (const d of last) {
-      const n = Number(d && d.count) || 0;
+      const n = Number(d && d.micro) || 0;
       const h = n ? Math.max(3, Math.round((n / max) * 26)) : 2;
       const col = el("div", { class: "pp-mb-bar-col" });
       const bar = el("div", { class: n ? "pp-mb-bar" : "pp-mb-bar pp-mb-bar-zero" });
       bar.style.height = h + "px";
-      bar.setAttribute("title", String(d.date) + "：" + n + " 次");
+      bar.setAttribute("title", String(d.date) + "：" + microTxt(n));
       col.appendChild(bar);
       col.appendChild(el("div", { class: "pp-mb-bar-day" }, String(d.date).slice(8, 10)));
       bars.appendChild(col);
@@ -934,7 +936,8 @@
     if (fallback) return fallback;
     const y = (Number(micro) || 0) / 1e6;
     if (y >= 1) return "¥" + y.toFixed(2);
-    if (y > 0) return "¥" + y.toFixed(3);
+    // 单次调用常低于 1 分：最多保留 4 位小数并去掉尾零，避免显示成 ¥0 或 ¥0.000
+    if (y > 0) return "¥" + String(Number(y.toFixed(4)));
     return "¥0";
   }
 
@@ -954,7 +957,7 @@
     }
     if (b.planMicro > 0) {
       parts.push("订阅额度 " + microTxt(b.planMicro, b.planText)
-        + (b.planDaysLeft != null ? "（本月底作废）" : ""));
+        + (b.planDaysLeft != null ? "（每月发放，不结转）" : ""));
     }
     parts.push("充值 " + microTxt(b.paidMicro, b.paidText) + "（永不过期）");
     $("pp-bal-detail").textContent = parts.join(" ｜ ");
@@ -971,7 +974,7 @@
       note.textContent = "⚠ 额度不足，AI 请求将被拦截；充值或接入自己的模型通道即可继续。";
       note.style.color = "var(--pp-danger)";
     } else {
-      note.textContent = "注册赠送额度仅限基础模型；订阅额度与充值额度可用于全部模型。";
+      note.textContent = "AI 调用按实际用量从余额扣费（无调用次数上限）：注册赠送仅限基础模型，订阅额度与充值额度可用于全部模型。";
       note.style.color = "var(--pp-muted)";
     }
 
@@ -1212,7 +1215,7 @@
       st.appendChild(el("span", { style: "color:var(--pp-danger);" }, "⚠ 没有活动通道，AI 功能不可用——请切换或新增一个通道。"));
     } else if (act.official && !loggedIn) {
       st.appendChild(el("span", { style: "color:var(--pp-warn);" },
-        "● 活动通道「" + act.name + "」需要登录——请登录账号（官方模型免费），或切换到自己的通道。"));
+        "● 活动通道「" + act.name + "」需要登录——请登录账号（官方模型按 AI 额度扣费），或切换到自己的通道。"));
     } else {
       const dot = el("span", { style: "color:var(--pp-success);" }, "● ");
       const b = el("b", null, act.name);
@@ -1368,7 +1371,7 @@
       const result = $("pp-ch-test-result");
       result.textContent = "";
       result.appendChild(el("span", { style: "color:var(--pp-muted);" },
-        "官方通道由账号系统管理：模型在上方账号卡片选择（登录后免费）；如需自定义接口请「＋ 新增通道」。"));
+        "官方通道由账号系统管理：模型在上方账号卡片选择（按 AI 额度扣费）；如需自定义接口请「＋ 新增通道」。"));
       return;
     }
     openForm(c);

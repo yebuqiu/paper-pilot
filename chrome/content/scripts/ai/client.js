@@ -74,7 +74,7 @@ var AIClient = {
 
   /** 官方通道未登录的统一提示（34 项功能的 catch 链都能直接展示这条消息） */
   _notLoggedInError() {
-    return new Error("官方模型需要登录：请在 设置 → PaperPilot 登录账号（登录后免费使用），或在「AI 模型通道」中配置自己的接口");
+    return new Error("官方模型需要登录：请在 设置 → PaperPilot 登录账号（调用从 AI 额度扣费），或在「AI 模型通道」中配置自己的接口");
   },
 
   /** 官方通道鉴权失败：异步失效会话 + 弹窗，不阻塞当前错误返回。

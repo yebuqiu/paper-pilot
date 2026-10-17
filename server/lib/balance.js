@@ -26,10 +26,10 @@
  *   {
  *     signupGrantMicro: 6000000,  // 注册赠送 ¥6；0 = 关闭
  *     signupValidDays: 30,        // 赠送有效期（天）；0 = 不过期（不建议）
- *     enforce: false,            // ★ 余额不足是否拦截。false = 只记账不拦（观察模式）。
- *                                //   上线初期必须先观察（真实成本数据没跑够两周，
- *                                //   拦截阈值就是拍脑袋），确认单价后再开。
- *     minBalanceMicro: 0         // 拦截阈值：可用余额低于此值拒绝新请求
+ *     enforce: true,             // ★ 余额不足是否拦截。1.8.0 起默认开启：
+ *                                //   取消「赠送调用次数」后余额是**唯一**阀门，
+ *                                //   关掉就等于无限免费用。关闭仅用于观察/压测。
+ *     minBalanceMicro: 0         // 拦截阈值：可用余额 ≤ 此值（或 ≤ 0）拒绝新请求
  *   }
  */
 'use strict';
@@ -49,7 +49,7 @@ const DEFAULT_RECHARGE_OPTIONS = [
 const DEFAULT_CFG = {
   signupGrantMicro: 6 * pricing.MICRO_PER_YUAN,   // ¥6
   signupValidDays: 30,
-  enforce: false,
+  enforce: true,        // 1.8.0：没有次数上限了，余额必须真正拦截
   minBalanceMicro: 0,
   rechargeOptions: DEFAULT_RECHARGE_OPTIONS,
 };
@@ -318,8 +318,8 @@ function consume(user, amount, { highTier, reason, refId } = {}, now) {
 /**
  * 请求前判定：是否放行。只在 enforce=true 时拦截（观察模式恒放行）。
  * 成本是响应之后才知道的，所以 pre-check 用「阈值」而不是预估单次成本。
- *   基础模型：可用总额（未过期赠送 + 充值）≥ minBalanceMicro
- *   高级模型：★ 赠送不算数（铁律三）——要求**充值余额**过阈值且大于 0，
+ *   基础模型：可用总额（未过期赠送 + 订阅 + 充值）需 > 0 且 ≥ minBalanceMicro
+ *   高级模型：★ 赠送不算数（铁律三）——要求**订阅额度或充值余额** > 0 且过阈值，
  *             否则"只有赠送额度"的用户会在阈值 0 时直接透支充值余额
  * @returns {{allowed:boolean, avail?:number, code?:string, error?:string}}
  */
@@ -342,13 +342,15 @@ function precheck(user, cfg, { highTier } = {}, now) {
         + '。请充值或升级专业版（每月发放额度），也可在设置中接入自己的模型通道。',
     };
   }
+  // ★ 1.8.0 起没有每日次数上限，余额是唯一阀门：**余额为 0 也视为不足**，
+  //   否则「0 元还能再发一次」等于给了无限次（每次调用都会留下欠费）。
   const avail = totalMicro(b, t);
-  if (avail >= c.minBalanceMicro) return { allowed: true, avail };
+  if (avail > 0 && avail >= c.minBalanceMicro) return { allowed: true, avail };
   return {
     allowed: false, avail,
     code: 'INSUFFICIENT_BALANCE',
     error: 'AI 额度余额不足。当前可用 ' + pricing.microText(avail)
-      + '。请充值，或在设置中接入自己的模型通道（自带 Key 不受额度限制）。',
+      + '。请充值或升级专业版（每月发放 AI 额度），也可在设置中接入自己的模型通道（自带 Key 不受额度限制）。',
   };
 }
 

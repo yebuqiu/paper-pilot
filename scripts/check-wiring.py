@@ -61,9 +61,8 @@ for must in ["Show-MembershipManager", "Refresh-Membership", "New-MbBtn", "Show-
 ok("价格与周期" in ps, "1.2b launcher 有「价格与周期」标签页")
 ok("/api/admin/prices" in ps, "1.2c launcher 调用了价格表接口")
 
-ok("Show-MembershipManager" in re.findall(r"New-Btn\s+\$grpUser\s+'[^']*'\s+\d+\s+\d+\s+\d+\s+\{\s*([A-Za-z]\w*)", ps) or
-   bool(re.search(r"New-Btn\s+\$grpUser[^\n]*\{\s*Show-MembershipManager\s*\}", ps)),
-   "1.3 主界面「账号管理」分组挂了会员管理入口")
+ok(bool(re.search(r"(New-Btn\s+\$grpUser|New-UiButton\s+\$gPlans)[^\n]*Show-MembershipManager", ps)),
+   "1.3 主界面「账号管理 / 计费与会员」分组挂了会员管理入口")
 
 # ---------- 2. launcher 调的接口 vs 服务端路由 ----------
 calls = set()
@@ -264,8 +263,11 @@ acct = io.open(ACCOUNT_JS, encoding="utf-8").read()
 mainjs = io.open(MAIN_JS, encoding="utf-8").read()
 prefsdef = io.open(PREFS_DEFAULTS, encoding="utf-8").read()
 
-for fn in ["renewalReminder()", "lastPurchasedMonths()", "usage()"]:
+for fn in ["renewalReminder()", "lastPurchasedMonths()", "cost()"]:
     ok(fn in acct, "8.1 account.js 定义 %s" % fn)
+# ★ 1.8.0 取消「赠送调用次数」：插件端不得再引用 dailyLimit / dailyUsed
+ok("dailyLimit" not in acct and "dailyLimit" not in prefs_js,
+   "8.1b 插件端已无 dailyLimit 引用（每日次数上限已取消）")
 for k in ["priceItems", "upcoming"]:
     ok(k in acct, "8.2 account.js plans() 下发 %s" % k)
     ok(k in prefs_js, "8.3 prefs-account.js 使用 %s" % k)
@@ -805,7 +807,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.7.1'" in srv, "18.31 服务端版本号已随批次更新（1.7.1）")
+ok("version: '1.8.0'" in srv, "18.31 服务端版本号已随批次更新（1.8.0）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -903,7 +905,7 @@ ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余�
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.7.1'" in srv, "19.24 服务端版本随批次推进（1.7.1）")
+ok("version: '1.8.0'" in srv, "19.24 服务端版本随批次推进（1.8.0）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -1063,7 +1065,7 @@ ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/p
 for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
     ok(k in html, "21.31 admin.html 含 %s" % k)
 
-ok("version: '1.7.1'" in srv, "21.32 服务端版本 1.7.1")
+ok("version: '1.8.0'" in srv, "21.32 服务端版本 1.7.1")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 22. 多引擎翻译（插件 0.28.0） ----------
@@ -2134,6 +2136,87 @@ ok("GROUPS:" in _ts_js and "grouped()" in _ts_js and "urlFor(" in _ts_js and "ca
 ok("probe !== false" in _ts_js and "CHECK_CONCURRENCY" in _ts_js,
    "37.21 检测跳过 probe:false 的站点并限并发（不误报不可达）")
 ok("_other" in _ts_js, "37.22 入口漏写 group 时兜底进「其它」组（不静默消失）")
+
+# ---------- 38. v1.8.0 启动控制台（侧栏导航 + 计费口径 + 日志双轨） ----------
+# 设计：docs/启动控制台-v1.8.0-重构设计.md
+_launcher_path = os.path.join(ROOT, "scripts", "launcher.ps1")
+_launcher = io.open(_launcher_path, encoding="utf-8-sig").read()
+for _pid in ["overview", "services", "billing", "ops", "about"]:
+    ok(("id = '%s'" % _pid) in _launcher, "38.1 控制台导航含 %s 页" % _pid)
+ok("New-UiPage 'overview'" in _launcher and "New-UiPage 'billing'" in _launcher
+   and "New-UiPage 'ops'" in _launcher, "38.2 ★ 五个分页已构建（侧栏切换）")
+for _f in ["balanceEnforce", "signupGrantMicro", "meteringGaps", "onlinePay", "backlogCount"]:
+    ok(_f in _launcher, "38.3 控制台消费 health.%s" % _f)
+ok("dailyLimit" not in _launcher,
+   "38.4 ★ 控制台不再出现 dailyLimit（1.8.0 已取消每日次数上限）")
+ok("monthlyGrantMicro" in _launcher and "每月额度" in _launcher,
+   "38.5 ★ 套餐页按「每月额度」编辑（不再编辑次数）")
+ok("server-stdout.log" in _launcher,
+   "38.6 ★ stdout 重定向到 server-stdout.log（不锁 server-console.log）")
+ok("launcher-audit.jsonl" in _launcher, "38.7 控制台操作写本地审计")
+ok("ShowBalloonTip" in _launcher, "38.8 托盘状态告警（掉线/积压）")
+_start_ps1 = io.open(os.path.join(ROOT, "scripts", "start-account-server.ps1"), encoding="utf-8-sig").read()
+ok("server-stdout.log" in _start_ps1, "38.9 start-account-server 同步日志双轨")
+ok(os.path.exists(os.path.join(ROOT, "docs", "启动控制台-v1.8.0-重构设计.md")),
+   "38.10 控制台设计文档在库（本次/后续边界可追溯）")
+_p1 = _launcher.find('if ($r.plans.ai) { $script:mbAiTrialDays')
+_p2 = _launcher.find('$txtTrialDays.Text = [string]$script:mbAiTrialDays')
+ok(_p1 >= 0 and _p2 >= 0 and _p1 < _p2,
+   "38.11 ★ 试用天数先取服务端值再写控件（顺序反了会把 7 天误关成 0）")
+ok("Get-AutoBootServices" in _launcher and "Start-ServicesOnBoot" in _launcher
+   and "bootTimer" in _launcher,
+   "38.12 ★ 控制台启动后默认拉起后台与通道（可在维护页关闭）")
+ok("paperpilot-launcher-boot.log" in _launcher and "FATAL: " in _launcher
+   and "DefaultDesktopOnly" in _launcher,
+   "38.13 启动日志 + 致命错误弹窗（wscript 隐藏启动也能排障）")
+ok("[PpWin32]::FindWindow([IntPtr]::Zero" in _launcher,
+   "38.14 ★ 重复启动时激活已有窗口（$null 传给 string 会变空串→找不到窗口）")
+_bat = io.open(os.path.join(ROOT, "启动PaperPilot后台.bat"), encoding="gbk").read()
+ok(":pp_probe" in _bat and "tasklist.exe" in _bat and "paperpilot-launcher.pid" in _bat,
+   "38.15 ★ bat 启动后做 PID 存活确认（wscript 返回 0 ≠ 真的起来了）")
+ok("Test-PortOpen" in _launcher and "Get-TunnelProcessCached" in _launcher,
+   "38.16 轮询走快探测/缓存（不再每拍 Get-NetTCPConnection + CIM）")
+
+# ---------- 39. 0.46.0 AI 打标签 v2（结构化输出 + 受控词表 + 缓存） ----------
+# 参考 Karakeep（词表注入 + normalizeTag 对齐 + 结构化输出）与 Paperless-ngx（语言可控）。
+_at_path = os.path.join(ROOT, "chrome/content/scripts/ai/auto-tag.js")
+_at_js = io.open(_at_path, encoding="utf-8").read()
+_at_prev_js = io.open(os.path.join(ROOT, "chrome/content/tag-preview.js"), encoding="utf-8").read()
+_at_prev_x = io.open(os.path.join(ROOT, "chrome/content/tag-preview.xhtml"), encoding="utf-8").read()
+ok("_parseStructured" in _at_js and "_extractBalanced" in _at_js,
+   "39.1 ★ AI 回复结构化解析（JSON 优先 + 平衡括号抽取，围栏/包装容错）")
+ok("buildPrompt" in _at_js and '"confidence"' in _at_js,
+   "39.2 ★ 提示词要求 JSON 结构化输出（tag/reason/confidence）")
+ok("this._parseHashTokens(text).map" in _at_js,
+   "39.3 ★ 降级链只认显式 #token（拒答散文不再被写成垃圾标签）")
+ok("_collectVocabulary" in _at_js and "VOCAB_TTL_MS" in _at_js,
+   "39.4 ★ 受控词表（库内高频标签注入 + TTL 内存缓存，扫描不重复）")
+ok("_alignToVocabulary" in _at_js and "_shapeKey" in _at_js,
+   "39.5 ★ 词表对齐（shape 键命中复用库内原样写法，杜绝同义变体）")
+ok("_fingerprint" in _at_js and "_cachePut" in _at_js and "CACHE_MAX" in _at_js,
+   "39.6 ★ 建议缓存（元数据指纹 + LRU 上限 + 损坏静默恢复）")
+ok("async suggest(item)" in _at_js and "suggestDetailed" in _at_js,
+   "39.7 ★ suggest() 兼容层保留（automation.js 的 aiAutoTag 动作不改自升级）")
+for _k in ["autoTagUseVocab", "autoTagCache", "autoTagLang", "autoTagConfidenceThreshold", "autoTagCacheData"]:
+    ok(("paperpilot.%s" % _k) in prefsdef, "39.8 prefs.js 含 %s 默认值" % _k)
+ok('pref("extensions.zotero.paperpilot.autoTagLang", "auto");' in prefsdef,
+   "39.9 ★ 标签语言默认 auto（跟随界面；中文用户行为不变）")
+ok('id="pp-autotag-vocab"' in prefs_xhtml and 'id="pp-autotag-lang"' in prefs_xhtml
+   and 'id="pp-autotag-threshold"' in prefs_xhtml and 'id="pp-autotag-cache"' in prefs_xhtml,
+   "39.10 ★ 设置面板 6.2 组含 v2 四项设置（词表/缓存/语言/阈值）")
+ok('id="pp-tag-existing"' in _at_prev_x and "pp-tag-existing" in _at_prev_js,
+   "39.11 ★ 勾选对话框展示「已有标签已排除」提示")
+ok("threshold" in _at_prev_js and "confidence" in _at_prev_js,
+   "39.12 ★ 勾选对话框按置信度预勾选并显示依据")
+ok("_tagPassesRules" in _at_js and "GENERIC_NAMES" in _at_js,
+   "39.13 新标签规则校验（类别白名单 + 宽泛词黑名单；词表命中豁免）")
+ok(os.path.exists(os.path.join(ROOT, "test", "auto-tag.test.js")),
+   "39.14 auto-tag v2 测试套件在库")
+ok("DOMContentLoaded" in _at_prev_js and "readyState" in _at_prev_js,
+   "39.15 ★ 勾选对话框等 DOM 就绪再渲染（0.45.99 真机：脚本先于 DOM 执行 → 空列表死按钮）")
+_ri_js = io.open(os.path.join(ROOT, "chrome/content/ref-import.js"), encoding="utf-8").read()
+ok("DOMContentLoaded" in _ri_js and "function boot()" in _ri_js,
+   "39.16 ★ 参考文献入库对话框同款时序守卫（wire 不再裸跑）")
 
 print("=" * 60)
 for p in passes:
