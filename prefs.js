@@ -305,3 +305,5 @@ pref("extensions.zotero.paperpilot.thirdSourcePassword", "");
 // 与账号权限缓存（JSON 数组，登录成功时自动刷新；面板「账号权限」行展示）
 pref("extensions.zotero.paperpilot.thirdSourceLastTest", "");
 pref("extensions.zotero.paperpilot.thirdSourceEntitlements", "");
+// 0.44.2：网点检测缓存（{at, list:[{id,ok,ms}]}，面板「检测网点」后写入）
+pref("extensions.zotero.paperpilot.thirdSourceEndpointCheck", "");

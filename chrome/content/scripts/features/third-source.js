@@ -1,14 +1,13 @@
-/* PaperPilot 第三方文献源（实验性 · Pro 试用 · 0.44.0 草案）
- * 用途：为「文献虫 / 毕业助手」等第三方文献代查站提供：
- *   ① 卡号/密码本机保存（base64 混淆，非加密；只存本机，不上传）；
- *   ② 登录连通性自检（向站点发 1 次登录请求，验证卡号有效 / 是否被单会话占用）；
- *   ③ 一键直达站点入口（外部浏览器打开「文献下载」页，由用户自行检索与下载）。
- *
+/* PaperPilot 第三方文献源（实验性 · Pro 试用 · 0.44.x）
+ * 用途：
+ *   ① **内置可用网点（0.44.2 主线）**：「文献虫 + 毕业助手」双站全量探测（438 条入口）合并
+ *      去重后的可用入口——知网镜像检索 / Sci-Hub / 学术搜索镜像，一键直达，**无需任何账号**；
+ *      网点连通性可一键检测（结果缓存进 pref，面板展示可用/不可达）。
+ *   ② 备用能力：站点账号（卡号）本机保存 + 登录自检（供机构代理类入口自行配置；
+ *      本版面板未暴露——机构入口需院校账号，不在实验功能范围）。
  * 边界（明确不做）：
- *   - 不代下载、不批量请求、不解析文献内容（站点本身也没有条目级 API，本质是入口导航）；
- *   - 不共享账号：站点限制「同一帐号同一时刻只能一人在线」，多端共用会互踢（实测）；
- *   - 仅在「保存并测试登录」时发起 1 次网络请求，其余动作均为 Zotero.launchURL 打开链接。
- *
+ *   - 不代下载、不批量请求、不解析文献内容（网点本质是检索/入口导航）；
+ *   - 不内置任何账号凭据；网点的来源与授权情况不明，默认关闭、由用户自行评估。
  * 门控（产品口径：Pro 会员试用）：
  *   - 客户端软门控（proGate）；遵循既有纪律——账号模块缺失 / 判定抛错时放行，
  *     只有「已登录且明确判定非 Pro」才拦截（同 rank-column 的 easyScholar 口径）。
@@ -17,7 +16,9 @@
  * 合规提示：第三方站点资源来源与授权情况不明，默认关闭；启停由用户自行评估，
  *   并遵守目标站点条款。本模块不提供任何绕过验证（验证码 / 单会话限制）的能力。
  *
- * pref：thirdSourceEnabled / thirdSourceSite / thirdSourceUsername / thirdSourcePassword
+ * pref：thirdSourceEnabled / thirdSourceEndpointCheck（+ 站点账号备用项：
+ *       thirdSourceSite / thirdSourceUsername / thirdSourcePassword / thirdSourceLastTest /
+ *       thirdSourceEntitlements）
  */
 /* global Zotero, Services, Prefs, I18n, Account */
 
@@ -48,9 +49,26 @@ var ThirdSource = {
       ],
     },
   ],
+  // 内置可用网点（0.44.2）：来自「文献虫 + 毕业助手」双站全量探测（438 条入口）的去重整合，
+  // 只保留实测无需站点账号即可使用的入口（机构代理类入口需院校账号，不内置）。
+  ENDPOINTS: [
+    { id: "cnki-a", name: "知网镜像检索 A", kind: "search",
+      url: "http://43.143.27.149:3344/kns8s/defaultresult/index",
+      note: "检索入口，无需账号（镜像可能轮换）" },
+    { id: "cnki-b", name: "知网镜像检索 B", kind: "search",
+      url: "http://159.75.236.151:8085/kns8s/defaultresult/index",
+      note: "检索入口，无需账号（备用节点）" },
+    { id: "scihub-ren", name: "Sci-Hub 主镜像", kind: "doi",
+      url: "https://www.sci-hub.ren/", note: "按 DOI 补全文；部分 DOI 需人机验证" },
+    { id: "scihub-st", name: "Sci-Hub 备用镜像", kind: "doi",
+      url: "https://www.sci-hub.st/", note: "主镜像慢或需验证时的备选" },
+    { id: "panda985", name: "巨人学术搜索", kind: "search",
+      url: "https://sc.panda985.com/", note: "谷歌学术类聚合搜索" },
+    { id: "typicalgame", name: "巨人学术搜索·镜像", kind: "search",
+      url: "https://xs.typicalgame.com/", note: "同上，备用入口" },
+  ],
   // 桌面 UA：站点为老 PHP 站，默认 Zotero UA 无必要暴露；用常见桌面 UA 更自然地通过
-  UA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-  LOGIN_PATH: "/e/member/doaction.php",
+  UA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",  LOGIN_PATH: "/e/member/doaction.php",
   TIMEOUT_MS: 20000,
   // 低频纪律：任意两次请求间隔 ≥ 1.5s（探测实测站点无限速，但保守自律）
   MIN_INTERVAL_MS: 1500,
@@ -360,6 +378,65 @@ var ThirdSource = {
       this._toast((this._zh() ? "打开失败：" : "Open failed: ") + (e && (e.message || e)));
       return false;
     }
+  },
+
+  /* ---------- 内置可用网点（0.44.2：双站探测结果去重整合，无需账号） ---------- */
+
+  endpoints() { return this.ENDPOINTS.slice(); },
+
+  /** 上次检测缓存（纯函数） → {at, list:[{id,ok,ms,error?}]} | null */
+  readEndpointCheck() {
+    try {
+      const raw = String(Prefs.get("thirdSourceEndpointCheck", "") || "");
+      if (!raw) return null;
+      const v = JSON.parse(raw);
+      return (v && typeof v.at === "number" && Array.isArray(v.list)) ? v : null;
+    } catch (e) { return null; }
+  },
+
+  /** 打开某个网点（与其它入口同一套门控：Pro 试用 + 启用开关） */
+  openEndpoint(id) {
+    const gate = this.proGate();
+    if (!gate.ok) { this._toast(this.gateMessage(gate)); return false; }
+    if (!this.enabled()) {
+      this._toast(this._zh() ? "第三方文献源为实验功能（默认关闭）：请先在设置面板中启用"
+        : "Experimental feature (off by default): enable it in Settings first");
+      this.openSettings();
+      return false;
+    }
+    const want = String(id || "");
+    let e = null;
+    for (const x of this.ENDPOINTS) { if (x.id === want) { e = x; break; } }
+    if (!e) {
+      this._toast(this._zh() ? "未知网点：" + want : "Unknown endpoint: " + want);
+      return false;
+    }
+    try {
+      Zotero.launchURL(e.url);
+      this._debug("openEndpoint -> " + e.url);
+      return true;
+    } catch (err) {
+      this._toast((this._zh() ? "打开失败：" : "Open failed: ") + (err && (err.message || err)));
+      return false;
+    }
+  },
+
+  /** 逐个检测网点连通性（低频节流；结果缓存进 pref 供面板展示） */
+  async checkEndpoints() {
+    const out = [];
+    for (const e of this.ENDPOINTS) {
+      await this._throttle();
+      const t0 = Date.now();
+      try {
+        await Zotero.HTTP.request("GET", e.url, { timeout: 10000, responseType: "text" });
+        out.push({ id: e.id, ok: true, ms: Date.now() - t0 });
+      } catch (err) {
+        out.push({ id: e.id, ok: false, ms: Date.now() - t0,
+                   error: String((err && (err.message || err)) || "").slice(0, 60) });
+      }
+    }
+    try { Prefs.set("thirdSourceEndpointCheck", JSON.stringify({ at: Date.now(), list: out })); } catch (x) { /* ignore */ }
+    return out;
   },
 
   openCenter() {

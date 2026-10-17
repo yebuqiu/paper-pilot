@@ -70,8 +70,8 @@ var Menus = {
     { id: "cn-name-merge", group: "cn", labelKey: "menuCnNameMerge", run: () => CNFetch.mergeNames() },
     { id: "cn-name-split", group: "cn", labelKey: "menuCnNameSplit", run: () => CNFetch.splitNames() },
     { id: "oa-fetch", group: "cn", labelKey: "menuOaFetch", run: () => OAFetch.runForSelected() },
-    // 0.44.0（实验）第三方文献源：打开代查站文献下载入口（自带卡号；Pro 试用）
-    { id: "third-source", group: "cn", labelKey: "menuThirdSource", run: () => ThirdSource.openPortal() },
+    // 0.44.2（实验）第三方文献源：内置可用网点（无需账号）——菜单直达设置面板的网点卡片
+    { id: "third-source", group: "cn", labelKey: "menuThirdSource", run: () => ThirdSource.openSettings() },
     { id: "attach-rename", group: "cn", labelKey: "menuAttachRename", run: () => AttachManager.runForSelected() },
     { id: "attach-doctor", group: "cn", labelKey: "menuAttachDoctor", run: () => AttachDoctor.run() },
     // 自动化

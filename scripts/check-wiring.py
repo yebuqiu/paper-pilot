@@ -2097,14 +2097,14 @@ ok('"chrome/content/prefs-third-source.js"' in mainjs, "37.4 设置面板注册 
 _pts_path = os.path.join(ROOT, "chrome", "content", "prefs-third-source.js")
 ok(os.path.exists(_pts_path), "37.5 prefs-third-source.js 存在")
 _pts_js = io.open(_pts_path, encoding="utf-8").read() if os.path.exists(_pts_path) else ""
-ok('data-fold="thirdsrc"' in prefs_xhtml and 'id="pp-ts-login-btn"' in prefs_xhtml
-   and 'id="pp-ts-enabled"' in prefs_xhtml and 'id="pp-ts-site"' in prefs_xhtml,
-   "37.6 ★ 设置面板有「第三方文献源」卡片（启用开关 + 站点选择 + 登录按钮）")
-ok('{ id: "third-source", group: "cn", labelKey: "menuThirdSource", run: () => ThirdSource.openPortal() }' in menus_js,
-   "37.7 菜单注册 third-source（中文文献工具组 → openPortal）")
+ok('data-fold="thirdsrc"' in prefs_xhtml and 'id="pp-ts-ping-btn"' in prefs_xhtml
+   and 'id="pp-ts-enabled"' in prefs_xhtml and 'id="pp-ts-endpoints"' in prefs_xhtml,
+   "37.6 ★ 设置面板有「第三方文献源」卡片（启用开关 + 网点列表容器 + 检测按钮）")
+ok('{ id: "third-source", group: "cn", labelKey: "menuThirdSource", run: () => ThirdSource.openSettings() }' in menus_js,
+   "37.7 菜单注册 third-source（中文文献工具组 → 打开设置面板网点卡片）")
 ok("menuThirdSource:" in utils_js, "37.8 I18n 表含 menuThirdSource 文案")
 for _k in ["thirdSourceEnabled", "thirdSourceSite", "thirdSourceUsername", "thirdSourcePassword",
-           "thirdSourceLastTest", "thirdSourceEntitlements"]:
+           "thirdSourceLastTest", "thirdSourceEntitlements", "thirdSourceEndpointCheck"]:
     ok(("paperpilot.%s" % _k) in prefsdef, "37.9 prefs.js 含 %s 默认值" % _k)
 ok('pref("extensions.zotero.paperpilot.thirdSourceEnabled", false);' in prefsdef,
    "37.10 ★ 实验功能默认关闭")
@@ -2118,13 +2118,15 @@ ok(not _pts_missing,
    "37.13 prefs-third-source.js 引用的元素 id 都存在于 prefs.xhtml → 缺失: %s" % (_pts_missing or "无"))
 _pf_ts = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
 ok("test/third-source.test.js" in _pf_ts, "37.14 preflight 含第三方文献源测试")
-# 0.44.0 实机验证后的面板补强：权限展示 + 上次测试记录 + 检测权限按钮
-ok('id="pp-ts-ent"' in prefs_xhtml and 'id="pp-ts-refresh-btn"' in prefs_xhtml,
-   "37.15 ★ 卡片含「账号权限」行与「检测权限」按钮（实机验证后补）")
-ok("parseEntitlements" in _ts_js and "fetchEntitlements" in _ts_js and "readLastTest" in _ts_js,
-   "37.16 模块含权限解析/拉取与上次测试记录（纯函数可离线测）")
-ok("打开入口」后需在浏览器里用同一卡号再登录一次" in prefs_xhtml,
-   "37.17 面板提示含浏览器再登录说明（插件会话与浏览器互不相通）")
+# 0.44.2：内置可用网点（双站探测合并去重，无需账号）
+ok('id="pp-ts-endpoints"' in prefs_xhtml and 'id="pp-ts-ping-btn"' in prefs_xhtml,
+   "37.15 ★ 卡片含「网点列表容器」与「检测网点」按钮（0.44.2 内置网点）")
+ok("ENDPOINTS" in _ts_js and "openEndpoint" in _ts_js and "checkEndpoints" in _ts_js
+   and "readEndpointCheck" in _ts_js,
+   "37.16 ★ 模块内置网点清单 + 打开/检测/缓存读取（无需账号）")
+ok("机构代理类入口" in prefs_xhtml and "无需账号" in prefs_xhtml,
+   "37.17 面板说明含「无需账号」与「机构代理类入口不在范围」")
+ok("thirdSourceEndpointCheck" in prefsdef, "37.18 网点检测结果缓存 pref 存在")
 
 print("=" * 60)
 for p in passes:

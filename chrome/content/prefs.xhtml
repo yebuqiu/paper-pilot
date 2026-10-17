@@ -262,41 +262,23 @@
   </html:div>
 
   <!-- ============ 2.5 · 第三方文献源（实验性 · Pro 试用） ============ -->
-  <html:div class="pp-card pp-fold" data-fold="thirdsrc" data-search-strings-raw="第三方 文献源 代查 文献虫 毕业助手 卡号 实验 试用 third-party source">
+  <html:div class="pp-card pp-fold" data-fold="thirdsrc" data-search-strings-raw="第三方 文献源 网点 知网 镜像 scihub 学术搜索 实验 试用 third-party source endpoint">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">🧪</html:span><html:span class="pp-card-title">第三方文献源（实验）</html:span>
-      <html:span class="pp-card-desc">自带卡号接入文献虫 / 毕业助手等代查站：登录自检 + 一键直达入口。面向 Pro 会员试用，默认关闭</html:span>
+      <html:span class="pp-card-desc">「文献虫 / 毕业助手」双站探测结果合并去重后的可用网点：知网镜像检索、Sci-Hub、学术搜索镜像一键直达，无需账号。面向 Pro 会员试用，默认关闭</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
-      <html:div class="pp-hint">实验功能：第三方站点资源来源与授权情况不明，请自行评估风险并遵守目标站点条款；凭据只存本机。站点限制同一账号单会话（请勿多端共享）。本功能不代下载，仅提供登录自检与入口直达。「打开入口」后需在浏览器里用同一卡号再登录一次（浏览器与插件的会话互不相通）。</html:div>
+      <html:div class="pp-hint">实验功能：网点来自第三方站点（来源与授权情况不明），请自行评估并遵守目标站点条款；镜像可能轮换，可用「检测网点」刷新状态。机构代理类入口（需院校账号）不在本功能范围内。</html:div>
       <html:div class="pp-row">
         <html:label class="pp-check"><html:input type="checkbox" id="pp-ts-enabled"/><html:span>启用实验功能（Pro 试用）</html:span></html:label>
         <html:span id="pp-ts-gate" class="pp-msg"></html:span>
       </html:div>
+      <vbox id="pp-ts-endpoints" class="pp-ts-ep-list" style="gap:4px;"></vbox>
       <html:div class="pp-row">
-        <html:span class="pp-label">站点</html:span>
-        <html:select id="pp-ts-site" class="pp-select" style="min-width:260px;"></html:select>
+        <html:button id="pp-ts-ping-btn" class="pp-btn pp-btn-primary">检测网点</html:button>
+        <html:span id="pp-ts-status" class="pp-msg">未检测</html:span>
       </html:div>
-      <html:div class="pp-grid2">
-        <html:div class="pp-field">
-          <html:label class="pp-label">卡号 / 账号</html:label>
-          <html:input type="text" id="pp-ts-user" class="pp-input" placeholder="购买所得的卡号"/>
-        </html:div>
-        <html:div class="pp-field">
-          <html:label class="pp-label">密码</html:label>
-          <html:input type="password" id="pp-ts-pass" class="pp-input" placeholder="只存本机 Zotero，不上传"/>
-        </html:div>
-      </html:div>
-      <html:div class="pp-row">
-        <html:button id="pp-ts-login-btn" class="pp-btn pp-btn-primary">保存并测试登录</html:button>
-        <html:button id="pp-ts-refresh-btn" class="pp-btn pp-btn-sm">检测权限</html:button>
-        <html:button id="pp-ts-open-btn" class="pp-btn pp-btn-sm">打开文献下载入口</html:button>
-        <html:button id="pp-ts-center-btn" class="pp-btn pp-btn-sm">打开用户中心</html:button>
-        <html:button id="pp-ts-clear-btn" class="pp-btn pp-btn-sm">清除凭据</html:button>
-      </html:div>
-      <html:div class="pp-row"><html:span class="pp-label">账号权限</html:span><html:span id="pp-ts-ent" class="pp-msg">未获取</html:span></html:div>
-      <html:div class="pp-row"><html:span id="pp-ts-status" class="pp-msg">未检测</html:span></html:div>
       <html:div class="pp-row"><html:span id="pp-ts-result" class="pp-msg"></html:span></html:div>
     </html:div>
   </html:div>

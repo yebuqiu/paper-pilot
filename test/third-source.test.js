@@ -196,13 +196,12 @@ const ptsjs = fs.readFileSync(path.join(ROOT, 'chrome/content/prefs-third-source
 ok(mainjs.indexOf('"features/third-source.js"') >= 0, '⑦ main.js 装配清单含模块');
 ok(mainjs.indexOf('this.thirdSource = ThirdSource;') >= 0, '⑦ main.js 暴露 thirdSource');
 ok(mainjs.indexOf('"chrome/content/prefs-third-source.js"') >= 0, '⑦ 设置面板注册面板脚本');
-ok(menusjs.indexOf('id: "third-source"') >= 0 && menusjs.indexOf('ThirdSource.openPortal()') >= 0,
-  '⑦ 菜单注册表含 third-source → openPortal');
+ok(menusjs.indexOf('id: "third-source"') >= 0 && menusjs.indexOf('ThirdSource.openSettings()') >= 0,
+  '⑦ 菜单注册表含 third-source → 打开设置面板网点卡片');
 ok(utilsjs.indexOf('menuThirdSource:') >= 0, '⑦ I18n 含 menuThirdSource');
 ok(xhtml.indexOf('data-fold="thirdsrc"') >= 0, '⑦ prefs.xhtml 含折叠卡 thirdsrc');
-for (const id of ['pp-ts-enabled', 'pp-ts-site', 'pp-ts-user', 'pp-ts-pass',
-  'pp-ts-login-btn', 'pp-ts-open-btn', 'pp-ts-center-btn', 'pp-ts-clear-btn', 'pp-ts-refresh-btn',
-  'pp-ts-ent', 'pp-ts-gate', 'pp-ts-status', 'pp-ts-result']) {
+for (const id of ['pp-ts-enabled', 'pp-ts-endpoints', 'pp-ts-ping-btn',
+  'pp-ts-gate', 'pp-ts-status', 'pp-ts-result']) {
   ok(xhtml.indexOf('id="' + id + '"') >= 0, '⑦ prefs.xhtml 含 #' + id);
 }
 {
@@ -249,13 +248,48 @@ async function asyncTests() {
   eq(runTS('ThirdSource.readLastTest().code'), 'ok', '⑩ 上次测试记录已写入');
   eq(runTS('ThirdSource.cachedEntitlements().length'), 3, '⑩ 登录成功自动拉取并缓存三库权限');
 
-  /* -- ⑪ 面板 mini-DOM 冒烟：真跑 prefs-third-source.js -- */
+  /* -- ⑫ 0.44.2：内置可用网点（endpoints / openEndpoint / checkEndpoints） -- */
+  const eps = runTS('JSON.stringify(ThirdSource.endpoints())');
+  const epList = JSON.parse(eps);
+  eq(epList.length, 6, '⑫ 内置网点 6 个（双站合并去重）');
+  ok(epList.every((e) => e.id && e.name && e.url), '⑫ 每个网点都有 id/name/url');
+  ok(epList.some((e) => /sci-hub/.test(e.url)), '⑫ 含 Sci-Hub 网点');
+  ok(epList.some((e) => /kns8s/.test(e.url)), '⑫ 含知网镜像检索网点');
+
+  // openEndpoint：门控/启用/未知 id/成功 四态
+  runTS('Zotero.launchURL = (u) => { Zotero.__launched = (Zotero.__launched || []).concat([u]); };');
+  runTS('Zotero.Utilities = { Internal: { openPreferences: () => { Zotero.__prefsOpened = (Zotero.__prefsOpened || 0) + 1; } } };');
+  runTS('Prefs.set("thirdSourceEnabled", false)');
+  eq(runTS('ThirdSource.openEndpoint("scihub-ren")'), false, '⑫ 未启用 → 不打开并引导设置');
+  ok(runTS('(Zotero.__prefsOpened || 0) >= 1'), '⑫ 未启用时打开设置面板');
+  runTS('Prefs.set("thirdSourceEnabled", true)');
+  eq(runTS('ThirdSource.openEndpoint("nope")'), false, '⑫ 未知网点 id → false');
+  const epl = runTS('ThirdSource.openEndpoint("scihub-ren")');
+  ok(epl === true, '⑫ 启用后成功打开');
+  ok(runTS('(Zotero.__launched || []).some((u) => u.indexOf("sci-hub") >= 0)'), '⑫ 打开的是 Sci-Hub 网址');
+
+  // checkEndpoints：逐点检测 + 结果写缓存（cnki-a 模拟不可达）
+  runTS('ThirdSource.MIN_INTERVAL_MS = 0');   // 测试内取消节流等待
+  sandbox.Zotero.HTTP = {
+    request: async (method, url) => {
+      if (url.indexOf("43.143") >= 0) { throw new Error("timeout"); }
+      return { status: 200, responseText: "" };
+    },
+  };
+  const chk = await runTS('ThirdSource.checkEndpoints()');
+  eq(chk.length, 6, '⑫ 检测覆盖全部 6 个网点');
+  eq(chk.find((r) => r.id === 'cnki-a').ok, false, '⑫ 不可达网点标 ok=false');
+  eq(chk.filter((r) => r.ok).length, 5, '⑫ 其余 5 个可达');
+  eq(runTS('ThirdSource.readEndpointCheck().list.length'), 6, '⑫ 检测结果写入缓存 pref');
+  ok(runTS('ThirdSource.readEndpointCheck().at') > 0, '⑫ 缓存带时间戳');
+
+  /* -- ⑪ 面板 mini-DOM 冒烟：真跑 prefs-third-source.js（0.44.2 网点列表版） -- */
   // 迷你 DOM（足够面板脚本使用：getElementById/createElementNS/事件/属性）
   class PEl {
     constructor(tag) {
       this.tag = tag; this.children = []; this.style = {}; this._attrs = {};
       this.id = ''; this._text = ''; this.value = ''; this.checked = false;
-      this.disabled = false; this.placeholder = ''; this.handlers = {};
+      this.disabled = false; this.placeholder = ''; this.handlers = {}; this.title = '';
     }
     setAttribute(k, v) { this._attrs[k] = String(v); if (k === 'id') this.id = String(v); }
     getAttribute(k) { return k in this._attrs ? this._attrs[k] : null; }
@@ -269,38 +303,35 @@ async function asyncTests() {
     get textContent() { return this._text; }
   }
   const ids = {};
-  for (const id of ['pp-ts-enabled', 'pp-ts-site', 'pp-ts-user', 'pp-ts-pass',
-    'pp-ts-login-btn', 'pp-ts-open-btn', 'pp-ts-center-btn', 'pp-ts-clear-btn',
-    'pp-ts-refresh-btn', 'pp-ts-ent', 'pp-ts-gate', 'pp-ts-status', 'pp-ts-result']) {
-    ids[id] = new PEl(id.startsWith('pp-ts-site') ? 'select' : (id.endsWith('-btn') ? 'button' : 'div'));
+  for (const id of ['pp-ts-enabled', 'pp-ts-endpoints', 'pp-ts-ping-btn',
+    'pp-ts-gate', 'pp-ts-status', 'pp-ts-result']) {
+    ids[id] = new PEl(id.endsWith('-btn') ? 'button' : (id === 'pp-ts-endpoints' ? 'vbox' : 'div'));
     ids[id].id = id;
   }
   const timers = [];
   const TSStub = {
-    SITES: [
-      { id: 'wenxianchong', name: '文献虫', base: 'http://b.r88r.top', cookiePrefix: 'noiojml', center: '/e/member/cp/', lists: [{ key: 'cn', name: '中文库', path: '/e/action/ListInfo/?classid=61' }] },
-      { id: 'biyezhushou', name: '毕业助手', base: 'http://www.060193.top', cookiePrefix: 'fmdqbml', center: '/e/member/my/', lists: [{ key: 'cn', name: '中文库', path: '/e/action/ListInfo/?classid=61' }] },
-    ],
+    SITES: [{ id: 'wenxianchong', name: '文献虫', base: 'http://b.r88r.top' }],
     hostOf: (b) => String(b).replace(/^https?:\/\//i, '').replace(/\/.*$/, ''),
     currentSite() { return this.SITES[0]; },
-    enabled() { return false; },
+    enabled() { return true; },
     proGate() { return { ok: true, reason: 'pro' }; },
-    creds() { return null; },
-    status() {
-      return { enabled: false, siteId: 'wenxianchong', siteName: '文献虫', configured: false,
-        loggedIn: false, username: '', gate: 'pro', lastTest: null, entitlements: this._ents };
-    },
-    loginCalls: 0, saved: null, cleared: 0, opened: 0, centered: 0, refreshed: 0, _ents: [],
-    async login(u, p) { this.loginCalls++; return { ok: true, code: 'ok', username: u }; },
-    saveCreds(u, p) { this.saved = [u, p]; return true; },
-    clearCreds() { this.cleared++; return true; },
-    openPortal() { this.opened++; return true; },
-    openCenter() { this.centered++; return true; },
-    async fetchEntitlements() { this.refreshed++; this._ents = ['中文数据库 长期不限时']; return this._ents; },
-    loginMsg(c, zh) { return c === 'ok' ? '✓ 登录成功，卡号有效' : 'code:' + c; },
     gateMessage() { return ''; },
-    setSite() { return true; },
     setEnabled() { return true; },
+    endpoints() {
+      return [
+        { id: 'e1', name: '网点一', note: '备注一', url: 'https://e1.invalid/' },
+        { id: 'e2', name: '网点二', note: '', url: 'https://e2.invalid/' },
+      ];
+    },
+    _check: null,
+    readEndpointCheck() { return this._check; },
+    openCalls: [], opened: null, pinged: 0,
+    openEndpoint(id) { this.opened = id; this.openCalls.push(id); return id !== 'e2'; },
+    async checkEndpoints() {
+      this.pinged++;
+      this._check = { at: Date.now(), list: [{ id: 'e1', ok: true, ms: 12 }, { id: 'e2', ok: false, ms: 34 }] };
+      return this._check.list;
+    },
   };
   const pZotero = { locale: 'zh-CN', PaperPilot: { thirdSource: TSStub, _paneID: 'paperpilot-prefs' } };
   const pSandbox = {
@@ -316,33 +347,26 @@ async function asyncTests() {
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'chrome/content/prefs-third-source.js'), 'utf8'),
     pSandbox, { filename: 'prefs-third-source.js' });
   for (const t of timers.splice(0)) t();   // 跑掉 init 重试定时器
-  eq(ids['pp-ts-site'].children.length, 2, '⑪ 站点下拉填充 2 个站点');
-  eq(ids['pp-ts-site'].children[0].textContent.includes('文献虫'), true, '⑪ 首项为文献虫');
-  ok(ids['pp-ts-status'].textContent.indexOf('未启用') >= 0, '⑪ 状态行显示「未启用」: ' + ids['pp-ts-status'].textContent);
+  eq(ids['pp-ts-enabled'].checked, true, '⑪ 启用状态回填');
+  eq(ids['pp-ts-endpoints'].children.length, 2, '⑪ 网点列表渲染 2 行');
   ok(ids['pp-ts-gate'].textContent.indexOf('Pro') >= 0, '⑪ 门控行显示 Pro 授权');
-  ok(ids['pp-ts-ent'].textContent.indexOf('未获取') >= 0, '⑪ 权限行初始为「未获取」');
-
-  // 点登录（u/p 已填）
-  ids['pp-ts-user'].value = 'u9';
-  ids['pp-ts-pass'].value = 'p9';
-  ids['pp-ts-login-btn'].click();
+  ok(ids['pp-ts-status'].textContent.indexOf('未检测') >= 0, '⑪ 初始状态行「未检测」');
+  // 行结构：状态点 + 名称 + 备注 + 打开按钮；点第一行「打开」
+  const row0 = ids['pp-ts-endpoints'].children[0];
+  eq(row0.children.length, 4, '⑪ 每行 4 个元素（点/名/备注/按钮）');
+  eq(row0.children[1].textContent, '网点一', '⑪ 行内显示网点名');
+  row0.children[3].click();
+  eq(TSStub.opened, 'e1', '⑪ 点「打开」→ openEndpoint(e1)');
+  ok(ids['pp-ts-result'].textContent.indexOf('已打开') >= 0, '⑪ 结果行提示已打开');
+  // 点「检测网点」→ 刷新状态与网点状态点
+  ids['pp-ts-ping-btn'].click();
   await new Promise((r) => setTimeout(r, 0));
   await new Promise((r) => setTimeout(r, 0));
-  eq(TSStub.loginCalls, 1, '⑪ 点登录触发模块 login');
-  eq(TSStub.saved && TSStub.saved[0], 'u9', '⑪ 成功后保存凭据');
-  ok(ids['pp-ts-result'].textContent.indexOf('成功') >= 0, '⑪ 结果行显示登录成功');
-  // 点检测权限
-  ids['pp-ts-refresh-btn'].click();
-  await new Promise((r) => setTimeout(r, 0));
-  eq(TSStub.refreshed, 1, '⑪ 点检测权限触发 fetchEntitlements');
-  ok(ids['pp-ts-ent'].textContent.indexOf('中文数据库') >= 0, '⑪ 权限行更新为权限列表');
-  // 点打开入口 / 用户中心 / 清除凭据
-  ids['pp-ts-open-btn'].click();
-  ids['pp-ts-center-btn'].click();
-  ids['pp-ts-clear-btn'].click();
-  eq(TSStub.opened, 1, '⑪ 打开入口触发 openPortal');
-  eq(TSStub.centered, 1, '⑪ 打开用户中心触发 openCenter');
-  eq(TSStub.cleared, 1, '⑪ 清除凭据触发 clearCreds');
+  eq(TSStub.pinged, 1, '⑪ 点「检测网点」触发 checkEndpoints');
+  ok(ids['pp-ts-result'].textContent.indexOf('可用 1/2') >= 0, '⑪ 检测结果「可用 1/2」');
+  ok(ids['pp-ts-status'].textContent.indexOf('上次检测') >= 0, '⑪ 状态行显示上次检测时间');
+  eq(ids['pp-ts-endpoints'].children[0].children[0].textContent, '●', '⑪ 可用网点显示实心点');
+  eq(ids['pp-ts-endpoints'].children[1].children[0].textContent, '○', '⑪ 不可达网点显示空心点');
 }
 
 (async () => {
