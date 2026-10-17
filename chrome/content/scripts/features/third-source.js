@@ -1,13 +1,15 @@
-/* PaperPilot 第三方文献源（实验性 · Pro 试用 · 0.44.x）
+/* PaperPilot 第三方文献源（实验性 · Pro 试用 · 0.45.0）
  * 用途：
- *   ① **内置可用网点（0.44.2 主线）**：「文献虫 + 毕业助手」双站全量探测（438 条入口）合并
- *      去重后的可用入口——知网镜像检索 / Sci-Hub / 学术搜索镜像，一键直达，**无需任何账号**；
- *      网点连通性可一键检测（结果缓存进 pref，面板展示可用/不可达）。
- *   ② 备用能力：站点账号（卡号）本机保存 + 登录自检（供机构代理类入口自行配置；
- *      本版面板未暴露——机构入口需院校账号，不在实验功能范围）。
+ *   ① **公开入口导航（主线）**：按「中文库 / 英文全文 / 预印本 / 学术搜索」四组内置
+ *      常用公开检索站点（知网镜像、万方、维普、PubScholar、Sci-Hub、PubMed、Europe PMC、
+ *      DOAJ、CORE、arXiv 系、Google 学术镜像等），一键直达，**无需任何账号**；
+ *   ② **带检索词直达**：面板输入 DOI / 标题后，支持检索模板的网点会把查询带入 URL
+ *      （Google 学术、PubMed、Europe PMC、arXiv、万方、知网镜像…），少走一次首页；
+ *   ③ 网点连通性可一键检测（并发 ≤5，结果缓存进 pref，面板按组显示可用/不可达）；
+ *   ④ 备用能力（面板未暴露）：站点账号本机保存 + 登录自检，供自行配置的机构入口复用。
  * 边界（明确不做）：
  *   - 不代下载、不批量请求、不解析文献内容（网点本质是检索/入口导航）；
- *   - 不内置任何账号凭据；网点的来源与授权情况不明，默认关闭、由用户自行评估。
+ *   - 不内置任何账号凭据；第三方站点的授权情况不明，默认关闭、由用户自行评估。
  * 门控（产品口径：Pro 会员试用）：
  *   - 客户端软门控（proGate）；遵循既有纪律——账号模块缺失 / 判定抛错时放行，
  *     只有「已登录且明确判定非 Pro」才拦截（同 rank-column 的 easyScholar 口径）。
@@ -49,28 +51,86 @@ var ThirdSource = {
       ],
     },
   ],
-  // 内置可用网点（0.44.2）：来自「文献虫 + 毕业助手」双站全量探测（438 条入口）的去重整合，
-  // 只保留实测无需站点账号即可使用的入口（机构代理类入口需院校账号，不内置）。
-  ENDPOINTS: [
-    { id: "cnki-a", name: "知网镜像检索 A", kind: "search",
-      url: "http://43.143.27.149:3344/kns8s/defaultresult/index",
-      note: "检索入口，无需账号（镜像可能轮换）" },
-    { id: "cnki-b", name: "知网镜像检索 B", kind: "search",
-      url: "http://159.75.236.151:8085/kns8s/defaultresult/index",
-      note: "检索入口，无需账号（备用节点）" },
-    { id: "scihub-ren", name: "Sci-Hub 主镜像", kind: "doi",
-      url: "https://www.sci-hub.ren/", note: "按 DOI 补全文；部分 DOI 需人机验证" },
-    { id: "scihub-st", name: "Sci-Hub 备用镜像", kind: "doi",
-      url: "https://www.sci-hub.st/", note: "主镜像慢或需验证时的备选" },
-    { id: "panda985", name: "巨人学术搜索", kind: "search",
-      url: "https://sc.panda985.com/", note: "谷歌学术类聚合搜索" },
-    { id: "typicalgame", name: "巨人学术搜索·镜像", kind: "search",
-      url: "https://xs.typicalgame.com/", note: "同上，备用入口" },
+  // 内置公开入口（0.45.0）：按四组整理。字段：
+  //   id / name / group / url
+  //   q     可选，检索 URL 模板（{q} 占位）——面板输入检索词后点该网点即直接落到检索结果；
+  //   qkind "doi" 表示只吃 DOI（标题等其它词不代入，避免落到空结果页）；
+  //   probe false 表示站点对自动化探测返回 403 / 超时（浏览器可正常打开），不参与连通性检测。
+  // 只收「无需账号即可访问」的公开站点；机构代理类入口需院校账号，不在本功能范围。
+  GROUPS: [
+    { id: "cn", zh: "中文库", en: "Chinese databases" },
+    { id: "full", zh: "英文全文 / 开放获取", en: "Full text / open access" },
+    { id: "preprint", zh: "预印本", en: "Preprints" },
+    { id: "search", zh: "学术搜索 / 镜像", en: "Search & mirrors" },
   ],
-  // 桌面 UA：站点为老 PHP 站，默认 Zotero UA 无必要暴露；用常见桌面 UA 更自然地通过
-  UA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",  LOGIN_PATH: "/e/member/doaction.php",
+  ENDPOINTS: [
+    // ---- 中文库 ----
+    { id: "cnki-1", name: "知网镜像 · 一", group: "cn",
+      url: "http://43.143.27.149:3344/kns8s/defaultresult/index",
+      q: "http://43.143.27.149:3344/kns8s/defaultresult/index?kw={q}" },
+    { id: "cnki-2", name: "知网镜像 · 二", group: "cn",
+      url: "http://159.75.236.151:8085/kns8s/defaultresult/index",
+      q: "http://159.75.236.151:8085/kns8s/defaultresult/index?kw={q}" },
+    { id: "cnki-fsso", name: "知网机构访问", group: "cn",
+      url: "https://fsso.cnki.net/" },
+    { id: "wanfang", name: "万方数据", group: "cn",
+      url: "https://www.wanfangdata.com.cn/",
+      q: "https://s.wanfangdata.com.cn/paper?q={q}" },
+    { id: "cqvip", name: "维普期刊", group: "cn",
+      url: "https://www.cqvip.com/" },
+    { id: "pubscholar", name: "PubScholar 公益学术", group: "cn",
+      url: "https://pubscholar.cn/" },
+    { id: "ncpssd", name: "国家哲社文献中心", group: "cn",
+      url: "https://www.ncpssd.cn/" },
+    // ---- 英文全文 / 开放获取 ----
+    { id: "scihub-ren", name: "Sci-Hub · 一", group: "full",
+      url: "https://www.sci-hub.ren/", q: "https://www.sci-hub.ren/{q}", qkind: "doi" },
+    { id: "scihub-st", name: "Sci-Hub · 二", group: "full",
+      url: "https://www.sci-hub.st/", q: "https://www.sci-hub.st/{q}", qkind: "doi" },
+    { id: "scihub-cn", name: "Sci-Hub · 三", group: "full",
+      url: "https://sci-hub.org.cn/" },
+    { id: "pubmed", name: "PubMed", group: "full", probe: false,
+      url: "https://pubmed.ncbi.nlm.nih.gov/",
+      q: "https://pubmed.ncbi.nlm.nih.gov/?term={q}" },
+    { id: "europepmc", name: "Europe PMC", group: "full", probe: false,
+      url: "https://europepmc.org/", q: "https://europepmc.org/search?query={q}" },
+    { id: "doaj", name: "DOAJ 开放期刊", group: "full", probe: false,
+      url: "https://doaj.org/" },
+    { id: "core", name: "CORE 开放论文", group: "full",
+      url: "https://core.ac.uk/", q: "https://core.ac.uk/search?q={q}" },
+    // ---- 预印本 ----
+    { id: "arxiv", name: "arXiv", group: "preprint",
+      url: "https://arxiv.org/", q: "https://arxiv.org/search/?query={q}&searchtype=all" },
+    { id: "biorxiv", name: "bioRxiv", group: "preprint",
+      url: "https://www.biorxiv.org/", q: "https://www.biorxiv.org/search/{q}" },
+    { id: "medrxiv", name: "medRxiv", group: "preprint",
+      url: "https://www.medrxiv.org/", q: "https://www.medrxiv.org/search/{q}" },
+    { id: "ssrn", name: "SSRN", group: "preprint", probe: false,
+      url: "https://www.ssrn.com/" },
+    // ---- 学术搜索 / 镜像 ----
+    { id: "gscholar", name: "Google 学术", group: "search", probe: false,
+      url: "https://scholar.google.com/", q: "https://scholar.google.com/scholar?q={q}" },
+    { id: "gs-1", name: "谷歌镜像 · 一", group: "search", url: "https://xs.essclick.com/" },
+    { id: "gs-2", name: "谷歌镜像 · 二", group: "search", url: "https://kuluer.com/" },
+    { id: "gs-3", name: "谷歌镜像 · 三", group: "search", url: "https://ac.489.org/" },
+    { id: "panda985", name: "巨人学术搜索", group: "search", url: "https://sc.panda985.com/" },
+    { id: "typicalgame", name: "巨人学术搜索 · 备用", group: "search",
+      url: "https://xs.typicalgame.com/" },
+    { id: "baidu", name: "百度学术", group: "search", probe: false,
+      url: "https://xueshu.baidu.com/", q: "https://xueshu.baidu.com/s?wd={q}" },
+    { id: "semantic", name: "Semantic Scholar", group: "search",
+      url: "https://www.semanticscholar.org/",
+      q: "https://www.semanticscholar.org/search?q={q}" },
+    { id: "scmor", name: "思谋学术导航", group: "search", url: "https://ac.scmor.com/" },
+  ],
+  // 桌面 UA：部分站点默认 Zotero UA 会被拦；用常见桌面 UA（仅用于站点连通性检测/登录自检）
+  UA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  LOGIN_PATH: "/e/member/doaction.php",
   TIMEOUT_MS: 20000,
-  // 低频纪律：任意两次请求间隔 ≥ 1.5s（探测实测站点无限速，但保守自律）
+  // 连通性检测：并发上限 + 单点超时（0.45.0 起由串行改为小并发，27 个网点约 5~10s）
+  CHECK_CONCURRENCY: 5,
+  CHECK_TIMEOUT_MS: 8000,
+  // 低频纪律：站点登录/权限页等「有状态请求」任意两次间隔 ≥ 1.5s
   MIN_INTERVAL_MS: 1500,
   _lastReqAt: 0,
 
@@ -380,9 +440,60 @@ var ThirdSource = {
     }
   },
 
-  /* ---------- 内置可用网点（0.44.2：双站探测结果去重整合，无需账号） ---------- */
+  /* ---------- 内置公开入口（0.45.0：四组导航 + 带检索词直达） ---------- */
 
   endpoints() { return this.ENDPOINTS.slice(); },
+
+  endpointById(id) {
+    const want = String(id || "");
+    for (const e of this.ENDPOINTS) { if (e.id === want) return e; }
+    return null;
+  },
+
+  groupName(id) {
+    for (const g of this.GROUPS) { if (g.id === id) return this._zh() ? g.zh : g.en; }
+    return "";
+  },
+
+  /** 分组视图（纯函数） → [{id, name, items:[endpoint]}]
+   *  兜底：漏写 group 的网点归入「其它」组——绝不因元数据缺项让入口从面板消失。 */
+  grouped() {
+    const out = [];
+    for (const g of this.GROUPS) {
+      const items = [];
+      for (const e of this.ENDPOINTS) { if (e.group === g.id) items.push(e); }
+      if (items.length) out.push({ id: g.id, name: this.groupName(g.id), items });
+    }
+    const known = {};
+    for (const g of this.GROUPS) { known[g.id] = true; }
+    const rest = this.ENDPOINTS.filter((e) => !known[e.group]);
+    if (rest.length) out.push({ id: "_other", name: this._zh() ? "其它" : "Other", items: rest });
+    return out;
+  },
+
+  /** DOI 形态判定（纯函数）：10.xxxx/yyyy */
+  isDoi(s) {
+    return /^10\.\d{4,9}\/\S+$/.test(String(s || "").trim());
+  },
+
+  /** 该网点在当前查询下是否会「带入检索词」（纯函数）
+   *  无模板 / 无查询 / DOI 专用源拿到非 DOI → false（退回首页，避免落到空结果页） */
+  canSearch(id, query) {
+    const e = this.endpointById(id);
+    const q = String(query || "").trim();
+    if (!e || !e.q || !q) return false;
+    if (e.qkind === "doi") return this.isDoi(q);
+    return true;
+  },
+
+  /** 目标 URL（纯函数）：能搜索就带查询，否则回首页 */
+  urlFor(id, query) {
+    const e = this.endpointById(id);
+    if (!e) return "";
+    const q = String(query || "").trim();
+    if (!this.canSearch(id, q)) return e.url;
+    return e.q.replace("{q}", encodeURIComponent(q));
+  },
 
   /** 上次检测缓存（纯函数） → {at, list:[{id,ok,ms,error?}]} | null */
   readEndpointCheck() {
@@ -394,47 +505,72 @@ var ThirdSource = {
     } catch (e) { return null; }
   },
 
-  /** 打开某个网点（与其它入口同一套门控：Pro 试用 + 启用开关） */
-  openEndpoint(id) {
+  /** 打开某个网点（同一套门控：Pro 试用 + 启用开关）
+   *  query 非空且该网点支持检索 → 直接落到检索结果；
+   *  返回 { ok, url, searched, needDoi, name, reason? }（面板据此给准确反馈） */
+  openEndpoint(id, query) {
     const gate = this.proGate();
-    if (!gate.ok) { this._toast(this.gateMessage(gate)); return false; }
+    if (!gate.ok) { this._toast(this.gateMessage(gate)); return { ok: false, reason: gate.reason }; }
     if (!this.enabled()) {
       this._toast(this._zh() ? "第三方文献源为实验功能（默认关闭）：请先在设置面板中启用"
         : "Experimental feature (off by default): enable it in Settings first");
       this.openSettings();
-      return false;
+      return { ok: false, reason: "disabled" };
     }
-    const want = String(id || "");
-    let e = null;
-    for (const x of this.ENDPOINTS) { if (x.id === want) { e = x; break; } }
+    const e = this.endpointById(id);
     if (!e) {
-      this._toast(this._zh() ? "未知网点：" + want : "Unknown endpoint: " + want);
-      return false;
+      this._toast(this._zh() ? "未知网点：" + String(id || "") : "Unknown endpoint: " + String(id || ""));
+      return { ok: false, reason: "unknown" };
     }
+    const q = String(query || "").trim();
+    const searched = this.canSearch(e.id, q);
+    const needDoi = !!(q && e.q && e.qkind === "doi" && !searched);
+    const url = this.urlFor(e.id, q);
     try {
-      Zotero.launchURL(e.url);
-      this._debug("openEndpoint -> " + e.url);
-      return true;
+      Zotero.launchURL(url);
+      this._debug("openEndpoint -> " + url);
+      return { ok: true, url: url, searched: searched, needDoi: needDoi, name: e.name };
     } catch (err) {
       this._toast((this._zh() ? "打开失败：" : "Open failed: ") + (err && (err.message || err)));
-      return false;
+      return { ok: false, reason: "launch" };
     }
   },
 
-  /** 逐个检测网点连通性（低频节流；结果缓存进 pref 供面板展示） */
-  async checkEndpoints() {
+  /** 批量检测网点连通性：小并发（默认 5）+ 逐点超时；
+   *  onProgress(done, total) 供面板显示进度；结果按 ENDPOINTS 顺序缓存进 pref。 */
+  async checkEndpoints(onProgress) {
+    const self = this;
+    const list = this.ENDPOINTS.filter((e) => e.probe !== false);
+    const total = list.length;
     const out = [];
-    for (const e of this.ENDPOINTS) {
-      await this._throttle();
-      const t0 = Date.now();
-      try {
-        await Zotero.HTTP.request("GET", e.url, { timeout: 10000, responseType: "text" });
-        out.push({ id: e.id, ok: true, ms: Date.now() - t0 });
-      } catch (err) {
-        out.push({ id: e.id, ok: false, ms: Date.now() - t0,
-                   error: String((err && (err.message || err)) || "").slice(0, 60) });
+    let idx = 0;
+    const report = () => {
+      try { if (typeof onProgress === "function") onProgress(out.length, total); } catch (x) { /* ignore */ }
+    };
+    async function worker() {
+      while (idx < total) {
+        const e = list[idx++];
+        const t0 = Date.now();
+        try {
+          await Zotero.HTTP.request("GET", e.url, {
+            timeout: self.CHECK_TIMEOUT_MS, responseType: "text",
+            headers: { "User-Agent": self.UA },
+          });
+          out.push({ id: e.id, ok: true, ms: Date.now() - t0 });
+        } catch (err) {
+          out.push({ id: e.id, ok: false, ms: Date.now() - t0,
+                     error: String((err && (err.message || err)) || "").slice(0, 60) });
+        }
+        report();
       }
     }
+    const pool = [];
+    for (let i = 0; i < Math.min(this.CHECK_CONCURRENCY, total); i++) { pool.push(worker()); }
+    await Promise.all(pool);
+    // 按清单顺序归一，面板显示位置稳定（并发完成顺序不可依赖）
+    const order = {};
+    this.ENDPOINTS.forEach((e, i) => { order[e.id] = i; });
+    out.sort((a, b) => (order[a.id] || 0) - (order[b.id] || 0));
     try { Prefs.set("thirdSourceEndpointCheck", JSON.stringify({ at: Date.now(), list: out })); } catch (x) { /* ignore */ }
     return out;
   },

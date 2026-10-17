@@ -262,21 +262,25 @@
   </html:div>
 
   <!-- ============ 2.5 · 第三方文献源（实验性 · Pro 试用） ============ -->
-  <html:div class="pp-card pp-fold" data-fold="thirdsrc" data-search-strings-raw="第三方 文献源 网点 知网 镜像 scihub 学术搜索 实验 试用 third-party source endpoint">
+  <html:div class="pp-card pp-fold" data-fold="thirdsrc" data-search-strings-raw="第三方 文献源 入口 知网 万方 维普 镜像 scihub sci-hub pubmed arxiv 预印本 学术搜索 谷歌 实验 试用 third-party source endpoint">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">🧪</html:span><html:span class="pp-card-title">第三方文献源（实验）</html:span>
-      <html:span class="pp-card-desc">「文献虫 / 毕业助手」双站探测结果合并去重后的可用网点：知网镜像检索、Sci-Hub、学术搜索镜像一键直达，无需账号。面向 Pro 会员试用，默认关闭</html:span>
+      <html:span class="pp-card-desc">中文库 / 英文全文 / 预印本 / 学术搜索：公开入口一键直达，可带入 DOI 或标题检索。面向 Pro 会员试用，默认关闭</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
-      <html:div class="pp-hint">实验功能：网点来自第三方站点（来源与授权情况不明），请自行评估并遵守目标站点条款；镜像可能轮换，可用「检测网点」刷新状态。机构代理类入口（需院校账号）不在本功能范围内。</html:div>
+      <html:div class="pp-hint">实验功能：以下为第三方公开站点入口，仅供检索与定位；请自行评估并遵守各站点条款。</html:div>
       <html:div class="pp-row">
         <html:label class="pp-check"><html:input type="checkbox" id="pp-ts-enabled"/><html:span>启用实验功能（Pro 试用）</html:span></html:label>
         <html:span id="pp-ts-gate" class="pp-msg"></html:span>
       </html:div>
-      <vbox id="pp-ts-endpoints" class="pp-ts-ep-list" style="gap:4px;"></vbox>
       <html:div class="pp-row">
-        <html:button id="pp-ts-ping-btn" class="pp-btn pp-btn-primary">检测网点</html:button>
+        <html:input type="text" id="pp-ts-query" class="pp-input pp-grow" placeholder="可选：输入 DOI 或标题，点网点即在该站检索"/>
+      </html:div>
+      <html:div class="pp-row pp-row-tight"><html:span id="pp-ts-query-hint" class="pp-hint"></html:span></html:div>
+      <vbox id="pp-ts-endpoints" class="pp-ts-list"></vbox>
+      <html:div class="pp-row">
+        <html:button id="pp-ts-ping-btn" class="pp-btn pp-btn-primary">检测入口</html:button>
         <html:span id="pp-ts-status" class="pp-msg">未检测</html:span>
       </html:div>
       <html:div class="pp-row"><html:span id="pp-ts-result" class="pp-msg"></html:span></html:div>

@@ -385,3 +385,26 @@
 .pp-root .pp-ai-tier-trial {
   border-color: var(--pp-warn); background: var(--pp-warn-bg); color: var(--pp-warn);
 }
+
+/* ---------- 第三方文献源（实验）· 分组入口芯片（0.45.0） ---------- */
+/* 一个网点 = 一枚芯片：状态点 + 名称，点击即在外部浏览器打开（有检索词时直接落到检索结果）。
+ * 分组标题用小号全大写风格，仅作视觉分隔；不使用任何来源/出处说明文案。 */
+.pp-root .pp-ts-list { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.pp-root .pp-ts-group {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  color: var(--pp-muted); margin: 8px 0 5px 2px;
+}
+.pp-root .pp-ts-list > .pp-ts-group:first-child { margin-top: 0; }
+.pp-root .pp-ts-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pp-root .pp-ts-chip {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%;
+  padding: 3px 10px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--pp-border); background: var(--pp-surface-2); color: var(--pp-text);
+  font-size: 12px; font-family: inherit; line-height: 1.5;
+}
+.pp-root .pp-ts-chip:hover:not(:disabled) {
+  border-color: var(--pp-accent); color: var(--pp-accent); background: var(--pp-surface);
+}
+.pp-root .pp-ts-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--pp-focus-ring); }
+.pp-root .pp-ts-dot { font-size: 9px; line-height: 1; flex: none; }
+.pp-root .pp-ts-chip-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

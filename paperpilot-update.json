@@ -734,6 +734,17 @@
             }
           },
           "whatsNew": "【工具 → 插件】列表与更新提示都显示更新内容摘要\n实验功能「第三方文献源」改为内置可用网点：双站合并去重、无需账号，支持一键检测网点状态"
+        },
+        {
+          "version": "0.45.0",
+          "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/releases/download/v0.45.0/paper-pilot-0.45.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "实验功能「第三方文献源」加强：入口扩为四组共 27 个公开入口（中文库 / 英文全文 / 预印本 / 学术搜索）\n支持输入 DOI 或标题，点入口直接落到该站检索结果\n面板去掉来源注释文字，只保留实验功能提示"
         }
       ]
     }

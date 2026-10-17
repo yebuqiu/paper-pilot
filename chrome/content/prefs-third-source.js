@@ -1,6 +1,6 @@
-/* PaperPilot 设置面板 · 第三方文献源卡片（实验性 · 0.44.2：内置可用网点，无需账号）
- * 「文献虫 / 毕业助手」双站探测结果合并去重后的网点列表：每行一个网点（状态点 + 名称 + 备注 + 打开），
- * 「检测网点」逐个探测连通性（低频节流）并把结果记入 pref 缓存。
+/* PaperPilot 设置面板 · 第三方文献源卡片（实验性 · 0.45.0）
+ * 面板只做两件事：分组陈列公开入口（点一下就开）+ 可选检索词直达。
+ * 文案纪律：不写任何来源/出处说明，只保留「实验功能」提示与门控状态。
  * 与 prefs-cnki.js 同构：Zotero 先跑脚本后插 DOM → init 探测节点、延迟重试；
  * 经 Zotero.PaperPilot.thirdSource 访问主模块（bootstrap 作用域）。
  */
@@ -14,6 +14,7 @@
 
   const OK = "var(--pp-success, #2e7d32)";
   const ERR = "var(--pp-danger, #c0392b)";
+  const MUTED = "var(--pp-muted)";
 
   function el(tag, attrs, text) {
     const n = document.createElementNS(HTML_NS, tag);
@@ -24,7 +25,12 @@
 
   function setText(id, msg, color) {
     const elm = $(id);
-    if (elm) { elm.textContent = msg; elm.style.color = color || "var(--pp-muted)"; }
+    if (elm) { elm.textContent = msg; elm.style.color = color || MUTED; }
+  }
+
+  function query() {
+    const inp = $("pp-ts-query");
+    return inp ? String(inp.value || "").trim() : "";
   }
 
   /* ---------- 渲染 ---------- */
@@ -45,8 +51,9 @@
   function renderStatus() {
     try {
       const cache = TS().readEndpointCheck();
+      const total = TS().ENDPOINTS.filter((e) => e.probe !== false).length;
       if (!cache) {
-        setText("pp-ts-status", zh ? "未检测（点「检测网点」）" : "Not checked");
+        setText("pp-ts-status", zh ? "未检测（点「检测入口」）" : "Not checked");
         return;
       }
       let okN = 0;
@@ -54,9 +61,26 @@
       let when = "";
       try { when = new Date(cache.at).toLocaleString(zh ? "zh-CN" : "en-US"); } catch (e) { /* ignore */ }
       setText("pp-ts-status",
-        (zh ? "上次检测 " : "Checked ") + when + (zh ? " · 可用 " : " · up ") + okN + "/" + cache.list.length,
+        (zh ? "上次检测 " : "Checked ") + when + (zh ? " · 可用 " : " · up ")
+          + okN + "/" + (cache.list.length || total),
         okN === cache.list.length ? OK : (okN > 0 ? "" : ERR));
     } catch (e) { /* ignore */ }
+  }
+
+  function chip(e, st) {
+    const btn = el("button", { class: "pp-ts-chip", type: "button" });
+    const dot = el("span", { class: "pp-ts-dot" }, st ? (st.ok ? "●" : "○") : "·");
+    dot.style.color = st ? (st.ok ? OK : ERR) : MUTED;
+    const name = el("span", { class: "pp-ts-chip-name" }, e.name);
+    let tip = "";
+    try { tip = String(e.url || "").replace(/^https?:\/\//i, "").replace(/\/.*$/, ""); } catch (x) { tip = ""; }
+    if (st && !st.ok) { tip += zh ? "（上次检测不可达）" : " (unreachable last check)"; }
+    if (e.probe === false) { tip += zh ? "（不参与自动检测）" : " (not auto-checked)"; }
+    try { btn.title = tip; } catch (x) { /* ignore */ }
+    btn.appendChild(dot);
+    btn.appendChild(name);
+    btn.addEventListener("click", () => { onOpen(e.id); });
+    return btn;
   }
 
   function renderEndpoints() {
@@ -68,24 +92,21 @@
       const map = {};
       if (cache) { for (const r of cache.list) { map[r.id] = r; } }
       box.innerHTML = "";
-      for (const e of t.endpoints()) {
-        const st = map[e.id];
-        const row = el("div", { class: "pp-row" });
-        const dot = el("span", { class: "pp-msg" }, st ? (st.ok ? "●" : "○") : "·");
-        dot.style.color = st ? (st.ok ? OK : ERR) : "var(--pp-muted)";
-        try {
-          dot.title = st ? (st.ok ? (zh ? "可用 " : "ok ") + st.ms + "ms"
-            : (zh ? "不可达" : "unreachable")) : (zh ? "未检测" : "not checked");
-        } catch (x) { /* ignore */ }
-        const name = el("span", { class: "pp-label" }, e.name);
-        const note = el("span", { class: "pp-msg" }, e.note || "");
-        const btn = el("button", { class: "pp-btn pp-btn-sm" }, zh ? "打开" : "Open");
-        btn.addEventListener("click", () => { onOpen(e.id); });
-        row.appendChild(dot);
-        row.appendChild(name);
-        row.appendChild(note);
-        row.appendChild(btn);
-        box.appendChild(row);
+      for (const g of t.grouped()) {
+        box.appendChild(el("div", { class: "pp-ts-group" }, g.name));
+        const wrap = el("div", { class: "pp-ts-chips" });
+        for (const e of g.items) { wrap.appendChild(chip(e, map[e.id])); }
+        box.appendChild(wrap);
+      }
+      // 检索词就绪时给一行提示：哪些网点会带词直达
+      const q = query();
+      const n = t.ENDPOINTS.filter((e) => t.canSearch(e.id, q)).length;
+      if (q) {
+        setText("pp-ts-query-hint",
+          (zh ? "将带入检索词：「" : "Query: \"") + q + (zh ? "」· " : "\" · ")
+            + n + (zh ? " 个入口支持直达检索" : " sources support direct search"), MUTED);
+      } else {
+        setText("pp-ts-query-hint", "");
       }
     } catch (e) { /* ignore */ }
   }
@@ -99,9 +120,19 @@
   function onOpen(id) {
     const t = TS();
     if (!t) { return; }
-    const ok = t.openEndpoint(id);
-    setResult(ok ? (zh ? "已打开（外部浏览器）" : "Opened in browser")
-      : (zh ? "未打开（见上方门控/启用提示）" : "Not opened"), ok ? OK : ERR);
+    const r = t.openEndpoint(id, query());
+    if (!r || !r.ok) {
+      setResult(zh ? "未打开（见上方门控 / 启用提示）" : "Not opened", ERR);
+      return;
+    }
+    const name = r.name || id;
+    if (r.searched) {
+      setResult((zh ? "已在 " : "Searching on ") + name + (zh ? " 检索（外部浏览器）" : ""), OK);
+    } else if (r.needDoi) {
+      setResult((zh ? name + " 需 DOI 才能直取全文：已打开首页" : name + " needs a DOI"), "");
+    } else {
+      setResult((zh ? "已打开 " : "Opened ") + name + (zh ? "（外部浏览器）" : ""), OK);
+    }
   }
 
   async function onPing() {
@@ -111,9 +142,11 @@
     if (!gate.ok) { setResult(t.gateMessage(gate), ERR); return; }
     const btn = $("pp-ts-ping-btn");
     if (btn) { btn.disabled = true; }
-    setResult(zh ? "检测中…（逐个网点，间隔 ≥1.5s）" : "Checking…");
+    setResult(zh ? "检测中…" : "Checking…");
     try {
-      const list = await t.checkEndpoints();
+      const list = await t.checkEndpoints((done, total) => {
+        setResult((zh ? "检测中 " : "Checking ") + done + "/" + total + "…");
+      });
       const okN = list.filter((r) => r && r.ok).length;
       setResult((zh ? "检测完成：可用 " : "Done: up ") + okN + "/" + list.length, okN ? OK : ERR);
     } catch (e) {
@@ -157,6 +190,8 @@
     const bind = (id, ev, fn) => { const elm = $(id); if (elm) { elm.addEventListener(ev, fn); } };
     bind("pp-ts-ping-btn", "click", onPing);
     bind("pp-ts-enabled", "change", onEnable);
+    // 输入检索词只影响「按钮是否带词」，重渲染成本极低（≤27 个 chip）
+    bind("pp-ts-query", "input", renderEndpoints);
   }
 
   init();

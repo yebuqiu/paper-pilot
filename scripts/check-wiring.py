@@ -2118,15 +2118,22 @@ ok(not _pts_missing,
    "37.13 prefs-third-source.js 引用的元素 id 都存在于 prefs.xhtml → 缺失: %s" % (_pts_missing or "无"))
 _pf_ts = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
 ok("test/third-source.test.js" in _pf_ts, "37.14 preflight 含第三方文献源测试")
-# 0.44.2：内置可用网点（双站探测合并去重，无需账号）
+# 0.44.2 → 0.45.0：公开入口导航（四组）+ 带检索词直达
 ok('id="pp-ts-endpoints"' in prefs_xhtml and 'id="pp-ts-ping-btn"' in prefs_xhtml,
-   "37.15 ★ 卡片含「网点列表容器」与「检测网点」按钮（0.44.2 内置网点）")
+   "37.15 ★ 卡片含「入口列表容器」与「检测入口」按钮")
 ok("ENDPOINTS" in _ts_js and "openEndpoint" in _ts_js and "checkEndpoints" in _ts_js
    and "readEndpointCheck" in _ts_js,
-   "37.16 ★ 模块内置网点清单 + 打开/检测/缓存读取（无需账号）")
-ok("机构代理类入口" in prefs_xhtml and "无需账号" in prefs_xhtml,
-   "37.17 面板说明含「无需账号」与「机构代理类入口不在范围」")
-ok("thirdSourceEndpointCheck" in prefsdef, "37.18 网点检测结果缓存 pref 存在")
+   "37.16 ★ 模块内置入口清单 + 打开/检测/缓存读取（无需账号）")
+ok("实验功能" in prefs_xhtml and "文献虫" not in prefs_xhtml and "毕业助手" not in prefs_xhtml,
+   "37.17 ★ 面板只保留「实验功能」提示，不出现任何来源站点名（来源注释词已清理）")
+ok("thirdSourceEndpointCheck" in prefsdef, "37.18 检测结果缓存 pref 存在")
+ok('id="pp-ts-query"' in prefs_xhtml and 'id="pp-ts-query-hint"' in prefs_xhtml,
+   "37.19 ★ 卡片含检索词输入框（DOI / 标题带入检索）")
+ok("GROUPS:" in _ts_js and "grouped()" in _ts_js and "urlFor(" in _ts_js and "canSearch(" in _ts_js,
+   "37.20 ★ 入口按四组组织 + 检索模板（urlFor/canSearch 纯函数）")
+ok("probe !== false" in _ts_js and "CHECK_CONCURRENCY" in _ts_js,
+   "37.21 检测跳过 probe:false 的站点并限并发（不误报不可达）")
+ok("_other" in _ts_js, "37.22 入口漏写 group 时兜底进「其它」组（不静默消失）")
 
 print("=" * 60)
 for p in passes:
