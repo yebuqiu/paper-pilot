@@ -98,15 +98,19 @@
         for (const e of g.items) { wrap.appendChild(chip(e, map[e.id])); }
         box.appendChild(wrap);
       }
-      // 检索词就绪时给一行提示：哪些网点会带词直达
+      // 检索词提示行：空态说明「能带词直达」，有词则显示会带词的入口数
       const q = query();
-      const n = t.ENDPOINTS.filter((e) => t.canSearch(e.id, q)).length;
-      if (q) {
+      if (!q) {
+        const nAll = t.ENDPOINTS.filter((e) => !!e.q).length;
+        setText("pp-ts-query-hint",
+          zh ? "输入 DOI 或标题后点入口，可直接落到检索结果（" + nAll + " 个入口支持）"
+            : "Type a DOI or title, then click a source to search directly ("
+              + nAll + " sources)", MUTED);
+      } else {
+        const n = t.ENDPOINTS.filter((e) => t.canSearch(e.id, q)).length;
         setText("pp-ts-query-hint",
           (zh ? "将带入检索词：「" : "Query: \"") + q + (zh ? "」· " : "\" · ")
             + n + (zh ? " 个入口支持直达检索" : " sources support direct search"), MUTED);
-      } else {
-        setText("pp-ts-query-hint", "");
       }
     } catch (e) { /* ignore */ }
   }

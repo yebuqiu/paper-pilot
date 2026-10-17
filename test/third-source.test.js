@@ -407,6 +407,8 @@ async function asyncTests() {
   eq(ids['pp-ts-enabled'].checked, true, '⑪ 启用状态回填');
   eq(ids['pp-ts-gate'].textContent.indexOf('Pro') >= 0, true, '⑪ 门控行显示 Pro 授权');
   ok(ids['pp-ts-status'].textContent.indexOf('未检测') >= 0, '⑪ 初始状态行「未检测」');
+  ok(ids['pp-ts-query-hint'].textContent.indexOf('个入口支持') > 0,
+    '⑪ 空检索词时提示行说明有入口支持带词直达（不留空行）');
   // 分组结构：组标题 + 芯片行 交替；一个入口 = 一枚芯片（状态点 + 名称）
   const box = ids['pp-ts-endpoints'];
   eq(box.children.length, 4, '⑪ 两个分组各渲染「标题 + 芯片行」');
