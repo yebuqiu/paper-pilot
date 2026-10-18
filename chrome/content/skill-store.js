@@ -394,8 +394,12 @@
     function renderList() {
       gridEl.textContent = "";
       const installedIds = new Set(state.installed.keys());
+      // ★ 0.48.4 接缝修复：searchPacks 契约是「installedIds 给定时只留已装」——
+      //   空 Set 也是 truthy 且有 .has，无条件传参会把全部目录包滤光
+      //   （0.48.0 起商店列表一直为空的根因）。只在「仅看已安装」时传。
       let list = tryCall(() => SP.searchPacks(state.packs, {
-        query: state.query, category: state.category, tag: state.tag, installedIds,
+        query: state.query, category: state.category, tag: state.tag,
+        installedIds: state.installedOnly ? installedIds : undefined,
       }), null);
       if (!Array.isArray(list)) list = state.packs; // searchPacks 异常 → 安静降级为全量
       if (state.installedOnly) list = list.filter((m) => m && installedIds.has(String(m.id)));

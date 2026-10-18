@@ -822,6 +822,17 @@
       }
      },
      "whatsNew": "技能商店开放社区投稿：制作器新增「🚀 投稿到技能商店」按钮（自动复制 JSON 并打开贡献指南）；GitHub 仓库上线 community-packs 贡献目录（指南 + 模板 + PR/Issue 投稿模板 + CI 自动校验）。任何人都能制作技能包，经审核合并后全体用户在商店「刷新目录」即可安装。"
+    },
+    {
+     "version": "0.48.4",
+     "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/releases/download/v0.48.4/paper-pilot-0.48.4.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "修复：技能商店打开后列表始终为空（或只显示已安装的几个包）——根因是检索层把「已安装集合」误传给了过滤参数，未安装任何包时 45 个目录包被全部滤掉。修复后打开商店即可看到完整目录列表。"
     }
    ]
   }

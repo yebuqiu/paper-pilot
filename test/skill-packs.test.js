@@ -265,6 +265,12 @@ async function main() {
     'searchPacks: installedIds 只留已装');
   eq(SP.searchPacks(cat, { installedIds: new Set(['weekly-report']) })[0].id, 'weekly-report',
     'searchPacks: installedIds 命中正确包');
+  // ★ 0.48.4 契约加固：空 Set 是 truthy 且有 .has——「给定时只留已装」意味着
+  //   空 Set 滤光全部。调用方（skill-store.js renderList）必须只在需要过滤时才传。
+  eq(SP.searchPacks(cat, { installedIds: new Set() }).length, 0,
+    'searchPacks: 空 Set = 滤光全部（契约语义，调用方不得无条件传参）');
+  eq(SP.searchPacks(cat, { installedIds: undefined }).length, cat.length,
+    'searchPacks: installedIds 为 undefined 时不过滤');
 
   /* ================ ⑤ rate / getRating / clearRating ================ */
 

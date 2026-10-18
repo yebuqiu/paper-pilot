@@ -136,6 +136,7 @@ NODE_SUITES = [
     ("#命令标签", "test/chat-tags.test.js"),
     ("Agent工具层", "test/agent-tools.test.js"),
     ("技能包核心域", "test/skill-packs.test.js"),
+    ("技能包商店窗口", "test/skill-store.test.js"),
     ("快捷键注册表", "test/hotkeys.test.js"),
     ("参考文献面板", "test/ref-pane.test.js"),
     ("划词拼接与批注标记", "test/reader-popup-concat.test.js"),

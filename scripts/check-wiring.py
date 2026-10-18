@@ -2427,6 +2427,10 @@ ok("community-packs" in _bsc and "loadCommunityPacks" in _bsc,
 _ss_js = io.open(os.path.join(ROOT, "chrome/content/skill-store.js"), encoding="utf-8").read()
 ok("pp-ss-mk-submit" in _ss_js and "community-packs/README.md" in _ss_js,
    "42.19 商店制作器带「投稿到技能商店」入口（复制 JSON + 打开贡献指南）")
+ok(re.search(r"installedIds:\s*state\.installedOnly\s*\?\s*installedIds\s*:\s*undefined", _ss_js) is not None,
+   "42.20 ★ renderList 仅在「仅看已安装」时向 searchPacks 传 installedIds——"
+   "searchPacks 契约是「给定时只留已装」，无条件传空 Set 会滤光全部目录包"
+   "（0.48.0-0.48.3 商店列表始终为空的根因，0.48.4 修复）")
 
 # ★ 分区标题遮挡修复（负下边距 → 卡片背景盖住「账号」「AI 与翻译」标签底部）
 _cat_rule = re.search(r"\.pp-root \.pp-cat-label\s*\{([^}]*)\}", prefs_css, re.S)
