@@ -200,25 +200,25 @@ async function main() {
   /* ================ ② builtinCatalog ================ */
 
   const cat = SP.builtinCatalog();
-  eq(cat.length, 32, 'builtinCatalog: 32 个内置包（8 类 × 4，0.48.1 扩容）');
+  eq(cat.length, 45, 'builtinCatalog: 45 个内置包（8 类 5-6 个，0.48.1 后续扩容）');
   ok(cat.every(function (p) { return SP.validate(p).ok; }), 'builtinCatalog: 每包 validate ok');
   const ids = cat.map(function (p) { return p.id; });
-  eq(new Set(ids).size, 32, 'builtinCatalog: id 全局唯一');
+  eq(new Set(ids).size, 45, 'builtinCatalog: id 全局唯一');
   ok(cat.every(function (p) { return SP.CATEGORIES.indexOf(p.category) >= 0; }),
     'builtinCatalog: category 均在枚举内');
   // 0.48.1：全分类覆盖（每类 3-5 个，在线/内置双源一致的底线）
   const byCat = {};
   for (const p of cat) byCat[p.category] = (byCat[p.category] || 0) + 1;
   eq(Object.keys(byCat).length, 8, 'builtinCatalog: 8 个分类全覆盖');
-  ok(SP.CATEGORIES.every(function (c) { return byCat[c] >= 3 && byCat[c] <= 5; }),
-    'builtinCatalog: 每类 3-5 个 → 实际 ' + JSON.stringify(byCat));
+  ok(SP.CATEGORIES.every(function (c) { return byCat[c] >= 4 && byCat[c] <= 6; }),
+    'builtinCatalog: 每类 4-6 个 → 实际 ' + JSON.stringify(byCat));
   // 0.48.1：在线目录文件与内置目录同构（唯一生成通道 = build-skill-catalog.js）
   const catPath = path.join(ROOT, 'server', 'public', 'skill-catalog.json');
   ok(fs.existsSync(catPath), 'online catalog: server/public/skill-catalog.json 在库');
   if (fs.existsSync(catPath)) {
     const online = JSON.parse(fs.readFileSync(catPath, 'utf8'));
     ok(online && Array.isArray(online.packs), 'online catalog: {version, updatedAt, packs} 结构');
-    eq(online.packs.length, 32, 'online catalog: 32 包');
+    eq(online.packs.length, 45, 'online catalog: 45 包');
     ok(online.packs.every(function (p) { return SP.validate(p).ok; }),
       'online catalog: 每包过 validate');
     eq(JSON.stringify(online.packs), JSON.stringify(cat),
@@ -247,7 +247,7 @@ async function main() {
     { id: 'b', name: '乙', desc: 'x', author: '李四', category: '审稿', tags: [] },
   ];
   eq(SP.searchPacks(custom, { query: '张三' }).length, 1, 'searchPacks: query 命中 author');
-  eq(SP.searchPacks(cat, { category: '翻译' }).length, 4, 'searchPacks: category 精确过滤（翻译 4 包）');
+  eq(SP.searchPacks(cat, { category: '翻译' }).length, 6, 'searchPacks: category 精确过滤（翻译 6 包）');
   eq(SP.searchPacks(cat, { tag: '精读' })[0].id, 'deep-reading', 'searchPacks: tag 精确过滤');
   eq(SP.searchPacks(cat, { installedIds: new Set(['weekly-report']) }).length, 1,
     'searchPacks: installedIds 只留已装');
@@ -539,7 +539,7 @@ async function main() {
   PrefStore.delete(PP + 'skillStoreSource');
   const f1 = await SP.fetchCatalog();
   eq(f1.source, 'builtin', 'fetchCatalog: 源为空回退 builtin');
-  eq(f1.packs.length, 32, 'fetchCatalog: builtin 32 包');
+  eq(f1.packs.length, 45, 'fetchCatalog: builtin 45 包');
   eq(f1.updatedAt, '', 'fetchCatalog: builtin updatedAt 为空');
 
   // 坏 JSON → builtin

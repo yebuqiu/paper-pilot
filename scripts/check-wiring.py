@@ -2390,15 +2390,15 @@ if os.path.exists(_CAT_PATH):
         _cat_ok = False
 ok(_cat_ok, "42.2 在线目录是合法 JSON 且含 packs 数组")
 if _cat_ok:
-    ok(len(_cat["packs"]) == 32, "42.3 在线目录 32 个技能包（8 类 × 4）→ 实际 %d" % len(_cat["packs"]))
+    ok(len(_cat["packs"]) == 45, "42.3 在线目录 45 个技能包（8 类，每类 5-6 个）→ 实际 %d" % len(_cat["packs"]))
     _cat_ids = [p.get("id", "") for p in _cat["packs"]]
     ok(len(set(_cat_ids)) == len(_cat_ids), "42.4 在线目录 id 唯一")
     ok(all(re.match(r"^[a-z0-9][a-z0-9-]*$", i) for i in _cat_ids), "42.5 在线目录 id 均为 kebab-case")
     _cats = {}
     for _p in _cat["packs"]:
         _cats[_p.get("category", "?")] = _cats.get(_p.get("category", "?"), 0) + 1
-    ok(len(_cats) == 8 and all(3 <= v <= 5 for v in _cats.values()),
-       "42.6 八分类全覆盖且每类 3-5 个 → %s" % json.dumps(_cats, ensure_ascii=False))
+    ok(len(_cats) == 8 and all(4 <= v <= 6 for v in _cats.values()),
+       "42.6 八分类全覆盖且每类 4-6 个 → %s" % json.dumps(_cats, ensure_ascii=False))
     ok(all(p.get("name") and p.get("version") and p.get("author") and p.get("desc")
            for p in _cat["packs"]), "42.7 每包必备字段齐全（name/version/author/desc）")
     ok(str(_cat.get("updatedAt", "")).isdigit(), "42.8 目录 updatedAt 为毫秒时间戳")
