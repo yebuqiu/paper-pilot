@@ -92,6 +92,47 @@
     }
   }
 
+  /**
+   * 0.48.2 ★ 修复「商店更新后面板不显示新版本」：已安装列表改为**活数据**。
+   * 旧版 renderInstalled 只在面板 init 时跑一次（静态快照）——用户在技能商店
+   * 窗口里更新/卸载后，同屏开着的设置面板不会重渲染，版本号停在旧值。
+   * 三道刷新通道：
+   *   ① 记账 pref 观察者（Zotero.Prefs.registerObserver，main.js 同款 API；
+   *      商店窗口任何 install/uninstall 落 pref 即触发本面板重绘）；
+   *   ② 「↻ 刷新」手动按钮（observer 不可用时的兜底）；
+   *   ③ 面板窗口 unload 时注销观察者（防泄漏）。
+   */
+  let _prefObserverSym = null;
+  function watchInstalled() {
+    if (_prefObserverSym) return;
+    try {
+      if (typeof Zotero.Prefs.registerObserver !== "function") return;
+      _prefObserverSym = Zotero.Prefs.registerObserver(
+        "extensions.zotero.paperpilot.skillPacksInstalled",
+        () => { try { renderInstalled(); } catch (e) { /* 渲染失败不影响面板 */ } },
+        true // global pref（第三参含义与 main.js _watchPrefs 调用一致）
+      );
+    } catch (e) { /* 观察者不可用 → 手动刷新按钮兜底 */ }
+    try {
+      window.addEventListener("unload", () => {
+        if (_prefObserverSym) {
+          try { Zotero.Prefs.unregisterObserver(_prefObserverSym); } catch (e2) { /* ignore */ }
+          _prefObserverSym = null;
+        }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  function wireRefresh() {
+    const btn = $("pp-sk-refresh");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      try { renderInstalled(); } catch (e) { /* ignore */ }
+      setMsg($("pp-sk-msg"), zh ? "已刷新" : "Refreshed", "var(--pp-success)");
+      try { window.setTimeout(() => setMsg($("pp-sk-msg"), ""), 1500); } catch (e) { /* ignore */ }
+    });
+  }
+
   /* ---------------- ③ 剪贴板导入 ---------------- */
 
   /** 读剪贴板（navigator.clipboard 优先，XPCOM 回落；与 prefs-agent.js 同款） */
@@ -170,7 +211,8 @@
       window.setTimeout(init, 400);
       return;
     }
-    if (!$("pp-sk-open") || !$("pp-sk-installed") || !$("pp-sk-import") || !$("pp-sk-source")) {
+    if (!$("pp-sk-open") || !$("pp-sk-installed") || !$("pp-sk-import")
+        || !$("pp-sk-source") || !$("pp-sk-refresh")) {
       window.setTimeout(init, 400);
       window.setTimeout(init, 1200);
       return;
@@ -181,6 +223,8 @@
     try { wireOpen(); } catch (e) { /* 失败不影响面板其余部分 */ }
     try { renderInstalled(); } catch (e) { /* ignore */ }
     try { wireImport(); } catch (e) { /* ignore */ }
+    try { wireRefresh(); } catch (e) { /* ignore */ }
+    try { watchInstalled(); } catch (e) { /* 观察者失败 → 手动刷新按钮兜底 */ }
   }
 
   init();

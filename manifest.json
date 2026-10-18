@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "PaperPilot 文献副驾",
-  "version": "0.48.1",
-  "description": "PaperPilot 文献副驾 · 文献管理增强套件：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.48.1 更新：技能商店目录大扩容——8 大类 32 个官方技能包（写作/审稿/翻译/阅读/标签/Agent/模板/综合各 4 个，覆盖医学、法律、经济、社科、工程等多领域）；默认配置官方在线目录源，点「刷新目录」即可拉取最新技能包，离线亦有完整内置目录兜底。",
+  "version": "0.48.2",
+  "description": "PaperPilot 文献副驾 · 文献管理增强套件：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.48.2 更新：修复技能商店与设置面板版本不同步——在商店里更新/卸载技能包后，设置面板「已安装」列表现在会自动刷新（新增监听与手动刷新按钮）。",
   "author": "you",
   "icons": {
     "48": "chrome/content/icons/icon.png",

@@ -2458,8 +2458,8 @@ ok("&nbsp;" not in _ss_xhtml,
 ok(os.path.exists(os.path.join(ROOT, "chrome", "content", "prefs-skill.js")),
    "41.10 prefs-skill.js 存在（设置面板技能商店卡片脚本）")
 ok(all(_e in xhtml_ids for _e in
-       ("pp-sk-open", "pp-sk-import", "pp-sk-source", "pp-sk-installed")),
-   "41.11 prefs.xhtml 含技能商店卡片四 id（pp-sk-open / pp-sk-import / pp-sk-source / pp-sk-installed）")
+       ("pp-sk-open", "pp-sk-import", "pp-sk-source", "pp-sk-installed", "pp-sk-refresh")),
+   "41.11 prefs.xhtml 含技能商店卡片五 id（pp-sk-open / pp-sk-import / pp-sk-source / pp-sk-installed / pp-sk-refresh）")
 ok(all('pref("extensions.zotero.paperpilot.%s"' % _k in prefsdef for _k in
        ("skillPacksInstalled", "skillPackRatings", "skillStoreSource")),
    "41.12 prefs.js 有 skillPacksInstalled / skillPackRatings / skillStoreSource 默认值")
@@ -2476,6 +2476,11 @@ ok("skill-packs.test.js" in _preflight_src,
    "41.16 preflight 注册 skill-packs.test.js")
 ok('"SkillPacks"' in _smoke,
    "41.17 smoke-load.test.js expect 含 SkillPacks（关键全局冒烟）")
+_ps_js2 = io.open(os.path.join(ROOT, "chrome/content/prefs-skill.js"), encoding="utf-8").read()
+ok("registerObserver" in _ps_js2 and "unregisterObserver" in _ps_js2,
+   "41.18 ★ prefs-skill 监听 skillPacksInstalled 变化自动刷新（0.48.2 修「商店更新后面板不显示新版本」）")
+ok("wireRefresh" in _ps_js2 and "pp-sk-refresh" in _ps_js2,
+   "41.19 prefs-skill 提供手动刷新按钮接线（观察者不可用时的兜底）")
 
 print("=" * 60)
 for p in passes:
