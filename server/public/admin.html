@@ -393,9 +393,9 @@
         <div class="field" id="pay-qm-wrap"><label>查询接口变体</label>
           <select id="pay-query-mode">
             <option value="">标准易支付 api.php?act=order</option>
-            <option value="checkOrder">变体 GET /Api/checkOrder</option>
+            <option value="checkOrder">变体 GET /Api/checkOrder（领航智能Pay 等新网关）</option>
           </select>
-          <div class="hint" style="margin-top:4px">查单不通就换一个试试（不同网关实现不一）</div></div>
+          <div class="hint" style="margin-top:4px">查单不通就换一个；标准路径报 404 的网关（如领航智能Pay ljlliu.cn）用变体</div></div>
         <div class="field wide" id="pay-key-wrap"><label>商户密钥（V1 MD5）</label>
           <input id="pay-key" type="password" placeholder="留空=不修改；填新值=覆盖" style="width:100%"></div>
         <div class="field wide" id="pay-priv-wrap" style="display:none"><label>商户私钥（V2 RSA）</label>

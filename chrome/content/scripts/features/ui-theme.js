@@ -1067,11 +1067,12 @@ var UiTheme = {
       "#zotero-prefs {\n  " + decls.map((d) => d + " !important;").join("\n  ") + "\n}\n" +
       "#zotero-prefs .pp-root {\n  " + ppRootDecls + "\n}\n" +
       // 功能中心 + 小对话框窗口（0.17.1 纳入主题作用域）+ 双栏对照窗口（0.25.2）
-      // + 参考文献入库窗口（0.33.0）：decls + pp 变量组
+      // + 参考文献入库窗口（0.33.0）+ AI 问答分屏窗口（0.47.0）：decls + pp 变量组
       "window[windowtype='paperpilot:hub'],\n" +
       "window[windowtype='paperpilot:dialog'],\n" +
       "window[windowtype='paperpilot:ref-import'],\n" +
-      "window[windowtype='paperpilot:bilingual'] {\n  " + prefsDecls + "\n}\n" +
+      "window[windowtype='paperpilot:bilingual'],\n" +
+      "window[windowtype='paperpilot:chatwin'] {\n  " + prefsDecls + "\n}\n" +
       // 对话框表单控件：深色主题下原生白底输入框突兀，随主题化
       "window[windowtype='paperpilot:dialog'] textarea,\n" +
       "window[windowtype='paperpilot:dialog'] input:not([type='checkbox']):not([type='radio']),\n" +
@@ -1081,7 +1082,9 @@ var UiTheme = {
       "window[windowtype='paperpilot:bilingual'] textarea,\n" +
       "window[windowtype='paperpilot:bilingual'] input:not([type='checkbox']):not([type='radio']),\n" +
       "window[windowtype='paperpilot:hub'] textarea,\n" +
-      "window[windowtype='paperpilot:hub'] input:not([type='checkbox']):not([type='radio']) {\n" +
+      "window[windowtype='paperpilot:hub'] input:not([type='checkbox']):not([type='radio']),\n" +
+      "window[windowtype='paperpilot:chatwin'] textarea,\n" +
+      "window[windowtype='paperpilot:chatwin'] input:not([type='checkbox']):not([type='radio']) {\n" +
       "  background-color: " + c.surface + " !important;\n" +
       "  color: " + c.ink + " !important;\n" +
       "  border-color: " + c.line + " !important;\n}\n";
@@ -1260,9 +1263,11 @@ var UiTheme = {
       // 0.17.1：功能中心 + 小对话框纳入主题作用域（workbench 有自治 wbTheme 体系，不纳入）
       // 0.25.2：双栏对照窗口一并纳入（背景/文字/表头随界面主题换肤）
       // 0.33.0：参考文献入库窗口一并纳入
+      // 0.47.0：AI 问答分屏窗口一并纳入（自持 --pp-* 令牌 + 引用注入的 --color-accent 等）
       const wtype = root.getAttribute("windowtype") || "";
       const isThemedWindow = wtype === "paperpilot:hub" || wtype === "paperpilot:dialog"
-        || wtype === "paperpilot:bilingual" || wtype === "paperpilot:ref-import";
+        || wtype === "paperpilot:bilingual" || wtype === "paperpilot:ref-import"
+        || wtype === "paperpilot:chatwin";
       if (!isMain && !isPrefs && !isThemedWindow) return;
       const theme = this.current();
       let style = win.document.getElementById(this.STYLE_ID);

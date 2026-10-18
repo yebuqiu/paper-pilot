@@ -58,7 +58,8 @@ const expect = ["Prefs", "I18n", "MdLite", "Notes", "ItemSel", "TagCurator", "At
   "SmartCleanup", "RuleTag", "Automation", "AutoRead", "TagCurator", "LibSearch", "NoteGraph", "ReadingStats", "ReadingProgress", "AttachDoctor", "AIChat", "AIClient", "Menus", "ReadingState", "UiTheme", "PdfCompare", "MetaRules", "Discovery", "MCP", "SciHub", "OAFetch",
   "TranslateSvc", "TranslatePane", "ChatFloat",
   "RefFormat", "RefSources", "RefImport", "CNAI",
-  "ArxivErrors", "ArxivDates", "ArxivQuery", "ArxivCategories", "ArxivAtom", "ArxivAnalyze", "ArxivRateLimiter", "ArxivFetch"];
+  "ArxivErrors", "ArxivDates", "ArxivQuery", "ArxivCategories", "ArxivAtom", "ArxivAnalyze", "ArxivRateLimiter", "ArxivFetch",
+  "AgentTools", "SkillPacks"].filter((k, i, a) => a.indexOf(k) === i);
 const missing = expect.filter((k) => !sandbox[k]);
 console.log("关键全局缺失:", missing.length ? missing : "无 ✓");
 

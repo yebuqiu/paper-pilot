@@ -807,7 +807,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.8.1'" in srv, "18.31 服务端版本号已随批次更新（1.8.1）")
+ok("version: '1.8.2'" in srv, "18.31 服务端版本号已随批次更新（1.8.2）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -921,7 +921,7 @@ ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余�
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.8.1'" in srv, "19.24 服务端版本随批次推进（1.8.1）")
+ok("version: '1.8.2'" in srv, "19.24 服务端版本随批次推进（1.8.2）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -1081,7 +1081,7 @@ ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/p
 for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
     ok(k in html, "21.31 admin.html 含 %s" % k)
 
-ok("version: '1.8.1'" in srv, "21.32 服务端版本 1.8.1")
+ok("version: '1.8.2'" in srv, "21.32 服务端版本 1.8.2")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 22. 多引擎翻译（插件 0.28.0） ----------
@@ -1365,8 +1365,8 @@ ok("bilingualContext" in bl_mod, "25.17 上下文感知受 pref 控制")
 ok("function parseGlossary" in tr_js and "function glossaryBlock" in tr_js
    and "function glossaryFingerprint" in tr_js, "25.18 术语表三件套（解析/提示块/指纹）")
 ok("glossaryFingerprint();" in tr_js, "25.19 ★ translate() 以术语表指纹参与缓存键（改表不吃旧缓存）")
-ok("glossaryBlock(gl)" in tr_js, "25.20 llm 引擎 prompt 注入术语块")
-ok("glossaryBlock()" in rp_js, "25.21 划词浮窗 LLM 翻译注入术语块（浮窗走 AIClient 直连，不经 _runEngine）")
+ok("glossaryBlock(gl, ctx.text)" in tr_js, "25.20 llm 引擎 prompt 注入术语块（带待译文本 → 命中术语优先）")
+ok("glossaryBlock(null, text)" in rp_js, "25.21 划词浮窗 LLM 翻译注入术语块（浮窗走 AIClient 直连，不经 _runEngine；同样相关性排序）")
 ok("prefBool(\"bilingualStructExtract\"" in trp_js or "translateGlossary" in trp_js,
    "25.22 设置面板接线术语表/结构化开关")
 
@@ -1378,11 +1378,13 @@ ok("unmaskFormulas(out, fMap)" in tr_js, "25.25 引擎返回后还原")
 ok("maskInlineFormulas, unmaskFormulas," in tr_js, "25.26 掩码函数已导出（可单测）")
 
 # pref 默认值 + 设置面板元素
-for _k in ["translateGlossary", "bilingualStructExtract", "bilingualContext",
-           "translateFormulaProtect"]:
+for _k in ["translateGlossary", "translateGlossaryDomains", "bilingualStructExtract",
+           "bilingualContext", "translateFormulaProtect"]:
     ok(("paperpilot.%s" % _k) in prefsdef, "25.27 prefs.js 含 %s 默认值" % _k)
-for _id in ["pp-tr-glossary", "pp-tr-glossary-msg", "pp-tr-bl-struct",
-            "pp-tr-bl-context", "pp-tr-formula"]:
+for _id in ["pp-tr-glossary", "pp-tr-glossary-msg", "pp-tr-glossary-domains",
+            "pp-tr-glossary-import", "pp-tr-glossary-export",
+            "pp-tr-glossary-pack", "pp-tr-glossary-pack-add",
+            "pp-tr-bl-struct", "pp-tr-bl-context", "pp-tr-formula"]:
     ok(_id in xhtml_ids, "25.28 prefs.xhtml 含 #%s" % _id)
 
 # 门禁：两套测试都进 preflight
@@ -1393,6 +1395,75 @@ ok("bilingual-view.test.js" in _pf3, "25.30 preflight 含双栏窗口 blocks 渲
 _blv_src = io.open(BL_VIEW_JS, encoding="utf-8").read()
 ok(len(re.findall(r"scrollTop\s*=", _blv_src)) == 1,
    "25.31 ★ 双栏窗口仍只有一处 scrollTop 赋值（定位经回调回插件侧，窗口不自滚）")
+
+# ---------- 25.5 术语表领域化（0.4x：领域标签 / 域过滤 / 相关性注入 / 一致性统计 / 导入导出 / 种子词包） ----------
+# 数据模型：领域标签（`原文 = 译文 | 领域` 行式第三段 + JSON {s,t,d}）
+ok("_looksLikeDomain" in tr_js and "_normDomain" in tr_js,
+   "25.32 领域标签归一化与防误判护栏存在（正文里的 | 不当域分隔符）")
+ok("it.d !== undefined" in tr_js,
+   "25.33 parseGlossary 解析领域字段（JSON {s,t,d} / 行式第三段）")
+# 域过滤：pref translateGlossaryDomains → glossary() 过滤（通用术语永不被滤）
+ok("function glossaryAll" in tr_js and "function activeDomains" in tr_js
+   and "function glossaryDomains" in tr_js, "25.34 全量表/启用域白名单/领域清单三入口存在")
+_gloss_fn = tr_js.split("function glossary()")[1].split("\n  }")[0] if "function glossary()" in tr_js else ""
+ok("translateGlossaryDomains" in tr_js and "glossaryAll()" in _gloss_fn and "filter" in _gloss_fn,
+   "25.35 ★ glossary() 按启用域过滤（域启停=改表，指纹随过滤结果变化 → 不吃旧缓存）")
+# 相关性注入：glossaryBlock(list, text) 命中优先（两处注入点都带文本，25.20/25.21 已钉）
+_gb_src = tr_js.split("function glossaryBlock")[1].split("\n  }")[0] if "function glossaryBlock" in tr_js else ""
+ok("hit.concat(rest)" in _gb_src,
+   "25.36 ★ glossaryBlock 相关性排序：待译文本命中的术语优先（60 条上限下保证命中必进 prompt）")
+# 一致性统计：glossaryStats 纯函数 + translate() 挂 glossary 字段 + 双栏状态行反馈
+ok("function glossaryStats" in tr_js and "_glossaryCheck(clean, out)" in tr_js,
+   "25.37 术语一致性自检（glossaryStats 纯函数；translate() 成功与缓存命中都附带）")
+ok("glossaryAgg" in bl_mod and "术语一致" in bl_mod,
+   "25.38 全文对照翻译聚合术语一致性（_glossAgg / _glossTail；笔记完成文案汇报）")
+ok("glossaryAgg" in _blv_src and "术语一致" in _blv_src,
+   "25.39 双栏窗口状态行展示「术语一致 n/m」（A.glossaryAgg 回调，旧载荷静默跳过）")
+# 导入导出：三纯函数 + 面板接线（CSV/TSV/JSON/行式四形态识别）
+ok("function glossaryToCsv" in tr_js and "function parseGlossaryImport" in tr_js
+   and "function mergeGlossary" in tr_js, "25.40 导入导出三纯函数（CSV 序列化/多形态识别/行级 upsert 合并）")
+ok("pp-tr-glossary-import" in trp_js and "pp-tr-glossary-export" in trp_js
+   and "parseGlossaryImport" in trp_js and "mergeGlossary" in trp_js,
+   "25.41 设置面板接线导入/导出（FilePicker 薄壳 + persistGlossary 公共落盘路径）")
+ok("putContentsAsync" in trp_js and "\\uFEFF" in trp_js,
+   "25.42 导出写 UTF-8 BOM（Excel 打开中文 CSV 不乱码）")
+# 种子词包：数据文件 + 装配 + 面板
+_glp_ok = False
+try:
+    _glp_src = io.open(os.path.join(ROOT, "chrome/content/scripts/ai/glossary-packs.js"), encoding="utf-8").read()
+    _glp_ok = "var GlossaryPacks" in _glp_src and _glp_src.count("{ s:") >= 60 and 'd: "计算机"' in _glp_src
+except Exception:
+    _glp_ok = False
+ok(_glp_ok, "25.43 种子词包数据文件存在（四域各 ~20 条、全部带领域标签、自编无版权风险）")
+ok("ai/glossary-packs.js" in mainjs and "this.glossaryPacks = GlossaryPacks;" in mainjs,
+   "25.44 main.js 装配 glossary-packs.js 并挂 Zotero.PaperPilot.glossaryPacks")
+ok("pp-tr-glossary-pack-add" in trp_js and "glossaryPacks" in trp_js,
+   "25.45 设置面板「添加领域词包」经 mergeGlossary 行级 upsert（追加不覆盖）")
+# 领域 chips：动态渲染 + 点击切换（写 translateGlossaryDomains）
+ok("renderGlossaryDomains" in trp_js and "onDomainChipToggle" in trp_js
+   and "translateGlossaryDomains" in trp_js,
+   "25.46 领域筛选 chips（空=全部启用；点击进入筛选；全部取消回未筛选态）")
+
+# 在线词包目录（0.4x：对接 GitHub open-termbank；懒加载 + 基址回退 + sha256 记账）
+ok("fetchCatalog" in _glp_src and "fetchDomain" in _glp_src and "ONLINE_BASES" in _glp_src,
+   "25.47 在线目录模块（fetchCatalog/fetchDomain/内置基址链）存在于 glossary-packs.js")
+ok("translateGlossaryPackBase" in _glp_src and "jsdelivr" in _glp_src
+   and "raw.githubusercontent.com" in _glp_src,
+   "25.48 取用基址 = 自定义镜像（pref）→ jsDelivr → raw 三级回退")
+ok("index.json" in _glp_src and "Date.now()" in _glp_src.split("function fetchCatalog")[1].split("\n  }")[0],
+   "25.49 ★ index.json 带时间戳破 CDN 缓存（否则「有更新」检测滞后于 jsDelivr 长缓存）")
+for _k in ["translateGlossaryPackBase", "translateGlossaryPackState"]:
+    ok(("paperpilot.%s" % _k) in prefsdef, "25.27b prefs.js 含 %s 默认值" % _k)
+for _id in ["pp-tr-glossary-online-fetch", "pp-tr-glossary-online-status",
+            "pp-tr-glossary-online-list"]:
+    ok(_id in xhtml_ids, "25.28b prefs.xhtml 含 #%s" % _id)
+ok("pp-tr-glossary-online-fetch" in trp_js and "onOnlineFetch" in trp_js
+   and "readPackState" in trp_js and "writePackState" in trp_js,
+   "25.50 面板接线在线目录（懒加载获取 + sha256 记账读写）")
+ok("parseGlossaryImport(r.text)" in trp_js and "translateGlossaryPackState" in trp_js,
+   "25.51 ★ 在线导入走 parseGlossaryImport→mergeGlossary 同一条链（与文件导入一致）")
+ok("glossaryPacks" in trp_js and "fetchCatalog()" in trp_js,
+   "25.52 面板经 Zotero.PaperPilot.glossaryPacks 调沙箱侧在线模块（与 TranslateSvc 同模式）")
 
 
 # ---------- 26. 参考文献一键入库（插件 0.33.0 重写） ----------
@@ -1841,13 +1912,13 @@ _pfold_js = io.open(PFOLD_JS, encoding="utf-8").read() if os.path.exists(PFOLD_J
 ok("prefs-fold.js" in mainjs, "31.2 main.js 注册 prefs-fold.js（scripts 列表）")
 for _eid in ("pp-fold-expand", "pp-fold-collapse"):
     ok(_eid in xhtml_ids, "31.3 prefs.xhtml 含折叠工具条 #%s" % _eid)
-_FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "popup",
+_FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "skills", "popup",
               "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys"]
 _fold_found = re.findall(r'data-fold="([a-z]+)"', prefs_xhtml)
 ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
-   "31.4 prefs.xhtml 的 14 个折叠分组键齐全（0.44.0 实验 +第三方文献源）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 14,
-   "31.5 折叠卡片共 14 张（0.44.0 实验 +第三方文献源；不多不少，防止漏包一张）")
+   "31.4 prefs.xhtml 的 15 个折叠分组键齐全（0.44.0 实验 +第三方文献源；0.48.x 技能商店）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 15,
+   "31.5 折叠卡片共 15 张（0.44.0 实验 +第三方文献源，0.48.x 技能商店；不多不少，防止漏包一张）")
 ok('pref("extensions.zotero.paperpilot.prefsFoldOpen", "");' in prefsdef,
    "31.6 prefs.js 有 prefsFoldOpen 默认值（空 = 全收起）")
 ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
@@ -1905,10 +1976,10 @@ ok('"你是一位严谨的学术研究助手' in prefsdef and "回答纪律：" 
    "35.5 aiSystemPrompt 是「人设+纪律」结构（非一句话人设）")
 PROMPTS_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "prompts.js")
 _prompts_js = io.open(PROMPTS_JS, encoding="utf-8").read()
-ok(_prompts_js.count('name: "') == 7,
-   "35.6 技能库内置恰 7 个（chat-float 快捷标签取前 8，防被截断）")
-ok("方法深挖" in _prompts_js and "下一步研究" in _prompts_js,
-   "35.6b 新技能「方法深挖」「下一步研究」在库")
+ok(_prompts_js.count('name: "') == 8,
+   "35.6 技能库内置恰 8 个（chat-float 快捷标签取前 8，防被截断；0.47.0 增「术语与缩写」）")
+ok("方法深挖" in _prompts_js and "下一步研究" in _prompts_js and "术语与缩写" in _prompts_js,
+   "35.6b 新技能「方法深挖」「下一步研究」「术语与缩写」在库")
 CHAT_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "chat.js")
 _chat_js = io.open(CHAT_JS, encoding="utf-8").read()
 ok("研究问题" in _chat_js and "结论与边界" in _chat_js and "只写论文里有的内容" in _chat_js,
@@ -2233,6 +2304,142 @@ ok("DOMContentLoaded" in _at_prev_js and "readyState" in _at_prev_js,
 _ri_js = io.open(os.path.join(ROOT, "chrome/content/ref-import.js"), encoding="utf-8").read()
 ok("DOMContentLoaded" in _ri_js and "function boot()" in _ri_js,
    "39.16 ★ 参考文献入库对话框同款时序守卫（wire 不再裸跑）")
+_cw_js2 = io.open(os.path.join(ROOT, "chrome/content/chat-window.js"), encoding="utf-8").read()
+ok("DOMContentLoaded" in _cw_js2 and "function boot()" in _cw_js2 and "readyState" in _cw_js2,
+   "39.17 ★ AI 问答分屏窗口同款时序守卫（0.47.0 真机探针实锤：旧版脚本先于 DOM 执行，"
+   "sendBtn 为 null 直接 TypeError，事件绑定从未生效＝「无法发送」的真因）")
+ok("no-native" in io.open(os.path.join(ROOT, "chrome/content/chat-window.xhtml"), encoding="utf-8").read(),
+   "39.18 ★ 分屏窗口输入框带 no-native 豁免（平台皮肤劫持＝「一片蓝色」的真因）")
+
+# ---------- 40. 0.48.0 Agent 模式 + 设置面板扩展 + 分区标题修复 ----------
+# 交互设计参考开源项目 Hermes Agent：任务规划（协议里要求先列计划）、工具调用
+# （提示词约定 JSON 协议，不依赖原生 function calling）、多轮上下文管理（历史轮数
+# 可配滑窗）。守卫盯：装配顺序、面板脚本接线、pref 默认值、CSS 遮挡修复不回归。
+AT_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "agent-tools.js")
+ok(os.path.exists(AT_JS), "40.1 AgentTools 模块存在（ai/agent-tools.js）")
+_at_js = io.open(AT_JS, encoding="utf-8").read() if os.path.exists(AT_JS) else ""
+ok('"ai/agent-tools.js"' in mainjs,
+   "40.2 main.js 装载清单含 agent-tools.js")
+ok(mainjs.find('"ai/chat.js"') < mainjs.find('"ai/agent-tools.js"'),
+   "40.3 装载顺序：agent-tools.js 在 ai/chat.js 之后（依赖 getFullText/paperMeta）")
+ok("this.agentTools = AgentTools" in mainjs and "this.commandTags = CommandTags" in mainjs,
+   "40.4 main.js 暴露 agentTools / commandTags（设置面板 prefs-agent.js 经此访问）")
+ok("prefs-agent.js" in mainjs, "40.5 main.js 注册 prefs-agent.js（设置面板 scripts 列表）")
+_cf_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "panels",
+                               "chat-float.js"), encoding="utf-8").read()
+ok("AgentTools.runAgentLoop" in _cf_src and "_agentReady" in _cf_src,
+   "40.6 chat-float 接入 Agent 循环（_agentReady 门控 + runAgentLoop 分流）")
+ok("SlashCommands.attach" in _cf_src and "_slashCommands" in _cf_src,
+   "40.7 chat-float 挂「/」命令面板（SlashCommands.attach + 命令清单）")
+ok("isOpen" in _cf_src and "entry.slash" in _cf_src,
+   "40.8 命令面板打开时 Enter/↑↓ 让位（entry.slash.isOpen 门控，防与输入历史冲突）")
+ok("AIChat.windowHistory" in _cf_src and "history.slice(-12)" not in _cf_src,
+   "40.9 chat-float 历史窗口走 AIChat.windowHistory（旧硬编码 slice(-12) 已清除）")
+_chat_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "ai", "chat.js"),
+                   encoding="utf-8").read()
+ok(_chat_js.count("this.windowHistory(history") == 2 and "history.slice(-12)" not in _chat_js,
+   "40.10 ai/chat.js 历史窗口化（buildMessages/ask 两处均走 windowHistory）")
+_client_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "ai", "client.js"),
+                     encoding="utf-8").read()
+ok("_sampleParams" in _client_js and _client_js.count("...this._sampleParams()") == 2,
+   "40.11 AIClient 两处 payload（chat/流式）统一走 _sampleParams（含可选 top_p）")
+PA_JS = os.path.join(ROOT, "chrome", "content", "prefs-agent.js")
+ok(os.path.exists(PA_JS), "40.12 prefs-agent.js 存在（AI 参数卡片扩展脚本）")
+_pa_js = io.open(PA_JS, encoding="utf-8").read() if os.path.exists(PA_JS) else ""
+for _eid in ("pp-agent-tools", "pp-agent-mode", "pp-agent-confirm", "pp-sysprompt",
+             "pp-syspreset-strict", "pp-syspreset-critical", "pp-syspreset-explain",
+             "pp-syspreset-reset", "pp-agent-tags", "pp-tags-export", "pp-tags-import"):
+    ok(_eid in xhtml_ids, "40.13 prefs.xhtml 含 #%s" % _eid)
+ok('id="pp-sysprompt"' in prefs_xhtml and
+   'preference="extensions.zotero.paperpilot.aiSystemPrompt"' in prefs_xhtml,
+   "40.14 System Prompt textarea 保留 preference= 声明式绑定并带 id（预设按钮写入用）")
+# aiAgentTools 为 CSV 白名单，由 prefs-agent.js chips 读写（无声明式绑定，40.17 盯两端）
+for _pk in ("aiHistoryRounds", "aiTopP", "chatAgentMode", "aiAgentMaxSteps",
+            "aiAgentConfirmWrite"):
+    ok('preference="extensions.zotero.paperpilot.%s"' % _pk in prefs_xhtml,
+       "40.15 prefs.xhtml 声明式绑定 %s" % _pk)
+    ok('pref("extensions.zotero.paperpilot.%s"' % _pk in prefsdef,
+       "40.16 prefs.js 有 %s 默认值" % _pk)
+ok('pref("extensions.zotero.paperpilot.aiAgentTools"' in prefsdef,
+   "40.16b prefs.js 有 aiAgentTools 默认值（CSV 白名单）")
+ok("aiAgentTools" in _pa_js and "aiAgentTools" in _at_js,
+   "40.17 工具白名单 pref 两端一致（面板写 / AgentTools 读）")
+ok("search_library" in _at_js and "add_note" in _at_js and "add_tags" in _at_js,
+   "40.18 AgentTools 注册表含核心工具（检索/读全文/加笔记/打标签）")
+ok("runAgentLoop" in _at_js and "callLLM" in _at_js and "runTool" in _at_js,
+   "40.19 runAgentLoop 依赖注入（callLLM/runTool 可 mock，测试不碰网络）")
+ok("confirmWrite" in _at_js and "Services.prompt.confirm" in _at_js,
+   "40.20 写操作确认走 Zotero 原生 confirm（协作模式）")
+ok(os.path.exists(os.path.join(ROOT, "test", "agent-tools.test.js")),
+   "40.21 Agent 工具层测试套件在库")
+_preflight_src = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
+ok("agent-tools.test.js" in _preflight_src,
+   "40.22 preflight 注册 agent-tools.test.js")
+# ★ 分区标题遮挡修复（负下边距 → 卡片背景盖住「账号」「AI 与翻译」标签底部）
+_cat_rule = re.search(r"\.pp-root \.pp-cat-label\s*\{([^}]*)\}", prefs_css, re.S)
+ok(_cat_rule is not None, "40.23 prefs.css 有 .pp-cat-label 规则")
+if _cat_rule:
+    _cat_body = _cat_rule.group(1)
+    ok(re.search(r"margin:\s*[^;]*-\d+px", _cat_body) is None,
+       "40.24 ★ .pp-cat-label 无负边距（旧值 6px 0 -4px 会把卡片上拉盖住标题底部）")
+    ok("scroll-margin-top" in _cat_body,
+       "40.25 ★ .pp-cat-label 带 scroll-margin-top（锚点定位不被窗口头部贴边遮挡）")
+else:
+    ok(False, "40.24/40.25 .pp-cat-label 规则缺失")
+
+# ---------- 41. 0.48.x 技能包商店（Skills Hub）集成接线 ----------
+# 协作拆分：核心域 features/skill-packs.js（全局 SkillPacks）与商店窗口
+# skill-store.xhtml / skill-store.js 由并行会话开发，本节守卫盯「集成接线」：
+# 装配顺序、暴露入口、窗口打开方法与单例 windowtype、设置面板卡片 id 与脚本、
+# pref 默认值、hub 卡片、契约方法齐全、测试注册（缺一个就是「点了没反应」）。
+SP_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "skill-packs.js")
+ok(os.path.exists(SP_JS), "41.1 SkillPacks 核心域存在（features/skill-packs.js）")
+_sp_js = io.open(SP_JS, encoding="utf-8").read() if os.path.exists(SP_JS) else ""
+ok('"features/skill-packs.js"' in mainjs,
+   "41.2 main.js 装载清单含 features/skill-packs.js")
+ok(mainjs.find('"ai/command-tags.js"') != -1 and
+   mainjs.find('"features/skill-packs.js"') != -1 and
+   mainjs.find('"ai/command-tags.js"') < mainjs.find('"features/skill-packs.js"'),
+   "41.3 装载顺序：command-tags.js 在 skill-packs.js 之前（SkillPacks 惰性消费 CommandTags/NoteTemplates/TranslateSvc）")
+ok("this.skillPacks = SkillPacks" in mainjs,
+   "41.4 main.js 暴露 this.skillPacks = SkillPacks（设置面板/商店窗口经此访问）")
+ok("openSkillStore" in mainjs and "paperpilot:skillstore" in mainjs,
+   "41.5 main.js 有 openSkillStore 与 paperpilot:skillstore（单例聚焦 + window.openDialog）")
+ok("prefs-skill.js" in mainjs,
+   "41.6 main.js scripts 列表注册 prefs-skill.js（设置面板技能商店卡片）")
+SS_XHTML = os.path.join(ROOT, "chrome", "content", "skill-store.xhtml")
+SS_JS = os.path.join(ROOT, "chrome", "content", "skill-store.js")
+_ss_xhtml = io.open(SS_XHTML, encoding="utf-8").read() if os.path.exists(SS_XHTML) else ""
+_ss_js = io.open(SS_JS, encoding="utf-8").read() if os.path.exists(SS_JS) else ""
+ok(os.path.exists(SS_XHTML) and
+   (("no-native" in _ss_xhtml and "function boot()" in _ss_xhtml) or
+    ("function boot()" in _ss_js and "readyState" in _ss_js)),
+   "41.7 商店窗口引导齐备（xhtml no-native + boot，或 skill-store.js boot + readyState，其一）")
+ok("paperpilot:skillstore" in _ss_xhtml or "paperpilot:skillstore" in _ss_js,
+   "41.8 商店窗口 windowtype 为 paperpilot:skillstore（xhtml 或 js 声明其一）")
+ok("&nbsp;" not in _ss_xhtml,
+   "41.9 skill-store.xhtml 无 &nbsp;（XML 实体纪律，同 §30 模式）")
+ok(os.path.exists(os.path.join(ROOT, "chrome", "content", "prefs-skill.js")),
+   "41.10 prefs-skill.js 存在（设置面板技能商店卡片脚本）")
+ok(all(_e in xhtml_ids for _e in
+       ("pp-sk-open", "pp-sk-import", "pp-sk-source", "pp-sk-installed")),
+   "41.11 prefs.xhtml 含技能商店卡片四 id（pp-sk-open / pp-sk-import / pp-sk-source / pp-sk-installed）")
+ok(all('pref("extensions.zotero.paperpilot.%s"' % _k in prefsdef for _k in
+       ("skillPacksInstalled", "skillPackRatings", "skillStoreSource")),
+   "41.12 prefs.js 有 skillPacksInstalled / skillPackRatings / skillStoreSource 默认值")
+ok("openSkillStore" in hub_js,
+   "41.13 hub.js 含 openSkillStore（功能中心卡片接线）")
+ok(all(_m in _sp_js for _m in
+       ("validate", "install", "uninstall", "fetchCatalog", "searchPacks", "listInstalled",
+        "rate", "applyAgentPreset", "buildManifest", "exportPack", "compareVersion")),
+   "41.14 SkillPacks 契约方法齐全（validate/install/uninstall/fetchCatalog/searchPacks/"
+   "listInstalled/rate/applyAgentPreset/buildManifest/exportPack/compareVersion）")
+ok(os.path.exists(os.path.join(ROOT, "test", "skill-packs.test.js")),
+   "41.15 技能包核心域测试套件在库（test/skill-packs.test.js）")
+ok("skill-packs.test.js" in _preflight_src,
+   "41.16 preflight 注册 skill-packs.test.js")
+ok('"SkillPacks"' in _smoke,
+   "41.17 smoke-load.test.js expect 含 SkillPacks（关键全局冒烟）")
 
 print("=" * 60)
 for p in passes:

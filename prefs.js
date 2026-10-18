@@ -19,7 +19,22 @@ pref("extensions.zotero.paperpilot.aiSystemPrompt", "你是一位严谨的学术
 pref("extensions.zotero.paperpilot.aiMaxTokens", 4096);
 // 注意：Mozilla pref 没有浮点类型（int 会截断 0.3→0），温度一律存字符串，代码里 Number() 解析
 pref("extensions.zotero.paperpilot.aiTemperature", "0.3");
+// top_p 核采样（可选，空 = 不传该字段——部分网关对未知字段报错；字符串存法同温度）
+pref("extensions.zotero.paperpilot.aiTopP", "");
 pref("extensions.zotero.paperpilot.aiFullTextMaxChars", 16000);
+// 0.48.0 多轮上下文管理：对话历史滑窗轮数（1-30，默认 6 轮 = 12 条消息）
+pref("extensions.zotero.paperpilot.aiHistoryRounds", 6);
+// 0.48.0 Agent 模式（交互参考 Hermes Agent：任务规划 + 工具调用 + 上下文管理）：
+// 总开关默认关（零回归）；工具白名单 CSV；写操作默认逐次确认（协作模式）；
+// 工具调用轮数上限（1-12，防失控）
+pref("extensions.zotero.paperpilot.chatAgentMode", false);
+pref("extensions.zotero.paperpilot.aiAgentMaxSteps", 5);
+pref("extensions.zotero.paperpilot.aiAgentConfirmWrite", true);
+pref("extensions.zotero.paperpilot.aiAgentTools", "search_library,get_item_details,read_item_fulltext,list_collections,add_note,add_tags");
+// 0.48.x 技能包商店（Skills Hub）：已安装记账 / 本地评分 / 目录源（空 = 仅内置目录）
+pref("extensions.zotero.paperpilot.skillPacksInstalled", "");
+pref("extensions.zotero.paperpilot.skillPackRatings", "");
+pref("extensions.zotero.paperpilot.skillStoreSource", "");
 pref("extensions.zotero.paperpilot.rankColumnEnabled", true);
 pref("extensions.zotero.paperpilot.rankDataPath", "");
 // 0.5.0 新增：easyScholar 在线期刊等级（离线 JSON 数据仍为优先兜底）
@@ -93,6 +108,15 @@ pref("extensions.zotero.paperpilot.bilingualViewLayout", "auto");
 // 术语表：每行「原文 = 译文」（支持 => 与 TAB 分隔，# 与 // 为注释；另兼容 JSON 数组）。
 // 注入 AI 大模型提示词保证术语全文一致；专用引擎（Google/DeepL…）无指令通道，不生效
 pref("extensions.zotero.paperpilot.translateGlossary", "");
+// 0.4x 术语表领域化：行式第三段「原文 = 译文 | 领域」（多标签 ; 或 , 分隔）；
+// 本项为启用域白名单（分号分隔，如 "医学;计算机"）——空串 = 全部启用（默认）。
+// 无领域标注的通用术语永不被滤；领域术语须命中白名单才注入。缓存键随过滤结果变化
+pref("extensions.zotero.paperpilot.translateGlossaryDomains", "");
+// 0.4x 在线词包（数据源 = GitHub open-termbank）：
+// PackBase = 自定义取用镜像（空 = 走内置 jsDelivr→raw 回退链；被墙网络可指镜像/代理）
+pref("extensions.zotero.paperpilot.translateGlossaryPackBase", "");
+// PackState = 已导入域的 sha256 记账（JSON：{"<slug>":"<sha256>"}），用于「有更新」检测
+pref("extensions.zotero.paperpilot.translateGlossaryPackState", "");
 // 结构化提取（默认开）：阅读器逐页取文优先、全文索引兜底 → 段落块（body/caption/formula）；
 // 公式原样直出不送翻、图表注单列、页眉页脚/页码/DOI/坐标轴刻度等高置信垃圾行过滤
 pref("extensions.zotero.paperpilot.bilingualStructExtract", true);

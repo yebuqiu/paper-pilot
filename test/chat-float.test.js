@@ -545,6 +545,58 @@ async function tick(n = 4) { for (let i = 0; i < n; i++) await new Promise((r) =
   eq(entry.root.style.display, 'flex', '注入唤起悬浮窗');
   eq(CF.session.item, itemA, '注入锁定条目');
 
+  /* ---------------- ⑤.5 自定义 UI entry 的 send 钩子（0.47.0 分屏窗口） ---------------- */
+
+  const cwDoc = makeDoc();
+  const cwRoot = new El('div');
+  cwDoc.docRoot.appendChild(cwRoot);
+  const cwChips = new El('div');
+  const cwInput = new El('textarea');
+  const cwEntry = {
+    win: { document: cwDoc.document },
+    root: cwRoot,
+    refs: { chips: cwChips, input: cwInput },
+    sendCalls: [],
+    send() { this.sendCalls.push(cwInput.value); },
+  };
+  CF._renderChips(cwEntry);
+  ok(cwChips.children.length > 0, 'renderChips 渲染自定义 entry 的标签');
+  const chipBtn = cwChips.children.find((c) => c.tag === 'button');
+  ok(!!chipBtn, '自定义 entry 的标签按钮存在');
+  cwInput.value = '';
+  chipBtn.click();
+  eq(cwEntry.sendCalls.length, 1, '标签点击走 entry.send 钩子（不再落回 _doSend）');
+  has(cwEntry.sendCalls[0], '请总结这篇论文', '钩子收到标签提示词');
+  eq(cwInput.value, '请总结这篇论文', '标签点击预填输入框');
+
+  /* ---------------- ⑤.6 标签 {input} 替换（0.48.x：先输入主题再点标签） ---------------- */
+
+  const savedCT = sandbox.CommandTags;
+  sandbox.CommandTags = {
+    all: () => [{ id: 't1', label: '综述', prompt: '我要写关于「{input}」的综述', color: '', trigger: '' }],
+  };
+  const cwChips2 = new El('div');
+  const cwInput2 = new El('textarea');
+  const cwEntry2 = {
+    win: { document: cwDoc.document },
+    root: cwRoot,
+    refs: { chips: cwChips2, input: cwInput2 },
+    sendCalls: [],
+    send() { this.sendCalls.push(cwInput2.value); },
+  };
+  CF._renderChips(cwEntry2);
+  const chip2 = cwChips2.children.find((c) => c.tag === 'button');
+  ok(!!chip2, '⑤.6 标签按钮存在');
+  cwInput2.value = '图神经网络';
+  chip2.click();
+  eq(cwEntry2.sendCalls[0], '我要写关于「图神经网络」的综述',
+    '标签 prompt 含 {input} 且输入框有内容 → 替换后发送');
+  cwInput2.value = '';
+  chip2.click();
+  eq(cwEntry2.sendCalls[1], '我要写关于「{input}」的综述',
+    '空输入框 → {input} 保持字面（trigger 路径仍可命中）');
+  sandbox.CommandTags = savedCT;
+
   /* ---------------- ⑥ saveHistoryAsNote ---------------- */
 
   CF.session.item = itemA;

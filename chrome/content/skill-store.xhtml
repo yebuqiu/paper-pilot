@@ -1,0 +1,371 @@
+<!DOCTYPE window>
+<!-- PaperPilot · AI 技能包商店（Skills Hub）独立窗口
+     纪律（本项目真机踩坑实录，务必保持）：
+       ① 不写 XML 声明；禁用一切未定义实体（如 nbsp / copy / mdash 之类的命名实体），占位一律 &#160;。
+       ② XUL 窗口顶部 <script> 先于后续 DOM 执行 → skill-store.js 用 boot() +
+          DOMContentLoaded/readyState 双保险，绝不在脚本顶层碰 DOM。
+       ③ 表单控件三保险：html:textarea 一律 no-native="true"；全部 input/select/
+          textarea/button 显式 appearance:none + background/color/border（win 平台
+          皮肤会把未定型控件强制透明底 + 蓝渐变 + max-height:25px）；
+          布局只用 html:div 弹性盒，不依赖 XUL 盒模型排表单。
+     核心域契约：Zotero.PaperPilot.skillPacks（另一模块实现），本窗口全程防御式调用；
+     单例（防重复打开）由打开方负责。窗口参数 {Zotero, Services} 经 window.arguments 传入。 -->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="PaperPilot · 技能商店"
+        windowtype="paperpilot:skillstore"
+        width="880" height="640"
+        persist="screenX screenY width height sizemode">
+  <script src="chrome://paperpilot/content/skill-store.js"></script>
+  <html:style><![CDATA[
+    /* ===== 主题变量（对齐 prefs.css 变量组；浅色 = GitHub Primer Light） ===== */
+    #pp-ss-root {
+      --pp-bg:#f6f8fa; --pp-surface:#ffffff; --pp-surface-2:#f6f8fa;
+      --pp-border:#d1d9e0; --pp-text:#1f2328; --pp-muted:#59636e;
+      --pp-accent:#0969da; --pp-accent-emphasis:#0757b3; --pp-accent-weak:#ddf4ff;
+      --pp-success:#1a7f37; --pp-danger:#cf222e; --pp-warn:#9a6700;
+      --pp-btn-hover:#eef1f4; --pp-focus-ring:rgba(9,105,218,.18);
+      --pp-ok-bg:rgba(26,127,55,.13);
+      --pp-code-bg:#f6f8fa; --pp-code-text:#1f2328;
+    }
+    /* 系统深色模式（JS 会按 PaperPilot 自定义界面主题再校正 data-theme） */
+    @media (prefers-color-scheme: dark) {
+      #pp-ss-root:not([data-theme="light"]) {
+        --pp-bg:#1a1e23; --pp-surface:#21252b; --pp-surface-2:#1a1e23;
+        --pp-border:#3d444d; --pp-text:#e6edf3; --pp-muted:#9198a1;
+        --pp-accent:#4493f8; --pp-accent-emphasis:#2f81f7; --pp-accent-weak:#17233a;
+        --pp-success:#3fb950; --pp-danger:#f85149; --pp-warn:#d29922;
+        --pp-btn-hover:#2a3038; --pp-focus-ring:rgba(68,147,248,.25);
+        --pp-ok-bg:rgba(63,185,80,.16);
+        --pp-code-bg:#12161b; --pp-code-text:#c9d1d9;
+      }
+    }
+    #pp-ss-root[data-theme="dark"] {
+      --pp-bg:#1a1e23; --pp-surface:#21252b; --pp-surface-2:#1a1e23;
+      --pp-border:#3d444d; --pp-text:#e6edf3; --pp-muted:#9198a1;
+      --pp-accent:#4493f8; --pp-accent-emphasis:#2f81f7; --pp-accent-weak:#17233a;
+      --pp-success:#3fb950; --pp-danger:#f85149; --pp-warn:#d29922;
+      --pp-btn-hover:#2a3038; --pp-focus-ring:rgba(68,147,248,.25);
+      --pp-ok-bg:rgba(63,185,80,.16);
+      --pp-code-bg:#12161b; --pp-code-text:#c9d1d9;
+    }
+
+    * { box-sizing:border-box; }
+    window { min-width:680px; min-height:480px; }
+
+    #pp-ss-root {
+      display:flex; flex-direction:column; width:100%; height:100%;
+      position:relative; overflow:hidden;
+      background:var(--pp-bg); color:var(--pp-text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+      font-size:13px; line-height:1.6;
+    }
+
+    /* ===== 表单控件三保险（②③）：统一显式定型，压过 win 平台皮肤 ===== */
+    #pp-ss-root input, #pp-ss-root select, #pp-ss-root textarea, #pp-ss-root button {
+      appearance:none; -moz-appearance:none; max-height:none; height:auto;
+      font-family:inherit; box-sizing:border-box;
+    }
+    #pp-ss-root input.pp-ss-input, #pp-ss-root select.pp-ss-select {
+      background:var(--pp-bg); color:var(--pp-text);
+      border:1px solid var(--pp-border); border-radius:6px;
+      padding:4px 8px; font-size:12.5px; min-width:0; width:100%;
+    }
+    #pp-ss-root select.pp-ss-select {
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23808c99' stroke-width='1.6'/%3E%3C/svg%3E");
+      background-repeat:no-repeat; background-position:right 8px center; padding-right:24px;
+    }
+    #pp-ss-root select.pp-ss-select option { background:var(--pp-surface); color:var(--pp-text); }
+    #pp-ss-root input.pp-ss-input:focus, #pp-ss-root select.pp-ss-select:focus,
+    #pp-ss-root textarea.pp-ss-textarea:focus {
+      outline:none; border-color:var(--pp-accent); box-shadow:0 0 0 3px var(--pp-focus-ring);
+    }
+    #pp-ss-root input.pp-ss-input::placeholder, #pp-ss-root textarea.pp-ss-textarea::placeholder {
+      color:var(--pp-muted);
+    }
+    #pp-ss-root textarea.pp-ss-textarea {
+      background:var(--pp-bg); color:var(--pp-text);
+      border:1px solid var(--pp-border); border-radius:6px;
+      padding:6px 8px; font-size:12.5px; line-height:1.6;
+      resize:vertical; min-height:52px; width:100%;
+    }
+    /* 自绘复选框（checkbox 走 label + span 视觉，input 视觉隐藏） */
+    .pp-ss-check { display:inline-flex; align-items:center; gap:6px; cursor:pointer;
+      user-select:none; font-size:12.5px; color:var(--pp-text); }
+    .pp-ss-check input[type="checkbox"] {
+      appearance:none; -moz-appearance:none; opacity:0; width:0; height:0;
+      min-width:0; min-height:0; max-width:0; max-height:none; padding:0; margin:0;
+      border:none; position:absolute; background:transparent; color:transparent;
+    }
+    .pp-ss-check .pp-ss-cbox {
+      width:15px; height:15px; flex:none; position:relative; cursor:pointer;
+      border:1px solid var(--pp-border); border-radius:4px; background:var(--pp-surface);
+      display:inline-block;
+    }
+    .pp-ss-check input:checked + .pp-ss-cbox { background:var(--pp-accent); border-color:var(--pp-accent); }
+    .pp-ss-check input:checked + .pp-ss-cbox::after {
+      content:""; position:absolute; left:4.5px; top:1.5px; width:4px; height:8px;
+      border:solid #ffffff; border-width:0 2px 2px 0; transform:rotate(45deg);
+    }
+    .pp-ss-check input:focus-visible + .pp-ss-cbox { box-shadow:0 0 0 3px var(--pp-focus-ring); }
+
+    /* ===== 按钮 ===== */
+    #pp-ss-root button.pp-ss-btn {
+      appearance:none; -moz-appearance:none; height:auto; max-height:none;
+      background:var(--pp-surface); color:var(--pp-text);
+      border:1px solid var(--pp-border); border-radius:7px;
+      padding:4px 12px; font-size:12px; line-height:1.6; cursor:pointer;
+      white-space:nowrap; user-select:none;
+    }
+    #pp-ss-root button.pp-ss-btn:hover:not(:disabled) {
+      background:var(--pp-btn-hover); border-color:var(--pp-accent); color:var(--pp-accent);
+    }
+    #pp-ss-root button.pp-ss-btn:disabled { opacity:.55; cursor:default; }
+    #pp-ss-root button.pp-ss-btn-primary {
+      background:var(--pp-accent); border-color:var(--pp-accent); color:#ffffff; font-weight:600;
+    }
+    #pp-ss-root button.pp-ss-btn-primary:hover:not(:disabled) {
+      background:var(--pp-accent-emphasis); border-color:var(--pp-accent-emphasis); color:#ffffff;
+    }
+    #pp-ss-root button.pp-ss-btn-sm { padding:2px 10px; font-size:11.5px; }
+    #pp-ss-root button.pp-ss-btn-danger { color:var(--pp-danger); }
+    #pp-ss-root button.pp-ss-btn-danger:hover:not(:disabled) {
+      background:rgba(207,34,46,.08); border-color:var(--pp-danger); color:var(--pp-danger);
+    }
+
+    /* ===== 顶栏（固定，随视图切换三套 bar） ===== */
+    .pp-ss-bar { display:flex; align-items:center; gap:8px; padding:8px 12px; flex:none;
+      background:var(--pp-surface); border-bottom:1px solid var(--pp-border); }
+    .pp-ss-bartitle { font-weight:700; font-size:13.5px; overflow:hidden;
+      text-overflow:ellipsis; white-space:nowrap; }
+    #pp-ss-search {
+      appearance:none; -moz-appearance:none; flex:1 1 auto; min-width:0;
+      height:30px; max-height:none; padding:0 10px; font-size:12.5px;
+      border:1px solid var(--pp-border); border-radius:7px;
+      background:var(--pp-bg); color:var(--pp-text);
+    }
+    #pp-ss-search:focus { outline:none; border-color:var(--pp-accent); box-shadow:0 0 0 3px var(--pp-focus-ring); }
+    #pp-ss-search::placeholder { color:var(--pp-muted); }
+
+    /* ===== 主滚动区（顶栏/状态条固定，仅此区滚动） ===== */
+    #pp-ss-main { flex:1 1 0; min-height:0; overflow-y:auto; scrollbar-width:thin;
+      padding:12px 14px 10px; }
+    #pp-ss-view-list, #pp-ss-view-detail, #pp-ss-view-maker {
+      display:flex; flex-direction:column; gap:10px; max-width:820px; }
+    #pp-ss-view-detail, #pp-ss-view-maker { gap:12px; }
+
+    /* ===== chips 行（分类 / 标签） ===== */
+    .pp-ss-chipsrow { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+    .pp-ss-chips-label { font-size:12px; color:var(--pp-muted); flex:none; margin-right:2px; }
+    #pp-ss-root button.pp-ss-chip {
+      appearance:none; -moz-appearance:none; height:auto; max-height:none;
+      background:var(--pp-surface-2); color:var(--pp-text);
+      border:1px solid var(--pp-border); border-radius:99px;
+      padding:2px 12px; font-size:12px; cursor:pointer; white-space:nowrap;
+    }
+    #pp-ss-root button.pp-ss-chip:hover:not(:disabled) { border-color:var(--pp-accent); color:var(--pp-accent); }
+    #pp-ss-root button.pp-ss-chip-on {
+      border-color:var(--pp-accent); background:var(--pp-accent-weak);
+      color:var(--pp-accent); font-weight:600;
+    }
+
+    /* ===== 过滤行（仅看已安装 + 目录来源） ===== */
+    #pp-ss-filterrow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    #pp-ss-catalog-meta { font-size:11.5px; color:var(--pp-muted); margin-left:auto; }
+
+    /* ===== 卡片网格 ===== */
+    #pp-ss-grid { display:flex; flex-wrap:wrap; gap:12px; }
+    .pp-ss-card { width:250px; flex:0 0 250px; display:flex; flex-direction:column; gap:4px;
+      background:var(--pp-surface); border:1px solid var(--pp-border); border-radius:10px;
+      padding:12px; cursor:pointer; transition:border-color .12s, box-shadow .12s; }
+    .pp-ss-card:hover { border-color:var(--pp-accent); box-shadow:0 1px 6px rgba(0,0,0,.07); }
+    .pp-ss-card-head { display:flex; align-items:center; gap:6px; min-width:0; }
+    .pp-ss-card-name { font-weight:700; font-size:13px; overflow:hidden;
+      text-overflow:ellipsis; white-space:nowrap; flex:1 1 auto; min-width:0; }
+    .pp-ss-ver { font-size:10.5px; padding:0 7px; border-radius:99px; flex:none;
+      background:var(--pp-accent-weak); color:var(--pp-accent); line-height:17px; }
+    .pp-ss-card-author { font-size:11.5px; color:var(--pp-muted);
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pp-ss-card-meta { display:flex; align-items:center; gap:6px; min-width:0; flex-wrap:wrap; }
+    .pp-ss-cat { font-size:10.5px; padding:0 8px; border-radius:99px; flex:none;
+      background:var(--pp-ok-bg); color:var(--pp-success); line-height:17px; }
+    .pp-ss-card-tags { font-size:10.5px; color:var(--pp-muted);
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+    .pp-ss-card-rate { font-size:11.5px; color:var(--pp-warn); font-weight:600; }
+    .pp-ss-card-rate.none { color:var(--pp-muted); font-weight:400; }
+    .pp-ss-card-desc { font-size:12px; color:var(--pp-muted); overflow:hidden;
+      display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+    .pp-ss-card-btns { display:flex; align-items:center; gap:6px; margin-top:4px; }
+    .pp-ss-installed { font-size:11.5px; color:var(--pp-muted); }
+    .pp-ss-spacer { flex:1 1 auto; }
+
+    /* ===== 空态 ===== */
+    .pp-ss-empty { padding:38px 20px; text-align:center; }
+    .pp-ss-empty-title { font-size:15px; font-weight:700; color:var(--pp-text); }
+    .pp-ss-empty-sub { font-size:12.5px; color:var(--pp-muted); margin-top:6px; line-height:1.7; }
+
+    /* ===== 详情视图 ===== */
+    .pp-ss-d-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .pp-ss-d-name { font-size:17px; font-weight:700; }
+    .pp-ss-d-sub { font-size:12px; color:var(--pp-muted); line-height:1.7; }
+    .pp-ss-d-desc { white-space:pre-wrap; word-break:break-word; font-size:13px; line-height:1.7; }
+    .pp-ss-sec-title { font-size:13px; font-weight:700; margin-top:4px; }
+    .pp-ss-d-changelog { white-space:pre-wrap; word-break:break-word; margin:0;
+      background:var(--pp-surface-2); border:1px solid var(--pp-border); border-radius:8px;
+      padding:10px 12px; font-size:12px; line-height:1.7; font-family:inherit; }
+    .pp-ss-list-item { font-size:12px; color:var(--pp-muted); padding:2px 8px 2px 10px;
+      border-left:2px solid var(--pp-border); line-height:1.6; }
+    .pp-ss-actrow { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .pp-ss-rate-form { border:1px solid var(--pp-border); border-radius:10px;
+      padding:12px 14px; background:var(--pp-surface); display:flex;
+      flex-direction:column; gap:8px; margin-top:4px; }
+    .pp-ss-starrow { display:flex; align-items:center; gap:2px; }
+    #pp-ss-root button.pp-ss-star {
+      appearance:none; -moz-appearance:none; height:auto; max-height:none;
+      background:transparent; border:none; padding:0 2px; cursor:pointer;
+      font-size:19px; line-height:1; color:var(--pp-border);
+    }
+    #pp-ss-root button.pp-ss-star:hover { color:var(--pp-accent); }
+    #pp-ss-root button.pp-ss-star-on { color:var(--pp-accent) !important; }
+    .pp-ss-hint { font-size:11.5px; color:var(--pp-muted); line-height:1.6; }
+    .pp-ss-json { background:var(--pp-code-bg); color:var(--pp-code-text);
+      border:1px solid var(--pp-border); border-radius:8px; margin:0;
+      padding:10px 12px; font-size:12px; line-height:1.5;
+      font-family:Consolas,Menlo,monospace; white-space:pre-wrap; word-break:break-all;
+      overflow-x:auto; max-height:320px; overflow-y:auto; }
+
+    /* ===== 制作器视图 ===== */
+    .pp-ss-mk-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .pp-ss-field { display:flex; flex-direction:column; gap:3px; min-width:0; }
+    .pp-ss-label { font-size:12.5px; color:var(--pp-text); }
+    .pp-ss-mksec { font-size:13px; font-weight:700; margin-top:4px; }
+    .pp-ss-mk-tagrow { display:flex; align-items:center; gap:8px; padding:3px 0;
+      border-bottom:1px dashed var(--pp-border); }
+    .pp-ss-mk-tagrow:last-child { border-bottom:none; }
+    .pp-ss-mk-tagname { font-size:12.5px; font-weight:600; color:var(--pp-text); flex:none; }
+    .pp-ss-mk-tagprev { font-size:11.5px; color:var(--pp-muted); overflow:hidden;
+      text-overflow:ellipsis; white-space:nowrap; min-width:0; flex:1 1 auto; }
+    .pp-ss-mk-tplrow { display:flex; gap:8px; align-items:flex-start; margin-top:6px; }
+    .pp-ss-mk-tplname { flex:0 0 160px; }
+    .pp-ss-mk-tplcontent { flex:1 1 auto; min-height:44px; }
+    .pp-ss-mk-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px; }
+    .pp-ss-errline { font-size:12px; color:var(--pp-danger); line-height:1.6; }
+    #pp-ss-mk-errors { display:flex; flex-direction:column; gap:2px; }
+    #pp-ss-mk-json-actions { display:flex; gap:8px; }
+
+    /* ===== 固定状态条（全部反馈集中于此，不弹 alert） ===== */
+    #pp-ss-status { flex:none; min-height:28px; display:flex; align-items:center;
+      padding:4px 12px; background:var(--pp-surface);
+      border-top:1px solid var(--pp-border); font-size:12px; color:var(--pp-muted);
+      overflow:hidden; }
+    #pp-ss-status.pp-ss-st-ok { color:var(--pp-success); }
+    #pp-ss-status.pp-ss-st-err { color:var(--pp-danger); }
+  ]]></html:style>
+
+  <vbox flex="1" id="pp-ss-root" style="min-width:0;min-height:0;">
+
+    <!-- 顶栏 ① 列表视图：搜索 + 刷新目录 + 制作入口 -->
+    <html:div id="pp-ss-bar-list" class="pp-ss-bar">
+      <html:input id="pp-ss-search" type="text"
+        placeholder="搜索技能包名称 / 标签 / 作者…"/>
+      <html:button id="pp-ss-refresh" type="button" class="pp-ss-btn">🔄 刷新目录</html:button>
+      <html:button id="pp-ss-make" type="button" class="pp-ss-btn">＋ 制作技能包</html:button>
+    </html:div>
+
+    <!-- 顶栏 ② 详情视图：返回 -->
+    <html:div id="pp-ss-bar-detail" class="pp-ss-bar" style="display:none;">
+      <html:button id="pp-ss-back-detail" type="button" class="pp-ss-btn">← 返回列表</html:button>
+      <html:div id="pp-ss-detail-title" class="pp-ss-bartitle"></html:div>
+    </html:div>
+
+    <!-- 顶栏 ③ 制作器视图：返回 -->
+    <html:div id="pp-ss-bar-maker" class="pp-ss-bar" style="display:none;">
+      <html:button id="pp-ss-back-maker" type="button" class="pp-ss-btn">← 返回列表</html:button>
+      <html:div class="pp-ss-bartitle">制作技能包</html:div>
+    </html:div>
+
+    <!-- 主滚动区 -->
+    <html:div id="pp-ss-main">
+
+      <!-- 视图 ① 列表 -->
+      <html:div id="pp-ss-view-list">
+        <html:div id="pp-ss-cats" class="pp-ss-chipsrow"></html:div>
+        <html:div id="pp-ss-tags" class="pp-ss-chipsrow"></html:div>
+        <html:div id="pp-ss-filterrow">
+          <html:label class="pp-ss-check">
+            <html:input id="pp-ss-installed-only" type="checkbox"/>
+            <html:span class="pp-ss-cbox"></html:span>
+            <html:span>仅看已安装</html:span>
+          </html:label>
+          <html:span id="pp-ss-catalog-meta"></html:span>
+        </html:div>
+        <html:div id="pp-ss-grid"></html:div>
+        <html:div id="pp-ss-empty" class="pp-ss-empty" style="display:none;">
+          <html:div id="pp-ss-empty-title" class="pp-ss-empty-title"></html:div>
+          <html:div id="pp-ss-empty-sub" class="pp-ss-empty-sub"></html:div>
+        </html:div>
+      </html:div>
+
+      <!-- 视图 ② 详情（skill-store.js 纯 DOM 装配） -->
+      <html:div id="pp-ss-view-detail" style="display:none;"></html:div>
+
+      <!-- 视图 ③ 制作器 -->
+      <html:div id="pp-ss-view-maker" style="display:none;">
+        <html:div class="pp-ss-mk-grid">
+          <html:div class="pp-ss-field">
+            <html:label class="pp-ss-label" for="pp-ss-mk-name">名称 *</html:label>
+            <html:input id="pp-ss-mk-name" class="pp-ss-input" type="text"/>
+          </html:div>
+          <html:div class="pp-ss-field">
+            <html:label class="pp-ss-label" for="pp-ss-mk-author">作者 *</html:label>
+            <html:input id="pp-ss-mk-author" class="pp-ss-input" type="text"/>
+          </html:div>
+          <html:div class="pp-ss-field">
+            <html:label class="pp-ss-label" for="pp-ss-mk-desc">简介 *（60 字以内）</html:label>
+            <html:input id="pp-ss-mk-desc" class="pp-ss-input" type="text" maxlength="60"/>
+          </html:div>
+          <html:div class="pp-ss-field">
+            <html:label class="pp-ss-label" for="pp-ss-mk-cat">分类</html:label>
+            <html:select id="pp-ss-mk-cat" class="pp-ss-select"></html:select>
+          </html:div>
+          <html:div class="pp-ss-field">
+            <html:label class="pp-ss-label" for="pp-ss-mk-tags">标签（多个用逗号分隔）</html:label>
+            <html:input id="pp-ss-mk-tags" class="pp-ss-input" type="text"/>
+          </html:div>
+          <html:div class="pp-ss-field">
+            <html:label class="pp-ss-label" for="pp-ss-mk-ver">版本</html:label>
+            <html:input id="pp-ss-mk-ver" class="pp-ss-input" type="text" value="1.0.0"/>
+          </html:div>
+        </html:div>
+
+        <html:div class="pp-ss-mksec">打包内容：勾选要包含的 Prompt 标签</html:div>
+        <html:div id="pp-ss-mk-tags-list"></html:div>
+
+        <html:div class="pp-ss-mksec">可选：术语表（每行一条「原文 = 译文」，如「LLM = 大语言模型」；也可用 =&gt; 分隔，| 后可加领域）</html:div>
+        <html:textarea id="pp-ss-mk-glossary" class="pp-ss-textarea" no-native="true"
+          rows="4" placeholder="每行一条术语，可留空"></html:textarea>
+
+        <html:div class="pp-ss-mksec">可选：笔记模板</html:div>
+        <html:div id="pp-ss-mk-tpl-list"></html:div>
+
+        <html:div class="pp-ss-mk-actions">
+          <html:button id="pp-ss-mk-add-tpl" type="button" class="pp-ss-btn">＋ 添加一行模板</html:button>
+          <html:button id="pp-ss-mk-build" type="button" class="pp-ss-btn pp-ss-btn-primary">生成技能包</html:button>
+        </html:div>
+
+        <html:div id="pp-ss-mk-errors"></html:div>
+        <html:pre id="pp-ss-mk-json" class="pp-ss-json" style="display:none;"></html:pre>
+        <html:div id="pp-ss-mk-json-actions" style="display:none;">
+          <html:button id="pp-ss-mk-copy" type="button" class="pp-ss-btn">复制 JSON</html:button>
+          <html:button id="pp-ss-mk-save" type="button" class="pp-ss-btn">保存为文件</html:button>
+        </html:div>
+
+        <html:div class="pp-ss-hint">生成后可分享给他人（对方在设置 → 技能商店导入），或提交到官方目录仓库收录。Esc 返回列表。</html:div>
+      </html:div>
+
+    </html:div>
+
+    <!-- 固定状态条 -->
+    <html:div id="pp-ss-status"></html:div>
+  </vbox>
+</window>

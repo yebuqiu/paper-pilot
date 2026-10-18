@@ -137,6 +137,7 @@
     const cd = $("pp-tr-cooldown");
     if (cd) cd.value = String(Math.round((c.cooldownMs || 0) / 1000));
     // 0.33.0 术语表与全文翻译优化（三个开关直接走 Zotero.Prefs 布尔默认值）
+    // 0.4x 追加：领域 chips + 种子词包下拉（数据面在 renderGlossaryDomains/Packs）
     const gl = $("pp-tr-glossary");
     if (gl) {
       gl.value = String((function () {
@@ -144,6 +145,8 @@
         catch (e) { return ""; }
       })());
       renderGlossaryMsg(gl.value);
+      renderGlossaryDomains();
+      renderGlossaryPacks();
     }
     const st = $("pp-tr-bl-struct");
     if (st) st.checked = prefBool("bilingualStructExtract", true);
@@ -181,15 +184,28 @@
     } catch (e) { return dflt; }
   }
 
-  /** 术语表输入反馈：解析条数实时显示在文本框下方（行内反馈，别让用户猜是否生效） */
+  /** 术语表输入反馈：解析条数实时显示在文本框下方（行内反馈，别让用户猜是否生效）
+   *  0.4x：追加领域统计（通用 N · 计算机 12 · 医学 20 …），领域 chips 由 renderGlossaryDomains 渲染 */
   function renderGlossaryMsg(raw) {
     const msg = $("pp-tr-glossary-msg");
     if (!msg) return;
     const S = T();
     let n = 0;
     let bad = 0;
+    let domBits = [];
     if (S && S.parseGlossary) {
-      try { n = S.parseGlossary(raw).length; } catch (e) { n = 0; }
+      try {
+        const list = S.parseGlossary(raw);
+        n = list.length;
+        const doms = {};
+        let general = 0;
+        for (const g of list) {
+          if (g.d) { for (const d of String(g.d).split(";")) if (d) doms[d] = (doms[d] || 0) + 1; }
+          else general++;
+        }
+        domBits = Object.keys(doms).sort().map((d) => d + " " + doms[d]);
+        if (general) domBits.unshift((zh ? "通用 " : "general ") + general);
+      } catch (e) { n = 0; }
     }
     // 无法解析出术语的非空行 = 写法提示（不含注释行）
     for (const line of String(raw || "").split(/\r?\n/)) {
@@ -198,16 +214,292 @@
       if (!/=>|=|\t/.test(t)) bad++;
     }
     msg.style.color = "var(--pp-muted)";
+    const domTail = domBits.length ? "（" + domBits.join(" · ") + "）" : "";
     if (!String(raw || "").trim()) {
       msg.textContent = zh ? "尚未配置术语表" : "No glossary yet";
     } else if (bad) {
       msg.style.color = "var(--pp-warn)";
       msg.textContent = zh
-        ? "已解析 " + n + " 条；" + bad + " 行缺少「=」分隔符（# 开头的行为注释）"
-        : n + " parsed; " + bad + " line(s) missing '=' separator";
+        ? "已解析 " + n + " 条" + domTail + "；" + bad + " 行缺少「=」分隔符（# 开头的行为注释）"
+        : n + " parsed" + domTail + "; " + bad + " line(s) missing '=' separator";
     } else {
-      msg.textContent = zh ? "已解析 " + n + " 条术语" : n + " term(s) parsed";
+      msg.textContent = (zh ? "已解析 " + n + " 条术语" : n + " term(s) parsed") + domTail;
     }
+  }
+
+  /* ---------- 0.4x 领域筛选 chips / 导入导出 / 种子词包 ---------- */
+
+  /** 领域 chips：pref translateGlossaryDomains 为空 = 全部启用（未筛选态）；
+   *  点击某域 → 进入筛选态只启用该域；再点其他域增选；点已选域取消；全部取消 = 回未筛选态。 */
+  function renderGlossaryDomains() {
+    const box = $("pp-tr-glossary-domains");
+    const S = T();
+    if (!box || !S) return;
+    while (box.firstChild) box.removeChild(box.firstChild);
+    let doms = [];
+    try { doms = S.glossaryDomains ? S.glossaryDomains() : []; } catch (e) { doms = []; }
+    if (!doms.length) return; // 无领域标注 → 整行隐藏（min-height 占位防布局跳动）
+    const raw = prefStr("translateGlossaryDomains", "");
+    const active = raw
+      ? raw.split(/[;,，；]/).map((x) => x.trim().toLowerCase()).filter(Boolean)
+      : null;
+    const activeSet = active ? new Set(active) : null;
+    box.appendChild(el("span", { style: "color:var(--pp-muted);margin-right:4px;" },
+      zh ? "领域：" : "domains:"));
+    for (const d of doms) {
+      const on = !activeSet || activeSet.has(d);
+      const chip = el("button", {
+        class: "pp-btn pp-btn-sm",
+        style: on ? "" : "opacity:.45;",
+        "data-domain": d,
+      }, d + (activeSet && activeSet.has(d) ? " ✓" : ""));
+      chip.addEventListener("click", () => onDomainChipToggle(d));
+      box.appendChild(chip);
+    }
+    box.appendChild(el("span", { style: "color:var(--pp-muted);margin-left:4px;" },
+      activeSet
+        ? (zh ? "（点已选域取消；全部取消=不再筛选）" : "(click selected to clear)")
+        : (zh ? "未筛选 = 全部启用" : "all enabled")));
+  }
+
+  function onDomainChipToggle(domain) {
+    const raw = prefStr("translateGlossaryDomains", "");
+    let active = raw
+      ? raw.split(/[;,，；]/).map((x) => x.trim().toLowerCase()).filter(Boolean)
+      : null;
+    if (!active) active = [domain];            // 未筛选 → 只启用该域
+    else {
+      const i = active.indexOf(domain);
+      if (i >= 0) active.splice(i, 1);         // 已选 → 取消
+      else active.push(domain);                // 未选 → 增选
+    }
+    const v = active.join(";");
+    try { Zotero.Prefs.set("extensions.zotero.paperpilot.translateGlossaryDomains", v); } catch (e) { /* ignore */ }
+    // 不清缓存：域启停改变 glossary() 过滤结果 → 术语表指纹变 → 缓存键自然失效
+    renderGlossaryDomains();
+    setMsg(v
+      ? (zh ? "术语表已按领域筛选：" + v.split(";").join("、") : "Glossary filtered: " + v)
+      : (zh ? "领域筛选已清除（全部启用）" : "Domain filter cleared (all enabled)"),
+      "var(--pp-success)");
+  }
+
+  /** 领域种子词包下拉（数据来自 Zotero.PaperPilot.glossaryPacks，插件未就绪时留空） */
+  function renderGlossaryPacks() {
+    const sel = $("pp-tr-glossary-pack");
+    if (!sel) return;
+    while (sel.firstChild) sel.removeChild(sel.firstChild);
+    let packs = [];
+    try {
+      const gp = PP().glossaryPacks;
+      if (gp && gp.list) packs = gp.list() || [];
+    } catch (e) { packs = []; }
+    for (const p of packs) {
+      const opt = el("option", { value: p.id });
+      opt.textContent = p.label + "（" + p.count + (zh ? " 条" : " terms") + "）";
+      sel.appendChild(opt);
+    }
+  }
+
+  /** 术语表落盘公共路径：写 pref + 清缓存 + 刷新三个反馈区 */
+  function persistGlossary(raw) {
+    try { Zotero.Prefs.set("extensions.zotero.paperpilot.translateGlossary", raw); } catch (e) { /* ignore */ }
+    const S = T();
+    try { if (S && S.clearCache) S.clearCache(); } catch (e) { /* ignore */ }
+    if ($("pp-tr-glossary")) $("pp-tr-glossary").value = raw;
+    renderGlossaryMsg(raw);
+    renderGlossaryDomains();
+  }
+
+  async function onGlossaryImport() {
+    const S = T();
+    if (!S || !S.parseGlossaryImport || !S.mergeGlossary) return;
+    if (typeof Zotero === "undefined" || !Zotero.FilePicker) {
+      setMsg(zh ? "此环境不支持文件选择" : "FilePicker unavailable", "var(--pp-warn)");
+      return;
+    }
+    try {
+      const fp = new Zotero.FilePicker();
+      fp.init(window, zh ? "导入术语表（CSV / TSV / JSON / 行式文本）" : "Import glossary (CSV/TSV/JSON/lines)",
+        fp.modeOpen);
+      const rv = await fp.show();
+      if (rv !== fp.returnOK && rv !== fp.returnReplace) return;
+      const text = String(await Zotero.File.getContentsAsync(fp.file) || "");
+      const parsed = S.parseGlossaryImport(text);
+      if (!parsed.list.length) {
+        setMsg(zh
+          ? "未识别到任何术语——支持带表头 CSV/TSV（source,target,domain）、裸两三列、JSON 数组与「原文 = 译文」行式"
+          : "No terms recognized (CSV/TSV with header, bare 2-3 columns, JSON array, or 'src = tgt' lines)",
+          "var(--pp-warn)");
+        return;
+      }
+      const m = S.mergeGlossary(String($("pp-tr-glossary") ? $("pp-tr-glossary").value || "" : ""), parsed.list);
+      persistGlossary(m.raw);
+      setMsg((zh ? "已导入（" + parsed.format + "）：新增 " + m.added + " 条、更新 " + m.updated + " 条"
+        : "Imported (" + parsed.format + "): " + m.added + " added, " + m.updated + " updated"),
+        "var(--pp-success)");
+    } catch (e) {
+      setMsg((zh ? "导入失败：" : "Import failed: ") + String((e && e.message) || e).slice(0, 120),
+        "var(--pp-danger)");
+    }
+  }
+
+  async function onGlossaryExport() {
+    const S = T();
+    if (!S || !S.glossaryToCsv) return;
+    if (typeof Zotero === "undefined" || !Zotero.FilePicker) {
+      setMsg(zh ? "此环境不支持文件保存" : "FilePicker unavailable", "var(--pp-warn)");
+      return;
+    }
+    try {
+      // 导出全部（含被域过滤暂时停用的条目）——域只是启停开关，不是数据删改
+      const list = S.glossaryAll ? S.glossaryAll() : [];
+      if (!list.length) {
+        setMsg(zh ? "术语表为空，无可导出" : "Glossary is empty", "var(--pp-warn)");
+        return;
+      }
+      const csv = S.glossaryToCsv(list);
+      const fp = new Zotero.FilePicker();
+      fp.init(window, zh ? "导出术语表为 CSV" : "Export glossary as CSV", fp.modeSave);
+      fp.defaultString = "paperpilot-glossary.csv";
+      const rv = await fp.show();
+      if (rv !== fp.returnOK && rv !== fp.returnReplace) return;
+      // BOM 头让 Excel 直接打开中文不乱码（UTF-8 CSV 的通行做法）
+      await Zotero.File.putContentsAsync(fp.file, "\uFEFF" + csv);
+      setMsg((zh ? "已导出 " + list.length + " 条术语 → " : "Exported " + list.length + " terms → ") +
+        String(fp.file || ""), "var(--pp-success)");
+    } catch (e) {
+      setMsg((zh ? "导出失败：" : "Export failed: ") + String((e && e.message) || e).slice(0, 120),
+        "var(--pp-danger)");
+    }
+  }
+
+  function onGlossaryPackAdd() {
+    const S = T();
+    const sel = $("pp-tr-glossary-pack");
+    if (!S || !S.mergeGlossary || !sel) return;
+    let pack = null;
+    try {
+      const gp = PP().glossaryPacks;
+      if (gp && gp.get) pack = gp.get(sel.value);
+    } catch (e) { pack = null; }
+    if (!pack) {
+      setMsg(zh ? "词包不可用（插件重载后重试？）" : "Packs unavailable", "var(--pp-warn)");
+      return;
+    }
+    const m = S.mergeGlossary(String($("pp-tr-glossary") ? $("pp-tr-glossary").value || "" : ""), pack.terms);
+    persistGlossary(m.raw);
+    setMsg((zh ? "已添加词包「" + pack.label + "」：新增 " + m.added + " 条、更新 " + m.updated +
+        " 条（可自行增删改；领域标签已标注）"
+      : "Pack '" + pack.label + "' merged: " + m.added + " added, " + m.updated + " updated"),
+      "var(--pp-success)");
+  }
+
+  /* ---------- 0.4x 在线词包目录（数据源：GitHub open-termbank，CC BY 4.0） ----------
+   * 懒加载：面板打开不发请求，点「获取在线目录」才拉 index.json；
+   * 逐域导入走 parseGlossaryImport + mergeGlossary（与文件导入同一条链）；
+   * sha256 记账在 pref translateGlossaryPackState → 「有更新」检测；
+   * 网络失败静默回落（提示后不影响内置词包与文件导入）。 */
+
+  function readPackState() {
+    try {
+      const v = Zotero.Prefs.get("extensions.zotero.paperpilot.translateGlossaryPackState", true);
+      return v ? JSON.parse(String(v)) : {};
+    } catch (e) { return {}; }
+  }
+  function writePackState(st) {
+    try {
+      Zotero.Prefs.set("extensions.zotero.paperpilot.translateGlossaryPackState", JSON.stringify(st));
+    } catch (e) { /* ignore */ }
+  }
+
+  let onlineCatalog = null; // fetchCatalog 成功结果（{ok,index,via}），供逐域导入复用基址
+
+  async function onOnlineFetch() {
+    const btn = $("pp-tr-glossary-online-fetch");
+    const status = $("pp-tr-glossary-online-status");
+    if (!gp()) return;
+    if (btn) { btn.disabled = true; btn.textContent = zh ? "获取中…" : "Fetching…"; }
+    try {
+      const r = await gp().fetchCatalog();
+      if (!r || !r.ok) {
+        onlineCatalog = null;
+        renderOnlineList(null);
+        if (status) {
+          status.style.color = "var(--pp-warn)";
+          status.textContent = (zh ? "在线目录不可用（" : "Catalog unavailable (") +
+            String((r && r.error) || "网络不可达").slice(0, 60) + "）——可先用上方内置词包或导入文件";
+        }
+        return;
+      }
+      onlineCatalog = r;
+      renderOnlineList(r.index);
+      if (status) {
+        status.style.color = "var(--pp-muted)";
+        status.textContent = "open-termbank v" + r.index.version + " · " + (r.index.total || "?") +
+          (zh ? " 条 · " : " terms · ") + r.index.domains.length + (zh ? " 个领域" : " domains");
+      }
+    } catch (e) {
+      if (status) {
+        status.style.color = "var(--pp-danger)";
+        status.textContent = (zh ? "获取失败：" : "Failed: ") + String((e && e.message) || e).slice(0, 80);
+      }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = zh ? "获取在线目录" : "Fetch catalog"; }
+    }
+  }
+
+  function renderOnlineList(index) {
+    const list = $("pp-tr-glossary-online-list");
+    if (!list) return;
+    while (list.firstChild) list.removeChild(list.firstChild);
+    if (!index || !Array.isArray(index.domains)) return;
+    const state = readPackState();
+    for (const d of index.domains) {
+      const row = el("div", { style: "display:flex;gap:6px;align-items:center;margin-top:4px;" });
+      const imported = state[d.slug];
+      const fresh = imported === d.sha256;
+      row.appendChild(el("span", { style: "min-width:110px;" }, String(d.domain || d.slug)));
+      row.appendChild(el("span", { style: "color:var(--pp-muted);min-width:60px;text-align:right;" },
+        String(d.count) + (zh ? " 条" : "")));
+      const btn = el("button", { class: "pp-btn pp-btn-sm", "data-slug": d.slug },
+        imported ? (fresh ? (zh ? "重新导入" : "Re-import") : (zh ? "更新" : "Update")) : (zh ? "导入" : "Import"));
+      btn.addEventListener("click", () => onOnlineImport(d));
+      row.appendChild(btn);
+      if (imported) {
+        row.appendChild(el("span", { style: fresh ? "color:var(--pp-success);" : "color:var(--pp-warn);" },
+          fresh ? (zh ? "✓ 已导入" : "imported") : (zh ? "↑ 有更新" : "update available")));
+      }
+      list.appendChild(row);
+    }
+  }
+
+  async function onOnlineImport(d) {
+    const S = T();
+    if (!S || !S.parseGlossaryImport || !S.mergeGlossary || !gp()) return;
+    try {
+      const r = await gp().fetchDomain(d.slug, onlineCatalog ? onlineCatalog.via : undefined);
+      if (!r || !r.ok) throw new Error(String((r && r.error) || "下载失败"));
+      const parsed = S.parseGlossaryImport(r.text);
+      if (!parsed.list.length) throw new Error(zh ? "CSV 里没有可识别的术语" : "no terms recognized");
+      const m = S.mergeGlossary(String($("pp-tr-glossary") ? $("pp-tr-glossary").value || "" : ""), parsed.list);
+      persistGlossary(m.raw);
+      const st = readPackState();
+      st[d.slug] = d.sha256; // 记账：导入时点的 sha256（下次目录 sha 不同 → 「有更新」）
+      writePackState(st);
+      renderOnlineList(onlineCatalog ? onlineCatalog.index : null);
+      setMsg((zh ? "已导入在线词包「" + d.domain + "」：新增 " + m.added + " 条、更新 " + m.updated +
+          " 条（open-termbank · CC BY 4.0）"
+        : "Imported '" + d.domain + "': " + m.added + " added, " + m.updated + " updated"),
+        "var(--pp-success)");
+    } catch (e) {
+      setMsg((zh ? "在线导入失败：" : "Online import failed: ") + String((e && e.message) || e).slice(0, 120),
+        "var(--pp-danger)");
+    }
+  }
+
+  /** 插件沙箱里的 GlossaryPacks（在线目录模块；旧版插件对象上可能没有 → 面板静默降级） */
+  function gp() {
+    try { return PP().glossaryPacks || null; } catch (e) { return null; }
   }
 
   /* ---------- 引擎行 ---------- */
@@ -575,9 +867,16 @@
       } catch (e) { /* ignore */ }
       try { if (T() && T().clearCache) T().clearCache(); } catch (e) { /* ignore */ }
       renderGlossaryMsg(v);
+      renderGlossaryDomains();
       setMsg(zh ? "已保存术语表（下次翻译即生效）" : "Glossary saved (effective immediately)",
         "var(--pp-success)");
     });
+    // 0.4x 术语表领域化：导入 / 导出 / 种子词包
+    bind("pp-tr-glossary-import", "click", onGlossaryImport);
+    bind("pp-tr-glossary-export", "click", onGlossaryExport);
+    bind("pp-tr-glossary-pack-add", "click", onGlossaryPackAdd);
+    // 0.4x 在线词包目录（GitHub open-termbank；懒加载，面板打开不发请求）
+    bind("pp-tr-glossary-online-fetch", "click", onOnlineFetch);
     bind("pp-tr-bl-struct", "change", () => {
       try {
         Zotero.Prefs.set("extensions.zotero.paperpilot.bilingualStructExtract",

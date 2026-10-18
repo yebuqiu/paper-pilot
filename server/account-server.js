@@ -1960,7 +1960,7 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'GET' && url === '/api/health') {
       return json(res, 200, {
-        ok: true, service: 'paperpilot-account-server', version: '1.8.1',
+        ok: true, service: 'paperpilot-account-server', version: '1.8.2',
         uptime: Math.round(process.uptime()), now: new Date().toISOString(),
         mail: mail.configured() ? 'on' : 'off',
         users: usersStore.data.users.length,
@@ -2899,7 +2899,7 @@ const server = http.createServer(async (req, res) => {
         }
         let r;
         try {
-          r = await pay.testConnection(c, { deep: !!input.deep });
+          r = await pay.testConnection(c, { deep: !!input.deep, base: siteBaseUrl() });
         } catch (e) {
           r = { ok: false, msg: '自检异常：' + e.message };
         }

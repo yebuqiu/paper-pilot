@@ -1,7 +1,7 @@
 /* PaperPilot 主入口：装配各模块
  * 由 bootstrap.js 通过 Services.scriptloader 加载，共享 bootstrap 作用域
  */
-/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, _ppDiag */
+/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, SkillPacks, _ppDiag */
 
 Zotero.PaperPilot = {
   id: null,
@@ -61,13 +61,23 @@ Zotero.PaperPilot = {
       // 0.28.0 多引擎翻译：注册表 + 统一调用层（独立于 AI 大模型）
       // 须排在 client.js 之后（llm 引擎要调 AIClient）、chat.js 与各 features 之前
       "ai/translate.js",
+      // 0.4x 领域术语种子词包（设置面板「添加词包」消费；纯数据、无依赖）
+      "ai/glossary-packs.js",
       // 0.42.0 标题/摘要译文写回（extra 行级 upsert 纯函数；须在 chat.js 之前，chat 翻译任务消费它）
       "ai/translate-writeback.js",
       "ai/chat.js",
       "ai/prompts.js",
+      // 0.48.0 Agent 工具层（交互参考 Hermes Agent：任务规划 + 工具调用 + 上下文
+      // 管理）。依赖 ai/chat.js（getFullText/paperMeta）；chat-float 在其后加载消费。
+      "ai/agent-tools.js",
       // 0.42.0 #命令标签（Prompt 标签升级版：可编辑/trigger 正则/导入导出）与 / 命令面板。
       // 须在 prompts.js 之后（内置默认标签来源）、chat-float.js 与 workbench 之前
       "ai/command-tags.js",
+      // 0.48.x 技能包商店（Skills Hub）核心域：提示词标签/术语/模板/Agent 预设的
+      // 安装记账与目录检索。依赖 CommandTags/NoteTemplates/TranslateSvc 均为惰性
+      // 调用（运行期经 Zotero.PaperPilot.* 访问），只需排在 command-tags.js 之后
+      // 加载即可；panels/chat-float.js 不依赖它，位置无碍。
+      "features/skill-packs.js",
       "ai/slash-commands.js",
       "ai/auto-tag.js",
       "ai/matrix.js",
@@ -198,6 +208,8 @@ Zotero.PaperPilot = {
     this.channels = Channels;
     // 0.28.0 多引擎翻译：设置面板脚本经此访问引擎注册表与配置
     this.translateSvc = TranslateSvc;
+    // 0.4x 领域术语种子词包（设置面板「添加词包」经此读取）
+    this.glossaryPacks = GlossaryPacks;
     // 0.33.0 PDF 文本结构化分析（对照翻译消费；排障/测试经此访问）
     this.pdfText = PdfText;
     // 0.29.0 菜单瘦身：设置面板脚本经此读取菜单注册表与 i18n（单一真源，
@@ -231,6 +243,12 @@ Zotero.PaperPilot = {
     // 0.31.0 AI 问答悬浮窗（分屏窗口脚本经 window.arguments 的 Zotero 访问；
     // 会话与发送逻辑单源在 ChatFloat）
     this.chatFloat = ChatFloat;
+    // 0.48.x 技能包商店（Skills Hub）：设置面板 / 商店窗口经此访问 SkillPacks 核心域
+    this.skillPacks = SkillPacks;
+    // 0.48.0 Agent 工具层 + 命令标签（设置面板 prefs-agent.js 经此访问；
+    // 测试与排障同入口）
+    this.agentTools = AgentTools;
+    this.commandTags = CommandTags;
     this.cnMeta = CNMeta;
     this.cnTranslators = CNTranslators;
     this.cnFetch = CNFetch;
@@ -402,6 +420,10 @@ Zotero.PaperPilot = {
           rootURI + "chrome/content/prefs-theme.js",
           // 0.42.0 快捷键卡片（录制/改键/开关）+ 面板锚点目录
           rootURI + "chrome/content/prefs-hotkeys.js",
+          // 0.48.0 AI 参数卡片扩展（Agent 工具开关 / System Prompt 预设 / 命令标签管理）
+          rootURI + "chrome/content/prefs-agent.js",
+          // 0.48.x 技能商店卡片（已安装列表 / 剪贴板导入 / 目录源）
+          rootURI + "chrome/content/prefs-skill.js",
         ],
         stylesheets: [
           rootURI + "chrome/content/prefs.css",
@@ -806,6 +828,27 @@ Zotero.PaperPilot = {
     } catch (e) {
       Zotero.logError(new Error("PaperPilot: 打开功能中心失败"));
       Zotero.logError(e);
+      return null;
+    }
+  },
+
+  /** 0.48.x 打开技能商店窗口（单例：已开则聚焦） */
+  openSkillStore() {
+    try {
+      const en = Services.wm.getEnumerator("paperpilot:skillstore");
+      if (en.hasMoreElements()) { const w = en.getNext(); w.focus(); return w; }
+    } catch (e) { /* ignore */ }
+    const win = Zotero.getMainWindow();
+    if (!win) return null;
+    try {
+      return win.openDialog(
+        "chrome://paperpilot/content/skill-store.xhtml",
+        "paperpilot-skill-store",
+        "chrome,centerscreen,resizable,dialog=no",
+        { Zotero, Services }
+      );
+    } catch (e) {
+      try { Zotero.logError(e); } catch (e2) { /* ignore */ }
       return null;
     }
   },

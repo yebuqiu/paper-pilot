@@ -69,11 +69,27 @@ var BilingualTranslate = {
     // （AI 大模型引擎行为与旧版一致；也可选 Google/DeepL/百度等专用引擎，
     //  无需登录即可用免费引擎做全文对照翻译）。
     // 0.33.0：ctx = {title, prev} 上下文（仅 llm 引擎消费；bilingualContext 可关）
+    // 0.4x：顺手聚合术语一致性统计（r.glossary 由 TranslateSvc 附带；空表为 null）
     const o = { to: TranslateSvc.targetCode() };
     if (ctx && Prefs.get("bilingualContext", true) !== false) o.context = ctx;
     const r = await TranslateSvc.translate(chunk, o);
     if (!r.ok) throw new Error(r.error || "翻译失败");
+    if (r.glossary && r.glossary.total > 0) {
+      const a = this._glossAgg || (this._glossAgg = { hit: 0, total: 0 });
+      a.hit += r.glossary.hit;
+      a.total += r.glossary.total;
+    }
     return r.text;
+  },
+
+  /** 单次全文翻译的术语一致性累计（0.4x）。每轮 run 开始时清零。 */
+  _glossAgg: null,
+  _resetGlossAgg() { this._glossAgg = { hit: 0, total: 0 }; },
+  /** 完成文案的「术语一致 n/m」尾巴（无统计时空串） */
+  _glossTail() {
+    const a = this._glossAgg;
+    if (!a || !a.total) return "";
+    return I18n.isZh ? ` · 术语一致 ${a.hit}/${a.total}` : ` · terms ${a.hit}/${a.total}`;
   },
 
   _titleOf(item) {
@@ -186,6 +202,7 @@ var BilingualTranslate = {
     try {
       progress.setText(I18n.isZh ? "读取全文…" : "Reading full text…");
       progress.setProgress(5);
+      this._resetGlossAgg(); // 0.4x 术语一致性从本轮重新累计
 
       // 0.33.0：结构化单元（公式直出 / 垃圾行已滤 / 图注单列）；
       // 提取失败回落旧的「全文 → 扁平切块」路径（行为与 0.32 完全一致）
@@ -217,7 +234,9 @@ var BilingualTranslate = {
       }
 
       await Notes.createFromMarkdown(item, `${I18n.t("noteBilingualTitle")}｜${title}`, this._noteMd(pairs, lang));
-      progress.setText(I18n.isZh ? `完成：${pairs.length} 段` : `Done: ${pairs.length} chunks`);
+      progress.setText(I18n.isZh
+        ? `完成：${pairs.length} 段${this._glossTail()}`
+        : `Done: ${pairs.length} chunks${this._glossTail()}`);
       progress.setProgress(100);
     } catch (e) {
       progress.setError();
@@ -312,13 +331,16 @@ var BilingualTranslate = {
       // 窗口脚本读不到 pref，故由这里注入读写闭包
       setPref: (key, value) => { try { Prefs.set(key, value); } catch (e) { /* ignore */ } },
       // 0.33.0 结构化单元（返回 {units, via, dropped}；失败/关闭时返回 null → 窗口回落旧路径）
-      getBlocks: () => this._blocksFor(item),
+      // 0.4x 两个入口都清零术语一致性累计（窗口 run() 恰好调其一开启一轮翻译）
+      getBlocks: () => { this._resetGlossAgg(); return this._blocksFor(item); },
       // 0.33.0 段落级定位：点击页码徽标跳转阅读器
       locate: (page) => this._locate(item, page),
-      getFullText: () => AIChat.getFullText(item),
+      getFullText: () => { this._resetGlossAgg(); return AIChat.getFullText(item); },
       chunkText: (text) => this._chunk(text, this._chunkChars()),
       // info = {kind, page, prev, title}：上下文感知（仅 llm 引擎消费）
       translateChunk: (chunk, info) => this._translateChunk(chunk, lang, info || {}),
+      // 0.4x 术语一致性累计（完成文案由窗口状态行拼接展示）
+      glossaryAgg: () => this._glossAgg,
       makeNote: async (pairs) => {
         await Notes.createFromMarkdown(
           item, `${I18n.t("noteBilingualTitle")}｜${title}`, this._noteMd(pairs, lang));

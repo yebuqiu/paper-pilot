@@ -328,7 +328,7 @@ var ChatFloat = {
           "cite sources as 文献 n; separate your inference from the source text.\n\n") +
       blocks.join("\n\n----\n\n");
     const messages = [{ role: "system", content: sys }];
-    messages.push(...this.session.history.slice(-12));
+    messages.push(...AIChat.windowHistory(this.session.history, Prefs.get("aiHistoryRounds", 6)));
     messages.push({ role: "user", content: question });
     return messages;
   },
@@ -379,7 +379,12 @@ var ChatFloat = {
 
       let acc = "";
       const useStream = Prefs.get("readerPopupStream", true) && AIClient.chatStream;
-      if (useStream) {
+      // 0.48.0 Agent 模式（交互参考 Hermes Agent）：AI 可多轮调用工具（检索库 /
+      // 读全文 / 加笔记 / 打标签），任务先规划后执行，过程在 UI 以系统气泡呈现；
+      // 关闭时保持原纯问答路径（零回归）。
+      if (this._agentReady()) {
+        acc = await this._runAgentTurn(messages, ui);
+      } else if (useStream) {
         const handle = AIClient.chatStream(messages, (chunk) => {
           acc += chunk;
           if (ui.onDelta) ui.onDelta(acc);
@@ -453,6 +458,54 @@ var ChatFloat = {
     if (s.handle) {
       try { s.handle.abort(); } catch (e) { /* ignore */ }
     }
+  },
+
+  /* ==================== Agent 模式（0.48.0，交互参考 Hermes Agent） ==================== */
+
+  /** Agent 模式是否可用：开关开 + AgentTools 就绪 + 至少一个工具启用 */
+  _agentReady() {
+    try {
+      if (Prefs.get("chatAgentMode", false) !== true) return false;
+      if (typeof AgentTools === "undefined" || !AgentTools) return false;
+      return AgentTools.enabledTools().length > 0;
+    } catch (e) { return false; }
+  },
+
+  /**
+   * 一轮 Agent 问答：注入工具协议 → 推理循环（LLM ↔ 工具）→ 最终回答。
+   * 中间轮的原始输出（含工具 JSON）不进消息区，工具过程经 ui.onToolStep /
+   * ui.onStatus 以系统气泡呈现（Hermes「围观思考过程」）；最终回答由
+   * runSend 统一 onDone 渲染。abort：每轮流式句柄挂 s.handle，stop() 照常生效。
+   */
+  async _runAgentTurn(messages, ui) {
+    const s = this.session;
+    let maxSteps = Number(Prefs.get("aiAgentMaxSteps", 5));
+    if (!isFinite(maxSteps) || maxSteps < 1) maxSteps = 5;
+    const useStream = Prefs.get("readerPopupStream", true) && AIClient.chatStream;
+    const r = await AgentTools.runAgentLoop({
+      messages: AgentTools.augmentMessages(messages),
+      maxSteps,
+      callLLM: async (msgs) => {
+        if (useStream) {
+          const handle = AIClient.chatStream(msgs, () => {
+            /* agent 中间轮含工具 JSON，不流式进 UI；最终回答由 onDone 渲染 */
+          });
+          s.handle = handle;
+          return await handle.promise;
+        }
+        return await AIClient.chat(msgs);
+      },
+      runTool: async (id, args) => {
+        if (ui.onStatus) ui.onStatus(I18n.t("agentToolCalling") + " " + id + "…");
+        const res = await AgentTools.execTool(id, args, { item: s.item });
+        if (ui.onToolStep) { try { ui.onToolStep(id, args, res); } catch (e) { /* ignore */ } }
+        return res;
+      },
+    });
+    if (r.limited && ui.onStatus) {
+      try { ui.onStatus(I18n.t("agentLimited")); } catch (e) { /* ignore */ }
+    }
+    return r.answer;
   },
 
   /** 把当前会话保存为笔记（悬浮窗 / 独立窗口共用；成功返回 true） */
@@ -652,6 +705,9 @@ var ChatFloat = {
     const doSend = () => this._doSend(entry);
     sendBtn.addEventListener("click", doSend);
     input.addEventListener("keydown", (ev) => {
+      // 「/」命令面板打开时，Enter/↑↓ 全部让位给面板（SlashCommands 自己的
+      // 监听在本监听之后注册，这里直接 return 即可）
+      if (entry.slash && entry.slash.isOpen && entry.slash.isOpen()) return;
       if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
         ev.preventDefault();
         doSend();
@@ -716,7 +772,72 @@ var ChatFloat = {
     closeBtn.addEventListener("click", () => self.hide(win));
 
     this._renderHistory(entry);
+
+    // ---- 「/」命令面板（0.48.0，Hermes 式快捷指令：会话命令 + Prompt 标签）----
+    try {
+      if (typeof SlashCommands !== "undefined" && SlashCommands) {
+        entry.slash = SlashCommands.attach({
+          doc, input, anchor: inputRow,
+          getCommands: () => this._slashCommands(entry),
+        });
+      }
+    } catch (e) { this._err(e); }
+
     return entry;
+  },
+
+  /**
+   * 「/」命令清单（浮窗输入框）：会话操作 + Agent 开关 + Prompt 标签直达。
+   * SlashCommands 执行前会清空输入框；「发送类」命令在 run 里回填输入再 _doSend。
+   */
+  _slashCommands(entry) {
+    const s = this.session;
+    const self = this;
+    const cmds = [
+      { id: "clear", title: I18n.t("chatClear") + " · 清空当前对话", hint: "session",
+        run() { s.history = []; s.inputHistory = []; s.histIdx = -1; self._renderHistory(entry); } },
+      { id: "save", title: I18n.t("chatSave") + " · 把对话保存为笔记", hint: "note",
+        run() {
+          entry.refs.saveBtn.click();
+        } },
+      { id: "stop", title: I18n.t("popupStop") + " · 停止当前生成", hint: "abort",
+        run() { self.stop(); } },
+      { id: "agent", title: (self._agentReady() ? "关闭" : "开启") + "智能体模式（AI 可调用工具检索/读写文献库）", hint: "tools",
+        run() {
+          try {
+            Prefs.set("chatAgentMode", !self._agentReady());
+            self._appendBubble(entry, "sys",
+              self._agentReady() ? I18n.t("agentModeOn") : I18n.t("agentModeOff"), "#0d9488");
+          } catch (e) { /* ignore */ }
+        } },
+      { id: "tools", title: "查看智能体可用工具清单", hint: "agent",
+        run() {
+          let list = "";
+          try {
+            list = AgentTools.enabledTools()
+              .map((t) => "🔧 " + t.id + " · " + t.label + "（" + t.desc + "）")
+              .join("\n");
+          } catch (e) { list = ""; }
+          self._appendBubble(entry, "sys",
+            list || I18n.t("agentNoTools"), "#0d9488");
+        } },
+    ];
+    // Prompt 标签直达（CommandTags；点击即按标签提示词发送）
+    try {
+      for (const t of this._tagList()) {
+        if (!t.prompt) continue;
+        cmds.push({
+          id: t.id,
+          title: "发送标签 · " + t.label,
+          hint: String(t.prompt || "").replace(/\s+/g, " ").slice(0, 36),
+          run({ input }) {
+            input.value = t.prompt;
+            self._doSend(entry);
+          },
+        });
+      }
+    } catch (e) { /* 标签不可用则只有会话命令 */ }
+    return cmds;
   },
 
   _chatIcon(doc, size) {
@@ -830,7 +951,18 @@ var ChatFloat = {
       }
       chip.addEventListener("click", () => {
         if (longFired) { longFired = false; return; }
-        input.value = tag.prompt;
+        // 0.48.x：标签 prompt 含 {input} 且输入框已有内容 → 用输入框内容替换
+        // （「先输入主题、再点标签」的自然交互；空输入框/无占位符行为不变）
+        const typed = String(input.value || "").trim();
+        let text = String(tag.prompt || "");
+        if (typed && text.indexOf("{input}") >= 0) {
+          text = text.split("{input}").join(typed);
+        }
+        input.value = text;
+        // 0.47.0：分屏窗口等自定义 UI entry 可提供 send 钩子走自己的发送管线
+        if (typeof entry.send === "function") {
+          try { entry.send(); return; } catch (e) { self._err(e); }
+        }
         self._doSend(entry);
       });
       chips.appendChild(chip);
@@ -1359,6 +1491,20 @@ var ChatFloat = {
         const line = I18n.t("chatCostNote") + " " + info.costText
           + (info.balanceText ? " · " + I18n.t("chatCostLeft") + " " + info.balanceText : "");
         self._appendBubble(entry, "sys", line, "#888");
+      },
+      onToolStep(tool, args, result) {
+        // Agent 模式工具过程（Hermes 式围观）：调用行 + 结果摘要（各一条系统气泡）
+        let argsPreview = "";
+        try { argsPreview = JSON.stringify(args) || ""; } catch (e) { argsPreview = ""; }
+        self._appendBubble(entry, "sys",
+          "🔧 " + tool + (argsPreview ? " " + argsPreview.slice(0, 120) : ""), "#0d9488", true);
+        const res = String(result || "");
+        if (res) {
+          self._appendBubble(entry, "sys",
+            "→ " + res.replace(/\s+/g, " ").slice(0, 200) + (res.length > 200 ? " …" : ""),
+            "#888", true);
+        }
+        entry.refs.msgs.scrollTop = entry.refs.msgs.scrollHeight;
       },
       onError(msg) {
         if (statusBubble) { statusBubble.remove(); statusBubble = null; }

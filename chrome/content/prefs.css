@@ -369,11 +369,19 @@
 .pp-root .pp-fold-closed .pp-card-body { display: none; }
 .pp-root .pp-fold-closed { padding-bottom: 11px; }
 /* 分类标签（账号 / AI 与翻译 / 条目与文献 / 外观与界面）——纯视觉分隔 */
+/* 0.48.0 修复「分区标题被遮挡」：旧值 margin: 6px 0 -4px 2px 的负下边距把后续
+ * 卡片整体上拉 4px，卡片（DOM 在后、带背景与边框）绘制在标签之上，正好盖住
+ * 「账号」「AI 与翻译」等标签的文字底部。改为正间距：上 16px 与上一分组隔开，
+ * 下 6px 呼吸空间，卡片与标题不再重叠；scroll-margin-top 给锚点目录
+ * scrollIntoView({block:"start"}) 留出顶部缓冲（标题不被窗口头部贴边遮挡）。 */
 .pp-root .pp-cat-label {
   font-size: 11px; font-weight: 700; letter-spacing: .1em;
   color: var(--pp-muted);
-  margin: 6px 0 -4px 2px;
+  margin: 16px 0 6px 2px;
+  scroll-margin-top: 12px;
 }
+/* 深链滚动定位（prefs-fold.js 对 .pp-fold 卡片）同样留顶部缓冲 */
+.pp-root .pp-card { scroll-margin-top: 12px; }
 
 /* ---------- 套餐 AI 能力说明（0.24.8：试用 / 高级模型） ---------- */
 .pp-root .pp-ai-tier {

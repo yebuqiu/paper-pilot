@@ -134,6 +134,8 @@ NODE_SUITES = [
     ("第三方文献源(实验)", "test/third-source.test.js"),
     ("期刊分区列门控", "test/rank-gate.test.js"),
     ("#命令标签", "test/chat-tags.test.js"),
+    ("Agent工具层", "test/agent-tools.test.js"),
+    ("技能包核心域", "test/skill-packs.test.js"),
     ("快捷键注册表", "test/hotkeys.test.js"),
     ("参考文献面板", "test/ref-pane.test.js"),
     ("划词拼接与批注标记", "test/reader-popup-concat.test.js"),

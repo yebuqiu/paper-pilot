@@ -208,7 +208,8 @@ var ReaderPopup = {
       let gloss = "";
       try {
         if (typeof TranslateSvc !== "undefined" && TranslateSvc && TranslateSvc.glossaryBlock) {
-          const gb = TranslateSvc.glossaryBlock();
+          // 0.4x：传入待译文本 → 命中术语优先注入（60 条上限下保证本段术语必进 prompt）
+          const gb = TranslateSvc.glossaryBlock(null, text);
           if (gb) {
             gloss = (I18n.isZh ? "\n\n术语表（以下术语必须按给定译法翻译）：\n" : "\n\nGlossary (translate as specified):\n") + gb;
           }

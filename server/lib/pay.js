@@ -12,6 +12,9 @@
  *     下单跳转 {gateway}/submit.php   异步回调 GET notify_url   同步返回 return_url
  *     主动查单 {gateway}/api.php?act=order
  *     变体 queryMode='checkOrder'：GET {gateway}/Api/checkOrder（密钥不出现在参数里）
+ *       成功码兼容 code=0（旧变体站）与 code=200（领航智能Pay ljlliu.cn，
+ *       2026-10-18 实测：200 成功 / 201 业务错，data 同样裹在 data 字段；该站
+ *       还有按商户的回调域名白名单，见 testConnection 深度自检的域名分支）
  *   mzf2  易支付/码支付 V2（SHA256WithRSA 签名）
  *     下单跳转 {gateway}/api/pay/submit   主动查单 POST {gateway}/api/pay/query
  *     商户信息 POST {gateway}/api/merchant/info（连接测试用；响应带平台签名需验签）
@@ -304,8 +307,10 @@ async function queryOrder(cfg, outTradeNo) {
       const url = cfg.gateway + '/Api/checkOrder?' + new URLSearchParams(Object.assign({}, params, { sign })).toString();
       const data = await requestJson(url);
       const d = (data && data.data) || {};
-      // 该变体 code=0 为成功
-      return { ok: Number(data && data.code) === 0, paid: Number(d.status) === 1, tradeNo: String(d.trade_no || ''), raw: data };
+      // 变体族成功码不统一：旧站 code=0；领航智能Pay（ljlliu.cn）同端点走 200 成功 /
+      // 201 业务错（如「订单不存在」），data 同样裹在 data 字段里 —— 两者都认。
+      const code = Number(data && data.code);
+      return { ok: code === 0 || code === 200, paid: Number(d.status) === 1, tradeNo: String(d.trade_no || ''), raw: data };
     }
     // 标准易支付：GET {gw}/api.php?act=order（密钥以 key 参数直传）
     const url = cfg.gateway + '/api.php?act=order'
@@ -329,10 +334,13 @@ async function queryOrder(cfg, outTradeNo) {
 /**
  * 连接自检（不动任何订单；深度模式除外）。
  * @param {object} cfg 已解密补齐的配置
- * @param {{deep?:boolean}} [opts] deep=true 时按真实参数试探下单一笔 0.01 元测试单
- *   —— 会在网关商户后台留下一条未支付记录（可忽略），故**默认关闭、由管理员显式触发**
+ * @param {{deep?:boolean, base?:string}} [opts] deep=true 时按真实参数试探下单一笔 0.01 元测试单
+ *   —— 会在网关商户后台留下一条未支付记录（可忽略），故**默认关闭、由管理员显式触发**；
+ *   base = 站点公网基地址（PP_PUBLIC_URL）：深度测试单的 notify/return 用它拼装——
+ *   域名白名单类网关（如领航智能Pay）只放行商户后台已授权的域名，写死 example.com
+ *   会永远过不了白，还会把失败误判成成功。
  */
-async function testConnection(cfg, { deep } = {}) {
+async function testConnection(cfg, { deep, base } = {}) {
   if (!cfg || !cfg.gateway) return { ok: false, msg: '未填写网关地址' };
   if (!/^https?:\/\//i.test(cfg.gateway)) return { ok: false, msg: '网关地址必须以 http(s):// 开头' };
   if (cfg.provider === 'epay') {
@@ -342,7 +350,11 @@ async function testConnection(cfg, { deep } = {}) {
     try {
       r = await queryOrder(cfg, 'PING0000000000');
     } catch (e) {
-      return { ok: false, msg: '无法连接 ' + cfg.gateway + '：' + e.message };
+      // 标准查单路径 404：Go 系新网关（如领航智能Pay ljlliu.cn）没有 api.php，须改用 checkOrder 变体
+      const m = String((e && e.message) || '');
+      const hint404 = /404/i.test(m) && cfg.queryMode !== 'checkOrder'
+        ? '（标准查单路径 /api.php 不存在：请在「查询接口变体」改选 GET /Api/checkOrder）' : '';
+      return { ok: false, msg: '无法连接 ' + cfg.gateway + '：' + m + hint404 };
     }
     const rawMsg = String((r.raw && (r.raw.msg || r.raw.error)) || '');
     if (r.raw && r.raw.code === undefined && r.raw.error) {
@@ -367,12 +379,14 @@ async function testConnection(cfg, { deep } = {}) {
     if (!deep) {
       return { ok: true, msg: '查单链路通过（签名被网关接受，' + (rawMsg || '响应正常') + '），下单入口 submit.php 可达（HTTP ' + sres.status + '）' };
     }
-    // 深度：按真实下单参数构造 0.01 元测试单
+    // 深度：按真实下单参数构造 0.01 元测试单（notify/return 用真实回调基地址）
     try {
+      const root = String(base || '').trim().replace(/\/+$/, '');
+      const notifyBase = root || 'https://example.com';
       const p = {
         pid: cfg.pid, type: 'wxpay',
         out_trade_no: newTradeNo('WBT'),
-        notify_url: 'https://example.com/notify', return_url: 'https://example.com/return',
+        notify_url: notifyBase + '/api/pay/notify', return_url: notifyBase + '/api/pay/return',
         name: '连接测试商品', money: '0.01',
       };
       const sign = buildSign(p, cfg.key);
@@ -381,6 +395,14 @@ async function testConnection(cfg, { deep } = {}) {
       const text = String(sr.text || '').slice(0, 600);
       const errM = /签名错误|签名失败|验签失败|sign[_ ]?(error|fail)|参数错误|商户不存在/i.exec(text);
       if (errM) return { ok: false, msg: 'submit.php 下单被拒绝：' + errM[0], raw: text.slice(0, 200) };
+      // 域名白名单类网关（领航智能Pay 实测文案「该域名不可发起支付，原因：域名没过白…」）
+      // —— 原实现漏了这一类错误，会把失败误报成「全链路通过」
+      const domM = /不可发起支付|域名[^。]{0,12}(过白|授权|白名单)|白名单/i.exec(text);
+      if (domM) {
+        return { ok: false, msg: '网关拒绝下单：回调域名未过白（' + domM[0] + '）。请先在网关商户后台授权域名'
+          + (root ? '「' + root.replace(/^https?:\/\//, '') + '」' : '（PP_PUBLIC_URL 未配置，无法给出域名）'),
+          raw: text.slice(0, 200) };
+      }
       return { ok: true, msg: '全链路通过：查单签名被接受，submit.php 下单链路正常（HTTP ' + sr.status
         + '；网关已产生一笔 0.01 元未支付测试单，可在商户后台忽略）' };
     } catch (e) {

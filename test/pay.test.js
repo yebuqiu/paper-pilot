@@ -5,7 +5,9 @@
  *
  * 覆盖：
  *   A 纯函数 —— 签名/验签（V1 MD5、V2 RSA）、密钥材料、商户订单号、加密盒子
- *   B 协议   —— 对着**假网关**跑下单地址生成、主动查单（标准/checkOrder 变体）、连接自检
+ *   B 协议   —— 对着**假网关**跑下单地址生成、主动查单（标准/checkOrder 变体）、连接自检；
+ *              假网关可切换「网关性格」：领航智能Pay 查单风格（code 200/201）、
+ *              域名白名单拒绝页、Go 系纯文本 404（ljlliu.cn 2026-10-18 实测形态）
  *   C 集成   —— 真服务端 + 假网关：配置读写（密钥不回显）→ 发起支付 → 回调履约 →
  *              余额到账 → 重放幂等；以及五重校验逐条拒绝
  */
@@ -141,6 +143,11 @@ function orderOnDisk(id) {
 
     const seen = { checkOrder: [], apiOrder: [], submit: [], query: [], merchant: [] };
     const gwKey = KEY;
+    // 假网关可切换的「网关性格」：
+    //   coStyle='lh'     —— 领航智能Pay（ljlliu.cn）查单风格：code 200 成功 / 201 业务错 + data 包裹
+    //   submitStyle='domain' —— 域名白名单类网关的下单拒绝页（HTML 状态页）
+    let coStyle = '';
+    let submitStyle = '';
     gw = http.createServer((rq, rs) => {
       const u = new URL(rq.url, 'http://x');
       const q = {};
@@ -149,6 +156,10 @@ function orderOnDisk(id) {
       if (u.pathname === '/Api/checkOrder') {
         seen.checkOrder.push(q);
         if (!pay.verifySign(q, gwKey)) return send({ code: 1, msg: '签名错误' });
+        if (coStyle === 'lh') {
+          if (q.out_trade_no === 'NOSUCH') return send({ code: 201, data: null, msg: '订单不存在' });
+          return send({ code: 200, data: { trade_no: 'LH001', out_trade_no: q.out_trade_no, status: 1, money: '0.01' }, msg: '成功' });
+        }
         return send({ code: 0, data: { trade_no: 'GW001', out_trade_no: q.out_trade_no, status: 1, money: '0.01' } });
       }
       if (u.pathname === '/api.php') {
@@ -160,6 +171,11 @@ function orderOnDisk(id) {
         seen.submit.push(q);
         if (q.pid && q.sign && !pay.verifySign(q, gwKey)) {
           rs.writeHead(200, { 'Content-Type': 'text/html' }); return rs.end('<html>签名错误</html>');
+        }
+        if (submitStyle === 'domain') {
+          // 领航智能Pay 实测拒绝页形态：__STATUS_CFG__ 注入的状态 SPA
+          rs.writeHead(200, { 'Content-Type': 'text/html' });
+          return rs.end('<html><body><script>window.__STATUS_CFG__={"message":"该域名不可发起支付，原因：域名没过白，请前往平台授权域名","type":"error"}</script></body></html>');
         }
         rs.writeHead(200, { 'Content-Type': 'text/html' }); return rs.end('<html>收银台</html>');
       }
@@ -190,7 +206,8 @@ function orderOnDisk(id) {
           return send(rep);
         });
       }
-      send({ code: 1, msg: 'not found' }, 404);
+      // Go 系网关（如领航智能Pay）的未知路由回的是纯文本 404，不是 JSON
+      rs.writeHead(404, { 'Content-Type': 'text/plain' }); return rs.end('404 page not found');
     });
     await new Promise((r) => gw.listen(0, '127.0.0.1', r));
     UPSTREAM_PORT = gw.address().port;
@@ -218,19 +235,44 @@ function orderOnDisk(id) {
     ok(tc.ok && tc.msg.indexOf('全链路通过') >= 0, 'B10 深度自检通过（探测 submit.php 下单）', tc.msg);
     ok(seen.submit.length > 0, 'B11 深度自检确实打了下单一（0.01 元测试单）');
 
+    /* ---- 领航智能Pay（ljlliu.cn）兼容：checkOrder 成功码 200 / 业务错 201 ---- */
+    coStyle = 'lh';
+    qr = await pay.queryOrder(cfgOrder, 'PPA1');
+    ok(qr.ok && qr.paid && qr.tradeNo === 'LH001', 'B12 ★ checkOrder 兼容领航智能Pay 成功码 code=200（ljlliu.cn 实测行为）', qr);
+    qr = await pay.queryOrder(cfgOrder, 'NOSUCH');
+    ok(!qr.ok && qr.raw && Number(qr.raw.code) === 201, 'B13 ★ 领航风格业务错误（201 订单不存在）→ ok=false 不误报成功', qr);
+    coStyle = '';
+
+    /* ---- 深度自检：域名白名单拒绝必须如实报错（不能假报全链路通过） ---- */
+    submitStyle = 'domain';
+    tc = await pay.testConnection(cfgV1, { deep: true, base: 'https://pp.test.example' });
+    ok(!tc.ok && tc.msg.indexOf('未过白') >= 0 && tc.msg.indexOf('pp.test.example') >= 0,
+      'B14 ★ 深度自检识别域名白名单拒绝并给出待授权域名', tc.msg);
+    const lastSubmit = seen.submit[seen.submit.length - 1];
+    ok(String(lastSubmit.notify_url).indexOf('https://pp.test.example/api/pay/notify') === 0,
+      'B15 ★ 深度测试单 notify_url 用真实回调域名（不再写死 example.com）', lastSubmit.notify_url);
+    submitStyle = '';
+    tc = await pay.testConnection(cfgV1, { deep: true, base: 'https://pp.test.example' });
+    ok(tc.ok && tc.msg.indexOf('全链路通过') >= 0, 'B16 深度自检传 base 正常通过', tc.msg);
+
+    /* ---- 标准查单路径 404 → 提示改用 checkOrder 变体 ---- */
+    const tc404 = await pay.testConnection(Object.assign({}, cfgV1, { gateway: GW + '/nosuch' }));
+    ok(!tc404.ok && tc404.msg.indexOf('checkOrder') >= 0,
+      'B17 ★ 标准查单 404 → 提示切换 checkOrder 变体（Go 系新网关无 api.php）', tc404.msg);
+
     const cfgV2 = Object.assign(pay.newCfg(), { enabled: true, provider: 'mzf2', gateway: GW, pid: '2001', privateKey: privB64, platformKey: pubB64 });
     const url2 = pay.createPayUrl(cfgV2, { outTradeNo: 'PPB2', amountCents: 3000, itemName: '充值' }, 'alipay', 'https://site.example');
-    ok(url2.indexOf(GW + '/api/pay/submit?') === 0, 'B12 V2 下单跳 api/pay/submit');
-    ok(!!new URL(url2).searchParams.get('timestamp'), 'B13 V2 带 10 位时间戳');
+    ok(url2.indexOf(GW + '/api/pay/submit?') === 0, 'B18 V2 下单跳 api/pay/submit');
+    ok(!!new URL(url2).searchParams.get('timestamp'), 'B19 V2 带 10 位时间戳');
     qr = await pay.queryOrder(cfgV2, 'PPB2');
-    ok(qr.ok && qr.paid && qr.tradeNo === 'GW003', 'B14 ★ V2 查单（响应验签通过）', qr);
+    ok(qr.ok && qr.paid && qr.tradeNo === 'GW003', 'B20 ★ V2 查单（响应验签通过）', qr);
     const tc2 = await pay.testConnection(cfgV2);
-    ok(tc2.ok && tc2.msg.indexOf('连接成功') >= 0, 'B15 V2 连接自检（商户信息接口）', tc2.msg);
+    ok(tc2.ok && tc2.msg.indexOf('连接成功') >= 0, 'B21 V2 连接自检（商户信息接口）', tc2.msg);
     // 平台公钥不匹配时必须报错，而不是"连接成功"
     const tcBad = await pay.testConnection(Object.assign({}, cfgV2, { platformKey: pay.cleanKeyMaterial(
       crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' },
         privateKeyEncoding: { type: 'pkcs8', format: 'pem' } }).publicKey) }));
-    ok(!tcBad.ok && tcBad.msg.indexOf('平台公钥不匹配') >= 0, 'B16 ★ 平台公钥不匹配 → 自检失败（不误报成功）', tcBad.msg);
+    ok(!tcBad.ok && tcBad.msg.indexOf('平台公钥不匹配') >= 0, 'B22 ★ 平台公钥不匹配 → 自检失败（不误报成功）', tcBad.msg);
 
     /* ================= C. 集成（真服务端 + 假网关） ================= */
 
@@ -242,7 +284,7 @@ function orderOnDisk(id) {
     // 默认状态：未启用
     let r = await req(PORT, 'GET', '/api/health');
     eq(r.json.onlinePay, false, 'C1 health：默认未开通在线支付');
-    eq(r.json.version, '1.8.1', 'C2 服务端版本 1.8.1');
+    eq(r.json.version, '1.8.2', 'C2 服务端版本 1.8.1');
     r = await req(PORT, 'GET', '/api/plans');
     eq(r.json.onlinePay.available, false, 'C3 /api/plans：未开通时 available=false');
 

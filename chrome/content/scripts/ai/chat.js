@@ -94,6 +94,20 @@ var AIChat = {
     return raw;
   },
 
+  /**
+   * 0.48.0：对话历史滑窗（多轮上下文管理，轮数可配）。
+   * pref aiHistoryRounds（默认 6，1-30）——取代各调用点硬编码 slice(-12)。
+   * 防御：截断点落在 assistant（交替断裂）时丢弃首个半轮，保证窗口以 user 开头。
+   */
+  windowHistory(history, rounds) {
+    const list = Array.isArray(history) ? history : [];
+    let n = Number(rounds);
+    if (!isFinite(n)) n = 6;
+    n = Math.max(1, Math.min(30, Math.floor(n)));
+    const cut = list.slice(-n * 2);
+    return cut.length && cut[0] && cut[0].role === "assistant" ? cut.slice(1) : cut;
+  },
+
   paperMeta(item) {
     const get = (f) => {
       try { return item.getField(f) || ""; } catch (e) { return ""; }
@@ -134,8 +148,8 @@ var AIChat = {
         `【论文摘要】（说明：未获取到该文献的 PDF 全文，请仅基于摘要与题录信息回答，并在开头注明依据有限）\n${abstract}`;
     }
     const messages = [{ role: "system", content: this._systemWith(meta, context) }];
-    // 与 ask() 同口径：只带最近 6 轮历史，控制 token
-    messages.push(...history.slice(-12));
+    // 0.48.0：历史轮数可配（aiHistoryRounds，默认 6 轮）——多轮上下文管理
+    messages.push(...this.windowHistory(history, Prefs.get("aiHistoryRounds", 6)));
     messages.push({ role: "user", content: question });
     return messages;
   },
@@ -154,8 +168,8 @@ var AIChat = {
     const system = this._systemWith(meta, `【论文全文】\n${fullText}`);
 
     const messages = [{ role: "system", content: system }];
-    // 只带最近 6 轮历史，控制 token
-    messages.push(...history.slice(-12));
+    // 0.48.0：历史轮数可配（aiHistoryRounds，默认 6 轮）——多轮上下文管理
+    messages.push(...this.windowHistory(history, Prefs.get("aiHistoryRounds", 6)));
     messages.push({ role: "user", content: question });
 
     return AIClient.chat(messages);

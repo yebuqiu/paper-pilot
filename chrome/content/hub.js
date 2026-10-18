@@ -24,6 +24,7 @@
           { t: zh ? "AI 思维导图" : "Mind map", d: zh ? "生成层级大纲笔记，可导出 markmap .md" : "Outline note + .md export", run: () => PP.mindmap.runForSelected() },
           { t: zh ? "AI 问答悬浮窗" : "AI Chat floating", d: zh ? "随时唤起的可拖动对话窗（快捷键 Ctrl+Shift+K / 阅读器 Ctrl+Enter / 工具栏按钮），可停靠两侧、调透明度，Prompt 标签一键发送" : "Draggable chat window (Ctrl+Shift+K / Ctrl+Enter / toolbar button), dockable, opacity control, one-click prompts", run: () => PP.chatFloat.openMain() },
           { t: zh ? "AI 问答分屏窗口" : "AI Chat split window", d: zh ? "独立对话窗口，与 Zotero 并排零遮挡正文（与悬浮窗共享同一会话）" : "Standalone chat window that sits beside Zotero (shares the session with the floating one)", run: () => PP.chatFloat.openWindow() },
+          { t: zh ? "技能商店" : "Skill Store", d: zh ? "浏览 / 安装 / 制作 AI 技能包：提示词标签·术语·模板·Agent 预设" : "Browse / install / build AI skill packs: prompt tags, glossaries, templates, agent presets", run: () => PP.openSkillStore() },
           { t: zh ? "AI 问答侧栏" : "Chat sidebar", d: zh ? "选中条目后在右侧栏「AI 问答」直接提问" : "Auto: ask in the sidebar", info: true },
           { t: zh ? "划词浮窗" : "Selection popup", d: zh ? "阅读器内划词即翻译/解读/追问（设置中可配置）" : "Auto: translate/explain/ask in reader", info: true },
           { t: zh ? "PDF 速览" : "PDF glance", d: zh ? "侧栏显示摘要与全文开篇，无需打开 PDF" : "Auto: abstract + opening in sidebar", info: true },

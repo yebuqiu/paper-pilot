@@ -113,6 +113,22 @@ var I18n = (() => {
     chatChipLimit: zh ? "上下文文献最多 5 篇（多余的已忽略）" : "Context is limited to 5 papers (extras ignored)",
     chatChipRemove: zh ? "移除该上下文文献" : "Remove from context",
     chatChipDup: zh ? "该文献已在上下文中" : "Already in context",
+    // 0.47.0 分屏窗口增强
+    chatWinSub: zh ? "与悬浮窗共享会话 · 拖入条目可加上下文" : "Shared session with the float · drag items to add context",
+    chatCopy: zh ? "复制" : "Copy",
+    chatCopied: zh ? "已复制" : "Copied",
+    chatRegen: zh ? "重新生成" : "Regenerate",
+    chatRegenNone: zh ? "还没有可重新生成的回答" : "Nothing to regenerate yet",
+    // 0.48.0 Agent 模式（交互参考 Hermes Agent：任务规划 + 工具调用 + 上下文管理）
+    agentToolCalling: zh ? "🔧 调用工具" : "Calling tool",
+    agentLimited: zh
+      ? "⚠ 已达工具调用轮数上限，以下为最后一轮输出（可在设置 → AI 参数中调大上限）"
+      : "Tool-step limit reached; showing the last raw output (raise it in Settings → AI params)",
+    agentModeOn: zh ? "✓ 智能体模式已开启（AI 可调用工具检索/读写文献库）" : "Agent mode ON (tools enabled)",
+    agentModeOff: zh ? "✓ 智能体模式已关闭（恢复纯文献问答）" : "Agent mode OFF (plain Q&A)",
+    agentNoTools: zh
+      ? "当前没有启用的工具（设置 → PaperPilot → AI 参数 → 智能体）"
+      : "No tools enabled (Settings → PaperPilot → AI params → Agent)",
     noteTitle: zh ? "AI 文献解读" : "AI Interpretation",
     noteChatTitle: zh ? "AI 问答记录" : "AI Q&A",
     noteDone: zh ? "已生成解读笔记" : "Note created",
@@ -411,13 +427,17 @@ var MdLite = {
   },
 
   /** Markdown 子集 → 富文本 HTML 正文（0.10.0 抽出：侧栏气泡渲染与笔记共用，
-   *  语义标签不加硬编码颜色，深浅主题都安全） */
+   *  语义标签不加硬编码颜色，深浅主题都安全。
+   *  0.47.0：支持 ``` 围栏代码块 → <pre><code>（AI 回答里的公式/代码不再丢格式；
+   *  悬浮窗样式表本就预留了 .pp-cf-msg pre 规则，分屏窗口/workbench 同样支持） */
   toHtml(md) {
     const lines = String(md || "").split(/\r?\n/);
     let html = "";
     let inList = false;
     let para = [];
     let table = [];
+    let inCode = false;
+    let codeLines = [];
     const flushPara = () => {
       if (para.length) { html += "<p>" + para.join("<br/>") + "</p>"; para = []; }
     };
@@ -438,8 +458,26 @@ var MdLite = {
       }
       table = [];
     };
+    const flushCode = () => {
+      if (codeLines.length) {
+        html += "<pre><code>" + this.escape(codeLines.join("\n")) + "</code></pre>";
+        codeLines = [];
+      }
+      inCode = false;
+    };
     for (const raw of lines) {
       const line = raw.replace(/\s+$/, "");
+      // ``` 围栏代码块（可带语言标注行，忽略标注）
+      if (/^\s*```/.test(line)) {
+        if (inCode) {
+          flushCode();
+        } else {
+          flushPara(); closeList(); flushTable();
+          inCode = true;
+        }
+        continue;
+      }
+      if (inCode) { codeLines.push(raw); continue; }
       const isTable = /^\s*\|.+\|\s*$/.test(line);
       if (isTable) { flushPara(); closeList(); table.push(line); continue; }
       flushTable();
@@ -465,6 +503,7 @@ var MdLite = {
         para.push(this.inline(line));
       }
     }
+    if (inCode) flushCode(); // 未闭合的围栏：按代码块收尾
     flushTable();
     flushPara(); closeList();
     return html;

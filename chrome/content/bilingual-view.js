@@ -311,6 +311,13 @@
       tail = tx("blDropped", "（已滤去页眉页脚/图表碎片 ", "(") + meta.dropped +
         tx("blDropped2", " 行）", " junk lines)");
     }
+    // 0.4x 术语一致性反馈（插件侧累计；旧载荷没有 glossaryAgg 时静默跳过）
+    try {
+      const ga = A.glossaryAgg ? A.glossaryAgg() : null;
+      if (ga && ga.total > 0) {
+        tail += (zh() ? " · 术语一致 " : " · terms ") + ga.hit + "/" + ga.total;
+      }
+    } catch (e) { /* 统计失败不影响完成态 */ }
     setStatus(tx("blDone", "完成：", "Done: ") + done + (zh() ? " 段" : " chunks") + tail);
     setBusyUI(false);
   }

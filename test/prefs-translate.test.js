@@ -152,11 +152,13 @@ const sandbox = {
 };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-for (const f of ['chrome/content/scripts/core/utils.js', 'chrome/content/scripts/ai/translate.js']) {
+for (const f of ['chrome/content/scripts/core/utils.js', 'chrome/content/scripts/ai/translate.js',
+                 'chrome/content/scripts/ai/glossary-packs.js']) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
 }
 const T = sandbox.TranslateSvc;
 Zotero.PaperPilot.translateSvc = T; // ★ 必须在面板脚本之前挂上，否则首次 init 直接放弃
+Zotero.PaperPilot.glossaryPacks = sandbox.GlossaryPacks; // 0.4x 在线词包模块（面板经 PP() 调用）
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'chrome/content/prefs-translate.js'), 'utf8'),
   sandbox, { filename: 'prefs-translate.js' });
 
@@ -304,6 +306,73 @@ async function main() {
   eq(T.parseSecret('libretranslate', T.secretOf('libretranslate')).url, 'http://127.0.0.1:5000',
     '⑥ ★ 一键填入把地址写进了该引擎');
   T.setSecret('libretranslate', '');
+
+  /* ---------- ⑦ 0.4x 在线词包目录（open-termbank）：获取 → 逐域导入 → 有更新检测 ---------- */
+  {
+    const IDX = {
+      version: '1.0.0', total: 40,
+      domains: [
+        { domain: '医学', slug: 'medicine', file: 'medicine.csv', count: 20, sha256: 'a'.repeat(64) },
+        { domain: '计算机', slug: 'computer-science', file: 'computer-science.csv', count: 20, sha256: 'b'.repeat(64) },
+      ],
+    };
+    const CSV = 'source,target,domain\nmyocardial infarction,心肌梗死,医学\nplacebo,安慰剂,医学\n';
+    const onlineBtn = () => dom.registry.get('pp-tr-glossary-online-fetch');
+    const onlineStatus = () => dom.registry.get('pp-tr-glossary-online-status');
+    const onlineList = () => dom.registry.get('pp-tr-glossary-online-list');
+    const importBtnOf = (slug) => onlineList().byTag('button')
+      .find((b) => b.getAttribute('data-slug') === slug) || null;
+
+    // ① 获取目录 → 渲染每域行
+    plan = []; httpCalls.length = 0;
+    plan.push({ match: 'index.json', text: JSON.stringify(IDX) });
+    onlineBtn().click();
+    await tick(6);
+    includes(onlineStatus().textContent, 'open-termbank v1.0.0', '⑦ 目录状态行显示版本与规模');
+    eq(onlineList().byTag('button').length, 2, '⑦ 每个领域渲染一个导入按钮');
+    ok(!!importBtnOf('medicine') && importBtnOf('medicine').textContent === '导入',
+      '⑦ 未导入过的域按钮是「导入」');
+
+    // ② 点击导入 → 走 parseGlossaryImport+mergeGlossary → 写 pref + sha256 记账
+    plan.push({ match: 'medicine.csv', text: CSV });
+    importBtnOf('medicine').click();
+    await tick(8);
+    const glossPref = P('translateGlossary', '');
+    includes(glossPref, 'myocardial infarction = 心肌梗死 | 医学', '⑦ ★ 在线词包并入术语表（带领域标注）');
+    includes(glossPref, 'placebo = 安慰剂 | 医学', '⑦ 逐条并入（非整体替换）');
+    const stateRaw = P('translateGlossaryPackState', '');
+    const state = JSON.parse(stateRaw || '{}');
+    eq(state.medicine, 'a'.repeat(64), '⑦ ★ sha256 记账（「有更新」检测的依据）');
+    eq(importBtnOf('medicine').textContent, '重新导入', '⑦ 导入后按钮变「重新导入」');
+    includes(dom.registry.get('pp-tr-glossary-msg').textContent, '已解析', '⑦ 术语表统计行随导入刷新');
+    // 已导入的域出现 ✓ 徽标；未导入的域没有
+    ok(onlineList().textContent.indexOf('已导入') >= 0, '⑦ 已导入域显示 ✓ 徽标');
+
+    // ③ 目录 sha 变化 → 「有更新」徽标 + 按钮变「更新」
+    const IDX2 = JSON.parse(JSON.stringify(IDX));
+    IDX2.version = '1.1.0';
+    IDX2.domains[0].sha256 = 'c'.repeat(64);
+    plan = []; httpCalls.length = 0;
+    plan.push({ match: 'index.json', text: JSON.stringify(IDX2) });
+    onlineBtn().click();
+    await tick(6);
+    eq(importBtnOf('medicine').textContent, '更新', '⑦ 目录 sha 变化 → 按钮变「更新」');
+    includes(onlineList().textContent, '有更新', '⑦ ★ 「有更新」徽标出现');
+    eq(importBtnOf('computer-science').textContent, '导入', '⑦ 未导入过的域不受影响');
+
+    // ④ 网络全挂 → 状态行降级提示、面板不炸、列表清空
+    plan = []; httpCalls.length = 0;
+    onlineBtn().click();
+    await tick(8);
+    includes(onlineStatus().textContent, '不可用', '⑦ 网络失败给可读降级提示（不静默）');
+    eq(onlineList().children.length, 0, '⑦ 失败后列表清空（不残留旧目录）');
+    ok(dom.registry.get('pp-tr-glossary') !== null, '⑦ 面板其余部分不受影响');
+
+    // ⑤ 清理：还原术语表与记账 pref，避免影响后续断言
+    setP('translateGlossary', '');
+    setP('translateGlossaryPackState', '');
+    plan = []; httpCalls.length = 0;
+  }
 
   /* ---------------- 输出 ---------------- */
   console.log('='.repeat(60));

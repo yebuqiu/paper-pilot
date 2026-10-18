@@ -815,6 +815,312 @@ ok(T.googleTk('a') !== T.googleTk('b'), '⑥ Google tk 随文本变化');
   Prefs.set('translateFormulaProtect', true);
   resetHttp();
 
+  /* ==================== ⑪b 术语表领域化（0.4x） ==================== */
+
+  // ---- 领域标签解析（行式第三段 / JSON d 字段 / 三元数组） ----
+  {
+    const g1 = T.parseGlossary('myocardial infarction = 心肌梗死 | 医学')[0];
+    eq(g1.s, 'myocardial infarction', '⑪b 行式第三段解析出原文');
+    eq(g1.t, '心肌梗死', '⑪b 行式第三段解析出译文');
+    eq(g1.d, '医学', '⑪b 行式第三段解析出领域标签');
+    eq(T.parseGlossary('cross attention = 交叉注意力 | 计算机;AI')[0].d, '计算机;ai',
+      '⑪b 多标签领域（; 分隔、归一化为小写）');
+    eq(T.parseGlossary('a | b = c')[0].d, '', '⑪b 正文里的 | 不被误当域分隔符（护栏生效）');
+    eq(T.parseGlossary('[{"s":"a","t":"b","d":"医学"}]')[0].d, '医学', '⑪b JSON {s,t,d} 解析领域');
+    eq(T.parseGlossary('[["a","b","计算机"]]')[0].d, '计算机', '⑪b 三元数组第三位 = 领域');
+    eq(T.parseGlossary('plain = 普通')[0].d, '', '⑪b 无标注行 → 通用域（d 为空串）');
+  }
+
+  // ---- glossary() 域过滤（pref translateGlossaryDomains；通用术语永不被滤） ----
+  {
+    Prefs.set('translateGlossary',
+      'transformer = Transformer\nalpha = 甲 | 医学\nbeta = 乙 | 计算机\n通用词 = 通用译');
+    eq(T.glossaryAll().length, 4, '⑪b glossaryAll() 返回全量（不受域过滤影响）');
+    eq(T.glossary().length, 4, '⑪b 未配置启用域（空白名单）→ 全部启用');
+    eq(T.glossaryDomains().join(','), '医学,计算机', '⑪b glossaryDomains() 列出全部领域（排序去重）');
+    Prefs.set('translateGlossaryDomains', '医学');
+    eq(T.glossary().length, 3, '⑪b 只启用医学域 → 医学条目 + 通用条目');
+    ok(T.glossary().some((g) => g.s === 'alpha'), '⑪b 启用域的条目在过滤结果里');
+    ok(T.glossary().every((g) => !g.d || g.d === '医学'), '⑪b 未启用域（计算机）条目被滤掉');
+    ok(T.glossary().some((g) => g.s === '通用词' && !g.d), '⑪b ★ 无领域标注的通用术语永不被滤');
+    Prefs.set('translateGlossaryDomains', '医学;计算机');
+    eq(T.glossary().length, 4, '⑪b 多域白名单（; 分隔）→ 两域条目都在');
+    Prefs.set('translateGlossaryDomains', '不存在的域');
+    eq(T.glossary().length, 2, '⑪b 白名单全未命中 → 只剩通用条目（transformer + 通用词）');
+    // 指纹随「启用域」变化（域启停 = 改表 → 缓存键变 → 不吃旧缓存）
+    Prefs.set('translateGlossaryDomains', '');
+    const fpAll = T.glossaryFingerprint();
+    Prefs.set('translateGlossaryDomains', '医学');
+    const fpMed = T.glossaryFingerprint();
+    ok(fpAll && fpMed && fpAll !== fpMed, '⑪b ★ 启用域变化 → 指纹变化（缓存随之失效）');
+    Prefs.set('translateGlossaryDomains', '');
+    Prefs.set('translateGlossary', '');
+  }
+
+  // ---- glossaryBlock(list, text)：命中术语优先（60 条上限的关键保障） ----
+  {
+    const list = [];
+    for (let i = 0; i < 70; i++) list.push({ s: 'filler' + i, t: '填充' + i, d: '' });
+    list.push({ s: 'special term', t: '特别术语', d: '' }); // 第 71 条：不带 text 会被 60 上限截掉
+    eq(T.glossaryBlock(list).split('\n').length, 60, '⑪b 无待译文本 → 维持 60 条上限');
+    ok(T.glossaryBlock(list).indexOf('special term') < 0, '⑪b 上限外的术语默认不注入');
+    const withText = T.glossaryBlock(list, 'Here comes the special term in text.');
+    ok(withText.indexOf('special term → 特别术语') >= 0, '⑪b ★ 待译文本命中的术语必进 prompt（哪怕在第 71 条）');
+    eq(withText.split('\n').length, 60, '⑪b 相关性排序后总量仍守 60 上限');
+    ok(withText.indexOf('special term') < withText.indexOf('filler0'),
+      '⑪b ★ 命中术语排在未命中术语之前');
+    eq(T.glossaryBlock(list, 'nothing matches'), list.slice(0, 60).map((g) => '- ' + g.s + ' → ' + g.t).join('\n'),
+      '⑪b 零命中 → 原顺序（行为不回退）');
+  }
+
+  // ---- glossaryStats：译后一致性自检 ----
+  {
+    const st = T.glossaryStats([{ s: 'alpha', t: '甲', d: '' }, { s: 'beta', t: '乙', d: '' }],
+      'alpha and beta appear', '只有 甲 出现');
+    eq(st.total, 2, '⑪b 一致性统计只计原文命中的术语');
+    eq(st.hit, 1, '⑪b 译文中出现的译法记为命中');
+    eq(st.miss.join(','), 'beta', '⑪b 未出现的译法进 miss 列表');
+    eq(T.glossaryStats([{ s: 'alpha', t: '甲' }], '别的文本', '随便').total, 0,
+      '⑪b 原文未命中 → 不计入统计');
+  }
+
+  // ---- translate() 返回附带 glossary 一致性统计（成功路径） ----
+  {
+    resetHttp();
+    setCfg({ active: 'llm', cache: false });
+    Prefs.set('translateGlossary', 'transformer = Transformer');
+    sandbox.AIClient.chat = async () => '这里没有按术语表翻译';
+    let rStat = await T.translate('The transformer model.', { to: 'zh-CN' });
+    ok(rStat.ok && rStat.glossary && rStat.glossary.total === 1 && rStat.glossary.hit === 0,
+      '⑪b ★ 术语未按表翻译 → glossary 统计 0/1（可观测，不阻断）');
+    sandbox.AIClient.chat = async () => 'Transformer 按表翻译';
+    let rStat2 = await T.translate('The transformer model.', { to: 'zh-CN' });
+    ok(rStat2.glossary && rStat2.glossary.hit === 1, '⑪b 术语按表翻译 → glossary 统计 1/1');
+    sandbox.AIClient.chat = async () => 'LLM 译文';
+    Prefs.set('translateGlossary', '');
+    resetHttp();
+  }
+
+  // ---- 域过滤端到端：llm prompt 只含启用域术语 ----
+  {
+    resetHttp();
+    setCfg({ active: 'llm', cache: false });
+    Prefs.set('translateGlossary', 'alpha = 甲 | 医学\ncommon = 通用译');
+    Prefs.set('translateGlossaryDomains', '计算机');
+    let captured = null;
+    sandbox.AIClient.chat = async (msgs) => { captured = msgs; return 'ok'; };
+    await T.translate('alpha and common here.', { to: 'zh-CN' });
+    ok(captured && captured[1].content.indexOf('alpha → 甲') < 0,
+      '⑪b ★ 未启用域的术语不进 prompt');
+    ok(captured && captured[1].content.indexOf('common → 通用译') >= 0,
+      '⑪b 通用术语不受域过滤影响');
+    Prefs.set('translateGlossaryDomains', '医学');
+    await T.translate('alpha and common here.', { to: 'zh-CN', noCache: true });
+    ok(captured && captured[1].content.indexOf('alpha → 甲') >= 0,
+      '⑪b 启用域后该域术语进 prompt');
+    sandbox.AIClient.chat = async () => 'LLM 译文';
+    Prefs.set('translateGlossaryDomains', '');
+    Prefs.set('translateGlossary', '');
+    resetHttp();
+  }
+
+  /* ==================== ⑫ 术语表导入导出与领域词包（0.4x） ==================== */
+
+  // ---- glossaryToCsv：表头 + 转义 ----
+  {
+    const csv = T.glossaryToCsv([
+      { s: 'alpha', t: '甲', d: '医学' },
+      { s: 'a,b "x"', t: '含逗号', d: '' },
+    ]);
+    eq(csv.split('\n')[0], 'source,target,domain', '⑫ CSV 表头三列');
+    eq(csv.split('\n')[1], 'alpha,甲,医学', '⑫ 普通行原样输出（含领域列）');
+    eq(csv.split('\n')[2], '"a,b ""x""",含逗号,', '⑫ 含逗号/引号的术语按 CSV 规则转义');
+    eq(T.glossaryToCsv([]), 'source,target,domain', '⑫ 空表也有表头（可再导入）');
+  }
+
+  // ---- parseGlossaryImport：四形态识别 ----
+  {
+    const rCsv = T.parseGlossaryImport('source,target,domain\nalpha,甲,医学\nbeta,乙,计算机\n');
+    eq(rCsv.format, 'csv', '⑫ 带表头 CSV 识别');
+    eq(rCsv.list.length, 2, '⑫ 表头行不计入术语');
+    eq(rCsv.list[0].d, '医学', '⑫ 表头 CSV 解析出领域列');
+
+    const rEecs = T.parseGlossaryImport('en,zh_CN,pos,description\ntransformer,变压器,n,a device\n');
+    eq(rEecs.list.length, 1, '⑫ EECS-Terminology 式表头（en,zh_CN,pos,description）可导入');
+    eq(rEecs.list[0].t, '变压器', '⑫ en→zh_CN 列正确对应');
+    eq(rEecs.list[0].d, '', '⑫ 多余列（pos/description）自动忽略、不误当领域');
+
+    const rTsv = T.parseGlossaryImport('source\ttarget\tdomain\nalpha\t甲\t医学\n');
+    eq(rTsv.format, 'tsv', '⑫ TSV（TAB 分隔）识别');
+    eq(rTsv.list[0].d, '医学', '⑫ TSV 解析出领域');
+
+    const rBare = T.parseGlossaryImport('alpha,甲,医学\nbeta,乙,计算机\n');
+    eq(rBare.format, 'csv-bare', '⑫ 裸三列 CSV（无表头）识别');
+    eq(rBare.list.length, 2, '⑫ 裸 CSV 每行一条');
+    eq(rBare.list[0].d, '医学', '⑫ 裸 CSV 第三列当领域');
+
+    const rBare2 = T.parseGlossaryImport('alpha\t甲\n');
+    eq(rBare2.list.length, 1, '⑫ 裸两列 TSV（等价 TAB 行式）可导入');
+    eq(rBare2.list[0].t, '甲', '⑫ 两列取 s/t');
+
+    const rJson = T.parseGlossaryImport('[{"s":"a","t":"b","d":"医学"}]');
+    eq(rJson.format, 'json', '⑫ JSON 数组识别');
+    eq(rJson.list[0].d, '医学', '⑫ JSON 导入保留领域');
+
+    const rLines = T.parseGlossaryImport('# 注释\nalpha = 甲 | 医学\nbeta => 乙\n');
+    eq(rLines.format, 'lines', '⑫ 行式（本插件原生格式）识别');
+    eq(rLines.list.length, 2, '⑫ 行式导入逐条解析');
+    eq(rLines.list[0].d, '医学', '⑫ 行式导入保留领域标注');
+
+    eq(T.parseGlossaryImport('').list.length, 0, '⑫ 空输入 → 空列表');
+    eq(T.parseGlossaryImport('\uFEFFalpha,甲\n').list.length, 1, '⑫ BOM 头自动剥除（Excel 导出的 CSV）');
+
+    // 往返一致：导出 → 导入 → 同一术语表
+    const rt = T.parseGlossaryImport(T.glossaryToCsv([
+      { s: 'alpha', t: '甲', d: '医学' }, { s: 'beta', t: '乙', d: '' },
+    ]));
+    eq(rt.list.length, 2, '⑫ 导出→导入 往返保条数');
+    eq(rt.list[0].d, '医学', '⑫ 导出→导入 领域不丢');
+    eq(rt.list[1].d, '', '⑫ 导出→导入 通用域保持为空');
+  }
+
+  // ---- mergeGlossary：行级 upsert（注释保留 / 同 s 更新 / 新增追加） ----
+  {
+    const cur = '# 我的术语表\nalpha = 旧译 | 医学\nkeep = 保留\n';
+    const m = T.mergeGlossary(cur, [
+      { s: 'alpha', t: '新译', d: '医学' },
+      { s: 'new term', t: '新术语', d: '计算机' },
+      { s: 'same', t: 'same' }, // 无效条目（s===t）→ 跳过
+    ]);
+    eq(m.added, 1, '⑫ 合并统计：新增 1 条');
+    eq(m.updated, 1, '⑫ 合并统计：更新 1 条');
+    ok(m.raw.indexOf('# 我的术语表') >= 0, '⑫ ★ 注释行原样保留（不重建丢注释）');
+    ok(m.raw.indexOf('keep = 保留') >= 0, '⑫ 无关行原样保留');
+    ok(m.raw.indexOf('alpha = 新译 | 医学') >= 0, '⑫ 同原文 → 新译法覆盖旧行');
+    ok(m.raw.indexOf('new term = 新术语 | 计算机') >= 0, '⑫ 新条目追加（带领域标注）');
+    ok(m.raw.indexOf('旧译') < 0, '⑫ 旧译法被替换（不残留双份）');
+    // JSON 形态输入保 JSON
+    const mj = T.mergeGlossary('[{"s":"a","t":"b"}]', [{ s: 'a', t: 'c' }, { s: 'x', t: 'y', d: '法律' }]);
+    eq(mj.added, 1, '⑫ JSON 形态合并：新增计数正确');
+    eq(mj.updated, 1, '⑫ JSON 形态合并：更新计数正确');
+    const parsedJ = T.parseGlossary(mj.raw);
+    eq(parsedJ.length, 2, '⑫ JSON 输入 → JSON 输出（可再解析）');
+    ok(mj.raw.charAt(0) === '[', '⑫ JSON 形态不转行式（程序化写入形态保真）');
+  }
+
+  // ---- 内置领域词包：结构完整、可合并 ----
+  {
+    vm.runInContext(fs.readFileSync(
+      path.join(ROOT, 'chrome', 'content', 'scripts', 'ai', 'glossary-packs.js'), 'utf8'),
+      sandbox, { filename: 'glossary-packs.js' });
+    const GP = sandbox.GlossaryPacks;
+    ok(!!GP && typeof GP.list === 'function' && typeof GP.get === 'function', '⑫ 词包模块导出 list/get');
+    const packs = GP.list();
+    ok(packs.length >= 4, '⑫ 内置 ≥4 个领域词包', packs.map((p) => p.id));
+    ok(packs.some((p) => p.id === 'cs-ai') && packs.some((p) => p.id === 'med')
+      && packs.some((p) => p.id === 'fin') && packs.some((p) => p.id === 'law'),
+      '⑫ 覆盖 计算机/医学/金融/法律 四大领域');
+    for (const p of packs) {
+      const full = GP.get(p.id);
+      ok(full.terms.length >= 15, '⑫ 词包「' + p.label + '」条数 ≥15', full.terms.length);
+      ok(full.terms.every((g) => g.s && g.t && g.s !== g.t && g.d),
+        '⑫ 词包「' + p.label + '」每条都有 s/t 且带领域标签');
+    }
+    // 词包 → 合并进空表 → 导出可往返
+    const mp = T.mergeGlossary('', GP.get('cs-ai').terms);
+    eq(mp.added, GP.get('cs-ai').terms.length, '⑫ 词包合入空表 = 全新增');
+    const back = T.parseGlossaryImport(T.glossaryToCsv(T.parseGlossary(mp.raw)));
+    eq(back.list.length, GP.get('cs-ai').terms.length, '⑫ 词包数据 导出→导入 往返无损');
+    ok(T.parseGlossary(mp.raw).every((g) => g.d === '计算机'), '⑫ 词包术语带统一领域标签');
+  }
+
+  /* ==================== ⑫c 在线词包目录（open-termbank 同步协议） ==================== */
+  {
+    // 桩环境里 GlossaryPacks 已在 ⑫ 节加载；此处测 fetchCatalog / fetchDomain / 基址回退
+    const GP = sandbox.GlossaryPacks;
+    ok(typeof GP.fetchCatalog === 'function' && typeof GP.fetchDomain === 'function',
+      '⑫c 在线目录模块导出 fetchCatalog/fetchDomain');
+
+    const IDX = {
+      version: '1.0.0', total: 40,
+      domains: [
+        { domain: '医学', slug: 'medicine', file: 'medicine.csv', count: 20, sha256: 'a'.repeat(64) },
+        { domain: '计算机', slug: 'computer-science', file: 'computer-science.csv', count: 20, sha256: 'b'.repeat(64) },
+      ],
+    };
+    const CSV = 'source,target,domain\nmyocardial infarction,心肌梗死,医学\n';
+
+    // ① jsDelivr 正常命中
+    resetHttp();
+    plan('cdn.jsdelivr.net', { text: JSON.stringify(IDX) });
+    let cat = await GP.fetchCatalog();
+    ok(cat.ok && cat.index.domains.length === 2 && cat.index.total === 40,
+      '⑫c fetchCatalog 解析 index.json（域数/条数）');
+    ok(cat.via.indexOf('jsdelivr') >= 0, '⑫c 正常时走 jsDelivr 基址');
+
+    // ② jsDelivr 挂了 → 回退 raw
+    resetHttpOnly();
+    plan('cdn.jsdelivr.net', { fail: 'CDN 不可达' });
+    plan('raw.githubusercontent.com', { text: JSON.stringify(IDX) });
+    cat = await GP.fetchCatalog();
+    ok(cat.ok && cat.via.indexOf('raw.githubusercontent') >= 0,
+      '⑫c ★ jsDelivr 失败自动回退 raw 直链');
+    eq(httpCalls.filter((c) => c.url.indexOf('raw.githubusercontent') >= 0).length, 1,
+      '⑫c 回退只打一次 raw 请求');
+
+    // ③ 全部不可达 → ok:false（面板据此静默降级）
+    resetHttpOnly();
+    plan('cdn.jsdelivr.net', { fail: 'down' });
+    plan('raw.githubusercontent.com', { fail: 'down' });
+    cat = await GP.fetchCatalog();
+    ok(!cat.ok && cat.error, '⑫c 全部基址失败 → {ok:false, error}（不抛异常）');
+
+    // ④ 坏 JSON / 结构异常 → 同样 ok:false
+    resetHttpOnly();
+    plan('cdn.jsdelivr.net', { text: 'not json {' });
+    plan('raw.githubusercontent.com', { fail: 'down' });
+    cat = await GP.fetchCatalog();
+    ok(!cat.ok, '⑫c 非法 index.json → ok:false（不炸面板）');
+    resetHttpOnly();
+    plan('cdn.jsdelivr.net', { text: '{"version":"1","domains":[{"slug":"x"}]}' });
+    plan('raw.githubusercontent.com', { fail: 'down' });
+    cat = await GP.fetchCatalog();
+    ok(!cat.ok, '⑫c 目录条目缺 sha256 等字段被校验拦下（继续回退 raw，最终 ok:false）');
+    ok(httpCalls.some((c) => c.url.indexOf('cdn.jsdelivr.net') >= 0), '⑫c 校验失败的那次请求确实发生过');
+
+    // ⑤ 自定义镜像基址（pref translateGlossaryPackBase）优先于内置基址
+    Prefs.set('translateGlossaryPackBase', 'http://127.0.0.1:8765/mirror');
+    eq(GP.onlineBases()[0], 'http://127.0.0.1:8765/mirror/', '⑫c 自定义基址补齐尾部斜杠并置顶');
+    resetHttp();
+    plan('127.0.0.1:8765', { text: JSON.stringify(IDX) });
+    cat = await GP.fetchCatalog();
+    ok(cat.ok && cat.via.indexOf('http://127.0.0.1:8765') === 0, '⑫c ★ 自定义镜像（被墙网络的逃生门）优先生效');
+    Prefs.set('translateGlossaryPackBase', '');
+    eq(GP.onlineBases().length, 2, '⑫c 清空自定义基址 → 回到内置两基址');
+
+    // ⑥ fetchDomain：按 slug 拉 CSV（优先复用目录基址）
+    resetHttp();
+    plan('cdn.jsdelivr.net', { text: JSON.stringify(IDX) });
+    plan('raw.githubusercontent.com', { text: CSV });
+    let dom1 = await GP.fetchDomain('medicine', 'https://cdn.jsdelivr.net/gh/yebuqiu/open-termbank@main/data/');
+    ok(dom1.ok && dom1.text.indexOf('myocardial infarction') >= 0, '⑫c fetchDomain 拉到 CSV 文本');
+    ok(httpCalls.some((c) => c.url.indexOf('medicine.csv') >= 0), '⑫c 域文件 URL 按 slug 拼装');
+    // 目录基址挂了 → 回退其它基址
+    resetHttpOnly();
+    plan('cdn.jsdelivr.net', { fail: 'down' });
+    plan('raw.githubusercontent.com', { text: CSV });
+    dom1 = await GP.fetchDomain('medicine', 'https://cdn.jsdelivr.net/gh/yebuqiu/open-termbank@main/data/');
+    ok(dom1.ok && dom1.via.indexOf('raw.githubusercontent') >= 0, '⑫c 域下载同样有基址回退');
+
+    // ⑦ index.json 请求带缓存击穿参数（jsDelivr @main 有长缓存，否则「有更新」检测滞后）
+    resetHttp();
+    plan('cdn.jsdelivr.net', { text: JSON.stringify(IDX) });
+    await GP.fetchCatalog();
+    ok(httpCalls.some((c) => /index\.json\?_=\d+/.test(c.url)), '⑫c index.json 带时间戳参数破 CDN 缓存');
+    ok(!httpCalls.some((c) => /medicine\.csv\?/.test(c.url)), '⑫c 域 CSV 不带参数（内容寻址，吃缓存是好事）');
+    resetHttp();
+  }
+
   /* ---------------- 输出 ---------------- */
   console.log('='.repeat(60));
   if (fails.length) {

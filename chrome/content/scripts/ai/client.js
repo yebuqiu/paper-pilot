@@ -104,6 +104,23 @@ var AIClient = {
   },
 
   /**
+   * 采样参数（0.48.0 起含可选 top_p）：temperature / max_tokens 恒定传入；
+   * top_p 仅在用户显式设置时携带（部分网关对未知字段报错，空 = 不传）。
+   */
+  _sampleParams() {
+    const temperature = Number(Prefs.get("aiTemperature", 0.3));
+    const out = {
+      temperature: isNaN(temperature) ? 0.3 : Math.min(2, Math.max(0, temperature)),
+      max_tokens: Number(Prefs.get("aiMaxTokens", 4096)) || 4096,
+    };
+    let topP = "";
+    try { topP = Prefs.get("aiTopP", ""); } catch (e) { topP = ""; }
+    const tp = (topP === "" || topP === null || topP === undefined) ? NaN : Number(topP);
+    if (!isNaN(tp)) out.top_p = Math.min(1, Math.max(0, tp));
+    return out;
+  },
+
+  /**
    * @param {Array<{role:string, content:string}>} messages
    * @returns {Promise<string>} 助手回复文本
    */
@@ -112,12 +129,10 @@ var AIClient = {
     if (cfg.notLoggedIn) throw this._notLoggedInError();
     if (!cfg.ok || !cfg.apiKey && !this._noKeyLocal(cfg)) throw new Error("NO_API_KEY");
 
-    const temperature = Number(Prefs.get("aiTemperature", 0.3));
     const payload = {
       model: cfg.model,
       messages,
-      temperature: isNaN(temperature) ? 0.3 : Math.min(2, Math.max(0, temperature)),
-      max_tokens: Number(Prefs.get("aiMaxTokens", 4096)) || 4096,
+      ...this._sampleParams(),
       ...(cfg.extraBody || {}),
     };
 
@@ -191,12 +206,10 @@ var AIClient = {
       return full;
     }
 
-    const temperature = Number(Prefs.get("aiTemperature", 0.3));
     const payload = {
       model: cfg.model,
       messages,
-      temperature: isNaN(temperature) ? 0.3 : Math.min(2, Math.max(0, temperature)),
-      max_tokens: Number(Prefs.get("aiMaxTokens", 4096)) || 4096,
+      ...this._sampleParams(),
       stream: true,
       ...(cfg.extraBody || {}),
     };

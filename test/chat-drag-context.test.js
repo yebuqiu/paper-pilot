@@ -250,6 +250,15 @@ const AIChat = {
   async getFullText(item) {
     return fullTextById[item.id] !== undefined ? fullTextById[item.id] : null;
   },
+  // 0.48.0 历史滑窗（与真实实现同语义：最近 N 轮，断头 assistant 丢弃）
+  windowHistory(history, rounds) {
+    const list = Array.isArray(history) ? history : [];
+    let n = Number(rounds);
+    if (!isFinite(n)) n = 6;
+    n = Math.max(1, Math.min(30, Math.floor(n)));
+    const cut = list.slice(-n * 2);
+    return cut.length && cut[0] && cut[0].role === 'assistant' ? cut.slice(1) : cut;
+  },
   // 单篇路径桩：打上 'sys-single' 标记，用于断言「chip 存在时不走单篇路径」
   async buildMessages(item, q, history, ft) {
     if (!ft) throw new Error('NO_PDF');
