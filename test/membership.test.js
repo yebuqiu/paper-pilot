@@ -239,9 +239,11 @@ function daysBetween(iso) { return Math.round((Date.parse(iso) - Date.now()) / D
     ok(!(r.json.priceOptions || []).some((o) => o.months === 1 && o.price === 19),
       '13.15 派生 priceOptions 也不含未生效价');
     r = await req('POST', '/api/orders', { plan: 'Pro', months: 1 }, token);
-    // 1.4.5 起实付金额 = 原始价 + 对账尾数，所以原始价要看 baseCents
+    // 1.4.5 起实付金额 = 原始价 + 对账尾数，所以原始价要看 baseCents；
+    // 1.8.4 起尾数**默认关闭** → 实付 = 标价（所见即所付）
     eq(r.json.order.baseCents, 2900, '13.16 促销未生效时下单仍是原价 29（baseCents=2900）');
-    ok(r.json.order.tailCents >= 1 && r.json.order.tailCents <= 99, '13.16b 订单带 1..99 的对账尾数', r.json.order.tailCents);
+    eq(r.json.order.amountCents, 2900, '13.16b ★ 默认精确金额（1.8.4 起不再附加对账尾数）');
+    eq(r.json.order.tailCents, 0, '13.16c tailCents = 0（尾数开关默认关）');
     eq(r.json.order.cycle, 'monthly', '13.17 订单记录计费周期');
     ok(!!r.json.order.priceItemId, '13.18 订单记录价格条目 id（对账溯源）');
     const orderBeforePromo = r.json.order.id;

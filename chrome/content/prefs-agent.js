@@ -42,8 +42,13 @@
     { id: "get_item_details", label: "读取条目详情", ro: true },
     { id: "read_item_fulltext", label: "读取条目全文", ro: true },
     { id: "list_collections", label: "列出分类", ro: true },
+    { id: "search_arxiv", label: "检索 arXiv", ro: true },
+    { id: "get_citation_count", label: "查被引量", ro: true },
+    { id: "search_notes", label: "检索笔记", ro: true },
+    { id: "export_bibliography", label: "导出参考文献", ro: true },
     { id: "add_note", label: "添加笔记（写）", ro: false },
     { id: "add_tags", label: "添加标签（写）", ro: false },
+    { id: "move_to_collection", label: "移动到文集（写）", ro: false },
   ];
 
   function enabledToolSet() {

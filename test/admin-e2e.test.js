@@ -361,6 +361,8 @@ function req(method, p, body, token, extraHeaders) {
     ok(!!perpItem && perpItem.price === 128, 'E21.4 /api/plans 下发永久价 ¥128（插件档位卡据此显示）', perpItem);
 
     // 下永久订单（模拟插件传 cycle=perpetual）→ 拿带尾数的实付金额
+    // 1.8.4：尾数默认关；本节验证「带尾数对账」须先在管理接口开启
+    await req('PUT', '/api/admin/membership', { tail: { enabled: true } });
     await req('POST', '/api/auth/register', { email: 'perpatest@test.local', password: 'pw12345678' });
     const ptok = (await req('POST', '/api/auth/login',
       { email: 'perpatest@test.local', password: 'pw12345678' })).json.token;

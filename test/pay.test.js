@@ -155,11 +155,20 @@ function orderOnDisk(id) {
       const send = (obj, code) => { rs.writeHead(code || 200, { 'Content-Type': 'application/json' }); rs.end(JSON.stringify(obj)); };
       if (u.pathname === '/Api/checkOrder') {
         seen.checkOrder.push(q);
-        if (!pay.verifySign(q, gwKey)) return send({ code: 1, msg: '签名错误' });
         if (coStyle === 'lh') {
+          // 领航智能Pay（ljlliu.cn）2026-10-18 实测行为：
+          // 查无订单 → 201（先查单后鉴权，不验签）；订单存在但签名坏 → 401；
+          // 成功 code=0 + data 包裹（money 为数字）
           if (q.out_trade_no === 'NOSUCH') return send({ code: 201, data: null, msg: '订单不存在' });
-          return send({ code: 200, data: { trade_no: 'LH001', out_trade_no: q.out_trade_no, status: 1, money: '0.01' }, msg: '成功' });
+          if (!pay.verifySign(q, gwKey)) return send({ code: 401, data: null, msg: '商户身份校验失败' });
+          return send({ code: 0, data: { trade_no: 'LH001', out_trade_no: q.out_trade_no, status: 1, money: 0.01 }, msg: 'ok' });
         }
+        if (coStyle === 'v200') {
+          // 假想同构姊妹站：公开 API 走 200/201 体系（防御性容错对象）
+          if (!pay.verifySign(q, gwKey)) return send({ code: 401, data: null, msg: '商户身份校验失败' });
+          return send({ code: 200, data: { trade_no: 'V201', out_trade_no: q.out_trade_no, status: 1, money: 0.01 }, msg: '成功' });
+        }
+        if (!pay.verifySign(q, gwKey)) return send({ code: 1, msg: '签名错误' });
         return send({ code: 0, data: { trade_no: 'GW001', out_trade_no: q.out_trade_no, status: 1, money: '0.01' } });
       }
       if (u.pathname === '/api.php') {
@@ -235,44 +244,49 @@ function orderOnDisk(id) {
     ok(tc.ok && tc.msg.indexOf('全链路通过') >= 0, 'B10 深度自检通过（探测 submit.php 下单）', tc.msg);
     ok(seen.submit.length > 0, 'B11 深度自检确实打了下单一（0.01 元测试单）');
 
-    /* ---- 领航智能Pay（ljlliu.cn）兼容：checkOrder 成功码 200 / 业务错 201 ---- */
+    /* ---- 领航智能Pay（ljlliu.cn）实测行为仿真（2026-10-18 全链路实测） ---- */
     coStyle = 'lh';
     qr = await pay.queryOrder(cfgOrder, 'PPA1');
-    ok(qr.ok && qr.paid && qr.tradeNo === 'LH001', 'B12 ★ checkOrder 兼容领航智能Pay 成功码 code=200（ljlliu.cn 实测行为）', qr);
+    ok(qr.ok && qr.paid && qr.tradeNo === 'LH001', 'B12 ★ checkOrder 兼容领航智能Pay（实测：code=0 成功 + data 包裹 + money 为数字）', qr);
     qr = await pay.queryOrder(cfgOrder, 'NOSUCH');
-    ok(!qr.ok && qr.raw && Number(qr.raw.code) === 201, 'B13 ★ 领航风格业务错误（201 订单不存在）→ ok=false 不误报成功', qr);
+    ok(!qr.ok && qr.raw && Number(qr.raw.code) === 201, 'B13 ★ 领航行为：查无订单 → 201（先查单后鉴权）→ ok=false 不误报', qr);
+    qr = await pay.queryOrder(Object.assign({}, cfgOrder, { key: 'WRONGKEY9' }), 'PPA1');
+    ok(!qr.ok && qr.raw && Number(qr.raw.code) === 401, 'B14 ★ 领航行为：订单存在但签名坏 → 401 → ok=false（成功路径确实验签）', qr);
+    coStyle = 'v200';
+    qr = await pay.queryOrder(cfgOrder, 'PPA1');
+    ok(qr.ok && qr.paid && qr.tradeNo === 'V201', 'B15 checkOrder 成功码 200 容错（同构姊妹站防御性兼容）', qr);
     coStyle = '';
 
     /* ---- 深度自检：域名白名单拒绝必须如实报错（不能假报全链路通过） ---- */
     submitStyle = 'domain';
     tc = await pay.testConnection(cfgV1, { deep: true, base: 'https://pp.test.example' });
     ok(!tc.ok && tc.msg.indexOf('未过白') >= 0 && tc.msg.indexOf('pp.test.example') >= 0,
-      'B14 ★ 深度自检识别域名白名单拒绝并给出待授权域名', tc.msg);
+      'B16 ★ 深度自检识别域名白名单拒绝并给出待授权域名', tc.msg);
     const lastSubmit = seen.submit[seen.submit.length - 1];
     ok(String(lastSubmit.notify_url).indexOf('https://pp.test.example/api/pay/notify') === 0,
-      'B15 ★ 深度测试单 notify_url 用真实回调域名（不再写死 example.com）', lastSubmit.notify_url);
+      'B17 ★ 深度测试单 notify_url 用真实回调域名（不再写死 example.com）', lastSubmit.notify_url);
     submitStyle = '';
     tc = await pay.testConnection(cfgV1, { deep: true, base: 'https://pp.test.example' });
-    ok(tc.ok && tc.msg.indexOf('全链路通过') >= 0, 'B16 深度自检传 base 正常通过', tc.msg);
+    ok(tc.ok && tc.msg.indexOf('全链路通过') >= 0, 'B18 深度自检传 base 正常通过', tc.msg);
 
     /* ---- 标准查单路径 404 → 提示改用 checkOrder 变体 ---- */
     const tc404 = await pay.testConnection(Object.assign({}, cfgV1, { gateway: GW + '/nosuch' }));
     ok(!tc404.ok && tc404.msg.indexOf('checkOrder') >= 0,
-      'B17 ★ 标准查单 404 → 提示切换 checkOrder 变体（Go 系新网关无 api.php）', tc404.msg);
+      'B19 ★ 标准查单 404 → 提示切换 checkOrder 变体（Go 系新网关无 api.php）', tc404.msg);
 
     const cfgV2 = Object.assign(pay.newCfg(), { enabled: true, provider: 'mzf2', gateway: GW, pid: '2001', privateKey: privB64, platformKey: pubB64 });
     const url2 = pay.createPayUrl(cfgV2, { outTradeNo: 'PPB2', amountCents: 3000, itemName: '充值' }, 'alipay', 'https://site.example');
-    ok(url2.indexOf(GW + '/api/pay/submit?') === 0, 'B18 V2 下单跳 api/pay/submit');
-    ok(!!new URL(url2).searchParams.get('timestamp'), 'B19 V2 带 10 位时间戳');
+    ok(url2.indexOf(GW + '/api/pay/submit?') === 0, 'B20 V2 下单跳 api/pay/submit');
+    ok(!!new URL(url2).searchParams.get('timestamp'), 'B21 V2 带 10 位时间戳');
     qr = await pay.queryOrder(cfgV2, 'PPB2');
-    ok(qr.ok && qr.paid && qr.tradeNo === 'GW003', 'B20 ★ V2 查单（响应验签通过）', qr);
+    ok(qr.ok && qr.paid && qr.tradeNo === 'GW003', 'B22 ★ V2 查单（响应验签通过）', qr);
     const tc2 = await pay.testConnection(cfgV2);
-    ok(tc2.ok && tc2.msg.indexOf('连接成功') >= 0, 'B21 V2 连接自检（商户信息接口）', tc2.msg);
+    ok(tc2.ok && tc2.msg.indexOf('连接成功') >= 0, 'B23 V2 连接自检（商户信息接口）', tc2.msg);
     // 平台公钥不匹配时必须报错，而不是"连接成功"
     const tcBad = await pay.testConnection(Object.assign({}, cfgV2, { platformKey: pay.cleanKeyMaterial(
       crypto.generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' },
         privateKeyEncoding: { type: 'pkcs8', format: 'pem' } }).publicKey) }));
-    ok(!tcBad.ok && tcBad.msg.indexOf('平台公钥不匹配') >= 0, 'B22 ★ 平台公钥不匹配 → 自检失败（不误报成功）', tcBad.msg);
+    ok(!tcBad.ok && tcBad.msg.indexOf('平台公钥不匹配') >= 0, 'B24 ★ 平台公钥不匹配 → 自检失败（不误报成功）', tcBad.msg);
 
     /* ================= C. 集成（真服务端 + 假网关） ================= */
 
@@ -284,7 +298,7 @@ function orderOnDisk(id) {
     // 默认状态：未启用
     let r = await req(PORT, 'GET', '/api/health');
     eq(r.json.onlinePay, false, 'C1 health：默认未开通在线支付');
-    eq(r.json.version, '1.8.2', 'C2 服务端版本 1.8.1');
+    eq(r.json.version, '1.8.4', 'C2 服务端版本 1.8.4');
     r = await req(PORT, 'GET', '/api/plans');
     eq(r.json.onlinePay.available, false, 'C3 /api/plans：未开通时 available=false');
 
@@ -382,6 +396,32 @@ function orderOnDisk(id) {
     audit = (await req(PORT, 'GET', '/api/admin/audit?limit=50')).json;
     ok((audit.items || []).some((e) => e.action === 'order.pay'), 'C39 自动入账写入审计（order.pay）');
 
+    /* ---- 免签网关加价兼容（领航智能Pay ljlliu.cn 实测：并发同额未完结订单被 +1 分递增
+           加价以区分入账，notify 带加价后金额 → 多付侧留尾差窗口；少付仍拒；按本地额度入账。
+           注意 PaperPilot 定价带唯一对账尾数，订单实际金额必须读回计算，不能硬编码） ---- */
+    const ob = await req(PORT, 'POST', '/api/orders', { kind: 'credit', optionId: 'rc10' }, tok);
+    const obCents = Math.round(Number(ob.json.order.amount) * 100);
+    await req(PORT, 'POST', '/api/orders/' + ob.json.order.id + '/pay', { channel: 'alipay' }, tok);
+    const bumpNo = orderOnDisk(ob.json.order.id).outTradeNo;
+    let bumpN = { pid: '1001', trade_status: 'TRADE_SUCCESS', out_trade_no: bumpNo,
+      money: ((obCents + 1) / 100).toFixed(2), trade_no: 'GW-BUMP-1', type: 'alipay' };   // 加价 1 分
+    bumpN.sign = pay.buildSign(bumpN, KEY);
+    r = await req(PORT, 'GET', notifyUrl(bumpN));
+    eq(r.text, 'success', 'C39a ★ 免签加价：多付 1 分 → success');
+    me = (await req(PORT, 'GET', '/api/auth/me', null, tok)).json.user;
+    eq(me.balance.paidMicro, paidAfterFirst + yuan(10), 'C39b ★ 加价单按本地订单额度入账（¥10，多付部分不多记）');
+    const paidAfterBump = me.balance.paidMicro;
+    const oo = await req(PORT, 'POST', '/api/orders', { kind: 'credit', optionId: 'rc10' }, tok);
+    const ooCents = Math.round(Number(oo.json.order.amount) * 100);
+    await req(PORT, 'POST', '/api/orders/' + oo.json.order.id + '/pay', { channel: 'alipay' }, tok);
+    const overNo = orderOnDisk(oo.json.order.id).outTradeNo;
+    let overN = { pid: '1001', trade_status: 'TRADE_SUCCESS', out_trade_no: overNo,
+      money: ((ooCents + 150) / 100).toFixed(2), trade_no: 'GW-OVER-1', type: 'alipay' };  // 多付 ¥1.50
+    overN.sign = pay.buildSign(overN, KEY);
+    r = await req(PORT, 'GET', notifyUrl(overN));
+    eq(r.text, 'fail', 'C39c ★ 超容差多付（+¥1.50，默认窗口 ¥1）→ fail');
+    eq(orderOnDisk(oo.json.order.id).status, 'pending', 'C39d 超容差订单不入账');
+
     /* ---- 已履约订单不可再发起支付 ---- */
     r = await req(PORT, 'POST', '/api/orders/' + oid + '/pay', { channel: 'alipay' }, tok);
     eq(r.status, 400, 'C40 已履约订单不能重复发起支付');
@@ -401,7 +441,7 @@ function orderOnDisk(id) {
     eq(r.json.justPaid, true, 'C45 ★ 查单确认已支付 → 立即入账（回调丢包时的兜底）');
     eq(orderOnDisk(oid2).status, 'fulfilled', 'C46 第二笔订单已履约');
     me = (await req(PORT, 'GET', '/api/auth/me', null, tok)).json.user;
-    eq(me.balance.paidMicro, paidAfterFirst + yuan(33), 'C47 第二笔按到账额度入账（¥30 到账 ¥33）');
+    eq(me.balance.paidMicro, paidAfterBump + yuan(33), 'C47 第二笔按到账额度入账（¥30 到账 ¥33）');
 
     /* ---- 返回页与状态查询 ---- */
     r = await req(PORT, 'GET', '/api/pay/return?out_trade_no=' + outTradeNo);

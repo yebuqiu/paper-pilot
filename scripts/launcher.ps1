@@ -2737,6 +2737,9 @@ $script:health = $null
 $script:healthAt = [datetime]::MinValue
 $script:plans = $null
 $script:plansAt = [datetime]::MinValue
+# 1.8.3 在线支付网关详情（/api/admin/payment；控制台「计费与会员」页展示）
+$script:payGw = $null
+$script:payGwAt = [datetime]::MinValue
 $script:channels = $null
 $script:channelsAt = [datetime]::MinValue
 $script:opsAt = [datetime]::MinValue
@@ -3106,7 +3109,7 @@ $script:ui.llmMeta = New-UiLabel $gLlm '' 14 50 744 18 8.5 $false $script:ColMut
 # ============================================================
 # 页面 3 · 计费与会员（服务端 1.8.0 口径）
 # ============================================================
-$pgBilling = New-UiPage 'billing' '计费与会员' '1.8.0：取消每日次数上限，AI 调用统一从余额扣费'
+$pgBilling = New-UiPage 'billing' '计费与会员' '1.8.0 起按余额计费；1.8.3 免签网关多付尾差窗口（支付订单展示见插件 0.49.0）'
 
 $gBill = New-UiGroup $pgBilling '计费口径（服务端 1.8.0）' 16 12 772 150
 $script:ui.billEnforce = New-UiLabel $gBill '余额拦截：检测中…' 14 24 744 20 9 $true $script:ColMuted
@@ -3139,6 +3142,19 @@ $script:ui.billCost = New-UiLabel $gBillHealth '成本看板：后台 → 会员
 [void](New-UiButton $gBillHealth '刷新计费数据' 390 84 130 26 { $script:healthAt = [datetime]::MinValue; $script:plansAt = [datetime]::MinValue; Update-BillingUI $true })
 
 [void](New-UiLabel $pgBilling '说明：1.8.0 起没有「每日调用次数」；套餐页只配「每月额度（¥）」与高级模型开关。auto 恒可用，且按基础档计费（不会被通道默认模型误判为高级档）。' 16 506 772 40 8 $false $script:ColMuted)
+
+# ---- 在线支付网关（1.8.3：免签网关加价容差 + 连接自检）----
+# 数据源：GET /api/admin/payment（本机管理接口，含实际生效的容差值）；
+# 深度测试 = 按真实参数向网关创建一笔 0.01 元未支付测试单（需显式确认）。
+$gPayGw = New-UiGroup $pgBilling '在线支付网关（服务端 1.8.3 · 免签网关适配）' 16 556 772 176
+$script:ui.pgwState = New-UiLabel $gPayGw '网关状态：检测中…' 14 24 744 22 9.5 $true $script:ColMuted
+$script:ui.pgwMeta = New-UiLabel $gPayGw '' 14 50 744 20 8.5 $false $script:ColText
+$script:ui.pgwOverpay = New-UiLabel $gPayGw '' 14 74 744 20 8.5 $false $script:ColText
+[void](New-UiLabel $gPayGw '免签网关（个人收款码）靠「唯一金额」区分并发同额订单：第 2、3…笔会被网关 +1 分递增加价，回调金额校验因此放开多付尾差窗口；少付仍一律拒绝、到账仍按本地订单额度。' 14 98 744 34 8 $false $script:ColMuted)
+[void](New-UiButton $gPayGw '连接测试' 14 136 96 28 { Do-TestPayGateway $false })
+[void](New-UiButton $gPayGw '深度测试（0.01 元）' 118 136 136 28 { Do-TestPayGateway $true })
+[void](New-UiButton $gPayGw '网关配置（管理页）' 262 136 156 28 { Do-OpenAdmin })
+$script:ui.pgwMsg = New-UiLabel $gPayGw '' 426 140 332 20 8.5 $false $script:ColMuted
 
 # ============================================================
 # 页面 4 · 运维与告警
@@ -3494,6 +3510,12 @@ function Update-BillingUI {
     $script:ui.billPriced.Text = '已配价模型：—'
     $script:ui.billGaps.Text = '未配价模型：—'
     $script:ui.billRecharge.Text = '充值档位：—'
+    if ($script:ui.pgwState) {
+      $script:ui.pgwState.Text = '网关状态：后台未连接'
+      $script:ui.pgwState.ForeColor = $script:ColMuted
+      $script:ui.pgwMeta.Text = ''
+      $script:ui.pgwOverpay.Text = ''
+    }
     return
   }
   if ($Force -or -not $script:plans -or ((Get-Date) - $script:plansAt).TotalSeconds -gt 60) {
@@ -3554,6 +3576,57 @@ function Update-BillingUI {
       }
       [void]$it.SubItems.Add($priceTxt)
       [void]$script:ui.planList.Items.Add($it)
+    }
+  }
+
+  # ---- 在线支付网关详情（1.8.3，缓存 15 秒；本机管理接口仅本机可访问）----
+  if ($Force -or $null -eq $script:payGw -or ((Get-Date) - $script:payGwAt).TotalSeconds -gt 15) {
+    try {
+      $script:payGw = Invoke-UiApi 'GET' '/api/admin/payment' $null 4
+    } catch {
+      $script:payGw = $null
+    }
+    $script:payGwAt = Get-Date
+  }
+  if ($script:ui.pgwState) {
+    $pmt = $null
+    if ($script:payGw -and $script:payGw.payment) { $pmt = $script:payGw.payment }
+    if (-not $pmt) {
+      $script:ui.pgwState.Text = '网关状态：读取失败（管理接口不可用）'
+      $script:ui.pgwState.ForeColor = $script:ColMuted
+      $script:ui.pgwMeta.Text = ''
+      $script:ui.pgwOverpay.Text = ''
+    } else {
+      $prov = '易支付 V1（MD5）'
+      if ([string]$pmt.provider -eq 'mzf2') { $prov = '易支付 V2（RSA）' }
+      $qm = '标准 api.php?act=order'
+      if ([string]$pmt.queryMode -eq 'checkOrder') { $qm = '变体 GET /Api/checkOrder' }
+      $script:ui.pgwMeta.Text = '协议 ' + $prov + ' ｜ 网关 ' + [string]$pmt.gateway + ' ｜ pid ' + [string]$pmt.pid + ' ｜ 查单 ' + $qm
+
+      $cents = 100
+      if ($null -ne $pmt.overpayCents) { $cents = [double]$pmt.overpayCents }
+      if ($cents -gt 0) {
+        $script:ui.pgwOverpay.Text = '免签多付容差：¥' + ($cents / 100).ToString('0.00') + '（少付仍拒绝；pp.env 的 PP_PAY_OVERPAY_CENTS 可调，0=精确比对）'
+      } else {
+        $script:ui.pgwOverpay.Text = '免签多付容差：0（精确比对；免签网关并发同额订单可能因加价被拒）'
+      }
+
+      if ($pmt.onlineReady) {
+        $script:ui.pgwState.Text = '网关状态：已就绪 —— 插件下单 → 扫码 → 自动到账'
+        $script:ui.pgwState.ForeColor = $script:ColGreen
+      } elseif (-not $pmt.enabled) {
+        $script:ui.pgwState.Text = '网关状态：未启用（客户端回落收款码 + 人工核销）'
+        $script:ui.pgwState.ForeColor = $script:ColAmber
+      } elseif (-not $pmt.hasKey) {
+        $script:ui.pgwState.Text = '网关状态：未就绪 —— 未填商户密钥'
+        $script:ui.pgwState.ForeColor = $script:ColRed
+      } elseif (-not $script:payGw.payment.siteBaseConfigured) {
+        $script:ui.pgwState.Text = '网关状态：未就绪 —— PP_PUBLIC_URL 未配置（回调地址无法确定）'
+        $script:ui.pgwState.ForeColor = $script:ColRed
+      } else {
+        $script:ui.pgwState.Text = '网关状态：未就绪 —— 检查网关地址与密钥是否匹配'
+        $script:ui.pgwState.ForeColor = $script:ColAmber
+      }
     }
   }
 }
@@ -3769,6 +3842,46 @@ function Do-TestSite {
   } catch {
     [System.Windows.Forms.MessageBox]::Show('公网访问失败：检查通道是否启动（状态灯）+ 账号后台是否运行（8000）', '测试失败', 'OK', 'Warning') | Out-Null
   }
+}
+
+# 1.8.3 在线支付网关自检（浅测 = 查单链路可达；深测 = 按真实参数建 0.01 元未支付测试单）
+function Do-TestPayGateway {
+  param([bool]$Deep = $false)
+  if ($script:busy) { return }
+  if (-not (Require-ServerRunning)) { return }
+  if ($Deep) {
+    $r = [System.Windows.Forms.MessageBox]::Show(
+      ('深度测试会按真实下单参数向支付网关创建一笔 0.01 元测试单（不支付、商户后台会留未支付记录，可忽略）。' + "`n`n是否继续？"),
+      '深度测试', 'YesNo', 'Question')
+    if ($r -ne 'Yes') { return }
+  }
+  $script:busy = $true
+  try {
+    if ($script:ui.pgwMsg) {
+      $script:ui.pgwMsg.Text = $(if ($Deep) { '深度测试中（最长 30 秒）…' } else { '连接测试中…' })
+      $script:ui.pgwMsg.ForeColor = $script:ColMuted
+    }
+    $res = $null
+    try {
+      $res = Invoke-UiApi 'POST' '/api/admin/payment/test' @{ deep = $Deep } 30
+    } catch {
+      $res = @{ ok = $false; msg = $_.Exception.Message }
+    }
+    $ok = [bool]($res -and $res.ok)
+    $msg = '无响应'
+    if ($res -and $null -ne $res.msg) { $msg = [string]$res.msg }
+    if ($script:ui.pgwMsg) {
+      $script:ui.pgwMsg.Text = $(if ($ok) { '✓ ' } else { '✗ ' }) + $msg
+      $script:ui.pgwMsg.ForeColor = $(if ($ok) { $script:ColGreen } else { $script:ColRed })
+    }
+    $auditDetail = 'shallow: '
+    if ($Deep) { $auditDetail = 'deep: ' }
+    Write-LauncherAudit 'pay-gateway-test' ($auditDetail + $msg) $ok
+    # 自检后刷新网关状态卡（enable/ready 可能变化）
+    $script:payGw = $null
+    $script:payGwAt = [datetime]::MinValue
+    Update-BillingUI $true
+  } finally { $script:busy = $false }
 }
 
 function Do-OpenAdmin {

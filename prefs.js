@@ -30,7 +30,22 @@ pref("extensions.zotero.paperpilot.aiHistoryRounds", 6);
 pref("extensions.zotero.paperpilot.chatAgentMode", false);
 pref("extensions.zotero.paperpilot.aiAgentMaxSteps", 5);
 pref("extensions.zotero.paperpilot.aiAgentConfirmWrite", true);
-pref("extensions.zotero.paperpilot.aiAgentTools", "search_library,get_item_details,read_item_fulltext,list_collections,add_note,add_tags");
+// 0.49.0：工具集扩至 11 个（读：arXiv/被引/笔记检索/文献导出；写：移动文集）
+pref("extensions.zotero.paperpilot.aiAgentTools", "search_library,get_item_details,read_item_fulltext,list_collections,search_arxiv,get_citation_count,search_notes,export_bibliography,add_note,add_tags,move_to_collection");
+// 0.49.0 Agent 决策模型路由（空 = 工具决策轮也用主通道模型）
+pref("extensions.zotero.paperpilot.aiAgentDecisionModel", "");
+// 0.49.0 研究者画像（注入所有 system prompt 的长期偏好，空 = 不注入）
+pref("extensions.zotero.paperpilot.researcherProfile", "");
+// 0.49.0 浮窗会话持久化（JSON 数组，LRU 50；空 = 无历史）
+pref("extensions.zotero.paperpilot.chatSessions", "");
+// 0.49.0 写操作审计日志（JSON 数组，LRU 100，最新在前）
+pref("extensions.zotero.paperpilot.agentAuditLog", "");
+// 0.49.0 定时任务（"HH:MM" 本地时间；空 = 关闭）
+pref("extensions.zotero.paperpilot.scheduleDailyDigest", "");
+pref("extensions.zotero.paperpilot.scheduleWeeklyReport", "");
+pref("extensions.zotero.paperpilot.scheduleLibHealth", "");
+// 定时任务上次执行日期记账（JSON {jobId:"YYYY-MM-DD"}）
+pref("extensions.zotero.paperpilot.scheduleLastRun", "");
 // 0.48.x 技能包商店（Skills Hub）：已安装记账 / 本地评分 / 目录源（空 = 仅内置目录）
 pref("extensions.zotero.paperpilot.skillPacksInstalled", "");
 pref("extensions.zotero.paperpilot.skillPackRatings", "");

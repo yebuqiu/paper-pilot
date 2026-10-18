@@ -347,6 +347,12 @@
           <input id="p-pay-text" placeholder="微信号 xxx / 支付宝账号 xxx" style="width:100%"></div>
         <div class="field wide"><label>支付说明</label>
           <input id="p-pay-note" placeholder="扫码支付后点「我已完成支付」，管理员核销后自动开通" style="width:100%"></div>
+        <div class="field wide"><label>订单金额唯一尾数</label>
+          <label class="chk"><input type="checkbox" id="p-tail-enabled">
+            下单时在标价上加 1~99 分「对账尾数」（如 ¥10.00 → ¥10.24）</label>
+          <div class="hint" style="margin-top:4px">默认关闭 = <b>所见即所付</b>（订单金额即标价）。
+            仅当需要「无备注转账也能按金额自动对账」时才开启；开启后不同订单金额互不相同，
+            但用户实付会略高于标价（在线支付网关本身也会对并发同额订单加价，与本站尾数无关）。</div></div>
         <div class="field wide"><label>免费版 · 权益文案（一行一条，展示在插件会员卡片）</label>
           <textarea id="p-free-feats" rows="3" style="width:100%"></textarea></div>
         <div class="field wide"><label>专业版 · 权益文案（一行一条）</label>
@@ -1957,6 +1963,8 @@ function renderPlanForm() {
   $('p-pay-qr').value = pay.qrImage || '';
   $('p-pay-text').value = pay.qrText || '';
   $('p-pay-note').value = pay.note || '';
+  // 1.8.4 唯一尾数开关（默认关 = 所见即所付）
+  if ($('p-tail-enabled')) $('p-tail-enabled').checked = !!mb.tailEnabled;
   // 激活码 / 开通 下拉：用 grantable（可开通，与「有没有生效价格」无关）
   var sel = $('c-plan');
   var cur = sel.value;
@@ -2121,6 +2129,8 @@ function savePlans() {
       qrText: $('p-pay-text').value.trim(),
       note: $('p-pay-note').value.trim(),
     },
+    // 1.8.4：唯一尾数开关（关闭 = 下单金额即标价）
+    tail: { enabled: !!($('p-tail-enabled') && $('p-tail-enabled').checked) },
   };
   body.plans.Free = { highTierModels: !!$('p-free-hi').checked,
     monthlyGrantMicro: Math.round((Number($('p-free-grant').value) || 0) * 1e6),

@@ -106,6 +106,9 @@ function req(method, p, body, token) {
 
     /* ================= C. 永久会员模型 ================= */
     const doc = membership.normalize(membership.newDoc());
+    // 1.8.4：唯一尾数默认关闭（所见即所付）；本套测试验证「按金额对账」，
+    // 必须显式开启 —— 关闭时同价订单金额相同，对账会判 ambiguous（这正是默认关的取舍）。
+    doc.tailEnabled = true;
     let r = membership.upsertPriceItem(doc, { plan: 'Pro', cycle: 'perpetual', months: 0, price: 128, label: '永久' });
     ok(!r.error, 'C1 可以新增「永久」价格条目', r.error);
     eq(r.item.months, 0, 'C2 永久条目的 months 恒为 0');
@@ -205,6 +208,8 @@ function req(method, p, body, token) {
       'E3 /api/plans 下发永久价（插件据此显示「永久 · ¥128」）');
 
     // 用户下单（模拟插件：传 cycle=perpetual）
+    // 1.8.4：尾数默认关；本节验证「带尾数实付」须先在管理接口开启
+    await req('PUT', '/api/admin/membership', { tail: { enabled: true } });
     await req('POST', '/api/auth/register', { email: 'buyer@test.local', password: 'pw12345678' });
     const tok = (await req('POST', '/api/auth/login', { email: 'buyer@test.local', password: 'pw12345678' })).json.token;
     const order = (await req('POST', '/api/orders', { plan: 'Pro', cycle: 'perpetual' }, tok)).json.order;

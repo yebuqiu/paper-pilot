@@ -188,6 +188,7 @@ const fresh = () => membership.normalize(membership.newDoc());
 
   /* ================= F. 订单生命周期联动 ================= */
   const docF = fresh();
+  docF.tailEnabled = true;   // 1.8.4：尾数默认关；本段验证「按金额唯一对账」须显式开启
   const fC = coupon.createCoupons(docF, { type: 'percent', percent: 25, maxUses: 2, perUser: 1 }).coupons[0];
   const uA = { id: 'uA', email: 'a@t.local' };
   const uB = { id: 'uB', email: 'b@t.local' };
@@ -286,7 +287,7 @@ const fresh = () => membership.normalize(membership.newDoc());
   ok(!!tok, 'J1 测试账号登录成功');
 
   const h0 = await req('GET', '/api/health');
-  eq(h0.json.version, '1.8.2', 'J2 服务端版本 1.8.1');
+  eq(h0.json.version, '1.8.4', 'J2 服务端版本 1.8.1');
   ok('coupons' in h0.json && 'couponsActive' in h0.json, 'J3 health 暴露优惠券观测字段', h0.json.coupons);
 
   const jc = await req('POST', '/api/admin/coupons', { type: 'percent', percent: 30, maxUses: 2, perUser: 1, note: '上线三折优惠' });

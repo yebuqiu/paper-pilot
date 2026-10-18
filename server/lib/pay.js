@@ -12,9 +12,11 @@
  *     下单跳转 {gateway}/submit.php   异步回调 GET notify_url   同步返回 return_url
  *     主动查单 {gateway}/api.php?act=order
  *     变体 queryMode='checkOrder'：GET {gateway}/Api/checkOrder（密钥不出现在参数里）
- *       成功码兼容 code=0（旧变体站）与 code=200（领航智能Pay ljlliu.cn，
- *       2026-10-18 实测：200 成功 / 201 业务错，data 同样裹在 data 字段；该站
- *       还有按商户的回调域名白名单，见 testConnection 深度自检的域名分支）
+ *       领航智能Pay（ljlliu.cn）2026-10-18 实测：该端点 code=0 成功 / 201 订单不存在
+ *       （先查单后鉴权）/ 401 签名坏；data 包裹在 data 字段。另两点见 account-server：
+ *       ① 按商户的回调域名白名单（testConnection 深度自检有域名分支）；
+ *       ② 免签加价——并发同额订单被 +1 分递增加价，notify 带加价后金额
+ *       （回调金额校验的多付尾差窗口 PAY_OVERPAY_TOLERANCE_CENTS）
  *   mzf2  易支付/码支付 V2（SHA256WithRSA 签名）
  *     下单跳转 {gateway}/api/pay/submit   主动查单 POST {gateway}/api/pay/query
  *     商户信息 POST {gateway}/api/merchant/info（连接测试用；响应带平台签名需验签）
@@ -307,8 +309,9 @@ async function queryOrder(cfg, outTradeNo) {
       const url = cfg.gateway + '/Api/checkOrder?' + new URLSearchParams(Object.assign({}, params, { sign })).toString();
       const data = await requestJson(url);
       const d = (data && data.data) || {};
-      // 变体族成功码不统一：旧站 code=0；领航智能Pay（ljlliu.cn）同端点走 200 成功 /
-      // 201 业务错（如「订单不存在」），data 同样裹在 data 字段里 —— 两者都认。
+      // 领航智能Pay（ljlliu.cn）2026-10-18 实测：code=0 成功 / 201 订单不存在 /
+      // 401 签名坏，data 包裹在 data 字段（money 为数字）。code=200 作为同构站点
+      // 的防御性容错保留（其公开 API 走 200/201 体系，姊妹站可能沿用）。
       const code = Number(data && data.code);
       return { ok: code === 0 || code === 200, paid: Number(d.status) === 1, tradeNo: String(d.trade_no || ''), raw: data };
     }
@@ -384,7 +387,10 @@ async function testConnection(cfg, { deep, base } = {}) {
       const root = String(base || '').trim().replace(/\/+$/, '');
       const notifyBase = root || 'https://example.com';
       const p = {
-        pid: cfg.pid, type: 'wxpay',
+        pid: cfg.pid,
+        // 深度探测用 alipay：免签网关普遍只有支付宝个人收款码（领航智能Pay 实测
+        // wxpay 无收款账号在线，会以「暂无收款账号在线」失败）；alipay 对家族各站通用。
+        type: 'alipay',
         out_trade_no: newTradeNo('WBT'),
         notify_url: notifyBase + '/api/pay/notify', return_url: notifyBase + '/api/pay/return',
         name: '连接测试商品', money: '0.01',
@@ -393,7 +399,8 @@ async function testConnection(cfg, { deep, base } = {}) {
       const qs = new URLSearchParams(Object.assign({}, p, { sign, sign_type: 'MD5' })).toString();
       const sr = await requestText(cfg.gateway + '/submit.php?' + qs, { timeoutMs: 12000 });
       const text = String(sr.text || '').slice(0, 600);
-      const errM = /签名错误|签名失败|验签失败|sign[_ ]?(error|fail)|参数错误|商户不存在/i.exec(text);
+      // 收款账号类错误也必须算失败（0.50.0：此前漏识别，通道离线会被误报「全链路通过」）
+      const errM = /签名错误|签名失败|验签失败|sign[_ ]?(error|fail)|参数错误|商户不存在|收款账号|通道.*(关闭|离线|维护)/i.exec(text);
       if (errM) return { ok: false, msg: 'submit.php 下单被拒绝：' + errM[0], raw: text.slice(0, 200) };
       // 域名白名单类网关（领航智能Pay 实测文案「该域名不可发起支付，原因：域名没过白…」）
       // —— 原实现漏了这一类错误，会把失败误报成「全链路通过」

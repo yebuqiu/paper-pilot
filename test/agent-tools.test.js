@@ -10,7 +10,11 @@
  *   ⑤ execTool 白名单拒绝 + 写确认（协作模式拒绝 / 自主模式放行）；
  *   ⑥ _searchItems 关键词过滤（标题/作者/年份，上限截断）；
  *   ⑦ AIChat.windowHistory 历史滑窗（轮数可配 / assistant 断头丢弃 / 边界钳制）；
- *   ⑧ AIClient._sampleParams 采样参数（top_p 空=不传 / 钳制 / 温度钳制）。
+ *   ⑧ AIClient._sampleParams 采样参数（top_p 空=不传 / 钳制 / 温度钳制）；
+ *   ⑨ 新工具（search_arxiv / get_citation_count / search_notes /
+ *      move_to_collection / export_bibliography）与外部能力缺位降级；
+ *   ⑩ 写操作审计 + 撤销（净新增标签 / 三种 undo / LRU 100 / 空审计 /
+ *      ctx.skipConfirm 绕过确认）。
  *
  * 运行：node test/agent-tools.test.js
  */
@@ -47,26 +51,43 @@ const Prefs = {
 // 可编程确认框：confirmReturn 控制返回值，confirmCalls 记录调用
 const confirmState = { returns: true, calls: [] };
 
+// 笔记桩仓库（eraseTx 撤销用）
+const noteStore = new Map();
+let noteSeq = 900;
+
+// 条目：标签/文集都是真实可变数组，便于断言行写结果与撤销
 function makeItem(id, fields) {
   return {
     id,
+    itemType: 'journalArticle',
+    dateAdded: fields._dateAdded || '',
     _fields: fields,
+    _collections: [],
     isRegularItem: () => true,
     getField(f) { return this._fields[f] || ''; },
     getCreators() { return this._fields._creators || []; },
     getDisplayTitle() { return this._fields.title || ''; },
     getTags() { return (this._fields._tags || []).map((t) => ({ tag: t })); },
     addTag(t) { (this._fields._tags = this._fields._tags || []).push(t); },
+    removeTag(t) {
+      if (this._removeTagThrows) throw new Error('removeTag 失败');
+      this._fields._tags = (this._fields._tags || []).filter((x) => x !== t);
+    },
+    addToCollection(cid) { if (this._collections.indexOf(cid) < 0) this._collections.push(cid); },
+    removeFromCollection(cid) { this._collections = this._collections.filter((x) => x !== cid); },
     async saveTx() { this._fields._saved = true; },
   };
 }
 
 const LIB = [
   makeItem(101, { title: 'Attention Is All You Need', date: '2017-06',
+    DOI: '10.1000/xyz', _dateAdded: '2024-01-03',
     _creators: [{ firstName: 'Ashish', lastName: 'Vaswani' }], publicationTitle: 'NeurIPS' }),
   makeItem(102, { title: 'BERT: Pre-training of Deep Bidirectional Transformers', date: '2018-10',
+    _dateAdded: '2024-01-02',
     _creators: [{ firstName: 'Jacob', lastName: 'Devlin' }] }),
-  makeItem(103, { title: '图神经网络综述', date: '2020-01', _creators: [{ firstName: '小明', lastName: '王' }] }),
+  makeItem(103, { title: '图神经网络综述', date: '2020-01', _dateAdded: '2024-01-01',
+    extra: 'DOI: 10.5555/abc.def.', _creators: [{ firstName: '小明', lastName: '王' }] }),
 ];
 
 const notesCreated = [];
@@ -76,10 +97,24 @@ const Zotero = {
   getMainWindow() { return { __win: true }; },
   Libraries: { userLibraryID: 1 },
   Items: {
-    get(id) { return LIB.find((i) => i.id === Number(id)) || null; },
-    getAll: async () => LIB.slice(),
+    get(id) {
+      const n = Number(id);
+      return LIB.find((i) => i.id === n) || noteStore.get(n) || null;
+    },
+    async getAsync(id) { return Zotero.Items.get(id); },
+    // Zotero 10：idOnly 模式（第 4 参 true）返回 id 列表，其余返回条目对象
+    getAll: async (libID, onlyTopLevel, includeDeleted, idOnly) => (
+      idOnly ? LIB.map((i) => i.id).concat([...noteStore.keys()]) : LIB.slice()
+    ),
   },
   Collections: {
+    get(id) {
+      const all = [
+        { id: 1, name: '深度学习', parentID: 0 },
+        { id: 2, name: ' Transformer ', parentID: 1 },
+      ];
+      return all.find((c) => c.id === Number(id)) || null;
+    },
     getAll: async () => [
       { id: 1, name: '深度学习', parentID: 0 },
       { id: 2, name: ' Transformer ', parentID: 1 },
@@ -97,11 +132,52 @@ const Services = {
 const I18n = { isZh: true };
 const AIChatStub = {}; // chat.js 会真实载入，此桩仅占位（同名 var 后者覆盖前者）
 const Notes = {
-  createFromMarkdown: async (item, title, md) => { notesCreated.push({ item, title, md }); },
+  createFromMarkdown: async (item, title, md) => {
+    const note = {
+      id: ++noteSeq,
+      itemType: 'note',
+      parentItemID: item && item.id,
+      erased: false,
+      isNote() { return true; },
+      async eraseTx() { this.erased = true; noteStore.delete(this.id); },
+    };
+    noteStore.set(note.id, note);
+    notesCreated.push({ item, title, md, note });
+    return note;
+  },
+};
+
+// 外部能力的可编程桩（普通函数，避免 this 丢失）
+const arxivState = { calls: [], entries: [], error: null };
+const ArxivFetchStub = {
+  search(spec, opts) {
+    arxivState.calls.push({ spec, opts });
+    if (arxivState.error) return Promise.reject(new Error(arxivState.error));
+    return Promise.resolve({ entries: arxivState.entries });
+  },
+};
+const s2State = { calls: [], paper: null, error: null };
+const S2ClientStub = {
+  paperById(paperId, fields) {
+    s2State.calls.push({ paperId, fields });
+    if (s2State.error) return Promise.reject(new Error(s2State.error));
+    return Promise.resolve(s2State.paper);
+  },
+};
+const refState = { calls: [] };
+const RefFormatStub = {
+  exportAs(records, format) {
+    refState.calls.push({ records, format });
+    const r = (records && records[0]) || {};
+    return '@' + (format === 'ris' ? 'ris' : 'article') + '{' + (r.authors && r.authors[0] ? r.authors[0].family : 'ref') + ',\n' +
+      '  title = {' + (r.title || '') + '},\n' +
+      '  year = {' + (r.year || '') + '}\n}';
+  },
 };
 
 const sandbox = {
   console, Zotero, Services, Prefs, I18n, Notes,
+  ArxivFetch: ArxivFetchStub, S2Client: S2ClientStub, RefFormat: RefFormatStub,
   AIChat: AIChatStub, Prompts: { all: () => [] },
   AIClient: {}, TranslateSvc: undefined, TranslateX: undefined,
   JSON, Date, Math, Promise, isFinite, parseInt, String, Number, Array, Set, Map,
@@ -114,6 +190,11 @@ for (const f of FILES) {
 const AT = sandbox.AgentTools;
 const AIChat = sandbox.AIChat;   // chat.js 载入后覆盖占位桩
 const AIClient = sandbox.AIClient;
+
+/** 把白名单设为注册表全量（新工具默认不在 DEFAULT_TOOLS 里） */
+function enableAll() {
+  PrefStore.set('aiAgentTools', AT.TOOLS.map((t) => t.id).join(','));
+}
 
 (async function main() {
 
@@ -348,6 +429,8 @@ const AIClient = sandbox.AIClient;
     ok(out.indexOf('- 深度学习') >= 0, '分类树含顶级分类');
     ok(out.indexOf('- Transformer') >= 0, '分类树含子分类（名称已 trim）');
     ok(out.indexOf('  - Transformer') >= 0, '子分类有缩进');
+    ok(out.indexOf('（编号 1）') >= 0 && out.indexOf('（编号 2）') >= 0,
+      '分类行尾附带编号（move_to_collection 的 collection_id 来源）');
   })().catch((e) => { ok(false, 'list_collections 异常: ' + e.message); });
 
   // get_item_details / read_item_fulltext（AIChat 桩：getFullText 返回固定文本）
@@ -410,6 +493,325 @@ const AIClient = sandbox.AIClient;
   PrefStore.delete('aiTopP');
   PrefStore.delete('aiTemperature');
   PrefStore.delete('aiMaxTokens');
+
+  /* ---------------- ⑨ 新工具（external 桩 + 缺位降级） ---------------- */
+
+  enableAll();
+
+  // search_arxiv：格式化 / category 透传 / max 钳制 / 摘要截断
+  await (async () => {
+    arxivState.entries = [
+      { arxivId: '2401.00001', title: 'Sparse   Autoencoders', published: '2024-01-02T00:00:00Z',
+        summary: 'y'.repeat(300) },
+      { arxivId: '2402.00002', title: 'Second Paper', published: '2024-02-03T00:00:00Z', summary: '短摘要' },
+    ];
+    arxivState.error = null;
+    arxivState.calls.length = 0;
+    const out = await AT.execTool('search_arxiv',
+      { query: 'sparse autoencoder', category: 'cs.LG', max: 2 }, {});
+    ok(out.indexOf('[1] Sparse Autoencoders（2024）') >= 0, 'search_arxiv：序号 + 标题 + 年份（空白已压缩）', out);
+    ok(out.indexOf('arXiv:2401.00001') >= 0, 'search_arxiv：含 arXiv ID');
+    ok(out.indexOf('y'.repeat(200)) >= 0 && out.indexOf('y'.repeat(201)) < 0,
+      'search_arxiv：摘要截断到 200 字');
+    eq(arxivState.calls[0].spec.keywords[0], 'sparse autoencoder', 'search_arxiv：关键词透传');
+    eq(arxivState.calls[0].spec.categories[0], 'cs.LG', 'search_arxiv：category 透传');
+    eq(arxivState.calls[0].opts.limit, 2, 'search_arxiv：max 透传为 limit');
+
+    arxivState.calls.length = 0;
+    await AT.execTool('search_arxiv', { query: 'x', max: 50 }, {});
+    eq(arxivState.calls[0].opts.limit, 10, 'search_arxiv：max 上限钳制到 10');
+    eq('categories' in arxivState.calls[0].spec, false, 'search_arxiv：无 category 时不传该条件');
+
+    const emptyQ = await AT.execTool('search_arxiv', {}, {});
+    ok(emptyQ.indexOf('请提供检索关键词') >= 0, 'search_arxiv：空关键词给可行动提示');
+
+    arxivState.error = '请求超时';
+    const failed = await AT.execTool('search_arxiv', { query: 'x' }, {});
+    ok(failed.indexOf('arXiv 检索失败：请求超时') >= 0 && failed.indexOf('稍后再试') >= 0,
+      'search_arxiv：失败不抛，返回原因 + 稍后再试', failed);
+    arxivState.error = null;
+
+    arxivState.entries = [];
+    const none = await AT.execTool('search_arxiv', { query: 'zzz' }, {});
+    ok(none.indexOf('没有找到') >= 0, 'search_arxiv：0 条结果给可行动提示');
+
+    const saved = sandbox.ArxivFetch;
+    delete sandbox.ArxivFetch;
+    eq(await AT.execTool('search_arxiv', { query: 'x' }, {}), 'arXiv 工具包不可用',
+      'search_arxiv：模块缺位降级为「工具包不可用」');
+    sandbox.ArxivFetch = saved;
+  })().catch((e) => { ok(false, 'search_arxiv 异常: ' + e.message); });
+
+  // get_citation_count：DOI 提取（字段 / extra）/ 直接 doi / 未收录 / 异常
+  await (async () => {
+    s2State.paper = { citationCount: 42, title: 'Attention Is All You Need' };
+    s2State.error = null;
+    s2State.calls.length = 0;
+    const out = await AT.execTool('get_citation_count', { item_id: 101 }, {});
+    ok(out.indexOf('被引：42 次（Semantic Scholar）') === 0, 'get_citation_count：输出被引次数', out);
+    ok(out.indexOf('Attention Is All You Need') > 0, 'get_citation_count：附带标题');
+    eq(s2State.calls[0].paperId, 'DOI:10.1000/xyz', 'get_citation_count：item_id → DOI 字段');
+
+    await AT.execTool('get_citation_count', { item_id: 103 }, {});
+    eq(s2State.calls[1].paperId, 'DOI:10.5555/abc.def', 'get_citation_count：extra 字段 DOI 解析（剥尾部句点）');
+
+    await AT.execTool('get_citation_count', { doi: 'https://doi.org/10.1/ABC' }, {});
+    eq(s2State.calls[2].paperId, 'DOI:10.1/ABC', 'get_citation_count：直接 doi 归一（去 doi.org 前缀）');
+
+    const noDoi = await AT.execTool('get_citation_count', { item_id: 102 }, {});
+    ok(noDoi.indexOf('没有 DOI') >= 0 && noDoi.indexOf('doi 参数') >= 0,
+      'get_citation_count：无 DOI 给明确说明');
+
+    const badItem = await AT.execTool('get_citation_count', { item_id: 999 }, {});
+    ok(badItem.indexOf('找不到该条目') >= 0, 'get_citation_count：无效 item_id 报错');
+
+    s2State.paper = null;
+    const notFound = await AT.execTool('get_citation_count', { doi: '10.9/none' }, {});
+    ok(notFound.indexOf('未收录') >= 0, 'get_citation_count：S2 未收录给说明');
+
+    s2State.error = '限流';
+    const failed = await AT.execTool('get_citation_count', { doi: '10.9/x' }, {});
+    ok(failed.indexOf('被引量查询失败：限流') >= 0, 'get_citation_count：异常不抛，返回原因');
+    s2State.error = null;
+
+    const saved = sandbox.S2Client;
+    delete sandbox.S2Client;
+    ok((await AT.execTool('get_citation_count', { doi: '10.9/x' }, {})).indexOf('不可用') >= 0,
+      'get_citation_count：S2Client 缺位降级');
+    sandbox.S2Client = saved;
+  })().catch((e) => { ok(false, 'get_citation_count 异常: ' + e.message); });
+
+  // search_notes：async getAll + HTML 去标签 + 大小写不敏感 + 所属条目
+  await (async () => {
+    noteStore.set(501, {
+      id: 501, itemType: 'note', parentItemID: 101, isNote() { return true; },
+      getNote() { return '<div><p>Hello <b>World</b> &amp; graph</p></div>'; },
+    });
+    noteStore.set(502, {
+      id: 502, itemType: 'note', parentItemID: 0, isNote() { return true; },
+      getNote() { return '<p>无关内容</p>'; },
+    });
+
+    const out = await AT.execTool('search_notes', { query: 'world' }, {});
+    ok(out.indexOf('[1] Attention Is All You Need') >= 0, 'search_notes：显示所属条目标题');
+    ok(out.indexOf('Hello World') >= 0 && out.indexOf('<b>') < 0 && out.indexOf('&amp;') < 0,
+      'search_notes：去 HTML 标签并还原实体', out);
+    eq(out.split('\n').length, 2, 'search_notes：非命中笔记不返回（仅 1 条命中）');
+
+    const origGetAll = Zotero.Items.getAll;
+    let gotArgs = null;
+    Zotero.Items.getAll = function (lib, a, b, idOnly) {
+      gotArgs = [lib, a, b, idOnly];
+      return Promise.resolve([501]); // 异步返回 id 列表
+    };
+    const asyncOut = await AT.execTool('search_notes', { query: 'hello' }, {});
+    ok(asyncOut.indexOf('Hello World') >= 0, 'search_notes：await 异步 getAll 的 id 列表');
+    eq(gotArgs[0], 1, 'search_notes：按 userLibraryID 取全库');
+    eq(gotArgs[3], true, 'search_notes：使用 idOnly 模式');
+    Zotero.Items.getAll = origGetAll;
+
+    const miss = await AT.execTool('search_notes', { query: '不存在的词' }, {});
+    ok(miss.indexOf('没有在笔记正文中找到') >= 0 && miss.indexOf('search_library') >= 0,
+      'search_notes：无命中给可行动提示');
+
+    // getAll 忽略 idOnly 直接返回对象数组时也能命中（兼容性退路）
+    Zotero.Items.getAll = function () { return Promise.resolve([noteStore.get(501)]); };
+    const objOut = await AT.execTool('search_notes', { query: 'graph' }, {});
+    ok(objOut.indexOf('Hello World') >= 0, 'search_notes：兼容 getAll 返回条目对象');
+    Zotero.Items.getAll = origGetAll;
+
+    eq((await AT.execTool('search_notes', {}, {})).indexOf('请提供检索关键词'), 0,
+      'search_notes：空关键词提示');
+  })().catch((e) => { ok(false, 'search_notes 异常: ' + e.message); });
+
+  // move_to_collection：写入 + ctx 兜底 + 两类错误
+  await (async () => {
+    PrefStore.set('aiAgentConfirmWrite', true);
+    confirmState.returns = true;
+    confirmState.calls.length = 0;
+    const out = await AT.execTool('move_to_collection', { item_id: 102, collection_id: 2 }, {});
+    eq(out, '✓ 已把「BERT: Pre-training of Deep Bidirectional Transformers」加入文集「Transformer」',
+      'move_to_collection：成功文案（标题 + 文集名）');
+    eq(LIB[1]._collections.join(','), '2', 'move_to_collection：真实加入文集');
+    eq(confirmState.calls.length, 1, 'move_to_collection：默认逐次确认');
+
+    const viaCtx = await AT.execTool('move_to_collection', { collection_id: 1 }, { item: LIB[0] });
+    ok(viaCtx.indexOf('✓') === 0, 'move_to_collection：item_id 缺省回退 ctx.item');
+    eq(LIB[0]._collections.join(','), '1', 'ctx 条目被加入文集');
+
+    const noItem = await AT.execTool('move_to_collection', { item_id: 999, collection_id: 1 }, {});
+    ok(noItem.indexOf('找不到该条目') >= 0, 'move_to_collection：无效条目报错');
+    const noCol = await AT.execTool('move_to_collection', { item_id: 101, collection_id: 99 }, {});
+    ok(noCol.indexOf('找不到该文集') >= 0, 'move_to_collection：无效文集报错');
+    const noCid = await AT.execTool('move_to_collection', { item_id: 101 }, {});
+    ok(noCid.indexOf('请提供 collection_id') >= 0, 'move_to_collection：缺 collection_id 提示');
+  })().catch((e) => { ok(false, 'move_to_collection 异常: ' + e.message); });
+
+  // export_bibliography：RefFormat 调用 / 每条一行 / 样式降级 / 缺位
+  await (async () => {
+    PrefStore.set('aiAgentConfirmWrite', false);
+    refState.calls.length = 0;
+    const out = await AT.execTool('export_bibliography', {}, { item: LIB[0] });
+    ok(out.indexOf('参考文献（BibTeX）') === 0, 'export_bibliography：默认 BibTeX', out);
+    ok(out.indexOf('title = {Attention Is All You Need}') >= 0, 'export_bibliography：题录内容透传');
+    eq(out.split('\n').length, 2, 'export_bibliography：每条文献一行（标题行 + 1 条）');
+    eq(refState.calls[0].format, 'bibtex', 'export_bibliography：默认格式 bibtex');
+    eq(refState.calls[0].records[0].authors[0].family, 'Vaswani', 'export_bibliography：作者映射');
+    eq(refState.calls[0].records[0].year, '2017', 'export_bibliography：年份映射');
+
+    refState.calls.length = 0;
+    const multi = await AT.execTool('export_bibliography', { item_ids: [101, 102] }, {});
+    eq(refState.calls.length, 2, 'export_bibliography：item_ids 每条各导出一次');
+    eq(multi.split('\n').length, 3, 'export_bibliography：多条各占一行');
+
+    refState.calls.length = 0;
+    await AT.execTool('export_bibliography', { item_ids: [101, 102], limit: 1 }, {});
+    eq(refState.calls.length, 1, 'export_bibliography：limit 截断条目数');
+
+    refState.calls.length = 0;
+    const apa = await AT.execTool('export_bibliography', { item_ids: [101], style: 'APA' }, {});
+    ok(apa.indexOf('不支持 APA 样式') >= 0, 'export_bibliography：不支持的样式给出说明');
+    eq(refState.calls[0].format, 'bibtex', 'export_bibliography：不支持时回落默认格式');
+
+    refState.calls.length = 0;
+    await AT.execTool('export_bibliography', { item_ids: [101], style: 'ris' }, {});
+    eq(refState.calls[0].format, 'ris', 'export_bibliography：显式 ris 样式透传');
+
+    const badIds = await AT.execTool('export_bibliography', { item_ids: [999] }, {});
+    ok(badIds.indexOf('没有有效条目') >= 0, 'export_bibliography：item_ids 全无效报错');
+
+    refState.calls.length = 0;
+    await AT.execTool('export_bibliography', { limit: 2 }, {});
+    eq(refState.calls[0].records[0].title, 'Attention Is All You Need',
+      'export_bibliography：无 item_ids/ctx → 当前库最近条目（dateAdded 倒序）');
+
+    const saved = sandbox.RefFormat;
+    delete sandbox.RefFormat;
+    ok((await AT.execTool('export_bibliography', { item_ids: [101] }, {})).indexOf('格式器不可用') >= 0,
+      'export_bibliography：RefFormat 缺位降级');
+    sandbox.RefFormat = saved;
+    PrefStore.delete('aiAgentConfirmWrite');
+  })().catch((e) => { ok(false, 'export_bibliography 异常: ' + e.message); });
+
+  /* ---------------- ⑩ 写操作审计 + 撤销 ---------------- */
+
+  await (async () => {
+    PrefStore.delete('agentAuditLog');
+    PrefStore.set('aiAgentConfirmWrite', false);
+    LIB[0]._fields._tags = ['旧标签'];
+    LIB[0]._removeTagThrows = false;
+
+    // add_tags：只记净新增
+    await AT.execTool('add_tags', { item_id: 101, tags: '旧标签,新标签1' }, {});
+    let list = AT.auditList();
+    eq(list.length, 1, '审计：add_tags 成功后记 1 条');
+    eq(list[0].tool, 'add_tags', '审计：tool 字段');
+    eq(list[0].undo.kind, 'removeTags', '审计：undo.kind = removeTags');
+    eq(list[0].undo.itemID, 101, '审计：undo.itemID');
+    eq(list[0].undo.tags.join(','), '新标签1', '审计：只记净新增标签（已存在的不记）');
+    eq(String(list[0].id).indexOf(String(list[0].ts)), 0, '审计：id = 时间戳 + 序号');
+    ok(list[0].summary.indexOf('来源：ui') >= 0, '审计：summary 记上下文来源');
+
+    // 最新在前 + limit
+    await AT.execTool('add_tags', { item_id: 102, tags: 'x' }, {});
+    list = AT.auditList();
+    eq(list.length, 2, '审计：第二条写入');
+    ok(list[0].ts >= list[1].ts && list[0].undo.itemID === 102, '审计：最新在前');
+    eq(AT.auditList(1).length, 1, '审计：auditList(limit) 生效');
+    eq(AT.auditList(0).length, 0, '审计：auditList(0) 返回空');
+
+    // undoLast removeTags 成功
+    const u1 = await AT.undoLast();
+    ok(u1.ok && u1.done.indexOf('已移除标签') === 0, 'undoLast:removeTags 成功返回 done', u1);
+    ok((LIB[1]._fields._tags || []).indexOf('x') < 0, 'undoLast:removeTags 真移除标签');
+    eq(AT.auditList().length, 1, 'undoLast：成功后从审计移除该条');
+
+    // undoLast removeTags 失败 → 保留记录
+    LIB[0]._removeTagThrows = true;
+    const u2 = await AT.undoLast();
+    ok(!u2.ok && u2.error.indexOf('撤销失败') >= 0, 'undoLast：失败返回 {ok:false,error}', u2);
+    eq(AT.auditList().length, 1, 'undoLast：失败保留记录（可重试）');
+    LIB[0]._removeTagThrows = false;
+    const u3 = await AT.undoLast();
+    ok(u3.ok, 'undoLast：恢复后重试成功');
+    eq(AT.auditList().length, 0, 'undoLast：重试成功后清空');
+
+    // add_note → eraseNote
+    const notesBefore = notesCreated.length;
+    await AT.execTool('add_note', { item_id: 101, text: '# 审计笔记' }, {});
+    eq(notesCreated.length, notesBefore + 1, '审计：add_note 真实创建笔记');
+    list = AT.auditList();
+    eq(list[0].undo.kind, 'eraseNote', '审计：add_note 记 eraseNote');
+    const nid = list[0].undo.noteID;
+    ok(noteStore.has(nid), '审计：拿到新笔记 id');
+    const u4 = await AT.undoLast();
+    ok(u4.ok && u4.done.indexOf('已删除笔记') >= 0, 'undoLast:eraseNote 成功', u4);
+    ok(!noteStore.has(nid), 'undoLast:eraseNote 真删除笔记');
+    eq(AT.auditList().length, 0, 'undoLast:eraseNote 后审计清空');
+
+    // 拿不到笔记 id → manual
+    const origCreate = Notes.createFromMarkdown;
+    Notes.createFromMarkdown = async function () { return null; };
+    await AT.execTool('add_note', { item_id: 101, text: '# 无 id' }, {});
+    eq(AT.auditList()[0].undo.kind, 'manual', '审计：note id 缺失 → manual 兜底');
+    const manual = await AT.undoLast();
+    ok(!manual.ok && manual.error.indexOf('手动删除') >= 0, 'undoLast:manual 返回人工提示');
+    Notes.createFromMarkdown = origCreate;
+    PrefStore.delete('agentAuditLog');
+
+    // move_to_collection → removeFromCollection；undoEntry 按 id
+    await AT.execTool('move_to_collection', { item_id: 102, collection_id: 1 }, {});
+    await AT.execTool('add_tags', { item_id: 103, tags: 'k' }, {});
+    list = AT.auditList();
+    eq(list.length, 2, '审计：move_to_collection 也入账');
+    eq(list[1].undo.kind, 'removeFromCollection', '审计：undo.kind = removeFromCollection');
+    const u5 = await AT.undoEntry(list[1].id);
+    ok(u5.ok && u5.done.indexOf('移出文集') >= 0, 'undoEntry：按 id 撤销成功', u5);
+    ok(LIB[1]._collections.indexOf(1) < 0, 'undoEntry:removeFromCollection 真移除');
+    eq(AT.auditList().length, 1, 'undoEntry：只删该条记录');
+    const u6 = await AT.undoEntry('no-such-id');
+    ok(!u6.ok && u6.error.indexOf('找不到该审计记录') >= 0, 'undoEntry：id 无效报错');
+    await AT.undoLast(); // 清掉剩余 add_tags 记录
+
+    // LRU 上限 100
+    PrefStore.delete('agentAuditLog');
+    for (let i = 0; i < 105; i++) {
+      AT._recordAudit('t' + i, 's' + i, { kind: 'manual', hint: 'x' });
+    }
+    list = AT.auditList();
+    eq(list.length, 100, '审计：LRU 上限 100');
+    eq(list[0].tool, 't104', '审计：最新在前（保留最后 100 条）');
+    eq(list[99].tool, 't5', '审计：最旧 5 条被挤出');
+
+    // 空审计 / 脏数据防御
+    PrefStore.delete('agentAuditLog');
+    const u7 = await AT.undoLast();
+    ok(!u7.ok && u7.error === '没有可撤销的操作', 'undoLast：空审计返回明确错误');
+    eq(AT.auditList().length, 0, 'auditList：空审计返回空数组');
+
+    PrefStore.set('agentAuditLog', '{bad json');
+    eq(AT.auditList().length, 0, 'auditList：坏 JSON 不抛、返回空');
+    PrefStore.set('agentAuditLog', JSON.stringify([
+      { nope: 1 },
+      { id: 'a', ts: 1, tool: 't', summary: 's', undo: { kind: 'manual', hint: 'h' } },
+    ]));
+    eq(AT.auditList().length, 1, 'auditList：无 id 的脏记录被过滤');
+    PrefStore.delete('agentAuditLog');
+
+    // ctx.skipConfirm：跳过弹框（MCP 路径），来源写入 summary
+    PrefStore.set('aiAgentConfirmWrite', true);
+    confirmState.returns = false;
+    confirmState.calls.length = 0;
+    const sc = await AT.execTool('add_tags', { item_id: 101, tags: 'mcp' },
+      { skipConfirm: true, source: 'mcp' });
+    ok(sc.indexOf('✓') === 0, 'skipConfirm：绕过确认直接写成功', sc);
+    eq(confirmState.calls.length, 0, 'skipConfirm：confirm 调用次数 = 0');
+    ok(AT.auditList()[0].summary.indexOf('来源：mcp') >= 0, 'skipConfirm：MCP 来源写进 summary');
+    confirmState.returns = true;
+    PrefStore.delete('aiAgentConfirmWrite');
+    PrefStore.delete('agentAuditLog');
+    PrefStore.delete('aiAgentTools');
+  })().catch((e) => { ok(false, '审计/撤销异常: ' + e.message); });
 
   /* ---------------- 汇总 ---------------- */
 

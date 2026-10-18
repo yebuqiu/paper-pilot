@@ -24,7 +24,7 @@
  *
  * 生命周期：register(pluginID) / unregister()。UI 惰性构建：首次唤起才建 DOM。
  */
-/* global Zotero, Services, Prefs, AIClient, AIChat, I18n, Prompts, MdLite, Notes, CommandTags, Hotkeys, Components */
+/* global Zotero, Services, Prefs, AIClient, AIChat, I18n, Prompts, MdLite, Notes, CommandTags, ChatSessions, AgentTools, Hotkeys, Components */
 
 var ChatFloat = {
   ROOT_ID: "paperpilot-chat-float",
@@ -141,6 +141,136 @@ var ChatFloat = {
     const s = this.session;
     if (!s.item) return "";
     try { return s.item.getDisplayTitle() || ""; } catch (e) { return ""; }
+  },
+
+  /* ==================== 会话持久化（chat-sessions.js） ====================
+   * 口径：只有「成功轮次写进 history 之后」才落盘；空 history 不落盘，
+   * 因此清空会话 = 内存清空 + 删除最近一条同条目记录，不会留下空壳。
+   * 恢复时机：新建浮窗 entry 时（_ensure → _build 之后）自动续上最近会话。 */
+
+  /** 当前会话 → ChatSessions.save（自带防御：模块缺位 / 空历史都安全） */
+  _saveSession() {
+    try {
+      if (typeof ChatSessions === "undefined" || !ChatSessions || !ChatSessions.save) return null;
+      const s = this.session;
+      if (!s || !Array.isArray(s.history) || !s.history.length) return null;
+      return ChatSessions.save({
+        itemID: s.item && s.item.id ? s.item.id : 0,
+        history: s.history,
+        chips: this._chipItems().map((it) => it.id),
+      });
+    } catch (e) {
+      this._err(e);
+      return null;
+    }
+  },
+
+  /** 把一条存档灌回内存会话并重绘（chips 按 itemID 重新解析，失效的丢弃） */
+  _applySession(rec, entry) {
+    const s = this.session;
+    if (!rec || !Array.isArray(rec.history) || !rec.history.length) return false;
+    const history = [];
+    for (const h of rec.history) {
+      if (!h || (h.role !== "user" && h.role !== "assistant" && h.role !== "system")) continue;
+      if (h.content == null) continue;
+      history.push({ role: h.role, content: String(h.content) });
+    }
+    if (!history.length) return false;
+    s.history = history;
+    const ids = [];
+    for (const id of (Array.isArray(rec.chips) ? rec.chips : [])) {
+      if (ids.length >= this.CHIP_MAX) break;
+      if (this._resolveChipItem(id)) ids.push(Number(id));
+    }
+    s.contextItems = ids;
+    s.histIdx = -1;
+    if (entry) {
+      try { this._renderHistory(entry); } catch (e) { /* ignore */ }
+      try { this._renderCtxChips(entry); } catch (e) { /* ignore */ }
+    }
+    return true;
+  },
+
+  /**
+   * 新建 entry 时自动恢复：
+   *   已有上下文 chip → 不动（用户本轮显式拖了条目）
+   *   已有内存历史 → 不动；否则先取同条目最近一条，再退全局最近一条
+   * 输入框内容一概不动（用户可能已先输入）。
+   */
+  _restoreSession(entry) {
+    try {
+      if (typeof ChatSessions === "undefined" || !ChatSessions) return false;
+      const s = this.session;
+      if (this._chipItems().length) return false;
+      if (Array.isArray(s.history) && s.history.length) return false;
+      const itemID = s.item && s.item.id ? s.item.id : 0;
+      let rec = itemID ? ChatSessions.latestForItem(itemID) : null;
+      if (!rec) rec = ChatSessions.latest();
+      return this._applySession(rec, entry);
+    } catch (e) {
+      this._err(e);
+      return false;
+    }
+  },
+
+  /** 删除当前条目对应的存档（同一对话可能有多份快照 → 按 item 清干净） */
+  _forgetSavedSession() {
+    try {
+      if (typeof ChatSessions === "undefined" || !ChatSessions || !ChatSessions.remove) return false;
+      const s = this.session;
+      const itemID = s.item && s.item.id ? s.item.id : 0;
+      let removed = false;
+      if (itemID) {
+        // 每轮成功问答都会留一份快照（save 不传 id），只删最近一条会让旧快照
+        // 在下次打开浮窗时「复活」，因此按条目逐条清。
+        for (let i = 0; i <= ChatSessions.MAX_SESSIONS; i++) {
+          const rec = ChatSessions.latestForItem(itemID);
+          if (!rec || !ChatSessions.remove(rec.id)) break;
+          removed = true;
+        }
+        return removed;
+      }
+      // 无锁定条目（纯 chip 会话）只能清全局最近一条
+      const rec = ChatSessions.latest();
+      return rec ? ChatSessions.remove(rec.id) : false;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  /** 清空会话：内存 + 存档（save 会跳过空 history，故显式 remove 最近一条） */
+  _clearHistory(entry) {
+    const s = this.session;
+    s.history = [];
+    s.inputHistory = [];
+    s.histIdx = -1;
+    this._forgetSavedSession();
+    if (entry) {
+      try { this._renderHistory(entry); } catch (e) { /* ignore */ }
+    }
+  },
+
+  /** ts → 相对时间（历史列表展示用） */
+  _relTime(ts) {
+    const t = Number(ts) || 0;
+    if (!t) return "";
+    const diff = Math.max(0, Date.now() - t);
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return I18n.isZh ? "刚刚" : "just now";
+    if (min < 60) return (I18n.isZh ? min + " 分钟前" : min + "m ago");
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return (I18n.isZh ? hr + " 小时前" : hr + "h ago");
+    const day = Math.floor(hr / 24);
+    if (day < 30) return (I18n.isZh ? day + " 天前" : day + "d ago");
+    return new Date(t).toLocaleDateString();
+  },
+
+  /** Agent 决策模型（pref：aiAgentDecisionModel；空 = 不路由） */
+  _decisionModel() {
+    try {
+      const v = Prefs.get("aiAgentDecisionModel", "");
+      return v == null ? "" : String(v).trim();
+    } catch (e) { return ""; }
   },
 
   /* ==================== 拖拽条目上下文 chip（0.44.0） ====================
@@ -319,6 +449,12 @@ var ChatFloat = {
         : `${head}\n（${zh ? "仅题录，无全文/摘要" : "metadata only"}）`);
     }
     const sys = (Prefs.get("aiSystemPrompt", "") || "") +
+      (() => {
+        // 0.49.0 研究者画像：与 ai/chat.js._systemWith 同款注入（多 chip 路径）
+        let p = "";
+        try { p = String(Prefs.get("researcherProfile", "") || "").trim(); } catch (e) { p = ""; }
+        return p ? `\n\n【研究者画像（长期偏好，回答时应遵守）】\n${p}` : "";
+      })() +
       (zh
         ? `\n\n用户提供了 ${items.length} 篇文献作为上下文（每篇以「文献 n」标记）。` +
           "回答要求：只基于这些文献的内容；文献未提及的信息明确说明；" +
@@ -401,6 +537,8 @@ var ChatFloat = {
         if (s.inputHistory.length > 30) s.inputHistory.shift();
       }
       s.histIdx = -1;
+      // 会话持久化：assistant 回答写完 history 后落盘（失败静默，不影响问答）
+      this._saveSession();
       if (ui.onDone) ui.onDone(acc);
       // 0.40.0 价值感知：官方通道调用后回报「本次消耗 + 剩余额度」（异步、静默、不阻塞）
       this._reportCost(ui);
@@ -482,18 +620,25 @@ var ChatFloat = {
     let maxSteps = Number(Prefs.get("aiAgentMaxSteps", 5));
     if (!isFinite(maxSteps) || maxSteps < 1) maxSteps = 5;
     const useStream = Prefs.get("readerPopupStream", true) && AIClient.chatStream;
+    // 决策模型路由（可选 pref）：工具决策轮走轻量模型，收敛轮仍走主通道模型。
+    // 空值 = 全程主通道（与旧行为完全一致）。
+    const decisionModel = this._decisionModel();
+    let llmCalls = 0;
     const r = await AgentTools.runAgentLoop({
       messages: AgentTools.augmentMessages(messages),
       maxSteps,
       callLLM: async (msgs) => {
+        // 第 maxSteps+1 次调用是循环的收敛轮（不再允许工具调用）→ 不路由
+        const opts = (decisionModel && llmCalls < maxSteps) ? { model: decisionModel } : null;
+        llmCalls++;
         if (useStream) {
           const handle = AIClient.chatStream(msgs, () => {
             /* agent 中间轮含工具 JSON，不流式进 UI；最终回答由 onDone 渲染 */
-          });
+          }, opts);
           s.handle = handle;
           return await handle.promise;
         }
-        return await AIClient.chat(msgs);
+        return await AIClient.chat(msgs, opts);
       },
       runTool: async (id, args) => {
         if (ui.onStatus) ui.onStatus(I18n.t("agentToolCalling") + " " + id + "…");
@@ -504,6 +649,13 @@ var ChatFloat = {
     });
     if (r.limited && ui.onStatus) {
       try { ui.onStatus(I18n.t("agentLimited")); } catch (e) { /* ignore */ }
+    }
+    // 技能沉淀提示：本次问答确实用了多次工具 → 建议存成命令标签（每轮最多一次）
+    if (r.steps && r.steps.length >= 2 && ui && typeof ui.onSys === "function") {
+      try {
+        ui.onSys("本次任务用了 " + r.steps.length +
+          " 次工具调用——输入 /distill（沉淀）可保存为命令标签复用", "#0d9488");
+      } catch (e) { /* ignore */ }
     }
     return r.answer;
   },
@@ -534,6 +686,66 @@ var ChatFloat = {
     }
   },
 
+  /**
+   * 技能沉淀（任务 → 命令标签）：把最近一条 user 消息存成 CommandTags 标签，
+   * 之后可在标签区单击复用或输入「/」选择。label 取压平空白后的前 14 字
+   * （截断补「…」），与已有标签重名时追加「 2」「 3」…
+   * @returns {object|null} 新建标签；无问答 / CommandTags 不可用时 null
+   */
+  _distillLastTask(entry) {
+    const s = this.session;
+    let prompt = "";
+    if (Array.isArray(s.history)) {
+      for (let i = s.history.length - 1; i >= 0; i--) {
+        const h = s.history[i];
+        if (h && h.role === "user" && h.content != null && String(h.content).trim()) {
+          prompt = String(h.content).trim();
+          break;
+        }
+      }
+    }
+    if (!prompt) {
+      if (entry) this._appendBubble(entry, "sys", "还没有可沉淀的问答", "#888");
+      return null;
+    }
+    if (typeof CommandTags === "undefined" || !CommandTags || !CommandTags.upsert) {
+      if (entry) this._appendBubble(entry, "sys", "命令标签不可用，无法沉淀", "#c0392b");
+      return null;
+    }
+
+    const flat = prompt.replace(/\s+/g, " ").trim();
+    let label = flat.slice(0, 14) + (flat.length > 14 ? "…" : "");
+    let tags = [];
+    try { tags = this._tagList() || []; } catch (e) { tags = []; }
+    const base = label;
+    let n = 2;
+    while (tags.some((t) => t && t.label === label)) label = base + " " + (n++);
+
+    // 颜色：沿用 CommandTags 调色板轮转（无调色板则空）
+    let color = "";
+    try {
+      const pal = CommandTags._PALETTE || [];
+      if (pal.length) color = String(pal[tags.length % pal.length] || "");
+    } catch (e) { color = ""; }
+
+    const id = "pf:" + Date.now().toString(36);
+    let saved = null;
+    try {
+      saved = CommandTags.upsert({ id, label, prompt, color, trigger: "" });
+    } catch (e) { this._err(e); saved = null; }
+    if (!saved) {
+      if (entry) this._appendBubble(entry, "sys", "沉淀失败：命令标签写入异常", "#c0392b");
+      return null;
+    }
+    try { this._renderAllChips(); } catch (e) { /* ignore */ }
+    if (entry) {
+      this._appendBubble(entry, "sys",
+        "✓ 已沉淀为命令标签「" + label + "」——在输入框输入 / 可直接发送；" +
+        "长按标签可编辑或删除", "#1e7d32");
+    }
+    return saved;
+  },
+
   /* ==================== 悬浮窗：构建与几何 ==================== */
 
   _entry(win) {
@@ -557,6 +769,8 @@ var ChatFloat = {
     let entry = this._entry(win);
     if (!entry) {
       entry = this._build(win);
+      // 新建实例：自动续上最近会话（同条目优先，其次全局最近一条）
+      this._restoreSession(entry);
     } else {
       // 换过主题/壁纸的窗口：样式表若被清掉则补挂
       this._ensureStyle(win);
@@ -743,10 +957,7 @@ var ChatFloat = {
       if (ok) self._appendBubble(entry, "sys", "✓ " + I18n.t("chatSaved"), "#1e7d32");
     });
     clearBtn.addEventListener("click", () => {
-      self.session.history = [];
-      self.session.inputHistory = [];
-      self.session.histIdx = -1;
-      self._renderHistory(entry);
+      self._clearHistory(entry);
     });
     dockLBtn.addEventListener("click", () => self._dock(entry, "left"));
     dockRBtn.addEventListener("click", () => self._dock(entry, "right"));
@@ -795,7 +1006,7 @@ var ChatFloat = {
     const self = this;
     const cmds = [
       { id: "clear", title: I18n.t("chatClear") + " · 清空当前对话", hint: "session",
-        run() { s.history = []; s.inputHistory = []; s.histIdx = -1; self._renderHistory(entry); } },
+        run() { self._clearHistory(entry); } },
       { id: "save", title: I18n.t("chatSave") + " · 把对话保存为笔记", hint: "note",
         run() {
           entry.refs.saveBtn.click();
@@ -821,6 +1032,51 @@ var ChatFloat = {
           self._appendBubble(entry, "sys",
             list || I18n.t("agentNoTools"), "#0d9488");
         } },
+      // 会话持久化：/history 直接续上最近一条；/sessions 只读列出定位用
+      { id: "history", title: "恢复历史会话（最近一条）", hint: "session",
+        run() {
+          if (typeof ChatSessions === "undefined" || !ChatSessions) {
+            self._appendBubble(entry, "sys", "会话持久化不可用", "#c0392b");
+            return;
+          }
+          const itemID = s.item && s.item.id ? s.item.id : 0;
+          const rec = (itemID ? ChatSessions.latestForItem(itemID) : null) || ChatSessions.latest();
+          if (!rec) {
+            self._appendBubble(entry, "sys", "还没有可恢复的历史会话", "#888");
+            return;
+          }
+          if (!self._applySession(rec, entry)) {
+            self._appendBubble(entry, "sys", "该会话没有可恢复的内容", "#888");
+            return;
+          }
+          self._appendBubble(entry, "sys",
+            "已恢复最近会话「" + (rec.title || "") + "」；更早的可用 /sessions 查看", "#0d9488");
+        } },
+      { id: "sessions", title: "查看最近 10 条历史会话", hint: "session",
+        run() {
+          let rows = [];
+          try {
+            rows = (typeof ChatSessions !== "undefined" && ChatSessions)
+              ? ChatSessions.list(10) : [];
+          } catch (e) { rows = []; }
+          if (!rows.length) {
+            self._appendBubble(entry, "sys", "还没有历史会话", "#888");
+            return;
+          }
+          const lines = rows.map((r, i) =>
+            (i + 1) + ". " + (r.title || "(无标题)") +
+            " · " + self._relTime(r.ts) +
+            " · " + r.count + (I18n.isZh ? " 条" : " msgs") +
+            " · " + String(r.id).slice(0, 8)
+          );
+          self._appendBubble(entry, "sys",
+            (I18n.isZh ? "最近会话（最新在前）：\n" : "Recent sessions:\n") +
+            lines.join("\n") +
+            (I18n.isZh ? "\n\n输入 /history 恢复最近一条。" : "\n\nType /history to restore the latest."),
+            "#0d9488");
+        } },
+      { id: "distill", title: "沉淀为命令标签（把最近一个问题保存为标签）", hint: "tag",
+        run() { self._distillLastTask(entry); } },
     ];
     // Prompt 标签直达（CommandTags；点击即按标签提示词发送）
     try {
@@ -1514,6 +1770,10 @@ var ChatFloat = {
       onAbort() {
         if (statusBubble) { statusBubble.remove(); statusBubble = null; }
         if (streamBubble) { streamBubble.remove(); streamBubble = null; }
+      },
+      // Agent 轮次的「常驻」系统气泡（与 onStatus 的临时状态气泡不同，不会被 onDone 清掉）
+      onSys(text, color) {
+        self._appendBubble(entry, "sys", text, color || "#888");
       },
       onBusy(busy) {
         entry.refs.sendBtn.textContent = busy ? I18n.t("chatFloatStop") : I18n.t("chatSend");

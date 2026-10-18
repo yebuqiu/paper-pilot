@@ -808,7 +808,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.8.2'" in srv, "18.31 服务端版本号已随批次更新（1.8.2）")
+ok("version: '1.8.4'" in srv, "18.31 服务端版本号已随批次更新（1.8.4）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -922,7 +922,7 @@ ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余�
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.8.2'" in srv, "19.24 服务端版本随批次推进（1.8.2）")
+ok("version: '1.8.4'" in srv, "19.24 服务端版本随批次推进（1.8.4）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -1082,7 +1082,7 @@ ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/p
 for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
     ok(k in html, "21.31 admin.html 含 %s" % k)
 
-ok("version: '1.8.2'" in srv, "21.32 服务端版本 1.8.2")
+ok("version: '1.8.4'" in srv, "21.32 服务端版本 1.8.4")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 22. 多引擎翻译（插件 0.28.0） ----------
@@ -1913,13 +1913,13 @@ _pfold_js = io.open(PFOLD_JS, encoding="utf-8").read() if os.path.exists(PFOLD_J
 ok("prefs-fold.js" in mainjs, "31.2 main.js 注册 prefs-fold.js（scripts 列表）")
 for _eid in ("pp-fold-expand", "pp-fold-collapse"):
     ok(_eid in xhtml_ids, "31.3 prefs.xhtml 含折叠工具条 #%s" % _eid)
-_FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "skills", "popup",
+_FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "skills", "schedule", "popup",
               "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys"]
 _fold_found = re.findall(r'data-fold="([a-z]+)"', prefs_xhtml)
 ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
-   "31.4 prefs.xhtml 的 15 个折叠分组键齐全（0.44.0 实验 +第三方文献源；0.48.x 技能商店）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 15,
-   "31.5 折叠卡片共 15 张（0.44.0 实验 +第三方文献源，0.48.x 技能商店；不多不少，防止漏包一张）")
+   "31.4 prefs.xhtml 的 16 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 16,
+   "31.5 折叠卡片共 16 张（0.48.x 技能商店，0.49.0 定时任务；不多不少，防止漏包一张）")
 ok('pref("extensions.zotero.paperpilot.prefsFoldOpen", "");' in prefsdef,
    "31.6 prefs.js 有 prefsFoldOpen 默认值（空 = 全收起）")
 ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
@@ -2432,6 +2432,66 @@ ok(re.search(r"installedIds:\s*state\.installedOnly\s*\?\s*installedIds\s*:\s*un
    "searchPacks 契约是「给定时只留已装」，无条件传空 Set 会滤光全部目录包"
    "（0.48.0-0.48.3 商店列表始终为空的根因，0.48.4 修复）")
 
+# ---------- 43. 0.49.0 八项功能批次（会话持久化/定时任务/工具扩容/审计撤销/沉淀/路由/画像/MCP桥） ----------
+# 逐项盯「模块存在 + 装配 + 消费者接线 + pref 默认值」，防半成品重演。
+_CS_JS = os.path.join(ROOT, "chrome/content/scripts/features/chat-sessions.js")
+ok(os.path.exists(_CS_JS), "43.1 ChatSessions 模块在库（浮窗会话持久化）")
+_cs_src = io.open(_CS_JS, encoding="utf-8").read() if os.path.exists(_CS_JS) else ""
+ok("latestForItem" in _cs_src and "list(" in _cs_src and "save(" in _cs_src,
+   "43.2 ChatSessions API 齐全（save/list/load/remove/latestForItem/latest）")
+ok('"features/chat-sessions.js"' in mainjs and "this.chatSessions = ChatSessions" in mainjs,
+   "43.3 main.js 装配并暴露 chatSessions")
+ok("ChatSessions.save" in _cf_src and "_restoreSession" in _cf_src,
+   "43.4 ★ chat-float 接入会话持久化（发送后保存 / 打开时恢复）")
+ok('"history"' in _cf_src and 'id: "distill"' in _cf_src and "_distillLastTask" in _cf_src,
+   "43.5 ★ 技能沉淀接线（/distill + /history 斜杠命令）")
+ok("opts.model" in _client_js or "opts && opts.model" in _client_js,
+   "43.6 AIClient 支持 {model} 覆盖（决策路由底座，两参调用兼容）")
+ok("aiAgentDecisionModel" in _cf_src, "43.7 chat-float 决策模型路由（aiAgentDecisionModel）")
+_SCH_JS = os.path.join(ROOT, "chrome/content/scripts/features/scheduler.js")
+ok(os.path.exists(_SCH_JS), "43.8 Scheduler 模块在库（定时任务）")
+_sch_src = io.open(_SCH_JS, encoding="utf-8").read() if os.path.exists(_SCH_JS) else ""
+ok("checkDue" in _sch_src and "runJob" in _sch_src and "scheduleLastRun" in _sch_src,
+   "43.9 Scheduler API（checkDue/runJob/state/lastRun 防重）")
+ok('"features/scheduler.js"' in mainjs and "this.scheduler = Scheduler" in mainjs,
+   "43.10 main.js 装配并暴露 scheduler")
+ok("Scheduler.start()" in mainjs and "Scheduler.stop()" in mainjs,
+   "43.11 ★ Scheduler 生命周期（启动即轮询 / destroy 停止）")
+ok(os.path.exists(os.path.join(ROOT, "chrome/content/prefs-schedule.js")) and "prefs-schedule.js" in mainjs,
+   "43.12 定时任务设置面板脚本在库并注册")
+ok('id="pp-sch-rows"' in prefs_xhtml and 'data-fold="schedule"' in prefs_xhtml,
+   "43.13 prefs.xhtml 定时任务卡片容器")
+ok('id="pp-profile"' in prefs_xhtml and 'preference="extensions.zotero.paperpilot.researcherProfile"' in prefs_xhtml,
+   "43.14 prefs.xhtml 研究者画像输入（声明式绑定）")
+ok('id="pp-agent-decision-model"' in prefs_xhtml
+   and 'preference="extensions.zotero.paperpilot.aiAgentDecisionModel"' in prefs_xhtml,
+   "43.15 prefs.xhtml 决策模型输入（声明式绑定）")
+for _pk in ("chatSessions", "aiAgentDecisionModel", "researcherProfile", "agentAuditLog",
+            "scheduleDailyDigest", "scheduleWeeklyReport", "scheduleLibHealth", "scheduleLastRun"):
+    ok('pref("extensions.zotero.paperpilot.%s"' % _pk in prefsdef,
+       "43.16 prefs.js 有 %s 默认值" % _pk)
+ok("search_arxiv" in prefsdef and "move_to_collection" in prefsdef and "export_bibliography" in prefsdef,
+   "43.17 ★ aiAgentTools 默认 CSV 含 5 个新工具（11 工具）")
+ok("auditList" in _at_js and "undoLast" in _at_js and "_confirmWrite" in _at_js,
+   "43.18 ★ 写操作审计与撤销 API（auditList/undoLast/undoEntry）")
+ok("skipConfirm" in _at_js and "_confirmWrite(head, detail, ctx)" in _at_js,
+   "43.19 ★ ctx.skipConfirm 确认旁路（MCP 无 UI 通道）")
+ok("list_agent_tools" in io.open(os.path.join(ROOT, "chrome/content/scripts/features/mcp.js"), encoding="utf-8").read()
+   and "run_agent_tool" in io.open(os.path.join(ROOT, "chrome/content/scripts/features/mcp.js"), encoding="utf-8").read(),
+   "43.20 ★ MCP 暴露 Agent 能力（list_agent_tools / run_agent_tool）")
+ok("allowWrite" in io.open(os.path.join(ROOT, "chrome/content/scripts/features/mcp.js"), encoding="utf-8").read(),
+   "43.21 ★ MCP 写操作 allowWrite 门控")
+ok("search_arxiv" in _pa_js and "move_to_collection" in _pa_js,
+   "43.22 prefs-agent.js 工具清单同步 11 项")
+_chatjs = io.open(os.path.join(ROOT, "chrome/content/scripts/ai/chat.js"), encoding="utf-8").read()
+ok("researcherProfile" in _chatjs and "研究者画像" in _chatjs,
+   "43.23 ★ 研究者画像注入 _systemWith（所有单篇 AI 路径生效）")
+ok("researcherProfile" in _cf_src, "43.24 多 chip 路径同款画像注入")
+ok(os.path.exists(os.path.join(ROOT, "test", "chat-sessions.test.js"))
+   and os.path.exists(os.path.join(ROOT, "test", "scheduler.test.js"))
+   and os.path.exists(os.path.join(ROOT, "test", "mcp.test.js")),
+   "43.25 三套新测试在库（会话/定时/MCP）")
+
 # ★ 分区标题遮挡修复（负下边距 → 卡片背景盖住「账号」「AI 与翻译」标签底部）
 _cat_rule = re.search(r"\.pp-root \.pp-cat-label\s*\{([^}]*)\}", prefs_css, re.S)
 ok(_cat_rule is not None, "40.23 prefs.css 有 .pp-cat-label 规则")
@@ -2502,6 +2562,97 @@ ok("registerObserver" in _ps_js2 and "unregisterObserver" in _ps_js2,
    "41.18 ★ prefs-skill 监听 skillPacksInstalled 变化自动刷新（0.48.2 修「商店更新后面板不显示新版本」）")
 ok("wireRefresh" in _ps_js2 and "pp-sk-refresh" in _ps_js2,
    "41.19 prefs-skill 提供手动刷新按钮接线（观察者不可用时的兜底）")
+
+# ==================== 43. 付款订单弹窗（0.49.0） ====================
+# 下单成功（会员购买 / AI 额度充值）自动弹出付款单；「查看付款单」可重开。
+# 核心纪律：①两条购买流都必须触发；②动作与内联区共用 *Core 单一真源；
+#          ③异常订单不弹窗（回退内联区）；④挂载点在折叠组之外（否则组收起后打不开）。
+_pd_js = io.open(os.path.join(ROOT, "chrome/content/prefs-account.js"), encoding="utf-8").read()
+ok("const OrderDlg = {" in _pd_js and "show(order, kind, actions)" in _pd_js
+   and "update(order)" in _pd_js and "close()" in _pd_js,
+   "43.1 prefs-account.js 定义 OrderDlg 弹窗组件（show/update/close）")
+ok("if (!bad) openOrderDlg(mbOrder, \"plan\")" in _pd_js,
+   "43.2 ★ 会员下单成功 → 自动弹窗（异常订单跳过）")
+ok("if (!bad) openOrderDlg(balOrder, \"credit\")" in _pd_js,
+   "43.3 ★ 充值下单成功 → 自动弹窗（异常订单跳过）")
+ok("function orderViewProblem(o)" in _pd_js and "缺少订单号" in _pd_js,
+   "43.4 弹窗前置校验（缺订单号/金额不可读时不展示脏数据）")
+ok("claim: kind === \"credit\" ? balClaimCore : mbClaimCore" in _pd_js
+   and "cancel: kind === \"credit\" ? balCancelCore : mbCancelCore" in _pd_js
+   and "refresh: kind === \"credit\" ? balRefreshCore : mbRefreshCore" in _pd_js,
+   "43.5 ★ 弹窗动作指向面板 *Core 函数（与内联区单一真源）")
+ok(_pd_js.count("syncOrderDlg();") >= 4,
+   "43.6 轮询/认领/取消后同步弹窗内容（>=4 处调用）")
+ok("pp-dlg-root" in xhtml_ids
+   and prefs_xhtml.rindex('id="pp-dlg-root"') > prefs_xhtml.rindex("data-fold="),
+   "43.7 ★ 弹窗挂载点在折叠组之外（组收起不得连带隐藏弹窗）")
+ok("pp-mb-order-view" in xhtml_ids and "pp-bal-order-view" in xhtml_ids,
+   "43.8 prefs.xhtml 两条购买流都有「查看付款单」重开入口")
+ok(".pp-root .pp-order-mask {" in prefs_css and ".pp-root .pp-order-dlg {" in prefs_css,
+   "43.9 prefs.css 有弹窗遮罩与卡片样式")
+ok("pp-dlg-badge-warn" in prefs_css and "pp-dlg-badge-ok" in prefs_css,
+   "43.10 状态徽标按状态着色（待支付警示 / 已开通成功）")
+_mpt = io.open(os.path.join(TEST_DIR, "membership-panel.test.js"), encoding="utf-8").read()
+ok("K1 ★ 会员下单成功 → 自动弹出付款单" in _mpt
+   and "K22 ★ 充值下单成功 → 自动弹出付款单" in _mpt,
+   "43.11 测试覆盖两条购买流的下单自动弹窗")
+ok("K20 ★ 订单数据异常（缺订单号）→ 不弹窗" in _mpt,
+   "43.12 ★ 测试锁定「异常订单不弹窗」（防回归成脏数据弹窗）")
+
+# ==================== 44. 在线支付入口（0.50.0 / 服务端 1.7.0+） ====================
+# 充值单的「在线支付（扫码）」：服务端下发可用性 → 面板/弹窗出现入口 →
+# account.startOnlinePay 建网关收银台 → Zotero.launchURL 打开浏览器 → 回调自动入账。
+# 未开通时必须整入口隐藏（不留死按钮）。
+_acct_js = io.open(os.path.join(ROOT, "chrome/content/scripts/ai/account.js"), encoding="utf-8").read()
+ok("async startOnlinePay(orderId, channel)" in _acct_js
+   and "/api/orders/" in _acct_js and "/pay" in _acct_js,
+   "44.1 account.js 提供 startOnlinePay（POST /api/orders/:id/pay）")
+ok("onlinePay: (j.onlinePay && typeof j.onlinePay === 'object')" in _acct_js,
+   "44.2 plans() 解析服务端 onlinePay 可用性（旧服务端 → false）")
+ok("async function balOnlinePayCore()" in _pd_js and "Zotero.launchURL(r.payUrl)" in _pd_js,
+   "44.3 prefs-account 在线支付核心：建收银台 + 系统浏览器打开 payUrl")
+ok("let balOnline = { available: false, channels: [] }" in _pd_js
+   and "online: (kind === \"credit\" && balOnline.available) ? balOnlinePayCore : null" in _pd_js,
+   "44.4 ★ 弹窗仅在服务端开通且充值单时提供在线支付动作")
+ok("pp-bal-online" in xhtml_ids, "44.5 prefs.xhtml 含内联「在线支付（扫码）」按钮")
+ok("pp-dlg-online" in _pd_js, "44.6 付款单弹窗含在线支付按钮（class pp-dlg-online）")
+ok('bind("pp-bal-online", "click", onBalOnlinePay)' in _pd_js,
+   "44.7 内联在线支付按钮已绑定")
+ok("K30 ★ 付款单弹窗含「在线支付（扫码）」按钮" in _mpt
+   and "K34 ★ 未开通 → 弹窗不出现在线支付按钮（不留死入口）" in _mpt,
+   "44.8 测试覆盖：开通出现 / 未开通隐藏")
+_pay_js = io.open(os.path.join(ROOT, "server/lib/pay.js"), encoding="utf-8").read()
+ok("type: 'alipay'" in _pay_js and "收款账号" in _pay_js,
+   "44.9 ★ 深度自检用 alipay 且识别「暂无收款账号在线」（原会误报全链路通过）")
+
+# ==================== 45. 订单金额口径：唯一尾数开关（1.8.4） ====================
+# 默认关闭 = 所见即所付（订单金额即标价）；开启 = 加 1~99 分对账尾数。
+# 全链路一致性：doc 默认值 → 两条下单路径 → 下发（plans/管理接口）→ 管理页开关 → 插件文案。
+_mem_js = io.open(os.path.join(ROOT, "server/lib/membership.js"), encoding="utf-8").read()
+ok("tailEnabled: false," in _mem_js and "out.tailEnabled = out.tailEnabled === true" in _mem_js,
+   "45.1 ★ 唯一尾数默认关闭（newDoc + normalize 幂等）")
+ok("const tailsOn = doc.tailEnabled === true" in _mem_js
+   and _mem_js.count("tailsOn ? assignTail(") >= 2,
+   "45.2 会员单与充值单两条下单路径都遵循开关")
+ok("tailEnabled: doc.tailEnabled === true," in _mem_js,
+   "45.3 plansForClient 下发 tailEnabled（插件据此提示）")
+_as_js2 = io.open(os.path.join(ROOT, "server/account-server.js"), encoding="utf-8").read()
+ok("if (input.tail && typeof input.tail === 'object'" in _as_js2
+   and "tailEnabled: membershipStore.data.tailEnabled === true" in _as_js2,
+   "45.4 管理接口读写开关（PUT {tail:{enabled}} / GET tailEnabled）")
+_admin_html = io.open(os.path.join(ROOT, "server/public/admin.html"), encoding="utf-8").read()
+ok("p-tail-enabled" in _admin_html and "tail: { enabled:" in _admin_html,
+   "45.5 管理页提供「订单金额唯一尾数」开关并随保存提交")
+ok("tailEnabled: j.tailEnabled === true" in _acct_js,
+   "45.6 account.js 解析 tailEnabled")
+ok("(mbPlans && mbPlans.tailEnabled)" in _pd_js,
+   "45.7 插件折后价提示仅在开启时提尾数（默认所见即所付）")
+_tests_all = ""
+for _tf in ["membership.test.js", "balance.test.js", "membership-panel.test.js", "coupon.test.js"]:
+    _tests_all += io.open(os.path.join(TEST_DIR, _tf), encoding="utf-8").read()
+ok("13.16b ★ 默认精确金额" in _tests_all and "B23b ★ 默认无尾数" in _tests_all
+   and "F19 ★ 尾数关闭（默认）" in _tests_all,
+   "45.8 ★ 测试锁定默认精确金额（含服务端两条链路与插件文案）")
 
 print("=" * 60)
 for p in passes:

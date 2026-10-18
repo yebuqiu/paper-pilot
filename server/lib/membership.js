@@ -187,6 +187,9 @@ function newDoc() {
     priceOptions: clone(DEFAULT_PRICE_OPTIONS),   // 派生视图，normalize 会重算
     pay: clone(DEFAULT_PAY),
     ai: clone(DEFAULT_AI),
+    // 1.8.4：唯一尾数默认**关闭** —— 下单金额 = 标价（所见即所付）。
+    // 需要「无备注转账也能按金额自动对账」的运营商可在管理页开启。
+    tailEnabled: false,
     orders: [],
     codes: [],
   };
@@ -220,6 +223,8 @@ function normalize(doc) {
   // ---- 收款 ----
   if (!out.pay || typeof out.pay !== 'object') out.pay = clone(DEFAULT_PAY);
   else out.pay = Object.assign(clone(DEFAULT_PAY), out.pay);
+  // 1.8.4：唯一尾数开关（幂等；旧数据无此字段 → 默认关闭 = 精确金额）
+  out.tailEnabled = out.tailEnabled === true;
   // ---- AI 全局策略（1.4.9）----
   if (!out.ai || typeof out.ai !== 'object') out.ai = clone(DEFAULT_AI);
   else out.ai = Object.assign(clone(DEFAULT_AI), out.ai);
@@ -654,6 +659,8 @@ function plansForClient(doc, now) {
     priceItems: active,
     upcoming: upcoming,
     cycles: CYCLE_PRESETS,
+    // 1.8.4：订单金额是否附加「唯一尾数」（默认关闭 = 所见即所付；开启用于无备注转账自动对账）
+    tailEnabled: doc.tailEnabled === true,
     pay: { channel: doc.pay.channel, qrImage: doc.pay.qrImage, qrText: doc.pay.qrText, note: doc.pay.note },
   };
 }
@@ -859,8 +866,10 @@ function createOrder(doc, opts) {
   const eff = effectivePrice(doc, pid, m);
   if (eff.error) return { error: eff.error };
   if (!(eff.price > 0)) return { error: '该套餐无需购买（' + p.name + '）' };
+  // 1.8.4：唯一尾数开关。关闭时金额 = 标价（所见即所付）；开启时按金额分尾数供自动对账。
+  const tailsOn = doc.tailEnabled === true;
   const originalCents = Math.round(eff.price * 100);
-  if (originalCents < 100 + TAIL_MAX) return { error: '价格过低（需至少 ¥1.99），无法分出对账尾数' };
+  if (tailsOn && originalCents < 100 + TAIL_MAX) return { error: '价格过低（需至少 ¥1.99），无法分出对账尾数' };
   // 优惠券：只把应付金额降下来。**尾数必须在折后金额上分配** ——
   // 否则两张折前同价、折后不同的订单会共用同一批尾数，「按金额唯一对账」就失效了。
   let couponDoc = null;
@@ -876,8 +885,9 @@ function createOrder(doc, opts) {
     discountCents = q.discountCents;
   }
   const baseCents = originalCents - discountCents;
-  if (baseCents < 100 + TAIL_MAX) return { error: '折扣后金额过低（需至少 ¥1.99），无法分出对账尾数' };
-  const tail = assignTail(doc, baseCents, { rng: o.rng });
+  if (tailsOn && baseCents < 100 + TAIL_MAX) return { error: '折扣后金额过低（需至少 ¥1.99），无法分出对账尾数' };
+  if (!tailsOn && baseCents < 1) return { error: '折扣后金额过低，无法下单' };
+  const tail = tailsOn ? assignTail(doc, baseCents, { rng: o.rng }) : { tailCents: 0 };
   if (tail.error) return { error: tail.error };
   const amountCents = baseCents + tail.tailCents;
   const now = new Date().toISOString();
@@ -924,10 +934,13 @@ function createOrder(doc, opts) {
 function createCreditOrder(doc, opts) {
   const o = opts || {};
   const cents = Math.round(Number(o.cents) || 0);
-  if (cents < 100 + TAIL_MAX) return { error: '充值金额过低（需至少 ¥1.99），无法分出对账尾数' };
+  // 1.8.4：尾数开关同上（关闭时充值金额 = 到账档位标价）
+  const tailsOn = doc.tailEnabled === true;
+  if (tailsOn && cents < 100 + TAIL_MAX) return { error: '充值金额过低（需至少 ¥1.99），无法分出对账尾数' };
+  if (!tailsOn && cents < 1) return { error: '充值金额必须大于 0' };
   const creditMicro = Math.max(0, Math.round(Number(o.creditMicro) || 0));
   if (creditMicro <= 0) return { error: '到账额度必须大于 0' };
-  const tail = assignTail(doc, cents, { rng: o.rng });
+  const tail = tailsOn ? assignTail(doc, cents, { rng: o.rng }) : { tailCents: 0 };
   if (tail.error) return { error: tail.error };
   const amountCents = cents + tail.tailCents;
   const now = new Date().toISOString();

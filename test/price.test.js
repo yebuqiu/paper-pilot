@@ -216,6 +216,7 @@ try {
 
   /* ===== I. 订单带价格溯源 ===== */
   doc = m.normalize(m.newDoc());
+  doc.tailEnabled = true;   // 1.8.4：尾数默认关；本节验证「实付 = 原始价 + 尾数」须显式开启
   const order = m.createOrder(doc, { user: { id: 'u1', email: 'a@b.c' }, plan: 'Pro', months: 3 }).order;
   ok(!!order, 'I1 下单成功');
   eq(order.baseCents, 7900, 'I2 原始价取自价格条目（baseCents=7900；实付另加唯一尾数）');

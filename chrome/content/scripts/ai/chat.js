@@ -177,7 +177,14 @@ var AIChat = {
 
   _systemWith(meta, contextBlock) {
     // 0.38.0： grounding 指令具体化——注明出处位置、区分推断与原文（配合根提示词纪律 2）
+    // 0.49.0：研究者画像注入——非空时作为长期语境追加（对所有 _systemWith 调用方生效：
+    //         ask/askTask/buildMessages 单篇路径；多 chip 路径在 chat-float 侧单独注入）
+    let profile = "";
+    try {
+      profile = String(Prefs.get("researcherProfile", "") || "").trim();
+    } catch (e) { profile = ""; }
     return (Prefs.get("aiSystemPrompt", "") || "") +
+      (profile ? "\n\n【研究者画像（长期偏好，回答时应遵守）】\n" + profile : "") +
       `\n\n当前用户正在阅读以下论文。回答要求：只基于该论文内容；论文未提及的信息明确说明；` +
       `引用论文观点注明位置（章节/图表/摘要）；你的推断与论文原文分开表述。\n` +
       `标题：${meta.title}\n作者：${meta.creators}\n发表：${meta.pub} ${meta.year}\n\n` +

@@ -131,6 +131,8 @@ Zotero.PaperPilot = {
       // 0.23.0 笔记关系图谱 + 阅读行为统计（阶段 2 第二批）
       "features/note-graph.js",
       "features/reading-stats.js",
+      // 0.49.0 定时任务（研究晨报/阅读周报/库体检；依赖 reading-stats / meta-lint 的运行时探测）
+      "features/scheduler.js",
       // 0.46.0 阅读进度 2.0：位置进度数据域（心跳捕获 + 原生上次位置 + 标注页融合）。
       // 须排在 reading-stats.js 之后（复用其焦点解析 activeReader）与
       // progress-column.js 之前（列的 lookup 走它的 compute/entryOf）
@@ -185,6 +187,8 @@ Zotero.PaperPilot = {
       // 0.42.0 阅读器右侧栏 · 参考文献面板（自动解析当前 PDF 参考文献，+ 一键入库双向关联；
       // 消费 ref-format/ref-sources/ref-import，故排在 panels 段最后）
       "panels/ref-pane.js",
+      // 0.49.0 浮窗会话持久化（跨重启恢复 + 历史浏览；chat-float 消费）
+      "features/chat-sessions.js",
       // 0.31.0 AI 问答悬浮窗（可拖动/停靠/分屏；唤起：快捷键/阅读器按钮/右键/划词）
       "panels/chat-float.js",
       "menus.js",
@@ -245,6 +249,9 @@ Zotero.PaperPilot = {
     this.chatFloat = ChatFloat;
     // 0.48.x 技能包商店（Skills Hub）：设置面板 / 商店窗口经此访问 SkillPacks 核心域
     this.skillPacks = SkillPacks;
+    // 0.49.0 浮窗会话持久化 + 定时任务（设置面板 prefs-schedule.js 经此访问 Scheduler）
+    this.chatSessions = ChatSessions;
+    this.scheduler = Scheduler;
     // 0.48.0 Agent 工具层 + 命令标签（设置面板 prefs-agent.js 经此访问；
     // 测试与排障同入口）
     this.agentTools = AgentTools;
@@ -424,6 +431,8 @@ Zotero.PaperPilot = {
           rootURI + "chrome/content/prefs-agent.js",
           // 0.48.x 技能商店卡片（已安装列表 / 剪贴板导入 / 目录源）
           rootURI + "chrome/content/prefs-skill.js",
+          // 0.49.0 定时任务卡片（研究晨报 / 阅读周报 / 库体检）
+          rootURI + "chrome/content/prefs-schedule.js",
         ],
         stylesheets: [
           rootURI + "chrome/content/prefs.css",
@@ -683,6 +692,16 @@ Zotero.PaperPilot = {
       await this._diag("discovery daily timer started (enabled=" + Prefs.get("discoveryEnabled", false) + ")");
     } catch (e) {
       await this._diag("discovery FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
+    // 0.49.0 定时任务：研究晨报 / 阅读周报 / 库体检（时间 pref 全空时空转，只做 3 次字符串比较）
+    try {
+      Scheduler.start();
+      await this._diag("scheduler started (digest=" + (Prefs.get("scheduleDailyDigest", "") || "off") +
+        ", weekly=" + (Prefs.get("scheduleWeeklyReport", "") || "off") +
+        ", health=" + (Prefs.get("scheduleLibHealth", "") || "off") + ")");
+    } catch (e) {
+      await this._diag("scheduler FAILED: " + (e && (e.stack || e.message) || e));
     }
 
     // 0.25.0 arXiv 核心离线自检（不联网）。
@@ -1000,6 +1019,7 @@ Zotero.PaperPilot = {
     try { ReadingProgress.unregister(); } catch (e) { Zotero.logError(e); }
     try { ProgressColumn.unregisterRow(); } catch (e) { Zotero.logError(e); }
     try { Discovery.stop(); } catch (e) { Zotero.logError(e); }
+    try { Scheduler.stop(); } catch (e) { Zotero.logError(e); }
     try { MCP.unregister(); } catch (e) { Zotero.logError(e); }
     try { ReadingState.unregister(); } catch (e) { Zotero.logError(e); }
     try { ReaderPopup.unregister(); } catch (e) { Zotero.logError(e); }

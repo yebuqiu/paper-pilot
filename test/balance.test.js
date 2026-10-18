@@ -346,6 +346,14 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
     await req('PUT', '/api/admin/membership', { plans: { Pro: { monthlyGrantMicro: yuan(20) } } });
 
     /* ---- 1.6.0 充值订单端到端：下单 → 标记已付 → 核销 → 自动入账 ---- */
+    // 1.8.4：默认「精确金额」——实付 = 标价（所见即所付），先验证关闭态
+    const coExact = await req('POST', '/api/orders', { kind: 'credit', optionId: 'rc10' }, tok2);
+    eq(coExact.status, 200, 'B23a 精确金额模式充值下单成功');
+    eq(coExact.json.order.amountCents, coExact.json.order.baseCents, 'B23b ★ 默认无尾数：实付 = 标价（所见即所付）');
+    eq(coExact.json.order.tailCents, 0, 'B23c tailCents = 0（不再出现 10.24 这类金额）');
+    await req('POST', '/api/orders/' + coExact.json.order.id + '/cancel', null, tok2);
+    // 唯一尾数默认关闭；本段验证「尾数对账」能力须显式开启
+    await req('PUT', '/api/admin/membership', { tail: { enabled: true } });
     const beforePay = (await req('GET', '/api/auth/me', null, tok2)).json.user.balance.paidMicro;
     const co = await req('POST', '/api/orders', { kind: 'credit', optionId: 'rc30' }, tok2);
     eq(co.status, 200, 'B23 充值订单创建成功');
@@ -401,7 +409,7 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
 
     // health
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.8.2', 'B42 服务端版本 1.8.0');
+    eq(h.version, '1.8.4', 'B42 服务端版本 1.8.0');
     eq(h.balanceEnforce, true, 'B43 health 暴露 enforce 状态');
     eq(h.signupGrantMicro, yuan(6), 'B44 health 暴露注册赠送额度');
 

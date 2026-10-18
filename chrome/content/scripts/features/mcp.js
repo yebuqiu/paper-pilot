@@ -16,13 +16,23 @@
  * 可测性：handleMessage / handlePayload / toolsList / _authOk / _timingSafeEq 全是纯逻辑，
  * 不碰 Zotero，可离线断言；只有 callTool 里的工具实现需要真实库。
  */
-/* global Zotero, Services, Prefs, I18n, LibSearch, AIChat, Annotations, MdLite */
+/* 0.50.0 追加「反向供给」：把 PaperPilot 自己的 Agent 工具（AgentTools.TOOLS）
+ * 以 list_agent_tools / run_agent_tool 两个 MCP 工具暴露给外部 AI。
+ * 与上面 8 个原生工具的区别：原生工具是直接操作 Zotero API 的窄接口，
+ * 这两个是**桥接**——外部 AI 能复用「检索/详情/全文/笔记/标签」同一套实现，
+ * 行为与 PaperPilot 内置 AI 助手完全一致。
+ * 写操作门控：MCP 无人交互，绝不用 Services.prompt.confirm 阻塞请求，
+ * 改为要求调用方在参数里传 allowWrite: true 显式授权。
+ */
+/* global Zotero, Services, Prefs, I18n, LibSearch, AIChat, Annotations, MdLite, AgentTools */
 
 var MCP = {
   PATH: "/paperpilot/mcp",
   PROTOCOL_VERSIONS: ["2025-06-18", "2025-03-26", "2024-11-05"],
   DEFAULT_PROTOCOL: "2025-06-18",
   _registered: false,
+  // run_agent_tool 单次返回给外部 AI 的字符上限（对齐 AgentTools.RESULT_MAX）
+  AGENT_RESULT_MAX: 8000,
 
   /* ---------------- 工具定义（纯数据） ---------------- */
 
@@ -99,6 +109,30 @@ var MCP = {
       inputSchema: {
         type: "object",
         properties: { limit: { type: "integer", description: "返回条数（默认 20，上限 100）" } },
+      },
+    },
+
+    /* ---- 0.50.0 桥接 PaperPilot 的 Agent 工具（只列/只跑用户在设置里启用的） ---- */
+
+    {
+      name: "list_agent_tools",
+      description: "列出 PaperPilot AI 助手当前启用的 Agent 工具（id、名称、说明、是否只读、参数说明）。" +
+        "这些工具用 run_agent_tool 调用；只列出用户在设置里启用的（被禁用的不会出现）。",
+      inputSchema: { type: "object", properties: {} },
+    },
+    {
+      name: "run_agent_tool",
+      description: "调用 PaperPilot AI 助手的一个 Agent 工具（先用 list_agent_tools 查可用 id）。" +
+        "读工具直接执行；**写工具**（会修改文献库）需要额外传 allowWrite: true 显式授权，" +
+        "否则直接返回拒绝说明——MCP 无人在场确认，不会弹窗阻塞。",
+      inputSchema: {
+        type: "object",
+        properties: {
+          tool: { type: "string", description: "Agent 工具 id（见 list_agent_tools）" },
+          args: { type: "object", description: "传给该工具的参数对象（按 list_agent_tools 里的 args 说明）" },
+          allowWrite: { type: "boolean", description: "写操作授权：目标工具非只读时必须为 true，否则拒绝执行" },
+        },
+        required: ["tool"],
       },
     },
   ],
@@ -421,6 +455,8 @@ var MCP = {
         case "list_collections": return await this._toolListCollections();
         case "library_stats": return await this._toolLibraryStats();
         case "list_recent": return await this._toolListRecent(a);
+        case "list_agent_tools": return this._toolListAgentTools();
+        case "run_agent_tool": return await this._toolRunAgentTool(a);
         default: return this._text("未知工具：" + name, true);
       }
     } catch (e) {
@@ -675,6 +711,77 @@ var MCP = {
       lines.push((i + 1) + ". [" + b.key + "] " + (b.title || "(无标题)") + " — " + (b.creators || "-") + " (" + (b.year || "-") + ") ｜ 加入：" + String(it.dateAdded || "").slice(0, 10));
     });
     return this._text(lines.join("\n"));
+  },
+
+  /* ---------------- Agent 工具桥接（0.50.0） ----------------
+   * 设计约束：
+   *   · 只暴露 AgentTools.enabledIds() 内的工具（用户在设置里开关说了算）；
+   *   · 写工具（readOnly === false）必须 allowWrite === true，绝不弹
+   *     Services.prompt.confirm —— MCP 请求来自外部 AI，没有窗口给人点确认，
+   *     弹窗只会把手无寸铁的客户端请求挂死；
+   *   · 所有失败降级成 isError 文本（JSON-RPC 层仍是成功响应），
+   *     让外部模型读到原因自行纠正，而不是收到 -32603 后无从下手。
+   */
+
+  // AgentTools 只有 desc、没有结构化参数 schema，这里补一份参数说明；
+  // 未收录的（用户自定义扩展）回退空对象，不影响调用。
+  AGENT_ARG_HINTS: {
+    search_library: { query: "检索关键词（必填）" },
+    get_item_details: { item_id: "条目编号（必填，取自 search_library 结果）" },
+    read_item_fulltext: { item_id: "条目编号（缺省 = 当前会话锁定的文献）" },
+    list_collections: {},
+    add_note: { item_id: "条目编号", text: "笔记正文（Markdown；写操作）" },
+    add_tags: { item_id: "条目编号", tags: "标签数组或逗号分隔字符串（写操作）" },
+  },
+
+  _agentTools() {
+    try {
+      return (typeof AgentTools !== "undefined" && AgentTools && Array.isArray(AgentTools.TOOLS)) ? AgentTools : null;
+    } catch (e) { return null; }
+  },
+
+  _toolListAgentTools() {
+    const AT = this._agentTools();
+    if (!AT) return this._text("Agent 工具模块未加载", true);
+    let on;
+    try { on = AT.enabledIds(); }
+    catch (e) { return this._text("读取工具启用状态失败：" + String((e && e.message) || e), true); }
+    const tools = AT.TOOLS.filter((t) => on.has(t.id)).map((t) => ({
+      id: t.id,
+      label: t.label || "",
+      desc: t.desc || "",
+      readOnly: t.readOnly !== false,
+      args: this.AGENT_ARG_HINTS[t.id] ? JSON.parse(JSON.stringify(this.AGENT_ARG_HINTS[t.id])) : {},
+    }));
+    return this._text(JSON.stringify({ tools }, null, 2));
+  },
+
+  async _toolRunAgentTool(a) {
+    const p = a || {};
+    const name = String(p.tool || "").trim();
+    if (!name) return this._text("参数 tool 必填", true);
+    const AT = this._agentTools();
+    if (!AT) return this._text("Agent 工具模块未加载", true);
+    let on;
+    try { on = AT.enabledIds(); }
+    catch (e) { return this._text("读取工具启用状态失败：" + String((e && e.message) || e), true); }
+    const tool = AT.TOOLS.find((t) => t.id === name);
+    if (!tool || !on.has(name)) return this._text("未知或未启用的工具：" + name, true);
+    if (tool.readOnly === false && p.allowWrite !== true) {
+      return this._text("该工具会修改文献库（写操作）。请在参数中传 allowWrite: true 明确授权后重试", true);
+    }
+    const args = (p.args && typeof p.args === "object" && !Array.isArray(p.args)) ? p.args : {};
+    let out;
+    try {
+      // ctx.skipConfirm 是写给「写工具」的无人值守旁路（与 A 模块约定的契约）。
+      // AgentTools 尚未消费它时只当作多余字段忽略，不会报错。
+      out = String(await AT.execTool(name, args, { mcp: true, skipConfirm: true }));
+    } catch (e) {
+      return this._text("工具执行失败：" + String((e && e.message) || e), true);
+    }
+    const max = this.AGENT_RESULT_MAX;
+    if (out.length > max) out = out.slice(0, max) + "…（已截断）";
+    return this._text(out);
   },
 
   /* ---------------- 窗口 ---------------- */

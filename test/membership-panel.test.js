@@ -117,6 +117,10 @@ const PLANS_PAYLOAD = {
     { id: 'rc10', cents: 1000, creditCents: 1000, bonusCents: 0, label: '¥10', amountText: '¥10.00', creditText: '¥10.00', bonusText: '' },
     { id: 'rc30', cents: 3000, creditCents: 3300, bonusCents: 300, label: '¥30 · 到账 ¥33', amountText: '¥30.00', creditText: '¥33.00', bonusText: '送 ¥3.00' },
   ],
+  // 0.50.0 在线支付可用性（服务端 1.7.0+ 下发）
+  onlinePay: { available: true, channels: [{ id: 'alipay', text: '支付宝' }] },
+  // 1.8.4 唯一尾数开关（本夹具默认开启，便于验证「提尾数」文案；F19 单独验证关闭态）
+  tailEnabled: true,
 };
 
 function fakeAccount(over) {
@@ -186,6 +190,7 @@ const fakeChannels = {
 function boot(accountOver) {
   const { document, registry } = makeDom(fs.readFileSync(XHTML, 'utf8'));
   const prefs = new Map();
+  const launched = [];
   const sandbox = {
     console,
     document,
@@ -194,6 +199,8 @@ function boot(accountOver) {
       PaperPilot: { account: fakeAccount(accountOver), channels: fakeChannels },
       Prefs: { get: (k, d) => (prefs.has(k) ? prefs.get(k) : d), set: (k, v) => prefs.set(k, v) },
       getMainWindow: () => null,
+      // 0.50.0 在线支付：记录被打开的收银台地址（断言用）
+      launchURL: (u) => { launched.push(String(u)); },
     },
     window: {
       setTimeout: () => 0, setInterval: () => 0, clearInterval: () => {},
@@ -204,7 +211,7 @@ function boot(accountOver) {
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(PANEL, 'utf8'), sandbox, { filename: 'prefs-account.js' });
-  return { registry, prefs, sandbox };
+  return { registry, prefs, sandbox, launched };
 }
 
 const flush = () => new Promise((r) => setImmediate(r));
@@ -346,6 +353,20 @@ const flush = () => new Promise((r) => setImmediate(r));
   has(payInfo, '折后 ¥201.75', 'F16 支付页显示折后价');
   has(payInfo, '201.85', 'F17 转账金额仍是含尾数的实付（不是折后价）');
   has(payInfo, 'CP-AAAA-BBBB-CCCC', 'F18 支付页标注用了哪张券（便于对账）');
+
+  // ---- F19：服务端关闭唯一尾数（1.8.4 默认）→ 折后价提示不再提尾数（所见即所付）----
+  ({ registry } = boot({
+    plans: async () => Object.assign({}, PLANS_PAYLOAD, { tailEnabled: false }),
+    validateCoupon: async () => ({ code: 'CP-AAAA-BBBB-CCCC', type: 'percent',
+      originalText: '¥269.00', discountText: '−¥67.25', payableText: '¥201.75', payableCents: 20175 }),
+  }));
+  registry.get('pp-mb-upgrade').click();
+  await flush(); await flush(); await flush();
+  registry.get('pp-mb-coupon').value = 'CP-AAAA-BBBB-CCCC';
+  registry.get('pp-mb-coupon-btn').click();
+  await flush(); await flush(); await flush();
+  ok(registry.get('pp-mb-quote').textContent.indexOf('尾数') < 0,
+    'F19 ★ 尾数关闭（默认）→ 折后价不再提尾数（所见即所付）');
 
   /* ============ G. 优惠码不可用 / 清除 ============ */
   ({ registry } = boot({
@@ -695,6 +716,159 @@ const flush = () => new Promise((r) => setImmediate(r));
     await flush(); await flush(); await flush();
     has(registry.get('pp-bal-pay-result').textContent, '已入账', 'J25 轮询到 fulfilled → 提示已入账');
   }
+
+  /* ============ K. 付款订单弹窗（0.49.0：下单成功自动弹出） ============ */
+  {
+    let claimCalls = 0, cancelCalls = 0, statusCalls = 0;
+    const orderK = {
+      id: 'o-plan-1', kind: 'plan', plan: 'Pro', planName: '专业版', months: 12,
+      cycle: 'yearly', cycleName: '按年', perpetual: false,
+      amount: 269.42, amountCents: 26942, amountText: '¥269.42',
+      baseCents: 26942, originalText: '¥269.42', discountCents: 0, discountText: '', couponCode: null,
+      tailCents: 42, status: 'pending',
+      pay: { channel: '支付宝收款码', qrText: '扫码后备注订单号', note: '转账后点「我已完成支付」' },
+    };
+    ({ registry } = boot({
+      createOrder: async () => orderK,
+      claimOrder: async () => { claimCalls++; return Object.assign({}, orderK, { status: 'claimed' }); },
+      cancelOrder: async () => { cancelCalls++; return Object.assign({}, orderK, { status: 'cancelled' }); },
+      orderStatus: async () => { statusCalls++; return Object.assign({}, orderK, { status: 'fulfilled' }); },
+    }));
+    await flush(); await flush(); await flush();
+
+    const dlgRoot = registry.get('pp-dlg-root');
+    eq(dlgRoot.children.length, 0, 'K0 未下单时无弹窗');
+
+    registry.get('pp-mb-upgrade').click();          // 打开下单面板
+    await flush(); await flush(); await flush();
+    registry.get('pp-mb-create').click();           // 生成订单 → 应自动弹窗
+    await flush(); await flush(); await flush();
+    eq(dlgRoot.children.length, 1, 'K1 ★ 会员下单成功 → 自动弹出付款单');
+    const card = dlgRoot.children[0].children[0];
+    has(card.textContent, '会员订单', 'K2 标题为「会员订单」');
+    has(card.textContent, '专业版', 'K3 展示订单内容（套餐）');
+    has(card.textContent, '12 个月', 'K4 展示订阅周期');
+    has(card.textContent, '¥269.42', 'K5 展示精确金额（含尾数）');
+    has(card.textContent, 'o-plan-1', 'K6 展示订单号');
+    has(card.textContent, '待支付', 'K7 展示状态');
+    has(card.textContent, '专属对账尾数', 'K8 尾数提醒（防凑整导致对账失败）');
+    has(card.textContent, '支付宝收款码', 'K9 展示收款方式');
+    eq(card.byClass('pp-dlg-badge')[0].className, 'pp-dlg-badge pp-dlg-badge-warn', 'K10 待支付状态用警示样式');
+
+    // 关闭 → 视为已读；内联区「查看付款单」可重开
+    card.byClass('pp-dlg-done')[0].click();
+    eq(dlgRoot.children.length, 0, 'K11 点「关闭」收起弹窗');
+    registry.get('pp-mb-order-view').click();
+    eq(dlgRoot.children.length, 1, 'K12 ★ 内联区「查看付款单」可重开（自动弹出只发生一次）');
+
+    // 刷新状态 → fulfilled，徽标与按钮联动
+    const card2 = dlgRoot.children[0].children[0];
+    await card2.byClass('pp-dlg-refresh')[0].click();
+    await flush(); await flush();
+    eq(statusCalls, 1, 'K13 弹窗「刷新状态」调用查单接口');
+    has(card2.byClass('pp-dlg-badge')[0].textContent, '已开通', 'K14 ★ 查到 fulfilled → 徽标更新为已开通');
+    eq(card2.byClass('pp-dlg-badge')[0].className, 'pp-dlg-badge pp-dlg-badge-ok', 'K15 已开通用成功样式');
+    eq(card2.byClass('pp-dlg-claim')[0].disabled, true, 'K16 已开通后「我已完成支付」禁用');
+    eq(card2.byClass('pp-dlg-cancel')[0].disabled, true, 'K17 已开通后「取消订单」禁用');
+
+    // 取消流程：新订单 → 弹窗 → 取消 → 弹窗关闭
+    ({ registry } = boot({
+      createOrder: async () => orderK,
+      cancelOrder: async () => { cancelCalls++; return Object.assign({}, orderK, { status: 'cancelled' }); },
+    }));
+    await flush(); await flush(); await flush();
+    registry.get('pp-mb-upgrade').click();
+    await flush(); await flush(); await flush();
+    registry.get('pp-mb-create').click();
+    await flush(); await flush(); await flush();
+    const card3 = dlgRootFor(registry).children[0].children[0];
+    await card3.byClass('pp-dlg-cancel')[0].click();
+    await flush(); await flush();
+    eq(cancelCalls, 1, 'K18 弹窗「取消订单」调用取消接口');
+    eq(dlgRootFor(registry).children.length, 0, 'K19 ★ 取消成功 → 弹窗随之关闭');
+
+    // 异常订单：缺订单号 → 不弹窗 + 内联错误（回退可见）
+    ({ registry } = boot({
+      createOrder: async () => ({ id: '', amount: 10, amountText: '¥10.00', status: 'pending' }),
+    }));
+    await flush(); await flush(); await flush();
+    registry.get('pp-mb-upgrade').click();
+    await flush(); await flush(); await flush();
+    registry.get('pp-mb-create').click();
+    await flush(); await flush(); await flush();
+    eq(dlgRootFor(registry).children.length, 0, 'K20 ★ 订单数据异常（缺订单号）→ 不弹窗');
+    has(registry.get('pp-mb-order-msg').textContent, '订单数据异常', 'K21 异常回落到内联错误提示');
+
+    // 充值流：同样自动弹出「充值订单」，金额/到账额度/赠送齐备
+    const crOrderK = {
+      id: 'o-cr-dlg', kind: 'credit', amount: 30.42, amountCents: 3042, amountText: '¥30.42',
+      creditMicro: 33000000, bonusMicro: 3000000, tailCents: 42, status: 'pending',
+      pay: { channel: '微信收款码', note: '备注订单号' },
+    };
+    ({ registry } = boot({
+      createCreditOrder: async () => crOrderK,
+      claimOrder: async () => Object.assign({}, crOrderK, { status: 'claimed' }),
+    }));
+    await flush(); await flush(); await flush();
+    registry.get('pp-bal-recharge-toggle').click();
+    await flush(); await flush(); await flush();
+    registry.get('pp-bal-create').click();
+    await flush(); await flush(); await flush();
+    eq(dlgRootFor(registry).children.length, 1, 'K22 ★ 充值下单成功 → 自动弹出付款单');
+    const card4 = dlgRootFor(registry).children[0].children[0];
+    has(card4.textContent, '充值订单', 'K23 标题为「充值订单」');
+    has(card4.textContent, '到账 ¥33.00', 'K24 展示到账额度');
+    has(card4.textContent, '含赠送 ¥3.00', 'K25 展示赠送额');
+    has(card4.textContent, '¥30.42', 'K26 展示含尾数的精确金额');
+    has(card4.textContent, '核销通过后自动入账余额', 'K27 说明履约方式（自动入账）');
+
+    // 认领（我已完成支付）→ 状态转待核销
+    await card4.byClass('pp-dlg-claim')[0].click();
+    await flush(); await flush();
+    has(card4.byClass('pp-dlg-badge')[0].textContent, '待核销', 'K28 ★ 提交认领后徽标转「待核销」');
+
+    // ---- 在线支付（0.50.0）：服务端开通时充值单出现「在线支付（扫码）」 ----
+    const onlineCalls = [];
+    let launchedUrls = [];
+    ({ registry, launched: launchedUrls } = boot({
+      createCreditOrder: async () => crOrderK,
+      startOnlinePay: async (orderId, channel) => {
+        onlineCalls.push([orderId, channel]);
+        return { payUrl: 'https://www.ljlliu.cn/Pay/console?trade_no=LH1', channel: channel };
+      },
+    }));
+    await flush(); await flush(); await flush();
+    registry.get('pp-bal-recharge-toggle').click();
+    await flush(); await flush(); await flush();
+    registry.get('pp-bal-create').click();
+    await flush(); await flush(); await flush();
+    ok(registry.get('pp-bal-online').style.display !== 'none', 'K29 内联区在线支付按钮显示（服务端已开通）');
+    const card5 = dlgRootFor(registry).children[0].children[0];
+    const dlgOnline = card5.byClass('pp-dlg-online')[0];
+    ok(!!dlgOnline, 'K30 ★ 付款单弹窗含「在线支付（扫码）」按钮');
+    if (dlgOnline) { await dlgOnline.click(); await flush(); await flush(); }
+    eq(onlineCalls.length, 1, 'K31 点击在线支付 → 调用 startOnlinePay');
+    eq(onlineCalls.length ? onlineCalls[0][0] : '', 'o-cr-dlg', 'K31b 带上订单号');
+    eq(onlineCalls.length ? onlineCalls[0][1] : '', 'alipay', 'K31c 渠道 alipay（免签网关常用）');
+    ok(launchedUrls.length === 1 && /Pay\/console/.test(launchedUrls[0]),
+      'K32 ★ 用系统浏览器打开收银台 payUrl', launchedUrls);
+
+    // ---- 服务端未开通 → 不出现在线支付入口（走收款码 + 人工核销）----
+    ({ registry } = boot({
+      createCreditOrder: async () => crOrderK,
+      plans: async () => Object.assign({}, PLANS_PAYLOAD, { onlinePay: { available: false, channels: [] } }),
+    }));
+    await flush(); await flush(); await flush();
+    registry.get('pp-bal-recharge-toggle').click();
+    await flush(); await flush(); await flush();
+    registry.get('pp-bal-create').click();
+    await flush(); await flush(); await flush();
+    eq(registry.get('pp-bal-online').style.display, 'none', 'K33 未开通 → 内联在线支付按钮隐藏');
+    eq(dlgRootFor(registry).children[0].children[0].byClass('pp-dlg-online').length, 0,
+      'K34 ★ 未开通 → 弹窗不出现在线支付按钮（不留死入口）');
+  }
+
+  function dlgRootFor(reg) { return reg.get('pp-dlg-root'); }
 
   console.log('\n会员面板渲染测试：' + pass + ' 项通过，' + fails.length + ' 项失败');
   if (fails.length) {

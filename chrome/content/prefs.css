@@ -416,3 +416,60 @@
 .pp-root .pp-ts-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--pp-focus-ring); }
 .pp-root .pp-ts-dot { font-size: 9px; line-height: 1; flex: none; }
 .pp-root .pp-ts-chip-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- 付款订单弹窗（0.49.0） ----------
+ * 下单成功（会员购买 / AI 额度充值）自动弹出；挂在 #pp-dlg-root（根级、折叠组之外）。
+ * 模态 = 全窗遮罩 + 居中卡片；所有配色走 .pp-root 的 CSS 变量（随明暗主题切换）。
+ * 定位用 fixed：settings 窗口滚动不影响；z-index 高于卡片与折叠条即可。 */
+.pp-root .pp-order-mask {
+  position: fixed; inset: 0; z-index: 90;
+  background: rgba(0, 0, 0, .38);
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px;
+}
+.pp-root .pp-order-dlg {
+  width: 420px; max-width: 92vw; max-height: 86vh; overflow-y: auto;
+  background: var(--pp-surface); color: var(--pp-text);
+  border: 1px solid var(--pp-border); border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .28);
+  padding: 14px 16px 12px;
+  font-size: 13px;
+}
+.pp-root .pp-dlg-head { display: flex; align-items: center; gap: 8px; }
+.pp-root .pp-dlg-title { font-size: 14px; font-weight: 700; }
+.pp-root .pp-dlg-badge {
+  font-size: 11px; line-height: 1.6; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--pp-border); background: var(--pp-surface-2); color: var(--pp-muted);
+}
+.pp-root .pp-dlg-badge-warn { border-color: var(--pp-warn); background: var(--pp-warn-bg); color: var(--pp-warn); }
+.pp-root .pp-dlg-badge-info { border-color: var(--pp-accent); background: var(--pp-accent-weak); color: var(--pp-accent); }
+.pp-root .pp-dlg-badge-ok { border-color: var(--pp-success); background: var(--pp-ok-bg); color: var(--pp-success); }
+.pp-root .pp-dlg-badge-muted { border-color: var(--pp-border); background: var(--pp-surface-2); color: var(--pp-muted); }
+.pp-root .pp-dlg-close {
+  margin-left: auto; cursor: pointer; font-size: 17px; line-height: 1;
+  color: var(--pp-muted); padding: 2px 4px; border-radius: 6px;
+}
+.pp-root .pp-dlg-close:hover { color: var(--pp-text); background: var(--pp-btn-hover); }
+.pp-root .pp-dlg-body { margin-top: 8px; }
+.pp-root .pp-dlg-content { font-size: 12.5px; color: var(--pp-muted); }
+.pp-root .pp-dlg-amount {
+  margin-top: 4px; font-size: 24px; font-weight: 700; letter-spacing: .01em;
+  font-variant-numeric: tabular-nums;
+}
+.pp-root .pp-dlg-tail {
+  margin-top: 6px; padding: 6px 9px; border-radius: 8px;
+  border: 1px solid var(--pp-warn); background: var(--pp-warn-bg); color: var(--pp-warn);
+  font-size: 12px; line-height: 1.5;
+}
+.pp-root .pp-dlg-rows { margin-top: 8px; border-top: 1px dashed var(--pp-border); padding-top: 6px; }
+.pp-root .pp-dlg-row { display: flex; gap: 10px; padding: 2px 0; align-items: baseline; }
+.pp-root .pp-dlg-k { flex: none; width: 64px; color: var(--pp-muted); font-size: 12px; }
+.pp-root .pp-dlg-v { flex: 1; word-break: break-all; font-size: 12.5px; }
+.pp-root .pp-dlg-qr {
+  display: block; margin: 10px auto 4px; width: 148px; height: 148px;
+  object-fit: contain; border: 1px solid var(--pp-border); border-radius: 8px; background: #fff;
+}
+.pp-root .pp-dlg-note { margin-top: 6px; font-size: 12px; color: var(--pp-muted); line-height: 1.5; }
+.pp-root .pp-dlg-msg { min-height: 16px; margin-top: 4px; }
+.pp-root .pp-dlg-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.pp-root .pp-order-view { font-size: 12px; }

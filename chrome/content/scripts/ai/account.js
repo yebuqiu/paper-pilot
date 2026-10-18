@@ -771,7 +771,27 @@ var Account = {
       // 0.26.0：充值档位（服务端 1.6.0 起下发；旧服务端为空数组 → 面板隐藏充值入口）
       rechargeOptions: Array.isArray(j.rechargeOptions) ? j.rechargeOptions : [],
       recharge: j.recharge || {},
+      // 0.50.0：在线支付可用性（服务端 1.7.0+ 下发；旧的没有 → 视为不可用，按钮不出现）
+      onlinePay: (j.onlinePay && typeof j.onlinePay === 'object')
+        ? { available: !!j.onlinePay.available, channels: Array.isArray(j.onlinePay.channels) ? j.onlinePay.channels : [] }
+        : { available: false, channels: [] },
+      // 1.8.4：订单金额是否加「唯一尾数」（默认 false = 所见即所付）
+      tailEnabled: j.tailEnabled === true,
     };
+  },
+
+  /**
+   * 在线支付（服务端 1.7.0）：为**充值订单**创建网关收银台地址（扫码支付）。
+   * 仅 kind='credit' 且待支付的订单可用；返回 { payUrl, channel, ... }，
+   * 调用方用 Zotero.launchURL 打开系统浏览器，支付成功后网关回调自动入账。
+   */
+  async startOnlinePay(orderId, channel) {
+    const resp = await this._request("POST",
+      "/api/orders/" + encodeURIComponent(String(orderId || "")) + "/pay",
+      { channel: String(channel || "alipay") }, this.token(), 15000);
+    const j = resp.json || {};
+    if (!j.ok || !j.payUrl) throw new Error(j.error || "无法发起在线支付");
+    return j;
   },
 
   /**

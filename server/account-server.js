@@ -32,6 +32,13 @@
  *   配置存 data/pay.json，商户密钥用 AES-256-GCM 加密（主密钥 data/.secret.key，均不进备份）。
  *   ★ 回调地址由 **PP_PUBLIC_URL** 决定（不按 Host 头推断——公网 Host 可伪造）。
  *   ★ 不启用时一切照旧（收款码 + 人工核销）；`enforce`/`enabled` 各自独立开关。
+ * 免签网关兼容（1.8.3，2026-10-18 领航智能Pay ljlliu.cn 全链路实测）：个人收款码靠
+ *   「唯一金额」区分并发同额订单，同金额第 2、3…笔未完结订单被网关自动 +1 分递增加价，
+ *   notify 带加价后金额 → 回调金额校验在**多付侧**开尾差窗口（PP_PAY_OVERPAY_CENTS，
+ *   默认 ¥1）；少付仍一律拒绝，到账额度仍按本地订单金额。
+ * 订单金额口径（1.8.4）：本站「唯一尾数」对账机制改为**可开关、默认关闭** ——
+ *   默认下单金额 = 标价（所见即所付）；需要无备注转账按金额自动对账时在管理页开启。
+ *   开关存 membership.json 的 tailEnabled，两条下单路径（会员/充值）同判。
  * 登录设备（1.4.7）：令牌带 sid/设备/来源 IP 与最近活动；用户可自查并踢出设备，
  *   GET  /api/plans                 公开 → {plans, priceOptions, priceItems, upcoming, cycles, pay}
  *   GET  /api/membership            Bearer → {membership(等级/到期/剩余天数/额度/历史), user(含用量趋势)}
@@ -163,6 +170,9 @@ const RESET_HTML = path.join(__dirname, 'public', 'reset.html');
  * PP_PUBLIC_URL=https://... 站点公网地址。邮件链接前缀用它；**在线支付的回调地址也由它决定**
  *                           （不按 Host 头推断——公网 Host 可伪造）。未配置时在线支付不可用。
  * PP_PAY_MAX / PP_PAY_QUERY_MAX / PP_PAY_NOTIFY_MAX  支付相关限速（可选，见下方常量）
+ * PP_PAY_OVERPAY_CENTS     回调金额校验的多付尾差容差（分，默认 100=¥1，0=恢复精确比对）。
+ *                           免签网关（领航智能Pay ljlliu.cn 实测）对并发同额订单自动 +1 分
+ *                           递增加价以区分入账，notify 带加价后金额，故多付侧须留窗口。
  * 已有的同名进程环境变量优先，不会被覆盖。 */
 (function loadEnvFile() {
   try {
@@ -202,6 +212,14 @@ const GATEWAY_MAX = 20;                  // 网关全局限速（每 IP 每分�
 const PAY_MAX = limitOf('PP_PAY_MAX', 10);              // 发起支付（每账号每分钟）
 const PAY_QUERY_MAX = limitOf('PP_PAY_QUERY_MAX', 12);  // 主动查单（每账号每分钟）
 const PAY_NOTIFY_MAX = limitOf('PP_PAY_NOTIFY_MAX', 60); // 网关回调（每 IP 每分钟，网关会重试）
+// 2026-10 免签网关兼容（领航智能Pay ljlliu.cn 实测）：个人收款码靠「唯一金额」区分并发
+// 同额订单——同金额的第 2、3…笔未完结订单会被网关自动加价（¥10.00→10.01→10.02…），
+// notify 带加价后金额。回调金额校验因此在**多付侧**留尾差窗口（默认 ¥1.00）：
+// 少付仍一律拒绝；到账额度仍按本地订单金额（fulfillByGateway 语义不变，多付不 多记）。
+const PAY_OVERPAY_TOLERANCE_CENTS = (() => {
+  const n = Number(process.env.PP_PAY_OVERPAY_CENTS);
+  return Number.isFinite(n) && n >= 0 ? Math.min(Math.round(n), 100000) : 100;
+})();
 const VERIFY_TTL_MS = 24 * 3600e3;       // 邮箱验证链接有效期
 const RESET_TTL_MS = 30 * 60e3;          // 密码重置链接有效期
 const GATEWAY_TIMEOUT_MS = 120e3;        // 网关转发上限（流式应答可能较长）
@@ -1960,7 +1978,7 @@ const server = http.createServer(async (req, res) => {
 
     if (method === 'GET' && url === '/api/health') {
       return json(res, 200, {
-        ok: true, service: 'paperpilot-account-server', version: '1.8.2',
+        ok: true, service: 'paperpilot-account-server', version: '1.8.4',
         uptime: Math.round(process.uptime()), now: new Date().toISOString(),
         mail: mail.configured() ? 'on' : 'off',
         users: usersStore.data.users.length,
@@ -2474,9 +2492,13 @@ const server = http.createServer(async (req, res) => {
       if (q.trade_status !== 'TRADE_SUCCESS') return reject('trade_status_' + String(q.trade_status || ''));
       const order = membership.findOrderByTradeNo(membershipStore.data, q.out_trade_no);
       if (!order) return reject('order_not_found');
-      // ★ 防少付：只验签不够，必须比对实付金额与本地订单金额（精确到分）
+      // ★ 防少付：只验签不够，必须比对实付金额与本地订单金额（精确到分）。
+      // 多付侧留免签加价尾差窗口（PAY_OVERPAY_TOLERANCE_CENTS，见常量注释）；
+      // 少付 / 缺金额 / 非数字仍一律拒绝——多付不入账侧的攻击面（付多不付少）。
       const localMoney = pay.moneyStr(order.amountCents);
-      if (Number(q.money).toFixed(2) !== localMoney) {
+      const gwCents = Math.round(Number(q.money) * 100);
+      if (!(Number.isFinite(gwCents) && gwCents >= order.amountCents
+        && gwCents <= order.amountCents + PAY_OVERPAY_TOLERANCE_CENTS)) {
         return reject('amount_mismatch gw=' + String(q.money) + ' local=' + localMoney);
       }
       const r = fulfillByGateway(order, { tradeNo: q.trade_no, channel: q.type, source: 'gateway' });
@@ -2766,6 +2788,8 @@ const server = http.createServer(async (req, res) => {
           ok: true, orders, codes,
           plans: membership.plansForClient(membershipStore.data),
           ai: { trialDays: membership.trialDaysFor(membershipStore.data) }, // 1.4.9 新用户全模型试用天数
+          // 1.8.4 唯一尾数开关（默认关：所见即所付；开启用于无备注转账自动对账）
+          tailEnabled: membershipStore.data.tailEnabled === true,
           // 1.6.0 余额与充值档位（后台「充值档位」编辑用）
           balance: balanceCfg(),
           priceItems: membershipStore.data.priceItems.map((i) => membership.priceItemOut(membershipStore.data, i)),
@@ -2834,6 +2858,8 @@ const server = http.createServer(async (req, res) => {
             siteBaseUrl: siteBaseUrl(),
             siteBaseConfigured: !!String(process.env.PP_PUBLIC_URL || '').trim(),
             onlineReady: onlinePayReady(),
+            // 1.8.3 免签网关加价容差（实际生效值，控制台直接展示）
+            overpayCents: PAY_OVERPAY_TOLERANCE_CENTS,
           }),
           notifyUrl: siteBaseUrl() + '/api/pay/notify',
           returnUrl: siteBaseUrl() + '/api/pay/return',
@@ -3049,6 +3075,10 @@ const server = http.createServer(async (req, res) => {
           if (input.pay.qrImage !== undefined) doc.pay.qrImage = String(input.pay.qrImage).slice(0, 500);
           if (input.pay.qrText !== undefined) doc.pay.qrText = String(input.pay.qrText).slice(0, 500);
           if (input.pay.note !== undefined) doc.pay.note = String(input.pay.note).slice(0, 200);
+        }
+        // 1.8.4：唯一尾数开关（{tail:{enabled:bool}}）。关闭 = 下单金额即标价（默认）。
+        if (input.tail && typeof input.tail === 'object' && input.tail.enabled !== undefined) {
+          doc.tailEnabled = !!input.tail.enabled;
         }
         // 兼容旧后台：提交 priceOptions（平铺档位）时，同步到对应价格条目
         // —— 命中「同等级 + 同月数」的现有条目就改价，没有就新建一条立即生效的价格。

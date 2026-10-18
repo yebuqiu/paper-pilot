@@ -122,15 +122,16 @@ var AIClient = {
 
   /**
    * @param {Array<{role:string, content:string}>} messages
+   * @param {{model?:string}=} opts 可选覆盖项（仅 model：Agent 决策轮路由用）
    * @returns {Promise<string>} 助手回复文本
    */
-  async chat(messages) {
+  async chat(messages, opts) {
     const cfg = this._config();
     if (cfg.notLoggedIn) throw this._notLoggedInError();
     if (!cfg.ok || !cfg.apiKey && !this._noKeyLocal(cfg)) throw new Error("NO_API_KEY");
 
     const payload = {
-      model: cfg.model,
+      model: opts && opts.model ? String(opts.model) : cfg.model,
       messages,
       ...this._sampleParams(),
       ...(cfg.extraBody || {}),
@@ -181,18 +182,19 @@ var AIClient = {
    * 网关不透传 SSE 时自动降级为一次性读取，用户体验与 chat() 一致，不会更差。
    * @param messages 同 chat()
    * @param onDelta (textChunk) => void 每收到一段增量即回调
+   * @param {{model?:string}=} opts 同 chat()（仅 model 覆盖；缺省不影响既有调用）
    * @returns {{promise: Promise<string>, abort: Function}} promise 解析为完整回复
    */
-  chatStream(messages, onDelta) {
+  chatStream(messages, onDelta, opts) {
     const controller = (typeof AbortController === "function") ? new AbortController() : null;
-    const promise = this._streamImpl(messages, onDelta, controller);
+    const promise = this._streamImpl(messages, onDelta, controller, opts);
     return {
       promise,
       abort() { try { if (controller) controller.abort(); } catch (e) { /* ignore */ } },
     };
   },
 
-  async _streamImpl(messages, onDelta, controller) {
+  async _streamImpl(messages, onDelta, controller, opts) {
     const cfg = this._config();
     if (cfg.notLoggedIn) throw this._notLoggedInError();
     if (!cfg.ok || !cfg.apiKey && !this._noKeyLocal(cfg)) throw new Error("NO_API_KEY");
@@ -201,13 +203,13 @@ var AIClient = {
     const wantStream = Prefs.get("readerPopupStream", true) !== false &&
       typeof fetch === "function" && !!controller;
     if (!wantStream) {
-      const full = await this.chat(messages);
+      const full = await this.chat(messages, opts);
       if (onDelta) try { onDelta(full); } catch (e) { /* UI 回调不得拖死流程 */ }
       return full;
     }
 
     const payload = {
-      model: cfg.model,
+      model: opts && opts.model ? String(opts.model) : cfg.model,
       messages,
       ...this._sampleParams(),
       stream: true,

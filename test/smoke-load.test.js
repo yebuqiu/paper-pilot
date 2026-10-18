@@ -59,7 +59,7 @@ const expect = ["Prefs", "I18n", "MdLite", "Notes", "ItemSel", "TagCurator", "At
   "TranslateSvc", "TranslatePane", "ChatFloat",
   "RefFormat", "RefSources", "RefImport", "CNAI",
   "ArxivErrors", "ArxivDates", "ArxivQuery", "ArxivCategories", "ArxivAtom", "ArxivAnalyze", "ArxivRateLimiter", "ArxivFetch",
-  "AgentTools", "SkillPacks"].filter((k, i, a) => a.indexOf(k) === i);
+  "AgentTools", "SkillPacks", "ChatSessions", "Scheduler"].filter((k, i, a) => a.indexOf(k) === i);
 const missing = expect.filter((k) => !sandbox[k]);
 console.log("关键全局缺失:", missing.length ? missing : "无 ✓");
 
@@ -87,7 +87,7 @@ console.log("ArxivAtom.parseAtom 可用:", atom.entries.length === 1 && atom.ent
 // 生成物自检：在共享作用域里跑一遍（实机 boot 日志用的是同一个函数）
 const selfTest = sandbox.ArxivFetch.selfTest();
 console.log("ArxivFetch.selfTest:", selfTest.indexOf("ok ") === 0 ? "✓ " + selfTest : "✗ " + selfTest);
-console.log("MCP 工具数:", sandbox.MCP.TOOLS.length === 8 ? "✓ 8" : "✗ " + sandbox.MCP.TOOLS.length);
+console.log("MCP 工具数:", sandbox.MCP.TOOLS.length === 10 ? "✓ 10" : "✗ " + sandbox.MCP.TOOLS.length);
 console.log("I18n 新条目:", sandbox.I18n.t("menuLibAsk"), "|", sandbox.I18n.t("menuDiscovery"), "|", sandbox.I18n.t("menuMetaRules"), "|", sandbox.I18n.t("menuMcp"));
 // 0.33.0 参考文献一键入库：纯函数层与条目构建在加载后必须立即可用
 // （这三件事任何一个坏掉，用户视角都是「点了没反应」，所以计入失败）

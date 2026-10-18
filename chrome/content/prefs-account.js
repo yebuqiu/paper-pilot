@@ -221,6 +221,7 @@
       mbPlans = null;
       mbSel = null;
       mbOrder = null;
+      OrderDlg.close();          // 0.49.0：旧账号的付款单不得留在屏幕上
       const payBox = $("pp-mb-pay");
       if (payBox) payBox.style.display = "none";
       renderAll(); // 通道状态（官方通道可用性）联动刷新
@@ -243,6 +244,7 @@
     stopMbPolling();
     mbOrder = null;
     mbSel = null;
+    OrderDlg.close();            // 0.49.0：登出后付款单不得残留
     const payBox = $("pp-mb-pay");
     if (payBox) payBox.style.display = "none";
     const orderBox = $("pp-mb-order");
@@ -400,6 +402,235 @@
     if (!n) return;
     n.textContent = text;
     n.style.color = color || "var(--pp-muted)";
+  }
+
+  /* ==================== 付款订单弹窗（0.49.0） ====================
+   * 背景：下单成功后订单只落在卡片内的内联订单区（pp-mb-pay / pp-bal-pay），
+   * 用户容易漏看「精确金额 + 专属尾数」而按整数转账 → 自动对账匹配不上。
+   * 因此下单成功（服务端校验通过、订单已落库）即**自动弹出一张付款单**，
+   * 把订单内容 / 金额（含尾数）/ 订单号 / 状态 / 收款方式 / 二维码一屏摆清。
+   *
+   * 设计约束：
+   *  1) 页面内模态（挂 #pp-dlg-root），不新开窗口：状态与面板轮询同源，
+   *     面板关闭弹窗随之销毁，无跨窗口引用与定时器泄漏。
+   *  2) 单例：同一时刻只一张；新订单覆盖旧单；同订单 update 只改内容不重弹。
+   *  3) 动作单一真源：按钮回调指向面板的 *Core 函数（claim/cancel/refresh），
+   *     与内联订单区共用同一实现，绝不各自复制一份副作用逻辑。
+   *  4) 全程防御：show() 失败返回 false，调用方回退内联订单区（订单照样可见）。
+   */
+  const ORDER_TONE = { pending: "warn", claimed: "info", fulfilled: "ok",
+    cancelled: "muted", expired: "muted" };
+
+  /** 弹窗前置校验：返回问题文案（'' = 可展示）。字段以服务端 orderOut 为准。 */
+  function orderViewProblem(o) {
+    if (!o || typeof o !== "object") return "订单数据为空";
+    if (!String(o.id || "").trim()) return "缺少订单号";
+    const cents = Number(o.amountCents);
+    const amount = Number(o.amount);
+    const useCents = Number.isFinite(cents) ? cents : (Number.isFinite(amount) ? Math.round(amount * 100) : NaN);
+    if (!Number.isFinite(useCents)) return "金额不可读";
+    if (useCents < 0) return "金额为负";
+    return "";
+  }
+
+  /** 订单 → 弹窗视图模型（纯函数）。kind: 'plan' | 'credit' */
+  function orderViewModel(o, kind) {
+    const isCredit = kind === "credit" || o.kind === "credit";
+    const money = o.amountText || ("¥" + (Number(o.amount) || 0).toFixed(2));
+    const st = String(o.status || "pending");
+    const credit = microTxt(o.creditMicro);
+    const bonus = Number(o.bonusMicro) > 0 ? "（含赠送 " + microTxt(o.bonusMicro) + "）" : "";
+    const cycle = o.perpetual ? "永久"
+      : (Number(o.months) || 1) + " 个月";
+    const rows = [];
+    rows.push(["订单号", String(o.id || "")]);
+    if (isCredit) {
+      rows.push(["到账额度", credit + bonus]);
+    } else {
+      rows.push(["订阅周期", o.cycleName ? (o.cycleName + " · " + cycle) : cycle]);
+    }
+    if (Number(o.discountCents) > 0) {
+      rows.push(["折前价", String(o.originalText || "")]);
+      rows.push(["优惠", ((o.couponCode || "优惠码") + " " + String(o.discountText || "")).trim()]);
+    }
+    const p = o.pay || {};
+    if (p.channel) rows.push(["收款方式", String(p.channel)]);
+    if (p.qrText) rows.push(["转账备注", String(p.qrText)]);
+    if (p.note) rows.push(["说明", String(p.note)]);
+    const tailHint = Number(o.tailCents) > 0
+      ? ("请精确转账 " + money + "（不能凑整）：末尾 " + String(o.tailCents).padStart(2, "0")
+        + " 分是本单专属对账尾数")
+      : "";
+    return {
+      isCredit,
+      title: isCredit ? "充值订单" : "会员订单",
+      statusText: MB_STATUS[st] || st,
+      tone: ORDER_TONE[st] || "muted",
+      money,
+      content: isCredit
+        ? ("充值 " + money + " → 到账 " + credit + bonus)
+        : ((o.planName || o.plan || "会员") + " · " + cycle + (o.cycleName ? "（" + o.cycleName + "）" : "")),
+      tailHint,
+      rows,
+      note: isCredit
+        ? "核销通过后自动入账余额（永不过期），到账金额以本单为准"
+        : "核销通过后自动开通会员（无需手动领码），有效期按叠加续期规则计算",
+    };
+  }
+
+  const OrderDlg = {
+    _mask: null, _node: null, _kind: "", _order: null, _refs: null,
+
+    isOpen() { return !!this._node; },
+
+    /**
+     * 打开付款单（单例）。order 为服务端订单对象；actions = {claim,cancel,refresh}
+     * 均返回 Promise<{ok, error}>。失败返回 false（调用方回退内联订单区）。
+     */
+    show(order, kind, actions) {
+      try {
+        if (orderViewProblem(order)) return false;
+        const root = $("pp-dlg-root");
+        if (!root) return false;                 // 老面板/装配异常：回退内联区
+        this.close();                            // 单例：先拆旧单
+        const mask = el("div", { class: "pp-order-mask" });
+        const card = el("div", { class: "pp-order-dlg" });
+        mask.appendChild(card);
+
+        const head = el("div", { class: "pp-dlg-head" });
+        const title = el("b", { class: "pp-dlg-title" });
+        const badge = el("span", { class: "pp-dlg-badge" });
+        const x = el("span", { class: "pp-dlg-close", title: "关闭" }, "×");
+        head.appendChild(title); head.appendChild(badge); head.appendChild(x);
+        card.appendChild(head);
+
+        const body = el("div", { class: "pp-dlg-body" });
+        const content = el("div", { class: "pp-dlg-content" });
+        const amount = el("div", { class: "pp-dlg-amount" });
+        const tail = el("div", { class: "pp-dlg-tail", style: "display:none" });
+        const rows = el("div", { class: "pp-dlg-rows" });
+        const qr = el("img", { class: "pp-dlg-qr", style: "display:none" });
+        const note = el("div", { class: "pp-dlg-note" });
+        const msg = el("div", { class: "pp-msg pp-dlg-msg" });
+        body.appendChild(content); body.appendChild(amount); body.appendChild(tail);
+        body.appendChild(rows); body.appendChild(qr); body.appendChild(note); body.appendChild(msg);
+        card.appendChild(body);
+
+        const acts = el("div", { class: "pp-dlg-actions" });
+        const claim = el("button", { class: "pp-btn pp-btn-primary pp-btn-sm pp-dlg-claim" }, "我已完成支付");
+        // 在线支付按钮只在调用方提供 online 动作时出现（充值单 + 服务端已开通）
+        const online = (actions && typeof actions.online === "function")
+          ? el("button", { class: "pp-btn pp-btn-primary pp-btn-sm pp-dlg-online" }, "在线支付（扫码）")
+          : null;
+        const refresh = el("button", { class: "pp-btn pp-btn-sm pp-dlg-refresh" }, "刷新状态");
+        const cancel = el("button", { class: "pp-btn pp-btn-sm pp-dlg-cancel" }, "取消订单");
+        const done = el("button", { class: "pp-btn pp-btn-sm pp-dlg-done" }, "关闭");
+        acts.appendChild(claim);
+        if (online) acts.appendChild(online);
+        acts.appendChild(refresh); acts.appendChild(cancel); acts.appendChild(done);
+        card.appendChild(acts);
+
+        this._mask = mask; this._node = card;
+        this._kind = kind === "credit" ? "credit" : "plan";
+        this._refs = { title, badge, content, amount, tail, rows, qr, note, msg, claim, refresh, cancel, online };
+        root.appendChild(mask);
+
+        const self = this;
+        const say = (t, color) => { msg.textContent = t; msg.style.color = color || "var(--pp-muted)"; };
+        const act = async (fn, busy, okTxt, failTxt) => {
+          if (!actions || typeof actions[fn] !== "function") return;
+          say(busy);
+          let r = null;
+          try { r = await actions[fn](); } catch (e) { r = { ok: false, error: (e && e.message) || failTxt }; }
+          if (!self.isOpen()) return;                 // 取消成功等场景弹窗已关
+          if (r && r.ok) say(okTxt, "var(--pp-success)");
+          else say("✗ " + ((r && r.error) || failTxt), "var(--pp-danger)");
+          self._applyButtons();                       // 按钮态永远由当前订单状态推导
+        };
+
+        x.addEventListener("click", () => self.close());
+        done.addEventListener("click", () => self.close());
+        mask.addEventListener("click", (ev) => { if (ev && ev.target === mask) self.close(); });
+        claim.addEventListener("click", () => act("claim", "正在提交…", "✓ 已提交，等待核销（一般几分钟内）", "提交失败"));
+        if (online) online.addEventListener("click", () => act("online", "正在创建收银台…", "✓ 收银台已打开，扫码后自动到账", "发起失败"));
+        refresh.addEventListener("click", () => act("refresh", "正在查询…", "✓ 状态已刷新", "查询失败"));
+        cancel.addEventListener("click", () => act("cancel", "正在取消…", "✓ 已取消", "取消失败"));
+
+        this._apply(order);
+        return true;
+      } catch (e) {
+        try { this.close(); } catch (e2) { /* ignore */ }
+        return false;
+      }
+    },
+
+    /** 轮询/操作后同步内容；不同订单号不串写（防旧单覆盖新单） */
+    update(order) {
+      if (!this.isOpen() || !order) return false;
+      if (String(order.id || "") !== String((this._order || {}).id || "")) return false;
+      try { this._apply(order); return true; } catch (e) { return false; }
+    },
+
+    _apply(order) {
+      this._order = order;
+      const r = this._refs; if (!r) return;
+      const vm = orderViewModel(order, this._kind);
+      r.title.textContent = vm.title;
+      r.badge.textContent = vm.statusText;
+      r.badge.setAttribute("class", "pp-dlg-badge pp-dlg-badge-" + vm.tone);
+      r.content.textContent = vm.content;
+      r.amount.textContent = vm.money;
+      r.tail.textContent = vm.tailHint || "";
+      r.tail.style.display = vm.tailHint ? "" : "none";
+      r.rows.innerHTML = "";
+      for (const pair of vm.rows) {
+        const line = el("div", { class: "pp-dlg-row" });
+        line.appendChild(el("span", { class: "pp-dlg-k" }, pair[0]));
+        line.appendChild(el("span", { class: "pp-dlg-v" }, pair[1]));
+        r.rows.appendChild(line);
+      }
+      const p = order.pay || {};
+      if (p.qrImage) { r.qr.setAttribute("src", p.qrImage); r.qr.style.display = ""; }
+      else { r.qr.removeAttribute("src"); r.qr.style.display = "none"; }
+      r.note.textContent = vm.note;
+      this._applyButtons();
+    },
+
+    _applyButtons() {
+      const r = this._refs; if (!r) return;
+      const st = String((this._order && this._order.status) || "pending");
+      r.claim.disabled = st !== "pending";
+      r.claim.textContent = st === "claimed" ? "已提交，等待核销" : "我已完成支付";
+      r.cancel.disabled = st === "fulfilled" || st === "cancelled" || st === "expired";
+      // 在线支付只对「待支付」可用（服务端同判）；已提交/已开通后入口关闭
+      if (r.online) r.online.disabled = st !== "pending";
+    },
+
+    close() {
+      try {
+        if (this._mask && this._mask.parentNode) this._mask.parentNode.removeChild(this._mask);
+      } catch (e) { /* ignore */ }
+      this._mask = null; this._node = null; this._refs = null; this._kind = ""; this._order = null;
+    },
+  };
+
+  /** 打开付款单弹窗（会员/充值共用）；返回 false = 回退内联订单区 */
+  function openOrderDlg(order, kind) {
+    if (orderViewProblem(order)) return false;
+    return OrderDlg.show(order, kind, {
+      claim: kind === "credit" ? balClaimCore : mbClaimCore,
+      cancel: kind === "credit" ? balCancelCore : mbCancelCore,
+      refresh: kind === "credit" ? balRefreshCore : mbRefreshCore,
+      // 在线支付仅充值单支持（服务端 1.7.0 约定），且要服务端已开通
+      online: (kind === "credit" && balOnline.available) ? balOnlinePayCore : null,
+    });
+  }
+
+  /** 轮询/操作后同步弹窗（未打开或换单 → 不动作） */
+  function syncOrderDlg() {
+    if (!OrderDlg.isOpen()) return;
+    const o = OrderDlg._kind === "credit" ? balOrder : mbOrder;
+    if (o) OrderDlg.update(o);
   }
 
   /** 套餐目录按需拉取（首次进入或强制刷新） */
@@ -746,9 +977,11 @@
     if (!mbCoupon) { box.style.display = "none"; box.textContent = ""; return; }
     const q = mbCoupon;
     box.style.display = "";
+    // 1.8.4：只有服务端开启「唯一尾数」时才提尾数（默认关 = 下单金额即应付价）
+    const tailNote = (mbPlans && mbPlans.tailEnabled)
+      ? "（下单后另加 1~99 分的专属对账尾数，转账金额以下单页为准）" : "";
     box.textContent = "折前 " + (q.originalText || "") + "　" + (q.discountText || "")
-      + "　应付 " + (q.payableText || "")
-      + "（下单后另加 1~99 分的专属对账尾数，转账金额以下单页为准）";
+      + "　应付 " + (q.payableText || "") + tailNote;
   }
 
   /** 点到期横幅 = 打开续费面板（默认档位取「上次购买的周期」） */
@@ -787,9 +1020,17 @@
     try {
       mbOrder = await A.createOrder(mbSel.plan, mbSel.months, mbSel.cycle,
         mbCoupon ? mbCoupon.code : "");
-      mbSetMsg("pp-mb-order-msg", "", "var(--pp-muted)");
+      // 0.49.0 下单成功（服务端已校验并落库）→ 自动弹出付款单；
+      // 订单数据异常则不弹（避免展示脏数据），内联区照常渲染作兜底。
+      const bad = orderViewProblem(mbOrder);
+      if (bad) {
+        mbSetMsg("pp-mb-order-msg", "✗ 订单数据异常（" + bad + "），请重新生成", "var(--pp-danger)");
+      } else {
+        mbSetMsg("pp-mb-order-msg", "", "var(--pp-muted)");
+      }
       renderMbPay();
       startMbPolling();
+      if (!bad) openOrderDlg(mbOrder, "plan");
     } catch (e) {
       mbSetMsg("pp-mb-order-msg", "✗ " + ((e && e.message) || "下单失败"), "var(--pp-danger)");
     } finally {
@@ -851,11 +1092,13 @@
     if (mbTimer) { try { window.clearInterval(mbTimer); } catch (e) { /* ignore */ } mbTimer = null; }
   }
 
-  /** 轮询订单状态；核销完成即刷新会员并重绘 */
-  async function onMbPoll(silent) {
+  /**
+   * 查一次会员订单状态并同步 UI（弹窗「刷新状态」与轮询共用）。
+   * 返回 {ok, error, order}，**不抛异常**——调用方（内联区/弹窗）各自决定措辞。
+   */
+  async function mbRefreshCore() {
     const A = account();
-    if (!A || !mbOrder) return;
-    if (Date.now() > mbPollDeadline) { stopMbPolling(); return; }
+    if (!A || !mbOrder) return { ok: false, error: "订单不存在" };
     try {
       const o = await A.orderStatus(mbOrder.id);
       mbOrder = o;
@@ -863,14 +1106,46 @@
         stopMbPolling();
         try { await A.refreshMembership(); } catch (e) { /* 失败也有本地兜底 */ }
         renderAll();
-        renderMbPay();
-        return;
+      } else if (o.status === "expired" || o.status === "cancelled") {
+        stopMbPolling();
       }
-      if (o.status === "expired" || o.status === "cancelled") stopMbPolling();
       renderMbPay();
-      if (!silent) mbSetMsg("pp-mb-pay-result", "状态：" + (MB_STATUS[o.status] || o.status), "var(--pp-muted)");
+      syncOrderDlg();
+      return { ok: true, order: o };
     } catch (e) {
-      if (!silent) mbSetMsg("pp-mb-pay-result", "✗ " + ((e && e.message) || "查询失败"), "var(--pp-danger)");
+      return { ok: false, error: (e && e.message) || "查询失败" };
+    }
+  }
+
+  /** 轮询订单状态（silent=true 时不写内联提示，供定时器调用） */
+  async function onMbPoll(silent) {
+    const A = account();
+    if (!A || !mbOrder) return;
+    if (Date.now() > mbPollDeadline) { stopMbPolling(); return; }
+    const r = await mbRefreshCore();
+    if (!r.ok) {
+      if (!silent) mbSetMsg("pp-mb-pay-result", "✗ " + r.error, "var(--pp-danger)");
+      return;
+    }
+    if (!silent) {
+      const st = (r.order && r.order.status) || "";
+      // fulfilled 的结果行已由 renderMbPay 写好（「✓ 已开通…」）——不能再用
+      // 「状态：…」覆盖（反馈写在刷新之后，这里恰好相反）
+      if (st !== "fulfilled") mbSetMsg("pp-mb-pay-result", "状态：" + (MB_STATUS[st] || st), "var(--pp-muted)");
+    }
+  }
+
+  /** 提交「我已完成支付」（内联按钮与弹窗共用） */
+  async function mbClaimCore() {
+    const A = account();
+    if (!A || !mbOrder) return { ok: false, error: "订单不存在" };
+    try {
+      mbOrder = await A.claimOrder(mbOrder.id);
+      renderMbPay();
+      syncOrderDlg();
+      return { ok: true, order: mbOrder };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) || "提交失败" };
     }
   }
 
@@ -878,29 +1153,36 @@
     const A = account();
     if (!A || !mbOrder) return;
     mbSetMsg("pp-mb-pay-result", "正在提交…", "var(--pp-muted)");
+    const r = await mbClaimCore();
+    if (!r.ok) return mbSetMsg("pp-mb-pay-result", "✗ " + r.error, "var(--pp-danger)");
+    mbSetMsg("pp-mb-pay-result",
+      "✓ 已提交，等待管理员核销（一般几分钟内）。可点「刷新订单状态」查看。", "var(--pp-success)");
+    startMbPolling();
+  }
+
+  /** 取消订单（内联按钮与弹窗共用）：成功后清空当前订单并关闭弹窗 */
+  async function mbCancelCore() {
+    const A = account();
+    if (!A || !mbOrder) return { ok: false, error: "订单不存在" };
     try {
-      mbOrder = await A.claimOrder(mbOrder.id);
-      renderMbPay();
-      mbSetMsg("pp-mb-pay-result",
-        "✓ 已提交，等待管理员核销（一般几分钟内）。可点「刷新订单状态」查看。", "var(--pp-success)");
-      startMbPolling();
+      await A.cancelOrder(mbOrder.id);
+      stopMbPolling();
+      mbOrder = null;
+      const b = $("pp-mb-pay");
+      if (b) b.style.display = "none";
+      OrderDlg.close();
+      return { ok: true };
     } catch (e) {
-      mbSetMsg("pp-mb-pay-result", "✗ " + ((e && e.message) || "提交失败"), "var(--pp-danger)");
+      return { ok: false, error: (e && e.message) || "取消失败" };
     }
   }
 
   async function onMbCancel() {
     const A = account();
     if (!A || !mbOrder) return;
-    try {
-      await A.cancelOrder(mbOrder.id);
-      stopMbPolling();
-      mbOrder = null;
-      $("pp-mb-pay").style.display = "none";
-      mbSetMsg("pp-mb-order-msg", "订单已取消，可重新生成", "var(--pp-muted)");
-    } catch (e) {
-      mbSetMsg("pp-mb-pay-result", "✗ " + ((e && e.message) || "取消失败"), "var(--pp-danger)");
-    }
+    const r = await mbCancelCore();
+    if (r.ok) mbSetMsg("pp-mb-order-msg", "订单已取消，可重新生成", "var(--pp-muted)");
+    else mbSetMsg("pp-mb-pay-result", "✗ " + r.error, "var(--pp-danger)");
   }
 
   async function onMbRefresh() {
@@ -930,6 +1212,8 @@
   let balTimer = null;   // 订单轮询定时器
   let balDeadline = 0;
   let balTried = false;  // 档位已尝试拉取（避免渲染 ↔ 拉取互相触发成无限循环）
+  // 0.50.0 在线支付可用性（服务端 /api/plans 的 onlinePay；未开通时「在线支付」按钮不出现）
+  let balOnline = { available: false, channels: [] };
 
   /** 微元 → 元文案（服务端已给带币种文案时优先用它，避免前后端口径漂移） */
   function microTxt(micro, fallback) {
@@ -1016,6 +1300,7 @@
     try {
       const p = await A.plans();
       balOpts = (p && p.rechargeOptions) || [];
+      balOnline = (p && p.onlinePay) || { available: false, channels: [] };
       if (!balSel && balOpts.length) balSel = balOpts[0];
     } catch (e) { balOpts = []; }
     renderBalance();
@@ -1039,9 +1324,16 @@
     mbSetMsg("pp-bal-order-msg", "正在生成订单…", "var(--pp-muted)");
     try {
       balOrder = await A.createCreditOrder(balSel.id);
-      mbSetMsg("pp-bal-order-msg", "", "var(--pp-muted)");
+      // 0.49.0 下单成功 → 自动弹出充值付款单（字段异常不弹，内联区兜底）
+      const bad = orderViewProblem(balOrder);
+      if (bad) {
+        mbSetMsg("pp-bal-order-msg", "✗ 订单数据异常（" + bad + "），请重新生成", "var(--pp-danger)");
+      } else {
+        mbSetMsg("pp-bal-order-msg", "", "var(--pp-muted)");
+      }
       renderBalPay();
       startBalPolling();
+      if (!bad) openOrderDlg(balOrder, "credit");
     } catch (e) {
       mbSetMsg("pp-bal-order-msg", "✗ " + ((e && e.message) || "下单失败"), "var(--pp-danger)");
     } finally {
@@ -1083,6 +1375,13 @@
       claim.disabled = done || o.status === "claimed" || o.status === "cancelled" || o.status === "expired";
       claim.textContent = o.status === "claimed" ? "已提交，等待核销" : "我已完成支付";
     }
+    // 0.50.0 在线支付：服务端开通且订单待支付时才出现（会员 plan 订单服务端不支持在线支付）
+    const online = $("pp-bal-online");
+    if (online) {
+      const canOnline = !!balOnline.available && o.status === "pending";
+      online.style.display = canOnline ? "" : "none";
+      online.disabled = !canOnline;
+    }
     const cancel = $("pp-bal-cancel");
     if (cancel) cancel.disabled = done || o.status === "cancelled";
     if (done) mbSetMsg("pp-bal-pay-result", "✓ 已入账，余额已更新", "var(--pp-success)");
@@ -1098,10 +1397,10 @@
     if (balTimer) { try { window.clearInterval(balTimer); } catch (e) { /* ignore */ } balTimer = null; }
   }
 
-  async function onBalPoll(silent) {
+  /** 查一次充值订单状态并同步 UI（弹窗「刷新状态」与轮询共用；不抛异常） */
+  async function balRefreshCore() {
     const A = account();
-    if (!A || !balOrder) return;
-    if (Date.now() > balDeadline) { stopBalPolling(); return; }
+    if (!A || !balOrder) return { ok: false, error: "订单不存在" };
     try {
       const o = await A.orderStatus(balOrder.id);
       balOrder = o;
@@ -1109,14 +1408,44 @@
         stopBalPolling();
         try { await A.refreshUser(); } catch (e) { /* 失败也有本地兜底 */ }
         renderAll();
-        renderBalPay();
-        return;
+      } else if (o.status === "expired" || o.status === "cancelled") {
+        stopBalPolling();
       }
-      if (o.status === "expired" || o.status === "cancelled") stopBalPolling();
       renderBalPay();
-      if (!silent) mbSetMsg("pp-bal-pay-result", "状态：" + (MB_STATUS[o.status] || o.status), "var(--pp-muted)");
+      syncOrderDlg();
+      return { ok: true, order: o };
     } catch (e) {
-      if (!silent) mbSetMsg("pp-bal-pay-result", "✗ " + ((e && e.message) || "查询失败"), "var(--pp-danger)");
+      return { ok: false, error: (e && e.message) || "查询失败" };
+    }
+  }
+
+  async function onBalPoll(silent) {
+    const A = account();
+    if (!A || !balOrder) return;
+    if (Date.now() > balDeadline) { stopBalPolling(); return; }
+    const r = await balRefreshCore();
+    if (!r.ok) {
+      if (!silent) mbSetMsg("pp-bal-pay-result", "✗ " + r.error, "var(--pp-danger)");
+      return;
+    }
+    if (!silent) {
+      const st = (r.order && r.order.status) || "";
+      // 同上：fulfilled 的「✓ 已入账」由 renderBalPay 写，勿覆盖
+      if (st !== "fulfilled") mbSetMsg("pp-bal-pay-result", "状态：" + (MB_STATUS[st] || st), "var(--pp-muted)");
+    }
+  }
+
+  /** 提交「我已完成支付」（内联按钮与弹窗共用） */
+  async function balClaimCore() {
+    const A = account();
+    if (!A || !balOrder) return { ok: false, error: "订单不存在" };
+    try {
+      balOrder = await A.claimOrder(balOrder.id);
+      renderBalPay();
+      syncOrderDlg();
+      return { ok: true, order: balOrder };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) || "提交失败" };
     }
   }
 
@@ -1124,29 +1453,64 @@
     const A = account();
     if (!A || !balOrder) return;
     mbSetMsg("pp-bal-pay-result", "正在提交…", "var(--pp-muted)");
+    const r = await balClaimCore();
+    if (!r.ok) return mbSetMsg("pp-bal-pay-result", "✗ " + r.error, "var(--pp-danger)");
+    mbSetMsg("pp-bal-pay-result",
+      "✓ 已提交，等待管理员核销（一般几分钟内）。可点「刷新订单状态」查看。", "var(--pp-success)");
+    startBalPolling();
+  }
+
+  /**
+   * 在线支付（0.50.0 / 服务端 1.7.0）：为当前充值订单创建网关收银台 → 系统浏览器扫码。
+   * 只对「待支付」的充值订单可用（服务端同判，plan 订单会被 400 拒绝）。
+   * 支付成功后网关异步回调自动入账，面板轮询会看到 fulfilled。
+   */
+  async function balOnlinePayCore() {
+    const A = account();
+    if (!A || !balOrder) return { ok: false, error: "订单不存在" };
     try {
-      balOrder = await A.claimOrder(balOrder.id);
-      renderBalPay();
-      mbSetMsg("pp-bal-pay-result",
-        "✓ 已提交，等待管理员核销（一般几分钟内）。可点「刷新订单状态」查看。", "var(--pp-success)");
+      const r = await A.startOnlinePay(balOrder.id, "alipay");
+      try { Zotero.launchURL(r.payUrl); } catch (e) { /* 打不开浏览器也把地址留在提示里 */ }
       startBalPolling();
+      return { ok: true, payUrl: r.payUrl };
     } catch (e) {
-      mbSetMsg("pp-bal-pay-result", "✗ " + ((e && e.message) || "提交失败"), "var(--pp-danger)");
+      return { ok: false, error: (e && e.message) || "发起在线支付失败" };
+    }
+  }
+
+  async function onBalOnlinePay() {
+    const A = account();
+    if (!A || !balOrder) return;
+    mbSetMsg("pp-bal-pay-result", "正在创建网关收银台…", "var(--pp-muted)");
+    const r = await balOnlinePayCore();
+    if (!r.ok) return mbSetMsg("pp-bal-pay-result", "✗ " + r.error, "var(--pp-danger)");
+    mbSetMsg("pp-bal-pay-result",
+      "✓ 收银台已在浏览器打开：扫码支付后自动到账（本窗口保持轮询）", "var(--pp-success)");
+  }
+
+  /** 取消订单（内联按钮与弹窗共用） */
+  async function balCancelCore() {
+    const A = account();
+    if (!A || !balOrder) return { ok: false, error: "订单不存在" };
+    try {
+      await A.cancelOrder(balOrder.id);
+      stopBalPolling();
+      balOrder = null;
+      const b = $("pp-bal-pay");
+      if (b) b.style.display = "none";
+      OrderDlg.close();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) || "取消失败" };
     }
   }
 
   async function onBalCancel() {
     const A = account();
     if (!A || !balOrder) return;
-    try {
-      await A.cancelOrder(balOrder.id);
-      stopBalPolling();
-      balOrder = null;
-      $("pp-bal-pay").style.display = "none";
-      mbSetMsg("pp-bal-order-msg", "订单已取消，可重新生成", "var(--pp-muted)");
-    } catch (e) {
-      mbSetMsg("pp-bal-pay-result", "✗ " + ((e && e.message) || "取消失败"), "var(--pp-danger)");
-    }
+    const r = await balCancelCore();
+    if (r.ok) mbSetMsg("pp-bal-order-msg", "订单已取消，可重新生成", "var(--pp-muted)");
+    else mbSetMsg("pp-bal-pay-result", "✗ " + r.error, "var(--pp-danger)");
   }
 
   async function onBalRefresh() {
@@ -1686,6 +2050,8 @@
     bind("pp-mb-claim", "click", onMbClaim);
     bind("pp-mb-poll", "click", () => onMbPoll(false));
     bind("pp-mb-cancel", "click", onMbCancel);
+    // 0.49.0 付款单弹窗：内联区「查看付款单」重开（自动弹出只在生成订单时发生一次）
+    bind("pp-mb-order-view", "click", () => { if (mbOrder) openOrderDlg(mbOrder, "plan"); });
     bind("pp-mb-refresh", "click", onMbRefresh);
     bind("pp-mb-code-toggle", "click", onMbCodeToggle);
     bind("pp-mb-code-btn", "click", onMbRedeem);
@@ -1694,8 +2060,10 @@
     bind("pp-bal-recharge-toggle", "click", onBalRechargeToggle);
     bind("pp-bal-create", "click", onBalCreate);
     bind("pp-bal-claim", "click", onBalClaim);
+    bind("pp-bal-online", "click", onBalOnlinePay);
     bind("pp-bal-poll", "click", () => onBalPoll(false));
     bind("pp-bal-cancel", "click", onBalCancel);
+    bind("pp-bal-order-view", "click", () => { if (balOrder) openOrderDlg(balOrder, "credit"); });
     bind("pp-bal-refresh", "click", onBalRefresh);
     bind("pp-bal-close", "click", () => { const b = $("pp-bal-recharge"); if (b) b.style.display = "none"; });
     // 通道
