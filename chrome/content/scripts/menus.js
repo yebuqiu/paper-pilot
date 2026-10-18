@@ -8,7 +8,7 @@
  *   - menuMode / menuHiddenGroups / menuQuickItems 三个 pref 变更即时重建菜单。
  * 设计口径：只做「重组」不做「删减」——被折叠的功能仍可从功能中心（Hub）、
  * 工具菜单分组、classic 模式三处到达，任何入口都不失联。 */
-/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats, ThirdSource, MetaDoctor, AnnotationDigest */
+/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats, ThirdSource, MetaDoctor, AnnotationDigest, ReviewWorkbench */
 
 var Menus = {
   _nodes: [], // 记录注入的 DOM 节点，shutdown 时移除
@@ -63,6 +63,8 @@ var Menus = {
     { id: "meta-lint", group: "meta", labelKey: "menuMetaLint", run: () => MetaLint.runForSelected() },
     // 0.52.0 元数据医生：Crossref 反查补全（预览→确认→可撤销）
     { id: "meta-doctor", group: "meta", labelKey: "menuMetaDoctor", run: () => MetaDoctor.run() },
+    // 0.53.0 综述工作台（笔记组：多篇 → 大纲 → 分节草稿）
+    { id: "review-workbench", group: "notes", labelKey: "menuReviewWorkbench", run: () => ReviewWorkbench.openDialog() },
     { id: "meta-rules", group: "meta", labelKey: "menuMetaRules", run: () => MetaRules.openDialog() },
     // 中文文献工具
     { id: "cn-meta", group: "cn", labelKey: "menuCnMeta", run: () => CNMeta.runForSelected() },
@@ -531,6 +533,14 @@ var Menus = {
     // 0.52.0 元数据医生（Crossref 补全，写操作走确认 + 审计可撤销）
     this._menuItem(doc, popup, "paperpilot-itemmenu-meta-doctor", "menuMetaDoctor",
       () => MetaDoctor.run());
+    // 0.53.0 综述工作台（多篇 → 大纲 → 分节草稿）
+    this._menuItem(doc, popup, "paperpilot-itemmenu-review-wb", "menuReviewWorkbench", () => {
+      if (!Prefs.get("reviewWorkbenchEnabled", true)) {
+        Services.prompt.alert(null, "PaperPilot", I18n.t("menuReviewWorkbenchDisabled"));
+        return;
+      }
+      ReviewWorkbench.openDialog();
+    });
     // 0.52.0 标注→论点速记（AI；未配置 Key 时先指引）
     this._menuItem(doc, popup, "paperpilot-itemmenu-annot-digest", "menuAnnotDigest", () => {
       if (!Prefs.get("annotationDigestEnabled", true)) {

@@ -56,6 +56,11 @@ pref("extensions.zotero.paperpilot.scheduleWeeklyReport", "");
 pref("extensions.zotero.paperpilot.scheduleLibHealth", "");
 // 定时任务上次执行日期记账（JSON {jobId:"YYYY-MM-DD"}）
 pref("extensions.zotero.paperpilot.scheduleLastRun", "");
+// 0.53.0 检索订阅（JSON 数组）+ 推送记账（指纹 LRU 1000）
+pref("extensions.zotero.paperpilot.searchSubscriptions", "");
+pref("extensions.zotero.paperpilot.searchSubsSeen", "");
+// 0.53.0 综述工作台（菜单入口开关）
+pref("extensions.zotero.paperpilot.reviewWorkbenchEnabled", true);
 // 0.48.x 技能包商店（Skills Hub）：已安装记账 / 本地评分 / 目录源（空 = 仅内置目录）
 pref("extensions.zotero.paperpilot.skillPacksInstalled", "");
 pref("extensions.zotero.paperpilot.skillPackRatings", "");

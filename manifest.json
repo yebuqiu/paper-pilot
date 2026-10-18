@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "PaperPilot 文献副驾",
-  "version": "0.52.0",
-  "description": "PaperPilot 文献副驾 · 文献管理增强套件：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.52.0 更新：①条目详情新增「引文上下文」面板（Scite 风格）：谁引用了这篇、引用句原文、支持/对比/批评/中性倾向判定；②元数据医生：Crossref 反查一键补全缺失的 DOI/期刊/年份/作者（预览确认 + 可撤销）；③标注→论点速记：把 PDF 高亮与批注交给 AI 整理成「论点-证据-页码」笔记。",
+  "version": "0.53.0",
+  "description": "PaperPilot 文献副驾 · 文献管理增强套件：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.53.0 更新：①检索订阅——用检索式订阅 arXiv，到点自动检索、去重入库、生成「订阅速递」笔记；②综述工作台（旗舰）——选多篇文献 → AI 生成分节大纲 → 逐节起草 → 引用自动链接到真实条目 → 保存笔记或导出 Markdown。",
   "author": "you",
   "icons": {
     "48": "chrome/content/icons/icon.png",

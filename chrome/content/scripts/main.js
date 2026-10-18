@@ -118,6 +118,8 @@ Zotero.PaperPilot = {
       "features/attach-manager.js",
       "features/mindmap.js",
       "features/review-gen.js",
+      // 0.53.0 综述工作台（多篇 → 大纲 → 分节草稿；独立窗口）
+      "features/review-workbench.js",
       "features/meta-lint.js",
       // 0.52.0 元数据医生（Crossref 补 DOI/期刊/年份；写操作走审计撤销）
       "features/meta-doctor.js",
@@ -144,6 +146,8 @@ Zotero.PaperPilot = {
       "features/reading-stats.js",
       // 0.49.0 定时任务（研究晨报/阅读周报/库体检；依赖 reading-stats / meta-lint 的运行时探测）
       "features/scheduler.js",
+      // 0.53.0 检索订阅（ArxivFetch 消费；独立 60s 轮询）
+      "features/search-subs.js",
       // 0.46.0 阅读进度 2.0：位置进度数据域（心跳捕获 + 原生上次位置 + 标注页融合）。
       // 须排在 reading-stats.js 之后（复用其焦点解析 activeReader）与
       // progress-column.js 之前（列的 lookup 走它的 compute/entryOf）
@@ -268,6 +272,9 @@ Zotero.PaperPilot = {
     // 0.52.0 元数据医生 / 标注速记（菜单与 hub 经此访问）
     this.metaDoctor = MetaDoctor;
     this.annotationDigest = AnnotationDigest;
+    // 0.53.0 检索订阅 / 综述工作台
+    this.searchSubs = SearchSubs;
+    this.reviewWorkbench = ReviewWorkbench;
     // 0.48.0 Agent 工具层 + 命令标签（设置面板 prefs-agent.js 经此访问；
     // 测试与排障同入口）
     this.agentTools = AgentTools;
@@ -451,6 +458,8 @@ Zotero.PaperPilot = {
           rootURI + "chrome/content/prefs-schedule.js",
           // 0.51.0 AI 记忆列表（浏览/删除/清空）
           rootURI + "chrome/content/prefs-memory.js",
+          // 0.53.0 检索订阅列表（新建/立即运行/删除）
+          rootURI + "chrome/content/prefs-subs.js",
         ],
         stylesheets: [
           rootURI + "chrome/content/prefs.css",
@@ -730,6 +739,14 @@ Zotero.PaperPilot = {
       await this._diag("discovery daily timer started (enabled=" + Prefs.get("discoveryEnabled", false) + ")");
     } catch (e) {
       await this._diag("discovery FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
+    // 0.53.0 检索订阅定时器（无订阅时空转，只做一次数组长度判断）
+    try {
+      SearchSubs.start();
+      await this._diag("search subs started (" + SearchSubs.list().length + " 条订阅)");
+    } catch (e) {
+      await this._diag("search subs FAILED: " + (e && (e.stack || e.message) || e));
     }
 
     // 0.49.0 定时任务：研究晨报 / 阅读周报 / 库体检（时间 pref 全空时空转，只做 3 次字符串比较）
@@ -1058,6 +1075,7 @@ Zotero.PaperPilot = {
     try { ProgressColumn.unregisterRow(); } catch (e) { Zotero.logError(e); }
     try { Discovery.stop(); } catch (e) { Zotero.logError(e); }
     try { Scheduler.stop(); } catch (e) { Zotero.logError(e); }
+    try { SearchSubs.stop(); } catch (e) { Zotero.logError(e); }
     try { MCP.unregister(); } catch (e) { Zotero.logError(e); }
     try { ReadingState.unregister(); } catch (e) { Zotero.logError(e); }
     try { ReaderPopup.unregister(); } catch (e) { Zotero.logError(e); }

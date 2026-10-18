@@ -237,6 +237,8 @@ var I18n = (() => {
     menuMetaLint: zh ? "元数据规范清洗（DOI/日期/标题/URL）" : "Metadata Lint",
     menuMetaDoctor: zh ? "元数据医生（Crossref 补 DOI/期刊/年份）" : "Metadata Doctor (Crossref fill)",
     menuAnnotDigest: zh ? "标注→论点速记（AI 整理为笔记）" : "Annotation → Argument Digest (AI)",
+    menuReviewWorkbench: zh ? "综述工作台（多篇 → 大纲 → 分节草稿）…" : "Review Workbench (outline → sections)…",
+    menuReviewWorkbenchDisabled: zh ? "综述工作台已在设置中关闭" : "Review Workbench is disabled in settings",
     menuAnnotDigestDisabled: zh ? "标注→论点速记已在设置中关闭" : "Annotation digest is disabled in settings",
     menuOaFetch: zh ? "开放获取 / Sci-Hub 补全文" : "Find Full Text (OA / Sci-Hub)",
     menuThirdSource: zh ? "第三方文献源（实验 · Pro 试用）" : "Third-party Source (Experimental · Pro)",

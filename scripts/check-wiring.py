@@ -1245,8 +1245,8 @@ ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
 for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
     ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
 _item_reg_src = menus_js.split("GROUPS:")[0]
-ok(_item_reg_src.count("labelKey:") == 49,
-   "23.7 ★ 注册表恰好 49 条命令（实测 %d；0.52.0 +元数据医生；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源）" % _item_reg_src.count("labelKey:"))
+ok(_item_reg_src.count("labelKey:") == 50,
+   "23.7 ★ 注册表恰好 50 条命令（实测 %d；0.53.0 +综述工作台；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源）" % _item_reg_src.count("labelKey:"))
 ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
@@ -1913,13 +1913,13 @@ _pfold_js = io.open(PFOLD_JS, encoding="utf-8").read() if os.path.exists(PFOLD_J
 ok("prefs-fold.js" in mainjs, "31.2 main.js 注册 prefs-fold.js（scripts 列表）")
 for _eid in ("pp-fold-expand", "pp-fold-collapse"):
     ok(_eid in xhtml_ids, "31.3 prefs.xhtml 含折叠工具条 #%s" % _eid)
-_FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "skills", "schedule", "popup",
+_FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "skills", "subscriptions", "schedule", "popup",
               "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys"]
 _fold_found = re.findall(r'data-fold="([a-z]+)"', prefs_xhtml)
 ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
-   "31.4 prefs.xhtml 的 16 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 16,
-   "31.5 折叠卡片共 16 张（0.48.x 技能商店，0.49.0 定时任务；不多不少，防止漏包一张）")
+   "31.4 prefs.xhtml 的 17 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务；0.53.0 检索订阅）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 17,
+   "31.5 折叠卡片共 17 张（0.49.0 定时任务，0.53.0 检索订阅；不多不少，防止漏包一张）")
 ok('pref("extensions.zotero.paperpilot.prefsFoldOpen", "");' in prefsdef,
    "31.6 prefs.js 有 prefsFoldOpen 默认值（空 = 全收起）")
 ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
@@ -2585,6 +2585,49 @@ ok("test/citation-context.test.js" in _preflight_src and "test/meta-doctor.test.
 ok('preference="extensions.zotero.paperpilot.citationContextEnabled"' in prefs_xhtml
    and 'preference="extensions.zotero.paperpilot.annotationDigestEnabled"' in prefs_xhtml,
    "45.18 设置面板两个新开关（声明式绑定）")
+
+# ---------- 46. 0.53.0（检索订阅 / 综述工作台） ----------
+_ss_path = os.path.join(ROOT, "chrome/content/scripts/features/search-subs.js")
+ok(os.path.exists(_ss_path), "46.1 SearchSubs 模块在库（检索订阅）")
+_ss_src = io.open(_ss_path, encoding="utf-8").read() if os.path.exists(_ss_path) else ""
+ok("checkDue" in _ss_src and "run(" in _ss_src and "_fingerprint" in _ss_src and "searchSubsSeen" in _ss_src,
+   "46.2 SearchSubs API（checkDue/run/指纹去重/记账）")
+ok('pref("extensions.zotero.paperpilot.searchSubscriptions"' in prefsdef
+   and 'pref("extensions.zotero.paperpilot.searchSubsSeen"' in prefsdef,
+   "46.3 prefs.js 订阅与记账默认值")
+ok('"features/search-subs.js"' in mainjs and "this.searchSubs = SearchSubs" in mainjs,
+   "46.4 main.js 装配并暴露 searchSubs")
+ok("SearchSubs.start()" in mainjs and "SearchSubs.stop()" in mainjs,
+   "46.5 ★ 订阅定时器生命周期（启动即轮询 / destroy 停止）")
+ok("prefs-subs.js" in mainjs and os.path.exists(os.path.join(ROOT, "chrome/content/prefs-subs.js")),
+   "46.6 订阅设置脚本在库并注册")
+ok('id="pp-subs-list"' in prefs_xhtml and 'id="pp-subs-add"' in prefs_xhtml
+   and 'data-fold="subscriptions"' in prefs_xhtml,
+   "46.7 prefs.xhtml 订阅折叠卡与容器")
+ok('id="pp-sub-name"' in prefs_xhtml and 'id="pp-sub-keywords"' in prefs_xhtml
+   and 'id="pp-sub-cats"' in prefs_xhtml and 'id="pp-sub-time"' in prefs_xhtml
+   and 'id="pp-sub-auto"' in prefs_xhtml,
+   "46.8 订阅表单五个控件（名称/关键词/分类/时间/自动入库）")
+_rw_path = os.path.join(ROOT, "chrome/content/scripts/features/review-workbench.js")
+ok(os.path.exists(_rw_path), "46.9 ReviewWorkbench 模块在库（综述工作台）")
+_rw_src = io.open(_rw_path, encoding="utf-8").read() if os.path.exists(_rw_path) else ""
+ok("buildOutlinePrompt" in _rw_src and "parseOutline" in _rw_src and "buildSectionPrompt" in _rw_src
+   and "assembleDraft" in _rw_src and "citeToLink" in _rw_src,
+   "46.10 ★ 工作台五纯函数（大纲/解析/分节/组装/引用链接）")
+ok("zotero://select" in _rw_src, "46.11 引用真实化（文献 n → zotero://select 条目链接）")
+ok(os.path.exists(os.path.join(ROOT, "chrome/content/review-workbench.xhtml"))
+   and os.path.exists(os.path.join(ROOT, "chrome/content/review-workbench.js")),
+   "46.12 工作台独立窗口资源（xhtml + 窗口脚本）在库")
+ok('"features/review-workbench.js"' in mainjs and "this.reviewWorkbench = ReviewWorkbench" in mainjs,
+   "46.13 main.js 装配并暴露 reviewWorkbench")
+ok('"review-workbench"' in menusjs_src and "menuReviewWorkbench" in menusjs_src
+   and "menuReviewWorkbench" in io.open(os.path.join(ROOT, "chrome/content/scripts/core/utils.js"), encoding="utf-8").read(),
+   "46.14 ★ 工作台菜单入口（笔记组 + 右键 + I18n）")
+ok('pref("extensions.zotero.paperpilot.reviewWorkbenchEnabled", true)' in prefsdef,
+   "46.15 reviewWorkbenchEnabled 默认开")
+ok("test/search-subs.test.js" in _preflight_src and "test/review-workbench.test.js" in _preflight_src,
+   "46.16 preflight 注册两个新测试套件")
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 17, "46.17 折叠卡共 17 张（订阅卡已计入）")
 
 # ★ 分区标题遮挡修复（负下边距 → 卡片背景盖住「账号」「AI 与翻译」标签底部）
 _cat_rule = re.search(r"\.pp-root \.pp-cat-label\s*\{([^}]*)\}", prefs_css, re.S)

@@ -68,7 +68,7 @@ const ok = (cond, name) => {
 // 0.43.0 +知网账号登录 → 48；0.43.1 登录类收敛到设置面板，撤 cn-login → 47；
 // 0.44.0（实验）+第三方文献源 → 48；0.52.0 +元数据医生 → 49）
 const reg = Menus.ITEM_REGISTRY;
-ok(reg.length === 49, "注册表恰好 49 条（实测 " + reg.length + "；0.52.0 +元数据医生）");
+ok(reg.length === 50, "注册表恰好 50 条（实测 " + reg.length + "；0.53.0 +综述工作台）");
 
 // ② id 唯一 + group 合法
 const ids = reg.map((i) => i.id);

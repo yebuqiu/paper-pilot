@@ -1,0 +1,227 @@
+<!DOCTYPE window>
+<!-- PaperPilot · 综述工作台（Review Workbench）独立窗口
+     纪律（同 skill-store.xhtml，本项目真机踩坑实录）：
+       ① 不写 XML 声明；禁用命名实体（nbsp/copy/mdash…），占位一律 &#160;。
+       ② 顶部 <script> 先于后续 DOM 执行 → review-workbench.js 用 boot() +
+          DOMContentLoaded/readyState 双保险，绝不在脚本顶层碰 DOM。
+       ③ 表单控件三保险：html:textarea 一律 no-native="true"；全部控件显式
+          appearance:none + 配色（win 平台皮肤会强制透明底 + 蓝渐变 + max-height:25px）；
+          布局只用 html:div 弹性/网格，不依赖 XUL 盒模型排表单。
+     窗口参数 {Zotero, Services, metas, itemIDs, api, trimmed, maxItems} 经
+     window.arguments 传入；核心逻辑（纯函数 + 编排）来自 api（ReviewWorkbench 单例）。
+     单例由打开方 ReviewWorkbench.openDialog 负责。 -->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="PaperPilot · 综述工作台"
+        windowtype="paperpilot:review-workbench"
+        width="1120" height="700"
+        persist="screenX screenY width height sizemode">
+  <script src="chrome://paperpilot/content/review-workbench.js"></script>
+  <html:style><![CDATA[
+    /* ===== 主题变量（与 skill-store 同一套；浅色 = GitHub Primer Light） ===== */
+    #pp-rw-root {
+      --pp-bg:#f6f8fa; --pp-surface:#ffffff; --pp-surface-2:#f6f8fa;
+      --pp-border:#d1d9e0; --pp-text:#1f2328; --pp-muted:#59636e;
+      --pp-accent:#0969da; --pp-accent-emphasis:#0757b3; --pp-accent-weak:#ddf4ff;
+      --pp-success:#1a7f37; --pp-danger:#cf222e; --pp-warn:#9a6700;
+      --pp-btn-hover:#eef1f4; --pp-focus-ring:rgba(9,105,218,.18);
+      --pp-code-bg:#f6f8fa; --pp-code-text:#1f2328;
+    }
+    @media (prefers-color-scheme: dark) {
+      #pp-rw-root:not([data-theme="light"]) {
+        --pp-bg:#1a1e23; --pp-surface:#21252b; --pp-surface-2:#1a1e23;
+        --pp-border:#3d444d; --pp-text:#e6edf3; --pp-muted:#9198a1;
+        --pp-accent:#4493f8; --pp-accent-emphasis:#2f81f7; --pp-accent-weak:#17233a;
+        --pp-success:#3fb950; --pp-danger:#f85149; --pp-warn:#d29922;
+        --pp-btn-hover:#2a3038; --pp-focus-ring:rgba(68,147,248,.25);
+        --pp-code-bg:#12161b; --pp-code-text:#c9d1d9;
+      }
+    }
+    #pp-rw-root[data-theme="dark"] {
+      --pp-bg:#1a1e23; --pp-surface:#21252b; --pp-surface-2:#1a1e23;
+      --pp-border:#3d444d; --pp-text:#e6edf3; --pp-muted:#9198a1;
+      --pp-accent:#4493f8; --pp-accent-emphasis:#2f81f7; --pp-accent-weak:#17233a;
+      --pp-success:#3fb950; --pp-danger:#f85149; --pp-warn:#d29922;
+      --pp-btn-hover:#2a3038; --pp-focus-ring:rgba(68,147,248,.25);
+      --pp-code-bg:#12161b; --pp-code-text:#c9d1d9;
+    }
+
+    * { box-sizing:border-box; }
+    window { min-width:820px; min-height:520px; }
+
+    #pp-rw-root {
+      display:flex; flex-direction:column; width:100%; height:100%;
+      overflow:hidden; background:var(--pp-bg); color:var(--pp-text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+      font-size:13px; line-height:1.6;
+    }
+
+    /* ===== 表单控件三保险 ===== */
+    #pp-rw-root input, #pp-rw-root textarea, #pp-rw-root button {
+      appearance:none; -moz-appearance:none; max-height:none; height:auto;
+      font-family:inherit; box-sizing:border-box;
+    }
+    #pp-rw-root input.pp-rw-input {
+      background:var(--pp-bg); color:var(--pp-text);
+      border:1px solid var(--pp-border); border-radius:6px;
+      padding:4px 8px; font-size:13px; min-width:0;
+    }
+    #pp-rw-root textarea.pp-rw-textarea {
+      background:var(--pp-surface); color:var(--pp-text);
+      border:1px solid var(--pp-border); border-radius:8px;
+      padding:8px 10px; font-size:12.5px; line-height:1.65;
+      resize:none; width:100%; min-height:0;
+      font-family:Consolas,Menlo,"Microsoft YaHei",monospace;
+    }
+    #pp-rw-root input.pp-rw-input:focus, #pp-rw-root textarea.pp-rw-textarea:focus {
+      outline:none; border-color:var(--pp-accent); box-shadow:0 0 0 3px var(--pp-focus-ring);
+    }
+    #pp-rw-root input.pp-rw-input::placeholder,
+    #pp-rw-root textarea.pp-rw-textarea::placeholder { color:var(--pp-muted); }
+
+    /* ===== 按钮 ===== */
+    #pp-rw-root button.pp-rw-btn {
+      background:var(--pp-surface); color:var(--pp-text);
+      border:1px solid var(--pp-border); border-radius:7px;
+      padding:3px 11px; font-size:12px; line-height:1.6; cursor:pointer;
+      white-space:nowrap; user-select:none;
+    }
+    #pp-rw-root button.pp-rw-btn:hover:not(:disabled) {
+      background:var(--pp-btn-hover); border-color:var(--pp-accent); color:var(--pp-accent);
+    }
+    #pp-rw-root button.pp-rw-btn:disabled { opacity:.5; cursor:default; }
+    #pp-rw-root button.pp-rw-btn-primary {
+      background:var(--pp-accent); border-color:var(--pp-accent); color:#ffffff; font-weight:600;
+    }
+    #pp-rw-root button.pp-rw-btn-primary:hover:not(:disabled) {
+      background:var(--pp-accent-emphasis); border-color:var(--pp-accent-emphasis); color:#ffffff;
+    }
+
+    /* ===== 顶栏 ===== */
+    .pp-rw-bar {
+      display:flex; align-items:center; gap:10px; padding:8px 12px; flex:none;
+      background:var(--pp-surface); border-bottom:1px solid var(--pp-border);
+    }
+    .pp-rw-brand { font-weight:700; font-size:14px; flex:none; }
+    .pp-rw-doctitle { flex:1 1 auto; min-width:120px; max-width:420px; }
+    .pp-rw-count { font-size:12px; color:var(--pp-muted); flex:none; }
+    #pp-rw-hint {
+      flex:none; padding:5px 12px; font-size:12px; color:var(--pp-muted);
+      background:var(--pp-surface-2); border-bottom:1px solid var(--pp-border);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    #pp-rw-hint.pp-rw-warn { color:var(--pp-warn); }
+    #pp-rw-hint.pp-rw-err { color:var(--pp-danger); }
+
+    /* ===== 三栏（CSS grid；列内各自滚动） ===== */
+    #pp-rw-cols {
+      flex:1 1 0; min-height:0; display:grid; gap:10px; padding:10px 12px;
+      grid-template-columns:220px minmax(240px,1fr) minmax(300px,1.3fr);
+    }
+    .pp-rw-col {
+      display:flex; flex-direction:column; min-width:0; min-height:0;
+      background:var(--pp-surface); border:1px solid var(--pp-border);
+      border-radius:10px; overflow:hidden;
+    }
+    .pp-rw-colhead {
+      display:flex; align-items:center; gap:8px; flex:none;
+      padding:7px 10px; border-bottom:1px solid var(--pp-border);
+      font-size:12.5px; font-weight:700; background:var(--pp-surface-2);
+    }
+    .pp-rw-colhead .pp-rw-grow { flex:1 1 auto; }
+    .pp-rw-body { flex:1 1 0; min-height:0; overflow-y:auto; scrollbar-width:thin; padding:8px; }
+    .pp-rw-body.pp-rw-pad0 { padding:0; }
+
+    /* ===== 左栏文献清单 ===== */
+    .pp-rw-item { display:flex; gap:7px; align-items:flex-start; padding:6px 4px;
+      border-bottom:1px dashed var(--pp-border); }
+    .pp-rw-item:last-child { border-bottom:none; }
+    .pp-rw-num {
+      flex:none; width:20px; height:20px; border-radius:99px; margin-top:1px;
+      background:var(--pp-accent-weak); color:var(--pp-accent);
+      font-size:11px; font-weight:700; line-height:20px; text-align:center;
+    }
+    .pp-rw-itemmain { min-width:0; flex:1 1 auto; }
+    .pp-rw-itemtitle { font-size:12px; line-height:1.45; word-break:break-word; }
+    .pp-rw-itemmeta { font-size:11px; color:var(--pp-muted); margin-top:1px; }
+
+    /* ===== 中/右栏 ===== */
+    .pp-rw-col textarea.pp-rw-textarea { flex:1 1 0; height:auto; border:none; border-radius:0; }
+    .pp-rw-col textarea.pp-rw-textarea:focus { box-shadow:none; }
+    .pp-rw-colhead .pp-rw-btn { margin-left:auto; }
+    .pp-rw-actions {
+      display:flex; align-items:center; gap:8px; flex:none;
+      padding:8px 10px; border-top:1px solid var(--pp-border); background:var(--pp-surface-2);
+    }
+    .pp-rw-actions .pp-rw-grow { flex:1 1 auto; }
+    .pp-rw-empty { padding:18px 12px; color:var(--pp-muted); font-size:12px; line-height:1.7; }
+
+    /* ===== 状态条 ===== */
+    #pp-rw-status {
+      flex:none; min-height:28px; display:flex; align-items:center;
+      padding:4px 12px; background:var(--pp-surface);
+      border-top:1px solid var(--pp-border); font-size:12px; color:var(--pp-muted);
+      overflow:hidden;
+    }
+    #pp-rw-status.pp-rw-ok { color:var(--pp-success); }
+    #pp-rw-status.pp-rw-err { color:var(--pp-danger); }
+    #pp-rw-status.pp-rw-warn { color:var(--pp-warn); }
+  ]]></html:style>
+
+  <vbox flex="1" id="pp-rw-root" style="min-width:0;min-height:0;">
+
+    <!-- 顶栏：标题 + 文献数 -->
+    <html:div class="pp-rw-bar">
+      <html:div class="pp-rw-brand">综述工作台</html:div>
+      <html:input id="pp-rw-doctitle" class="pp-rw-input pp-rw-doctitle" type="text"
+        placeholder="综述标题（导出与笔记标题）" value="文献综述"/>
+      <html:span id="pp-rw-count" class="pp-rw-count"></html:span>
+    </html:div>
+
+    <!-- 提示行：AI 未配置 / 截断提示 / 操作引导 -->
+    <html:div id="pp-rw-hint"></html:div>
+
+    <!-- 三栏 -->
+    <html:div id="pp-rw-cols">
+
+      <!-- 左：文献清单 -->
+      <html:div class="pp-rw-col">
+        <html:div class="pp-rw-colhead">
+          <html:span>文献清单</html:span>
+          <html:span id="pp-rw-trimmed" class="pp-rw-count"></html:span>
+        </html:div>
+        <html:div id="pp-rw-list" class="pp-rw-body"></html:div>
+      </html:div>
+
+      <!-- 中：大纲 -->
+      <html:div class="pp-rw-col">
+        <html:div class="pp-rw-colhead">
+          <html:span>大纲</html:span>
+          <html:button id="pp-rw-gen-outline" type="button" class="pp-rw-btn pp-rw-btn-primary">① 生成大纲</html:button>
+        </html:div>
+        <html:textarea id="pp-rw-outline" class="pp-rw-textarea" no-native="true" spellcheck="false"
+          placeholder="点「① 生成大纲」由 AI 产出，或直接手动输入：&#10;## 1. 节标题&#10;一句覆盖说明&#10;&#10;## 2. 节标题&#10;一句覆盖说明"></html:textarea>
+      </html:div>
+
+      <!-- 右：草稿 -->
+      <html:div class="pp-rw-col">
+        <html:div class="pp-rw-colhead">
+          <html:span>草稿</html:span>
+          <html:button id="pp-rw-gen-draft" type="button" class="pp-rw-btn">② 逐节起草</html:button>
+        </html:div>
+        <html:textarea id="pp-rw-draft" class="pp-rw-textarea" no-native="true" spellcheck="false"
+          placeholder="逐节起草完成后，正文按大纲拼接在这里（引用已转为可点击的「文献 n」链接）"></html:textarea>
+        <html:div class="pp-rw-actions">
+          <html:button id="pp-rw-save" type="button" class="pp-rw-btn">③ 保存为笔记</html:button>
+          <html:button id="pp-rw-export" type="button" class="pp-rw-btn">导出 Markdown</html:button>
+          <html:span class="pp-rw-grow"></html:span>
+          <html:span id="pp-rw-progress" class="pp-rw-count"></html:span>
+        </html:div>
+      </html:div>
+
+    </html:div>
+
+    <!-- 固定状态条（所有反馈集中于此，不弹 alert） -->
+    <html:div id="pp-rw-status"></html:div>
+  </vbox>
+</window>

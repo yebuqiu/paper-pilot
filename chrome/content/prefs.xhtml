@@ -745,6 +745,36 @@
   </html:div>
 
   <!-- ============ 4 · 阅读器划词浮窗 ============ -->
+  <!-- ============ 3c2 · 检索订阅（0.53.0：检索式 → 定时检索 → 自动入库 + 速递笔记） ============ -->
+  <html:div class="pp-card pp-fold" data-fold="subscriptions" data-search-strings-raw="订阅 检索 定时 自动入库 arxiv 速递 subscription search saved query">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">📡</html:span><html:span class="pp-card-title">检索订阅</html:span>
+      <html:span class="pp-card-desc">用检索式订阅 arXiv：到点自动检索、去重入库、生成「订阅速递」笔记</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
+    <html:div class="pp-card-body">
+      <html:div id="pp-subs-list" class="pp-datasets"></html:div>
+      <html:div class="pp-sub" style="margin-top:10px;">
+        <html:div class="pp-sub-title">新建订阅</html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+          <html:input id="pp-sub-name" class="pp-input" placeholder="名称（如：图神经网络）" style="width:180px;"/>
+          <html:input id="pp-sub-keywords" class="pp-input" placeholder="关键词（逗号分隔）" style="width:220px;"/>
+          <html:input id="pp-sub-cats" class="pp-input" placeholder="arXiv 分类（cs.LG,cs.AI）" style="width:180px;"/>
+        </html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+          <html:input id="pp-sub-time" class="pp-input" placeholder="每日 08:00（留空=仅手动）" style="width:200px;"/>
+          <html:label class="pp-check">
+            <html:input type="checkbox" id="pp-sub-auto"/>
+            <html:span>命中自动入库</html:span>
+          </html:label>
+          <html:button id="pp-subs-add" class="pp-btn pp-btn-primary pp-btn-sm">添加订阅</html:button>
+          <html:span id="pp-sub-msg" class="pp-msg"></html:span>
+        </html:div>
+        <html:div class="pp-hint">关键词多词默认 AND；分类多值按并集；每日执行一次（错过 6 小时内补跑），去重记账保留最近 1000 条。</html:div>
+      </html:div>
+    </html:div>
+  </html:div>
+
   <!-- ============ 3d · 定时任务（0.49.0：研究晨报 / 阅读周报 / 库体检） ============ -->
   <html:div class="pp-card pp-fold" data-fold="schedule" data-search-strings-raw="定时 任务 晨报 日报 周报 体检 计划 schedule cron digest report health">
     <html:div class="pp-fold-head">
