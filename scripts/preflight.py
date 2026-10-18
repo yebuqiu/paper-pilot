@@ -207,6 +207,10 @@ def main(argv):
     code, out = run([PY, "scripts/check-wiring.py"], timeout=300)
     record("接线扫描", code == 0, pick_summary(out), None if code == 0 else out)
 
+    # 0.48.1：技能包在线目录与内置目录同构（漂移 = 改了 _BUILTIN 忘跑生成器）
+    code, out = run([NODE, "scripts/build-skill-catalog.js", "--check"], timeout=60)
+    record("技能包目录同构", code == 0, pick_summary(out), None if code == 0 else out)
+
     # 4) 浏览器 E2E（可跳过；脚本自身在缺依赖时退出 0）
     if not fast:
         code, out = run([NODE, "test/admin-e2e.test.js"], timeout=600)

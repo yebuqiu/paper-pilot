@@ -10,6 +10,7 @@
 用法：python scripts/check-wiring.py     （在仓库根目录）
 """
 import io
+import json
 import os
 import re
 import sys
@@ -2375,6 +2376,41 @@ ok(os.path.exists(os.path.join(ROOT, "test", "agent-tools.test.js")),
 _preflight_src = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
 ok("agent-tools.test.js" in _preflight_src,
    "40.22 preflight 注册 agent-tools.test.js")
+# ---------- 42. 0.48.1 技能包目录扩容 + 在线更新源 ----------
+# 双源同构铁律：在线目录（server/public/skill-catalog.json）由 build-skill-catalog.js
+# 从 _BUILTIN 唯一生成；数据更新 = 改 _BUILTIN → 跑生成器 → 两文件一起提交。
+_CAT_PATH = os.path.join(ROOT, "server", "public", "skill-catalog.json")
+ok(os.path.exists(_CAT_PATH), "42.1 在线目录 server/public/skill-catalog.json 在库")
+_cat_ok = False
+if os.path.exists(_CAT_PATH):
+    try:
+        _cat = json.loads(io.open(_CAT_PATH, encoding="utf-8").read())
+        _cat_ok = isinstance(_cat, dict) and isinstance(_cat.get("packs"), list)
+    except Exception:
+        _cat_ok = False
+ok(_cat_ok, "42.2 在线目录是合法 JSON 且含 packs 数组")
+if _cat_ok:
+    ok(len(_cat["packs"]) == 32, "42.3 在线目录 32 个技能包（8 类 × 4）→ 实际 %d" % len(_cat["packs"]))
+    _cat_ids = [p.get("id", "") for p in _cat["packs"]]
+    ok(len(set(_cat_ids)) == len(_cat_ids), "42.4 在线目录 id 唯一")
+    ok(all(re.match(r"^[a-z0-9][a-z0-9-]*$", i) for i in _cat_ids), "42.5 在线目录 id 均为 kebab-case")
+    _cats = {}
+    for _p in _cat["packs"]:
+        _cats[_p.get("category", "?")] = _cats.get(_p.get("category", "?"), 0) + 1
+    ok(len(_cats) == 8 and all(3 <= v <= 5 for v in _cats.values()),
+       "42.6 八分类全覆盖且每类 3-5 个 → %s" % json.dumps(_cats, ensure_ascii=False))
+    ok(all(p.get("name") and p.get("version") and p.get("author") and p.get("desc")
+           for p in _cat["packs"]), "42.7 每包必备字段齐全（name/version/author/desc）")
+    ok(str(_cat.get("updatedAt", "")).isdigit(), "42.8 目录 updatedAt 为毫秒时间戳")
+ok(os.path.exists(os.path.join(ROOT, "scripts", "build-skill-catalog.js")),
+   "42.9 目录生成器 build-skill-catalog.js 在库（唯一生成通道）")
+ok('pref("extensions.zotero.paperpilot.skillStoreSource", "https://gitee.com/' in prefsdef,
+   "42.10 skillStoreSource 默认指向官方 Gitee raw 目录")
+ok("server/public/skill-catalog.json" in prefsdef,
+   "42.11 默认目录 URL 路径与仓库文件路径一致")
+ok("build-skill-catalog.js" in _preflight_src,
+   "42.12 preflight 注册目录同构门禁（--check 步骤）")
+
 # ★ 分区标题遮挡修复（负下边距 → 卡片背景盖住「账号」「AI 与翻译」标签底部）
 _cat_rule = re.search(r"\.pp-root \.pp-cat-label\s*\{([^}]*)\}", prefs_css, re.S)
 ok(_cat_rule is not None, "40.23 prefs.css 有 .pp-cat-label 规则")

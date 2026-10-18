@@ -34,7 +34,8 @@ pref("extensions.zotero.paperpilot.aiAgentTools", "search_library,get_item_detai
 // 0.48.x 技能包商店（Skills Hub）：已安装记账 / 本地评分 / 目录源（空 = 仅内置目录）
 pref("extensions.zotero.paperpilot.skillPacksInstalled", "");
 pref("extensions.zotero.paperpilot.skillPackRatings", "");
-pref("extensions.zotero.paperpilot.skillStoreSource", "");
+// 0.48.1 起默认指向官方在线目录（Gitee raw，与更新通道同基础设施；清空该 pref = 回落纯内置目录）
+pref("extensions.zotero.paperpilot.skillStoreSource", "https://gitee.com/cassiuschen9261/paper-pilot/raw/main/server/public/skill-catalog.json");
 pref("extensions.zotero.paperpilot.rankColumnEnabled", true);
 pref("extensions.zotero.paperpilot.rankDataPath", "");
 // 0.5.0 新增：easyScholar 在线期刊等级（离线 JSON 数据仍为优先兜底）
