@@ -228,7 +228,7 @@ var CitationContext = {
               self._render(paneID);
               return true;
             }
-            if (!prev || prev.id !== target.id) self._fetch(paneID);
+            if (!prev || prev.id !== target.id) self._fetchDebounced(paneID);
             return true;
           } catch (e) {
             try { Zotero.logError(e); } catch (_) { /* ignore */ }
@@ -236,6 +236,8 @@ var CitationContext = {
           }
         },
         onDestroy({ paneID }) {
+          const _st = self._panes.get(paneID);
+          if (_st && _st.timer) { try { clearTimeout(_st.timer); } catch (e) { /* ignore */ } }
           self._panes.delete(paneID);
         },
       });
@@ -466,6 +468,18 @@ var CitationContext = {
    * 取数 + 代际丢弃：每次请求带一个自增 token，await 回来发现 token 变了
    * （用户已切到别的条目）就整包丢弃——旧结果绝不能盖掉新条目的面板。
    */
+  /** 0.54.0（审查 P1-6）：条目切换防抖 400ms（S2 无限速时 1.1s/请求，快速翻阅会排队） */
+  _fetchDebounced(paneID) {
+    const delay = Number(this.DEBOUNCE_MS);
+    if (!isFinite(delay) || delay <= 0) { this._fetch(paneID); return; }
+    const st = this._state(paneID);
+    if (st.timer) { try { clearTimeout(st.timer); } catch (e) { /* ignore */ } }
+    st.timer = setTimeout(() => {
+      st.timer = null;
+      this._fetch(paneID);
+    }, delay);
+  },
+
   async _fetch(paneID) {
     const st = this._state(paneID);
     const item = st.item;

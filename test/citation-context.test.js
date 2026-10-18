@@ -429,6 +429,8 @@ ok(!!root.byClass('pp-citecon-s2')[0], '⑤ 有「在 S2 打开」链接');
 let enabled = null;
 S2._citationsReset();
 calls.citeRows = null;
+// 0.54.0：条目切换防抖在测试中关闭（同步执行）
+CC.DEBOUNCE_MS = 0;
 calls.section.onItemChange({ paneID: 'p1', item: itemDoi, setEnabled: (v) => { enabled = v; } });
 eq(enabled, true, '⑤ 常规条目：section 启用');
 const rendered = await drain(() => root.byClass('pp-citecon-row').length > 0);

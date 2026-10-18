@@ -130,10 +130,12 @@ var RelatedPapers = {
           const prev = st.item;
           st.item = target;
           if (!target) { st.res = null; self._render(paneID); return true; }
-          if (!prev || prev.id !== target.id) self._fetch(paneID);
+          if (!prev || prev.id !== target.id) self._fetchDebounced(paneID);
           return true;
         },
         onDestroy({ paneID }) {
+          const _st = self._panes.get(paneID);
+          if (_st && _st.timer) { try { clearTimeout(_st.timer); } catch (e) { /* ignore */ } }
           self._panes.delete(paneID);
         },
       });
@@ -389,6 +391,18 @@ var RelatedPapers = {
       ? "https://www.semanticscholar.org/search?q=" + encodeURIComponent("DOI:" + doi)
       : "";
     return this._openURL(url);
+  },
+
+  /** 0.54.0（审查 P1-6）：条目切换防抖——快速翻阅时不为停留 <400ms 的条目发请求 */
+  _fetchDebounced(paneID) {
+    const delay = Number(this.DEBOUNCE_MS);
+    if (!isFinite(delay) || delay <= 0) { this._fetch(paneID); return; }
+    const st = this._state(paneID);
+    if (st.timer) { try { clearTimeout(st.timer); } catch (e) { /* ignore */ } }
+    st.timer = setTimeout(() => {
+      st.timer = null;
+      this._fetch(paneID);
+    }, delay);
   },
 
   async _fetch(paneID) {

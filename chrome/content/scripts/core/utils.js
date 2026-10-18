@@ -521,7 +521,7 @@ var MdLite = {
 
 // 笔记助手：常规条目挂到条目下，附件挂到其父条目下
 var Notes = {
-  async createFromMarkdown(item, title, md) {
+  async createFromMarkdown(item, title, md, opts) {
     const note = new Zotero.Item("note");
     note.libraryID = item.libraryID;
     if (item.isRegularItem && item.isRegularItem()) {
@@ -529,7 +529,16 @@ var Notes = {
     } else if (item.parentID) {
       note.parentID = item.parentID;
     }
-    note.setNote(MdLite.toNoteHtml(title, md));
+    // 0.54.0（审查 P2-9）：允许调用方在**落盘前**改写 HTML（如把引用转成 <a>），
+    // 避免「先存一次再改再存一次」的双写/双同步。
+    let html = MdLite.toNoteHtml(title, md);
+    try {
+      if (opts && typeof opts.transformHtml === "function") {
+        const out = opts.transformHtml(html);
+        if (out != null) html = String(out);
+      }
+    } catch (e) { /* 变换失败用原始 HTML */ }
+    note.setNote(html);
     await note.saveTx();
     return note;
   },

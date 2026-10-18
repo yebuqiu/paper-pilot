@@ -20,11 +20,59 @@ var ChatSessions = {
   MAX_SESSIONS: 50,
   MAX_MESSAGES: 40,
   TITLE_MAX: 30,
+  /* 0.54.0（审查 P1-7）：全量存 data 目录 JSON 文件，pref 只留最近 5 条（同步可读）——
+   *  · prefs.js 不再被会话正文撑到 MB 级（启动解析更快）
+   *  · 每轮问答不再同步写大 JSON（1.5s 防抖合并）
+   *  · 没有 IOUtils/DataDirectory 的环境（测试桩/旧版本）自动退回纯 pref 全量，行为不变
+   */
+  FILE_NAME: "paperpilot-chat-sessions.json",
+  PREF_TAIL: 5,
+  WRITE_DEBOUNCE_MS: 1500,
+  _cache: null,
+  _fileLoaded: false,
+  _writeTimer: null,
 
-  /* ==================== pref 读写 ==================== */
+  /* ==================== 存储层（pref 尾部 + 文件全量） ==================== */
 
-  /** 读全量（坏值 → []）；只做「是数组」这一层筛选，字段校验留给各 API */
-  _read() {
+  _filePath() {
+    try {
+      const dir = Zotero.DataDirectory && Zotero.DataDirectory.dir;
+      if (!dir) return "";
+      return String(dir).replace(/[\\/]+$/, "") + "/" + this.FILE_NAME;
+    } catch (e) { return ""; }
+  },
+
+  _fileSupported() {
+    if (!this._filePath()) return false;
+    try {
+      return typeof IOUtils !== "undefined" && IOUtils &&
+        typeof IOUtils.writeUTF8 === "function" && typeof IOUtils.readUTF8 === "function";
+    } catch (e) { return false; }
+  },
+
+  /** 异步加载文件全量到内存缓存（首次任意调用触发一次；失败静默用 pref） */
+  _loadFile() {
+    if (this._fileLoaded) return;
+    this._fileLoaded = true;
+    if (!this._fileSupported()) return;
+    const self = this;
+    Promise.resolve().then(async () => {
+      try {
+        const txt = await IOUtils.readUTF8(self._filePath());
+        const arr = JSON.parse(txt);
+        if (!Array.isArray(arr)) return;
+        const byId = new Map();
+        for (const e of arr) { if (e && e.id) byId.set(e.id, e); }
+        for (const e of self._readPref()) { if (e && e.id && !byId.has(e.id)) byId.set(e.id, e); }
+        self._cache = Array.from(byId.values())
+          .sort((a, b) => (Number(b.ts) || 0) - (Number(a.ts) || 0))
+          .slice(0, self.MAX_SESSIONS);
+      } catch (e) { /* 文件不存在/坏 JSON：继续用 pref */ }
+    }).catch(() => {});
+  },
+
+  /** 读 pref（兼容旧格式：字符串 JSON 或已是数组） */
+  _readPref() {
     let raw = "";
     try { raw = Prefs.get(this.PREF_KEY, ""); }
     catch (e) { return []; }
@@ -37,12 +85,46 @@ var ChatSessions = {
     return Array.isArray(v) ? v : [];
   },
 
-  /** 写全量（pref 超限等异常静默——会话持久化不得影响问答本身） */
+  /** 读全量（坏值 → []）；仅在文件模式（真机）下用内存缓存，其它环境始终读 pref */
+  _read() {
+    if (this._fileSupported()) {
+      if (!this._fileLoaded) this._loadFile();
+      if (this._cache) return this._cache;
+    }
+    return this._readPref();
+  },
+
+  /** 写全量：内存缓存即时生效 + pref 尾部同步写 + 文件防抖异步写 */
   _write(arr) {
+    const list = Array.isArray(arr) ? arr : [];
+    const fileMode = this._fileSupported();
+    if (fileMode) this._cache = list;
+    const tail = fileMode ? list.slice(0, this.PREF_TAIL) : list;
+    try { Prefs.set(this.PREF_KEY, JSON.stringify(tail)); }
+    catch (e) { /* pref 写失败不影响问答 */ }
+    this._scheduleFileWrite();
+    return true;
+  },
+
+  _scheduleFileWrite() {
+    if (!this._fileSupported()) return;
+    if (this._writeTimer) { try { clearTimeout(this._writeTimer); } catch (e) { /* ignore */ } }
+    const self = this;
+    this._writeTimer = setTimeout(() => {
+      self._writeTimer = null;
+      self._flushFile();
+    }, this.WRITE_DEBOUNCE_MS);
+  },
+
+  /** 原子写（tmp + move），失败静默 */
+  async _flushFile() {
+    if (!this._fileSupported()) return;
     try {
-      Prefs.set(this.PREF_KEY, JSON.stringify(Array.isArray(arr) ? arr : []));
-      return true;
-    } catch (e) { return false; }
+      const p = this._filePath();
+      const tmp = p + ".tmp";
+      await IOUtils.writeUTF8(tmp, JSON.stringify(this._cache || []));
+      await IOUtils.move(tmp, p);
+    } catch (e) { /* 写文件失败：pref 尾部仍在，不丢最近会话 */ }
   },
 
   _newId() {

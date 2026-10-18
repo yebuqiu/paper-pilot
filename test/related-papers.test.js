@@ -402,6 +402,8 @@ ok(!!root.byClass('pp-related-s2')[0], '⑥ 有「在 S2 打开」链接');
 let enabled = null;
 S2._recsReset();
 calls.httpMode = 'ok';
+// 0.54.0：条目切换防抖在测试中关闭（同步执行）
+RP.DEBOUNCE_MS = 0;
 calls.section.onItemChange({ paneID: 'p1', item: itemDoi, setEnabled: (v) => { enabled = v; } });
 eq(enabled, true, '⑥ 常规条目：section 启用');
 const rendered = await drain(() => root.byClass('pp-related-import').length === 5);

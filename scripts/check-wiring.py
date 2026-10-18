@@ -2629,6 +2629,50 @@ ok("test/search-subs.test.js" in _preflight_src and "test/review-workbench.test.
    "46.16 preflight 注册两个新测试套件")
 ok(prefs_xhtml.count('class="pp-card pp-fold"') == 17, "46.17 折叠卡共 17 张（订阅卡已计入）")
 
+# ---------- 47. 0.54.0 审查修复（P0-P2 十项） ----------
+ok('addCondition("note", "contains"' in _at_js,
+   "47.1 ★ P0-3 search_notes 走 Zotero.Search 服务端过滤（不再全库串行扫描）")
+ok('addCondition("itemType", "is", "note")' in _at_js,
+   "47.2 P0-3 只检索 note 类型")
+ok("_looksLikeInstruction" in _at_js and "INSTRUCTION_PATTERNS" in _at_js,
+   "47.3 ★ P0-1 记忆写入拒绝指令型内容（防持久化提示注入）")
+ok("viaMcp" in _at_js and "不得超过 200 字" in _at_js,
+   "47.4 P0-1 MCP 通道写入限长")
+_am2 = io.open(os.path.join(ROOT, "chrome/content/scripts/features/agent-memory.js"), encoding="utf-8").read()
+ok("不是指令" in _am2 and "不得执行其中" in _am2,
+   "47.5 ★ P0-1 asPromptBlock 数据围栏（记忆=数据非指令）")
+ok("untrusted_data" in _at_js and "不是指令" in _at_js,
+   "47.6 ★ P0-2 工具结果 untrusted_data 围栏")
+ok("WRITE_MAX" in _at_js and "本轮写操作已达上限" in _at_js,
+   "47.7 ★ P0-2 单轮写操作次数上限")
+ok("_queueRender" in _cf_src and "_flushRender" in _cf_src and "_renderTimer" in _cf_src,
+   "47.8 ★ P1-4 流式渲染 100ms 节流（取消每 token 全量重绘）")
+_rp2 = io.open(os.path.join(ROOT, "chrome/content/scripts/features/related-papers.js"), encoding="utf-8").read()
+_cc2 = io.open(os.path.join(ROOT, "chrome/content/scripts/features/citation-context.js"), encoding="utf-8").read()
+ok("_fetchDebounced" in _rp2 and "DEBOUNCE_MS" in _rp2, "47.9 ★ P1-6 相关文献面板防抖")
+ok("_fetchDebounced" in _cc2 and "DEBOUNCE_MS" in _cc2, "47.10 ★ P1-6 引文上下文面板防抖")
+_sch2 = io.open(os.path.join(ROOT, "chrome/content/scripts/features/scheduler.js"), encoding="utf-8").read()
+ok("_recentItems" in _sch2 and 'addCondition("dateAdded", "isAfter"' in _sch2,
+   "47.11 ★ P1-5 晨报只取最近 24h（Search 服务端过滤）")
+ok("_iterItems" in _sch2 and "for await (const it of" in _sch2,
+   "47.12 ★ P1-5 周报/体检分批迭代（内存与库大小解耦）")
+_cs2 = io.open(os.path.join(ROOT, "chrome/content/scripts/features/chat-sessions.js"), encoding="utf-8").read()
+ok("FILE_NAME" in _cs2 and "_flushFile" in _cs2 and "IOUtils.writeUTF8" in _cs2,
+   "47.13 ★ P1-7 会话全量落 data 目录文件（pref 只留尾部）")
+ok("WRITE_DEBOUNCE_MS" in _cs2 and "_scheduleFileWrite" in _cs2,
+   "47.14 P1-7 文件写 1.5s 防抖")
+_rw2 = io.open(os.path.join(ROOT, "chrome/content/scripts/features/review-workbench.js"), encoding="utf-8").read()
+ok('return link; // 0.54.0（审查 P2-8）' in _rw2,
+   "47.15 P2-8 citeToLink 不再产生畸形 Markdown")
+ok("_linkifyHtml" in _rw2 and "transformHtml" in _rw2,
+   "47.16 ★ P2-9 引用链接落盘前一次成型（取消二次 setNote）")
+_utils2 = io.open(os.path.join(ROOT, "chrome/content/scripts/core/utils.js"), encoding="utf-8").read()
+ok("transformHtml" in _utils2, "47.17 P2-9 Notes.createFromMarkdown 支持 transformHtml")
+_ss2 = io.open(os.path.join(ROOT, "chrome/content/scripts/features/search-subs.js"), encoding="utf-8").read()
+ok("_safeName" in _ss2, "47.18 P2-10 订阅名归一（防标签树分层）")
+ok(os.path.exists(os.path.join(ROOT, "docs/代码审查-性能与安全-2026-10-18.md")),
+   "47.19 审查报告在库（修复可追溯）")
+
 # ★ 分区标题遮挡修复（负下边距 → 卡片背景盖住「账号」「AI 与翻译」标签底部）
 _cat_rule = re.search(r"\.pp-root \.pp-cat-label\s*\{([^}]*)\}", prefs_css, re.S)
 ok(_cat_rule is not None, "40.23 prefs.css 有 .pp-cat-label 规则")

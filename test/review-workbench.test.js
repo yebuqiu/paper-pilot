@@ -80,8 +80,8 @@ function mkNotes(mode) {
   const calls = [];
   return {
     calls,
-    createFromMarkdown: async function (item, title, md) {
-      calls.push({ item, title, md, argc: arguments.length });
+    createFromMarkdown: async function (item, title, md, opts) {
+      calls.push({ item, title, md, opts, argc: arguments.length });
       if (mode === 'throw') throw new Error('save failed');
       return { id: 777 };
     },
@@ -440,7 +440,9 @@ function mkEnv(o) {
     eq(r.ok, true, 'saveAsNote 成功 → ok');
     eq(r.noteID, 777, 'saveAsNote 返回 noteID');
     eq(notes.calls.length, 1, 'saveAsNote 调一次 createFromMarkdown');
-    eq(notes.calls[0].argc, 3, 'saveAsNote 传三参 (item,title,md)');
+    eq(notes.calls[0].argc, 4, 'saveAsNote 传四参 (item,title,md,opts)');
+    ok(notes.calls[0].opts && typeof notes.calls[0].opts.transformHtml === 'function',
+      'saveAsNote 传 transformHtml（落盘前一次成型，免二次写盘）');
     eq(notes.calls[0].item, item, 'saveAsNote 第一参为回查到的条目');
     eq(notes.calls[0].title, '测试综述', 'saveAsNote 标题透传');
     eq(notes.calls[0].md, '# 标题\n\n正文', 'saveAsNote 正文透传');
@@ -480,7 +482,16 @@ function mkEnv(o) {
       setNote(h) { this.html = h; },
       async saveTx() { this.saves++; },
     };
-    const Notes = { createFromMarkdown: async function () { return noteObj; } };
+    const Notes = {
+      createFromMarkdown: async function (item, title, md, opts) {
+        // 模拟 utils.js：落盘前应用 transformHtml，然后只保存一次
+        let html = noteObj.html;
+        if (opts && typeof opts.transformHtml === 'function') html = opts.transformHtml(html);
+        noteObj.setNote(html);
+        await noteObj.saveTx();
+        return noteObj;
+      },
+    };
     const sb = makeSandbox({
       Zotero: { Items: { get() { return { id: 1 }; } }, logError() {} },
       AIClient: mkAI(() => 'x'), Notes,
@@ -489,7 +500,7 @@ function mkEnv(o) {
     eq(r.ok, true, 'saveAsNote 链接化路径仍 ok');
     has(noteObj.html, '<a href="zotero://select/library/items/AAAA1111">文献 1</a>',
       'saveAsNote 把字面引用改成可点击 <a>');
-    eq(noteObj.saves, 1, 'saveAsNote 链接化后回写一次笔记');
+    eq(noteObj.saves, 1, 'saveAsNote 单次写盘（0.54.0 取消二次 setNote）');
   }
 
   /* ==================== ③ 窗口资源 ==================== */

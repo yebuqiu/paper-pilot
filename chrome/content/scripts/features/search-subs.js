@@ -420,7 +420,10 @@ var SearchSubs = {
     const creators = this._creators(r.authors);
     if (creators.length) { try { item.setCreators(creators); } catch (e) { /* 个别姓名异常时忽略 */ } }
     const tag = String(subName || "").trim();
-    if (tag) { try { item.addTag(this.TAG_PREFIX + tag); } catch (e) { /* 标签失败不挡入库 */ } }
+    if (tag) {
+      try { item.addTag(this.TAG_PREFIX + this._safeName(tag)); }
+      catch (e) { /* 标签失败不挡入库 */ }
+    }
     return item;
   },
 
@@ -479,6 +482,17 @@ var SearchSubs = {
       if (typeof ArxivFetch !== "undefined" && ArxivFetch && typeof ArxivFetch.search === "function") return ArxivFetch;
     } catch (e) { /* ignore */ }
     return null;
+  },
+
+  /** 订阅名归一（0.54.0 审查 P2-10）：去换行/控制字符、`/`→`-`、限 24 字，防标签树被意外分层 */
+  _safeName(name) {
+    let s = String(name == null ? "" : name)
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/[\/\:*?"<>|]+/g, "-")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (s.length > 24) s = s.slice(0, 24);
+    return s || "未命名订阅";
   },
 
   /** 逗号/分号/换行分隔 → 数组（categories 必需；keywords 同样受益，便于多词 AND） */

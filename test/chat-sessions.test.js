@@ -108,7 +108,13 @@ const CS = sandbox.ChatSessions;
 const AI = sandbox.AIClient;
 const CF = sandbox.ChatFloat;
 
-function resetSessions() { store.delete(PREF('chatSessions')); }
+function resetSessions() {
+  store.delete(PREF('chatSessions'));
+  // 0.54.0：模块加了内存缓存（文件模式），测试里一并重置，保证各场景隔离
+  CS._cache = null;
+  CS._fileLoaded = true;
+  CS._writeTimer = null;
+}
 function rawSessions() {
   const raw = store.get(PREF('chatSessions'));
   return raw ? JSON.parse(raw) : [];

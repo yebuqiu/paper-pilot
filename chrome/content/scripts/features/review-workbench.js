@@ -283,7 +283,7 @@ var ReviewWorkbench = {
       if (hasClose && whole.charAt(offset + full.length) === "(") return full;
       if (!key || !/^[A-Za-z0-9]+$/.test(key)) return full;
       const link = "[文献 " + n + "](zotero://select/library/items/" + key + ")";
-      if (hasOpen && !hasClose) return "[" + link; // 只吞到左括号时还回去
+      if (hasOpen && !hasClose) return link; // 0.54.0（审查 P2-8）：半截括号不再补 "["，避免畸形 Markdown
       if (lq && !rq) return "「" + link;
       return link;
     });
@@ -444,19 +444,11 @@ var ReviewWorkbench = {
    * Markdown 链接会原样变成字面文本。这里把字面 `[文献 n](zotero://…)` 就地
    * 替换为 <a href>，让笔记里的引用也能点击跳条目。失败不影响笔记本体。
    */
-  async _linkifyNote(note) {
-    try {
-      if (!note || typeof note.getNote !== "function" || typeof note.setNote !== "function") return;
-      const html = note.getNote();
-      if (!html || String(html).indexOf("[文献 ") < 0) return;
-      const patched = String(html).replace(
-        /\[(文献 \d+)\]\((zotero:\/\/[^)\s]+)\)/g,
-        '<a href="$2">$1</a>'
-      );
-      if (patched === html) return;
-      note.setNote(patched);
-      if (typeof note.saveTx === "function") await note.saveTx();
-    } catch (e) { /* 链接化失败不影响笔记本体 */ }
+  /** 纯字符串：把 [文献 n](zotero://…) 转成可点击 <a>（供 createFromMarkdown 的 transformHtml） */
+  _linkifyHtml(html) {
+    const src = String(html == null ? "" : html);
+    if (src.indexOf("[文献 ") < 0) return src;
+    return src.replace(/\[(文献 \d+)\]\((zotero:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>');
   },
 
   /**
@@ -473,8 +465,10 @@ var ReviewWorkbench = {
       const item = await this._firstItem(metas);
       if (!item) return { ok: false, reason: "no_item" };
       const name = this._str(title) || this.DEFAULT_TITLE;
-      const note = await Notes.createFromMarkdown(item, name, md);
-      await this._linkifyNote(note);
+      // 0.54.0（审查 P2-9）：引用链接在落盘前一次成型，单次 saveTx（原先二次写盘）
+      const note = await Notes.createFromMarkdown(item, name, md, {
+        transformHtml: (h) => this._linkifyHtml(h),
+      });
       return { ok: true, noteID: note && note.id != null ? note.id : null };
     } catch (e) {
       return { ok: false, reason: "save_failed", error: String((e && e.message) || e) };

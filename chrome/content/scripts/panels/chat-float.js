@@ -592,6 +592,35 @@ var ChatFloat = {
     return bubble;
   },
 
+  /**
+   * 0.54.0（审查 P1-4）：流式渲染节流——攒 100ms 只渲染一次。
+   * 每 token 全量 Markdown 解析 + innerHTML 重建 + 强制 reflow 是 O(n²)，
+   * 长回答（>1000 字）会明显掉帧；收敛后 onDone 再精确渲染一次。
+   */
+  _queueRender(entry, bubble, text) {
+    if (!entry || !bubble) { return; }
+    entry._pendingRender = { bubble: bubble, text: text };
+    if (entry._renderTimer) { return; }
+    entry._renderTimer = setTimeout(() => {
+      entry._renderTimer = null;
+      const p = entry._pendingRender;
+      entry._pendingRender = null;
+      if (!p || !p.bubble) { return; }
+      try { this._renderAssistant(entry, p.bubble, p.text); } catch (e) { /* 渲染失败不影响流 */ }
+      try { entry.refs.msgs.scrollTop = entry.refs.msgs.scrollHeight; } catch (e) { /* ignore */ }
+    }, 100);
+  },
+
+  /** 清掉待渲染定时器（onDone / 中断时用，避免旧文本覆盖最终结果） */
+  _flushRender(entry) {
+    if (!entry) { return; }
+    if (entry._renderTimer) {
+      try { clearTimeout(entry._renderTimer); } catch (e) { /* ignore */ }
+      entry._renderTimer = null;
+    }
+    entry._pendingRender = null;
+  },
+
   /** 给已渲染的引用片段挂点击（innerHTML 重建后需重新挂） */
   _bindCiteClicks(entry, bubble) {
     let spans = [];
@@ -1907,11 +1936,11 @@ var ChatFloat = {
           if (statusBubble) { statusBubble.remove(); statusBubble = null; }
           streamBubble = self._appendBubble(entry, "assistant", "");
         }
-        self._renderAssistant(entry, streamBubble, acc);
-        entry.refs.msgs.scrollTop = entry.refs.msgs.scrollHeight;
+        self._queueRender(entry, streamBubble, acc);
       },
       onDone(text) {
         if (statusBubble) { statusBubble.remove(); statusBubble = null; }
+        self._flushRender(entry);
         if (streamBubble) {
           self._renderAssistant(entry, streamBubble, text);
         } else {

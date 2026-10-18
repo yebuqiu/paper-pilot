@@ -353,6 +353,82 @@ var Scheduler = {
     return out;
   },
 
+  /**
+   * 0.54.0（审查 P1-5）：只取最近 N 小时新增条目——走 Zotero.Search 的 dateAdded 条件，
+   * 避免晨报每天把全库条目对象一次性物化（大库数十万对象 → 数百 MB 峰值 + 数秒卡顿）。
+   * Search 不可用（老版本/桩环境）时回退全量 + 内存过滤。
+   */
+  async _recentItems(hours, refDate) {
+    const span = Math.max(1, Number(hours) || 24);
+    const ref = (refDate instanceof Date && !isNaN(refDate.getTime())) ? refDate : new Date();
+    const since = new Date(ref.getTime() - span * 3600 * 1000);
+    let ids = null;
+    try {
+      const s = new Zotero.Search();
+      s.libraryID = this._libID();
+      s.addCondition("dateAdded", "isAfter", Zotero.Date.dateToSQL(since, true));
+      ids = await s.search();
+    } catch (e) { ids = null; }
+    if (!Array.isArray(ids)) {
+      const all = await this._regularItems();
+      const cutoff = since.getTime();
+      return all.filter((it) => {
+        const t = this._dateAdded(it);
+        return t && t.getTime() >= cutoff;
+      });
+    }
+    const out = [];
+    for (const id of ids) {
+      let it = null;
+      try {
+        it = (typeof Zotero.Items.getAsync === "function")
+          ? await Zotero.Items.getAsync(id) : Zotero.Items.get(id);
+      } catch (e) { continue; }
+      if (!it || it.deleted) continue;
+      try { if (typeof it.isRegularItem === "function" && !it.isRegularItem()) continue; }
+      catch (e) { continue; }
+      out.push(it);
+    }
+    return out;
+  },
+
+  /**
+   * 0.54.0（审查 P1-5）：分批迭代全库常规条目（每批 300，批间让出事件循环）。
+   * 体检/周报不再一次性持有全部条目对象，内存峰值与库大小解耦。
+   */
+  async *_iterItems(batch) {
+    const size = Math.max(50, Number(batch) || 300);
+    let ids = null;
+    try {
+      const s = new Zotero.Search();
+      s.libraryID = this._libID();
+      s.addCondition("itemType", "isNot", "attachment");
+      s.addCondition("itemType", "isNot", "note");
+      ids = await s.search();
+    } catch (e) { ids = null; }
+    if (!Array.isArray(ids)) {
+      const all = await this._regularItems();
+      for (const it of all) yield it;
+      return;
+    }
+    for (let i = 0; i < ids.length; i += size) {
+      const chunk = ids.slice(i, i + size);
+      let loaded = [];
+      try {
+        loaded = await Promise.all(chunk.map((id) => (
+          typeof Zotero.Items.getAsync === "function"
+            ? Zotero.Items.getAsync(id) : Zotero.Items.get(id))));
+      } catch (e) { loaded = []; }
+      for (const it of loaded) {
+        if (!it || it.deleted) continue;
+        try { if (typeof it.isRegularItem === "function" && !it.isRegularItem()) continue; }
+        catch (e) { continue; }
+        yield it;
+      }
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  },
+
   /** dateAdded → Date。库内是 UTC SQL 时间（"YYYY-MM-DD HH:MM:SS"），不能按本地时间解析 */
   _dateAdded(item) {
     let v = null;
@@ -455,7 +531,8 @@ var Scheduler = {
   async _jobDigest(now) {
     const at = this._dateOf(now);
     const title = "研究晨报 " + this._dayKey(at);
-    const items = await this._regularItems();
+    // 0.54.0（审查 P1-5）：只取最近 24h（Search 服务端过滤），不再全库物化
+    const items = await this._recentItems(24, at);
     const cutoff = at.getTime() - 24 * 3600 * 1000;
     const recent = [];
     for (const it of items) {
@@ -549,17 +626,19 @@ var Scheduler = {
       } catch (e) { /* 进度模块异常不影响周报 */ }
     }
 
-    const items = await this._regularItems();
+    // 0.54.0（审查 P1-5）：分批迭代计数，不再一次性持有全库对象
     const month = this._dayKey(at).slice(0, 7);
     let addedThisMonth = 0;
-    for (const it of items) {
+    let totalItems = 0;
+    for await (const it of this._iterItems()) {
+      totalItems++;
       let d = "";
       try { d = String(it.dateAdded || ""); } catch (e) { d = ""; }
       if (d.slice(0, 7) === month) addedThisMonth++;
     }
     lines.push("");
     lines.push("## 库概况");
-    lines.push("- 条目总数：" + items.length);
+    lines.push("- 条目总数：" + totalItems);
     lines.push("- 本月新增：" + addedThisMonth);
     lines.push("");
     lines.push("> 由 PaperPilot 定时任务生成于 " + this._stamp(at) + "。");
@@ -571,7 +650,8 @@ var Scheduler = {
   async _jobHealth(now) {
     const at = this._dateOf(now);
     const title = "库体检报告 " + this._dayKey(at);
-    const items = await this._regularItems();
+    // 0.54.0（审查 P1-5）：分批读取（内存与库大小解耦；每批 300 后让出事件循环）
+    const items = this._iterItems();
 
     const noAtt = [];
     const noDoi = [];
@@ -580,7 +660,9 @@ var Scheduler = {
     let lintMod = null;
     try { lintMod = (typeof MetaLint !== "undefined") ? MetaLint : null; } catch (e) { lintMod = null; }
 
-    for (const it of items) {
+    let totalItems = 0;
+    for await (const it of items) {
+      totalItems++;
       const t = this._title(it);
       let atts = 0;
       try { atts = typeof it.getAttachments === "function" ? (it.getAttachments() || []).length : 0; }
@@ -629,7 +711,7 @@ var Scheduler = {
 
     const lines = [];
     lines.push("## 概览");
-    lines.push("- 常规条目：" + items.length);
+    lines.push("- 常规条目：" + totalItems);
     lines.push("- 无附件：" + noAtt.length);
     lines.push("- 缺 DOI：" + noDoi.length);
     lines.push("- 疑似重复标题：" + dupGroups.length + " 组");
