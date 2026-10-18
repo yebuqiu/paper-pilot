@@ -969,6 +969,21 @@
       setStatus(ok ? "✓ JSON 已复制到剪贴板" : "复制失败：剪贴板不可用", ok ? "ok" : "err");
     }));
     $("pp-ss-mk-save").addEventListener("click", guard(() => saveJsonToFile()));
+    // 0.48.3 投稿入口：复制 JSON + 打开 GitHub 社区贡献指南（PR/Issue 两种方式）
+    $("pp-ss-mk-submit").addEventListener("click", guard(() => {
+      const guideUrl = "https://github.com/yebuqiu/paper-pilot/blob/main/community-packs/README.md";
+      let copied = false;
+      if (lastManifest) {
+        copied = copyText(JSON.stringify(lastManifest, null, 2));
+      }
+      setStatus(copied
+        ? "✓ JSON 已复制——正在打开投稿指南，按其步骤粘贴即可（支持 PR 与 Issue 两种方式）"
+        : "正在打开投稿指南（复制 JSON 失败可回到上方「复制 JSON」按钮）", copied ? "ok" : "");
+      try {
+        if (Z && typeof Z.launchURL === "function") Z.launchURL(guideUrl);
+        else if (typeof window !== "undefined" && window.open) window.open(guideUrl);
+      } catch (e) { log(e); }
+    }));
 
     // Esc：详情/制作器 → 返回列表；列表视图无操作。
     // 焦点在输入控件（评分评语 / 制作器表单）时忽略 Esc——防误触丢输入内容。

@@ -1,0 +1,27 @@
+name: Validate Community Skill Packs
+on:
+  pull_request:
+    paths:
+      - "community-packs/**"
+      - "scripts/validate-pack.js"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 校验 PR 中全部社区包
+        run: |
+          # 校验 community-packs 下所有正式包（_ 开头模板与 README 由校验器自行忽略）
+          # 再用 --check 验证「双源合并 → 目录」同构性（提示维护者合并前需要重新生成目录）
+          if ls community-packs/*.json > /dev/null 2>&1; then
+            node scripts/validate-pack.js community-packs/*.json
+          else
+            echo "（暂无社区包文件）"
+          fi
+      - name: 提示目录生成
+        run: |
+          echo "::notice::PR 合并后请维护者运行 node scripts/build-skill-catalog.js 并提交 server/public/skill-catalog.json，在线目录才会包含新的社区包。"

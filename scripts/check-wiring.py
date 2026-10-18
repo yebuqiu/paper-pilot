@@ -2410,6 +2410,23 @@ ok("server/public/skill-catalog.json" in prefsdef,
    "42.11 默认目录 URL 路径与仓库文件路径一致")
 ok("build-skill-catalog.js" in _preflight_src,
    "42.12 preflight 注册目录同构门禁（--check 步骤）")
+# 42.13-42.16：0.48.3 社区贡献工作流基建
+ok(os.path.exists(os.path.join(ROOT, "community-packs", "README.md")),
+   "42.13 社区贡献指南 community-packs/README.md 在库")
+ok(os.path.exists(os.path.join(ROOT, "community-packs", "_TEMPLATE.json")),
+   "42.14 技能包模板 _TEMPLATE.json 在库（_ 前缀 = 生成器忽略）")
+ok(os.path.exists(os.path.join(ROOT, "scripts", "validate-pack.js")),
+   "42.15 独立校验器 validate-pack.js 在库（贡献者自检 + CI 共用）")
+ok(os.path.exists(os.path.join(ROOT, ".github", "workflows", "validate-pack.yml")),
+   "42.16 CI 工作流 validate-pack.yml 在库（PR 自动校验社区包）")
+ok(os.path.exists(os.path.join(ROOT, ".github", "ISSUE_TEMPLATE", "skill-pack.md")),
+   "42.17 Issue 投稿模板在库（不会 Git 的贡献者通道）")
+_bsc = io.open(os.path.join(ROOT, "scripts", "build-skill-catalog.js"), encoding="utf-8").read()
+ok("community-packs" in _bsc and "loadCommunityPacks" in _bsc,
+   "42.18 ★ 生成器双源合并（_BUILTIN + community-packs，合并 PR 后跑生成器即发布）")
+_ss_js = io.open(os.path.join(ROOT, "chrome/content/skill-store.js"), encoding="utf-8").read()
+ok("pp-ss-mk-submit" in _ss_js and "community-packs/README.md" in _ss_js,
+   "42.19 商店制作器带「投稿到技能商店」入口（复制 JSON + 打开贡献指南）")
 
 # ★ 分区标题遮挡修复（负下边距 → 卡片背景盖住「账号」「AI 与翻译」标签底部）
 _cat_rule = re.search(r"\.pp-root \.pp-cat-label\s*\{([^}]*)\}", prefs_css, re.S)

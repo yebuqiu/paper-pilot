@@ -1,0 +1,42 @@
+{
+  "_comment": "技能包模板（0.48.3）：复制本文件为 <你的id>.json 并填写。此文件以 _ 开头，不会被目录生成器收录。四内容槽全部可选，但至少保留一个。校验：node scripts/validate-pack.js community-packs/<你的id>.json",
+  "id": "my-awesome-pack",
+  "name": "我的技能包",
+  "version": "1.0.0",
+  "author": "你的名字或 GitHub ID",
+  "desc": "一句话简介，60 字以内（商店卡片与搜索都显示它）",
+  "longDesc": "详情页的完整说明：这个技能包解决什么问题、怎么用、适合谁。可省略。",
+  "category": "综合",
+  "tags": ["关键词1", "关键词2"],
+  "changelog": "1.0.0: 首发",
+  "rating": null,
+  "ratingsCount": null,
+  "downloads": null,
+  "contents": {
+    "prompts": [
+      {
+        "id": "my-prompt",
+        "label": "浮窗标签名",
+        "prompt": "提示词全文。建议遵循结构化输出+证据纪律风格：要求 AI 落到具体位置/数字/章节，区分「文献明确写了」与「AI 的推断」，不写空泛套话。可以用 {input} 占位符接收用户输入（需配 trigger）。",
+        "color": "",
+        "trigger": "^关键词"
+      }
+    ],
+    "glossary": [
+      "原文 = 译文 | 领域"
+    ],
+    "noteTemplates": [
+      {
+        "name": "笔记模板名",
+        "body": "## {{title}}\n\n**作者**：{{creators}}　**期刊**：{{pub}}（{{year}}）\n\n可用占位符：{{title}} {{creators}} {{year}} {{pub}} {{doi}} {{abstract}} {{annotations}} {{aiSummary}}\n"
+      }
+    ],
+    "agentPreset": {
+      "chatAgentMode": true,
+      "aiAgentTools": "search_library,get_item_details,read_item_fulltext,list_collections,add_note,add_tags",
+      "aiAgentMaxSteps": 8,
+      "aiAgentConfirmWrite": true,
+      "systemPrompt": "（可选）追加到 System Prompt 的指令片段，如领域纪律要求"
+    }
+  }
+}

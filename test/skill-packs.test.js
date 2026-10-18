@@ -218,11 +218,23 @@ async function main() {
   if (fs.existsSync(catPath)) {
     const online = JSON.parse(fs.readFileSync(catPath, 'utf8'));
     ok(online && Array.isArray(online.packs), 'online catalog: {version, updatedAt, packs} 结构');
-    eq(online.packs.length, 45, 'online catalog: 45 包');
+    ok(online.packs.length >= cat.length,
+      'online catalog: 包数 >= 内置数（官方 45 + 社区 N）→ 实际 ' + online.packs.length);
     ok(online.packs.every(function (p) { return SP.validate(p).ok; }),
-      'online catalog: 每包过 validate');
-    eq(JSON.stringify(online.packs), JSON.stringify(cat),
-      'online catalog: packs 与 _BUILTIN 逐字节同构（漂移 = 忘跑 build-skill-catalog.js）');
+      'online catalog: 每包过 validate（含社区包）');
+    // 0.48.3 双源语义：官方包按原序排在目录前缀，社区包跟在后面（build-skill-catalog 排序契约）
+    eq(JSON.stringify(online.packs.slice(0, cat.length)), JSON.stringify(cat),
+      'online catalog: 官方包前缀与 _BUILTIN 逐字节同构（漂移 = 忘跑 build-skill-catalog.js）');
+    const fsC = require('fs'), pathC = require('path');
+    const cpDir = pathC.join(ROOT, 'community-packs');
+    let cpN = 0;
+    try {
+      cpN = fsC.readdirSync(cpDir).filter(function (f) {
+        return f.endsWith('.json') && !f.startsWith('_');
+      }).length;
+    } catch (e) { cpN = 0; }
+    eq(online.packs.length, cat.length + cpN,
+      'online catalog: 总数 = 官方 ' + cat.length + ' + 社区 ' + cpN);
     ok(online.updatedAt && Number(online.updatedAt) > 0, 'online catalog: updatedAt 存在');
   }
 
