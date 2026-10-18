@@ -2492,6 +2492,54 @@ ok(os.path.exists(os.path.join(ROOT, "test", "chat-sessions.test.js"))
    and os.path.exists(os.path.join(ROOT, "test", "mcp.test.js")),
    "43.25 三套新测试在库（会话/定时/MCP）")
 
+# ---------- 44. 0.51.0（引用可点击 / Agent 记忆 / 相关文献） ----------
+ok('pref("extensions.zotero.paperpilot.citeLinksEnabled", true)' in prefsdef,
+   "44.1 citeLinksEnabled 默认开（回答引用可点击）")
+ok("_citeRefsOf" in _cf_src and "_focusItem" in _cf_src and "_decorateCites" in _cf_src,
+   "44.2 ★ chat-float 引用识别/装饰/定位三件套（纯函数 + 渲染路径）")
+ok("pp-cf-cite" in _cf_src, "44.3 引用 chip 样式已挂")
+_am_js = os.path.join(ROOT, "chrome/content/scripts/features/agent-memory.js")
+ok(os.path.exists(_am_js), "44.4 AgentMemory 模块在库（长期记忆）")
+_am_src = io.open(_am_js, encoding="utf-8").read() if os.path.exists(_am_js) else ""
+ok("asPromptBlock" in _am_src and "add(" in _am_src and "search(" in _am_src,
+   "44.5 AgentMemory API（add/list/search/remove/clear/asPromptBlock）")
+ok('pref("extensions.zotero.paperpilot.agentMemory"' in prefsdef, "44.6 agentMemory pref 默认值")
+ok('"features/agent-memory.js"' in mainjs and "this.agentMemory = AgentMemory" in mainjs,
+   "44.7 main.js 装配并暴露 agentMemory")
+ok("prefs-memory.js" in mainjs and os.path.exists(os.path.join(ROOT, "chrome/content/prefs-memory.js")),
+   "44.8 设置面板记忆脚本在库并注册")
+ok('id="pp-mem-list"' in prefs_xhtml and 'id="pp-mem-clear"' in prefs_xhtml,
+   "44.9 prefs.xhtml 记忆列表与清空按钮容器")
+ok("memory_read" in _at_js and "memory_write" in _at_js, "44.10 ★ 工具注册 memory_read/memory_write")
+ok('memory_read,memory_write' in prefsdef, "44.11 aiAgentTools 默认 CSV 含两个记忆工具（13 工具）")
+ok("memory_read" in _pa_js and "memory_write" in _pa_js, "44.12 prefs-agent.js 工具清单 13 项")
+ok("长期记忆" in _chatjs and "asPromptBlock" in _chatjs, "44.13 ★ 单篇路径记忆注入 _systemWith")
+ok("asPromptBlock" in _cf_src and "长期记忆" in _cf_src, "44.14 多 chip 路径记忆注入")
+_rp_js = os.path.join(ROOT, "chrome/content/scripts/features/related-papers.js")
+ok(os.path.exists(_rp_js), "44.15 RelatedPapers 模块在库")
+_rp_src = io.open(_rp_js, encoding="utf-8").read() if os.path.exists(_rp_js) else ""
+ok("register(" in _rp_src and "fetchFor" in _rp_src and "importPaper" in _rp_src,
+   "44.16 RelatedPapers API（register/fetchFor/importPaper）")
+_s2x = os.path.join(ROOT, "chrome/content/scripts/features/s2-client.js")
+ok(os.path.exists(_s2x) and "recommendations" in io.open(_s2x, encoding="utf-8").read(),
+   "44.17 S2Client 扩展 recommendations（幂等挂载）")
+ok('pref("extensions.zotero.paperpilot.relatedPapersEnabled", true)' in prefsdef,
+   "44.18 relatedPapersEnabled 默认开")
+ok('"features/s2-client.js"' in mainjs and '"features/related-papers.js"' in mainjs
+   and mainjs.find('"ai/semantic-scholar.js"') < mainjs.find('"features/s2-client.js"'),
+   "44.19 main.js 装配顺序（semantic-scholar → s2-client 扩展 → related-papers）")
+ok("RelatedPapers.register(id)" in mainjs and "RelatedPapers.unregister()" in mainjs,
+   "44.20 ★ 相关文献面板注册/注销接线")
+_ftl_zh = io.open(os.path.join(ROOT, "locale/zh-CN/paperpilot.ftl"), encoding="utf-8").read()
+_ftl_en = io.open(os.path.join(ROOT, "locale/en-US/paperpilot.ftl"), encoding="utf-8").read()
+ok("paperpilot-related-section-header" in _ftl_zh and "paperpilot-related-section-header" in _ftl_en,
+   "44.21 ftl 双语文案（相关文献 section header 必需）")
+ok("test/chat-sessions.test.js" in _preflight_src and "test/scheduler.test.js" in _preflight_src
+   and "test/mcp.test.js" in _preflight_src and "test/agent-memory.test.js" in _preflight_src
+   and "test/related-papers.test.js" in _preflight_src,
+   "44.22 ★ preflight 注册五个新测试套件（补 0.50.0 漏注册）")
+ok('id="pp-mem-result"' in prefs_xhtml, "44.23 记忆操作结果提示位")
+
 # ★ 分区标题遮挡修复（负下边距 → 卡片背景盖住「账号」「AI 与翻译」标签底部）
 _cat_rule = re.search(r"\.pp-root \.pp-cat-label\s*\{([^}]*)\}", prefs_css, re.S)
 ok(_cat_rule is not None, "40.23 prefs.css 有 .pp-cat-label 规则")
@@ -2653,6 +2701,40 @@ for _tf in ["membership.test.js", "balance.test.js", "membership-panel.test.js",
 ok("13.16b ★ 默认精确金额" in _tests_all and "B23b ★ 默认无尾数" in _tests_all
    and "F19 ★ 尾数关闭（默认）" in _tests_all,
    "45.8 ★ 测试锁定默认精确金额（含服务端两条链路与插件文案）")
+
+# ==================== 46. 控制台卡死治理（2026-10-18） ====================
+# 三条硬约束：①UI 线程不做重查询 ②健康探测必须「端口前置 + 负缓存 + 退避」
+# ③关闭窗口必须真的能关。背景见 docs/启动控制台-卡死根因分析与治理-2026-10-18.md
+def _fn_body(src, name):
+    m = re.search(r"(?m)^function\s+" + re.escape(name) + r"\b[\s\S]*?\r?\n\}", src)
+    return m.group(0) if m else ""
+
+
+_health_body = _fn_body(ps, "Get-HealthCached")
+ok(re.search(r"Get-NetTCPConnection\s+-LocalPort", ps) is None,
+   "46.1 ★ launcher 不再用 Get-NetTCPConnection（实测 1202ms，UI 线程上就是硬卡顿）")
+ok("healthFailAt" in _health_body and "Test-PortOpen" in _health_body,
+   "46.2 ★ Get-HealthCached 有端口前置 + 负缓存（旧版失败不写 healthAt → 每拍重发 3 次探测）")
+ok("healthHardFail" in _health_body and "$cool = 15" in _health_body,
+   "46.3 连续超时后退避到 15 秒（后端半死时不耗满 UI 线程）")
+_restart_body = _fn_body(ps, "Do-RestartServer")
+ok("Test-PortOpen" in _restart_body and "Wait-Ui" in _restart_body
+   and "Get-PortOwnerPid" not in _restart_body,
+   "46.4 ★ 重启改用 150ms 端口探测 + Wait-Ui（不再 20x(1.2s+500ms) ≈ 40s 冻结）")
+_fc = re.search(r"\$form\.add_FormClosing\(\{[\s\S]*?\r?\n\}\)", ps)
+ok(_fc is not None and "Hide-ToTray" not in _fc.group(0),
+   "46.5 ★ 关闭窗口 = 退出（旧行为静默最小化到托盘，用户眼里的「关不掉」）")
+_bat = io.open(os.path.join(ROOT, "启动PaperPilot后台.bat"), encoding="gbk", errors="replace").read()
+ok("console-alive.ps1" in _bat and os.path.isfile(os.path.join(ROOT, "scripts", "console-alive.ps1")),
+   "46.6 bat 用窗口应答探测控制台（进程活着 ≠ 能用）")
+_vbs = io.open(os.path.join(ROOT, "scripts", "start-server-hidden.vbs"), encoding="utf-8", errors="replace").read()
+ok('logFile = logDir & "\server-stdout.log"' in _vbs
+   and 'logFile = logDir & "\server-console.log"' not in _vbs,
+   "46.7 VBS 启动器 stdout 落 server-stdout.log（双轨纪律）")
+ok("pid: process.pid" in srv and "lagMs: _loop.lagMs" in srv,
+   "46.8 服务端 /api/health 自报 pid + lagMs（控制台据此免查 WMI）")
+ok("uncaughtException" in srv and "unhandledRejection" in srv and "server-crash.log" in srv,
+   "46.9 服务端崩溃兜底写 server-crash.log（无声消失可追溯）")
 
 print("=" * 60)
 for p in passes:

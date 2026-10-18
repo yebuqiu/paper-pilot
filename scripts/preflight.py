@@ -98,6 +98,11 @@ def step_syntax():
 
 NODE_SUITES = [
     ("会话持久化", "test/account-persistence.test.js"),
+    ("浮窗会话存档", "test/chat-sessions.test.js"),
+    ("定时任务", "test/scheduler.test.js"),
+    ("MCP 工具桥", "test/mcp.test.js"),
+    ("长期记忆", "test/agent-memory.test.js"),
+    ("相关文献", "test/related-papers.test.js"),
     ("会员域集成", "test/membership.test.js"),
     ("价格表", "test/price.test.js"),
     ("用量趋势", "test/usage.test.js"),

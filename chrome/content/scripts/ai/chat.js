@@ -183,8 +183,16 @@ var AIChat = {
     try {
       profile = String(Prefs.get("researcherProfile", "") || "").trim();
     } catch (e) { profile = ""; }
+    // 0.51.0 Agent 长期记忆：非空时注入（与画像分工：画像是静态设定，记忆是对话积累的事实）
+    let memBlock = "";
+    try {
+      memBlock = (typeof AgentMemory !== "undefined" && AgentMemory
+        && typeof AgentMemory.asPromptBlock === "function")
+        ? String(AgentMemory.asPromptBlock(20) || "").trim() : "";
+    } catch (e) { memBlock = ""; }
     return (Prefs.get("aiSystemPrompt", "") || "") +
       (profile ? "\n\n【研究者画像（长期偏好，回答时应遵守）】\n" + profile : "") +
+      (memBlock ? "\n\n【长期记忆（此前对话中确认的事实与偏好）】\n" + memBlock : "") +
       `\n\n当前用户正在阅读以下论文。回答要求：只基于该论文内容；论文未提及的信息明确说明；` +
       `引用论文观点注明位置（章节/图表/摘要）；你的推断与论文原文分开表述。\n` +
       `标题：${meta.title}\n作者：${meta.creators}\n发表：${meta.pub} ${meta.year}\n\n` +

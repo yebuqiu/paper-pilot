@@ -82,6 +82,11 @@ Zotero.PaperPilot = {
       "ai/auto-tag.js",
       "ai/matrix.js",
       "ai/semantic-scholar.js",
+      // 0.51.0 相关文献（S2 recommendations）：扩展 S2Client，必须在 semantic-scholar.js 之后
+      "features/s2-client.js",
+      "features/related-papers.js",
+      // 0.51.0 Agent 长期记忆（agent-tools 的 memory_* 工具运行时消费）
+      "features/agent-memory.js",
       "features/annotations.js",
       "features/collection-stats.js",
       "features/reader-popup.js",
@@ -252,6 +257,8 @@ Zotero.PaperPilot = {
     // 0.49.0 浮窗会话持久化 + 定时任务（设置面板 prefs-schedule.js 经此访问 Scheduler）
     this.chatSessions = ChatSessions;
     this.scheduler = Scheduler;
+    // 0.51.0 Agent 长期记忆（设置面板 prefs-memory.js / system prompt 注入 / agent-tools 工具）
+    this.agentMemory = AgentMemory;
     // 0.48.0 Agent 工具层 + 命令标签（设置面板 prefs-agent.js 经此访问；
     // 测试与排障同入口）
     this.agentTools = AgentTools;
@@ -433,6 +440,8 @@ Zotero.PaperPilot = {
           rootURI + "chrome/content/prefs-skill.js",
           // 0.49.0 定时任务卡片（研究晨报 / 阅读周报 / 库体检）
           rootURI + "chrome/content/prefs-schedule.js",
+          // 0.51.0 AI 记忆列表（浏览/删除/清空）
+          rootURI + "chrome/content/prefs-memory.js",
         ],
         stylesheets: [
           rootURI + "chrome/content/prefs.css",
@@ -503,6 +512,16 @@ Zotero.PaperPilot = {
       await this._diag("refs pane registered");
     } catch (e) {
       await this._diag("refs pane FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
+    // 0.51.0 条目详情「相关文献」面板（S2 推荐；开关 relatedPapersEnabled，失败静默降级）
+    try {
+      if (Prefs.get("relatedPapersEnabled", true) && typeof RelatedPapers !== "undefined" && RelatedPapers) {
+        const _rp = RelatedPapers.register(id);
+        await this._diag("related papers pane " + (_rp ? "registered" : "unavailable (fallback)"));
+      }
+    } catch (e) {
+      await this._diag("related papers FAILED: " + (e && (e.stack || e.message) || e));
     }
 
     // 0.42.0 三个新列：标题译文 / 阅读进度 / 星标评级（各自带 pref 开关，结构与 citation 列一致）
@@ -1028,6 +1047,7 @@ Zotero.PaperPilot = {
     try { GlancePane.unregister(); } catch (e) { Zotero.logError(e); }
     try { TranslatePane.unregister(); } catch (e) { Zotero.logError(e); }
     try { RefPane.unregister(); } catch (e) { Zotero.logError(e); }
+    try { RelatedPapers.unregister(); } catch (e) { Zotero.logError(e); }
     try { RankColumn.unregister(); } catch (e) { Zotero.logError(e); }
     try { CitationColumn.unregister(); } catch (e) { Zotero.logError(e); }
     try { TitleTranslationColumn.unregister(); } catch (e) { Zotero.logError(e); }

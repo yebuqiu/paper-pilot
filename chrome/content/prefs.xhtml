@@ -649,6 +649,31 @@
         </html:div>
       </html:div>
 
+      <!-- 3.3d AI 记忆（0.51.0：Agent 长期记忆，可浏览/删除） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">AI 记忆</html:div>
+        <html:div class="pp-sub-desc">Agent 可在对话中自行记住研究方向、结论与偏好（memory_write），之后每次对话都会带上（与「研究者画像」互补：画像是静态设定，记忆是对话中积累的事实）；可随时删除单条或清空</html:div>
+        <html:div id="pp-mem-list" class="pp-datasets" style="margin-top:6px;"></html:div>
+        <html:div class="pp-row" style="margin-top:6px;">
+          <html:button id="pp-mem-clear" class="pp-btn pp-btn-sm">清空全部</html:button>
+          <html:span id="pp-mem-result" class="pp-msg"></html:span>
+        </html:div>
+      </html:div>
+
+      <!-- 3.3e 回答引用与相关文献开关（0.51.0） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:16px;">
+          <html:label class="pp-check">
+            <html:input type="checkbox" preference="extensions.zotero.paperpilot.citeLinksEnabled"/>
+            <html:span>AI 回答内「文献 n」可点击定位</html:span>
+          </html:label>
+          <html:label class="pp-check">
+            <html:input type="checkbox" preference="extensions.zotero.paperpilot.relatedPapersEnabled"/>
+            <html:span>条目详情面板显示「相关文献」（S2 推荐）</html:span>
+          </html:label>
+        </html:div>
+      </html:div>
+
       <!-- 3.4 快捷指令（命令标签管理） -->
       <html:div class="pp-sub" style="margin-top:12px;">
         <html:div class="pp-sub-title">快捷指令（命令标签）</html:div>

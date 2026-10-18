@@ -188,12 +188,21 @@ const itemB = { id: 202, isRegularItem: () => true, getDisplayTitle: () => '论�
   getField: () => '', getCreators: () => [] };
 
 let readers = [];
+// 0.51.0 引用跳转：selectItem 调用计数 + 可控抛错（验证静默失败）
+const selectCalls = [];
+let selectThrows = false;
 const Zotero = {
   locale: 'zh-CN',
   Prefs: { get: (k) => (PrefStore.has(k) ? PrefStore.get(k) : undefined), set: (k, v) => PrefStore.set(k, v) },
   getMainWindow: () => win,
   getMainWindows: () => [win],
-  getActiveZoteroPane: () => ({ getSelectedItems: () => selectedItems }),
+  getActiveZoteroPane: () => ({
+    getSelectedItems: () => selectedItems,
+    selectItem(id) {
+      if (selectThrows) throw new Error('pane unavailable');
+      selectCalls.push(id);
+    },
+  }),
   Items: { get: (id) => (id === 101 ? itemA : id === 202 ? itemB : null) },
   Reader: { _readers: readers },
   Utilities: { Internal: { copyText() {} } },
@@ -241,6 +250,11 @@ const AIClient = {
 
 const AIChat = {
   async getFullText() { return fullText; },
+  // 多 chip 消息构造（_buildChipsMessages）依赖的两只工具
+  paperMeta(it) {
+    return { title: it.getDisplayTitle(), creators: '作者', pub: '期刊', year: '2024' };
+  },
+  windowHistory(h, n) { return h.slice(-(n || 6)); },
   async buildMessages(item, q, history, ft) {
     const e = new Error('NO_PDF');
     if (!ft && !abstractFallback) throw e;
@@ -464,6 +478,53 @@ async function tick(n = 4) { for (let i = 0; i < n; i++) await new Promise((r) =
   eq(CF._clamp(50, 0, 10), 10, 'clamp: 上界');
   eq(CF._clamp(-5, 0, 10), 0, 'clamp: 下界');
 
+  /* ---------------- ③.5 引用识别 _citeRefsOf（纯函数） ---------------- */
+
+  const refsOf = (t) => CF._citeRefsOf(t);
+  eq(refsOf('文献 1').length, 1, 'citeRefs: 「文献 1」命中');
+  eq(refsOf('文献 1')[0].n, 1, 'citeRefs: n=1');
+  eq(refsOf('文献 1')[0].start, 0, 'citeRefs: start 指向「文」');
+  eq(refsOf('文献 1')[0].end, 4, 'citeRefs: end 不含后续字符');
+  eq(refsOf('文献2')[0].n, 2, 'citeRefs: 无空格命中');
+  eq(refsOf('（文献 3）')[0].n, 3, 'citeRefs: 全角括号内命中');
+  eq(refsOf('文献 4，')[0].n, 4, 'citeRefs: 后接中文逗号命中');
+  eq(refsOf('文献 5。')[0].n, 5, 'citeRefs: 句末句号命中');
+  eq(refsOf('文献 6 的方法')[0].n, 6, 'citeRefs: 后接空格命中');
+
+  eq(refsOf('文献综述').length, 0, 'citeRefs: 「文献综述」不命中');
+  eq(refsOf('参考文献 3').length, 0, 'citeRefs: 「参考文献 3」不命中');
+  eq(refsOf('文献 10').length, 0, 'citeRefs: 两位数「文献 10」不命中');
+  eq(refsOf('文献 0').length, 0, 'citeRefs: 「文献 0」不命中');
+  eq(refsOf('文献 2表明').length, 0, 'citeRefs: 后接汉字不命中');
+  eq(refsOf('文献 2a').length, 0, 'citeRefs: 后接字母不命中');
+  eq(refsOf('').length, 0, 'citeRefs: 空串安全');
+
+  const twoRefs = refsOf('文献 1 与文献 3');
+  eq(twoRefs.length, 2, 'citeRefs: 多个引用全量返回');
+  eq(twoRefs[1] && twoRefs[1].n, 3, 'citeRefs: 第二个引用 n=3');
+
+  /* ---------------- ③.6 渲染改写 _decorateCites（无 DOM 依赖） ---------------- */
+
+  eq(CF._decorateCites('<p>文献 1</p>', null), '<p>文献 1</p>', 'decorate: 无 chip 原样返回');
+  eq(CF._decorateCites('<p>文献 1</p>', []), '<p>文献 1</p>', 'decorate: 空 chip 原样返回');
+  has(CF._decorateCites('<p>文献 1</p>', [itemA]), 'data-item-id="101"', 'decorate: 命中 chip 生成 data-item-id');
+  eq(CF._decorateCites('<p>文献 2</p>', [itemA]), '<p>文献 2</p>', 'decorate: n 越界保持纯文本');
+  eq(CF._decorateCites('<pre><code>文献 1</code></pre>', [itemA]),
+    '<pre><code>文献 1</code></pre>', 'decorate: 代码块内不处理');
+  const itemQ = { id: 303, getDisplayTitle: () => 'A "quoted" <paper>' };
+  has(CF._decorateCites('<p>文献 1</p>', [itemQ]),
+    'title="A &quot;quoted&quot; &lt;paper&gt;"', 'decorate: title 属性转义');
+
+  /* ---------------- ③.7 引用开关 pref（默认开 / 可关 / 坏值安全） ---------------- */
+
+  eq(CF._citeLinksEnabled(), true, 'citeLinks: 未配置时默认开');
+  PrefStore.set(PREFIX + 'citeLinksEnabled', false);
+  eq(CF._citeLinksEnabled(), false, 'citeLinks: pref=false 关闭');
+  PrefStore.set(PREFIX + 'citeLinksEnabled', 'false');
+  eq(CF._citeLinksEnabled(), false, 'citeLinks: 字符串 false 也关闭');
+  PrefStore.delete(PREFIX + 'citeLinksEnabled');
+  eq(CF._citeLinksEnabled(), true, 'citeLinks: 删除后恢复默认开');
+
   /* ---------------- ④ _resolveItem：reader 优先、选中回退 ---------------- */
 
   // reader 引用必须原位 mutate（readers 数组已被 Zotero.Reader._readers 引用，
@@ -476,6 +537,8 @@ async function tick(n = 4) { for (let i = 0; i < n; i++) await new Promise((r) =
   Zotero.Items.get = (id) => (id === 999 ? { id: 999, isRegularItem: () => false, parentItemID: 101 } : (id === 101 ? itemA : itemB));
   eq(CF._resolveItem(), itemA, 'resolveItem: reader 附件上溯父条目');
   readers.length = 0;
+  // 还原 Items.get 桩（上一段为了附件上溯临时改写过）
+  Zotero.Items.get = (id) => (id === 101 ? itemA : id === 202 ? itemB : null);
 
   /* ---------------- ⑤ 悬浮窗 DOM：构建 / 发送 / 输入历史 / 注入 / 停靠 ---------------- */
 
@@ -596,6 +659,69 @@ async function tick(n = 4) { for (let i = 0; i < n; i++) await new Promise((r) =
   eq(cwEntry2.sendCalls[1], '我要写关于「{input}」的综述',
     '空输入框 → {input} 保持字面（trigger 路径仍可命中）');
   sandbox.CommandTags = savedCT;
+
+  /* ---------------- ⑤.7 AI 回答内引用可点击（0.51.0） ---------------- */
+
+  const styleEl = docRoot.byId(CF.STYLE_ID);
+  has(styleEl && styleEl.textContent, '.pp-cf-cite', '样式表含 .pp-cf-cite');
+  has(styleEl && styleEl.textContent, 'border-bottom:1px dotted', '引用样式为点线底边');
+
+  // 真实渲染路径 ①：_doSend → onDelta/onDone → _appendBubble/_renderAssistant
+  CF.session.history = [];
+  CF.session.item = itemA;
+  CF.session.contextItems = [101, 202];
+  aiReply = '文献 1 提出了方法，文献 2 做了验证；文献 3 不存在；文献综述见参考文献 4。';
+  refs.input.value = '引用渲染测试';
+  CF._doSend(entry);
+  await tick(6);
+  const citeBubbles = refs.msgs.children.filter((c) => c.className.indexOf('pp-cf-msg') >= 0);
+  const citeBubble = citeBubbles[citeBubbles.length - 1];
+  ok(!!citeBubble, '引用测试：assistant 气泡已生成');
+  has(citeBubble.innerHTML, 'class="pp-cf-cite" data-item-id="101"', '文献 1 → data-item-id=101');
+  has(citeBubble.innerHTML, 'data-item-id="202"', '文献 2 → data-item-id=202');
+  has(citeBubble.innerHTML, 'title="论文A"', '引用片段带条目标题 tooltip');
+  eq((String(citeBubble.innerHTML).match(/pp-cf-cite/g) || []).length, 2,
+    '越界 n /「文献综述」/「参考文献」不生成可点片段');
+
+  // 真实渲染路径 ②：_renderHistory 重放（历史重建同样生效）
+  CF.session.history = [
+    { role: 'user', content: 'q' },
+    { role: 'assistant', content: '历史里也提到文献 2。' },
+  ];
+  CF._renderHistory(entry);
+  const replayed = refs.msgs.children.filter((c) => c.className.indexOf('pp-cf-msg') >= 0);
+  const replayedA = replayed[replayed.length - 1];
+  has(replayedA.innerHTML, 'data-item-id="202"', '_renderHistory 重放同样生成可点引用');
+
+  // 开关关闭 → 纯文本（不破坏 Markdown 渲染）
+  PrefStore.set(PREFIX + 'citeLinksEnabled', false);
+  CF._renderHistory(entry);
+  const offBubbles = refs.msgs.children.filter((c) => c.className.indexOf('pp-cf-msg') >= 0);
+  const offBubble = offBubbles[offBubbles.length - 1];
+  eq((String(offBubble.innerHTML).match(/pp-cf-cite/g) || []).length, 0,
+    'pref 关闭 → 引用退化为纯文本');
+  has(offBubble.innerHTML, '<p>', 'pref 关闭仍走 MdLite 富文本');
+  PrefStore.delete(PREFIX + 'citeLinksEnabled');
+
+  // 跳转：只选中条目，selectItem 一次
+  selectCalls.length = 0;
+  eq(CF._focusItem(entry, 101), true, '_focusItem: 条目存在 → true');
+  eq(selectCalls.length, 1, '_focusItem: selectItem 调用一次');
+  eq(selectCalls[0], 101, '_focusItem: selectItem 收到条目 ID');
+
+  // 跳转：条目已删除 → 系统气泡 + 不触摸选择
+  const beforeCount = refs.msgs.children.length;
+  eq(CF._focusItem(entry, 4242), false, '_focusItem: 条目不存在 → false');
+  eq(selectCalls.length, 1, '_focusItem: 条目不存在不调用 selectItem');
+  eq(refs.msgs.children.length, beforeCount + 1, '_focusItem: 条目不存在追加系统提示');
+  const goneBubble = refs.msgs.children[refs.msgs.children.length - 1];
+  has(goneBubble.textContent, '引用条目已不存在', '提示文案为「引用条目已不存在」');
+
+  // 跳转：面板异常 → 静默失败（不抛、不误报）
+  selectThrows = true;
+  eq(CF._focusItem(entry, 101), false, '_focusItem: 面板异常 → 静默 false');
+  selectThrows = false;
+  eq(selectCalls.length, 1, '_focusItem: 异常时不计数成功');
 
   /* ---------------- ⑥ saveHistoryAsNote ---------------- */
 

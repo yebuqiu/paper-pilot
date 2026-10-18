@@ -31,7 +31,13 @@ pref("extensions.zotero.paperpilot.chatAgentMode", false);
 pref("extensions.zotero.paperpilot.aiAgentMaxSteps", 5);
 pref("extensions.zotero.paperpilot.aiAgentConfirmWrite", true);
 // 0.49.0：工具集扩至 11 个（读：arXiv/被引/笔记检索/文献导出；写：移动文集）
-pref("extensions.zotero.paperpilot.aiAgentTools", "search_library,get_item_details,read_item_fulltext,list_collections,search_arxiv,get_citation_count,search_notes,export_bibliography,add_note,add_tags,move_to_collection");
+pref("extensions.zotero.paperpilot.aiAgentTools", "search_library,get_item_details,read_item_fulltext,list_collections,search_arxiv,get_citation_count,search_notes,export_bibliography,add_note,add_tags,move_to_collection,memory_read,memory_write");
+// 0.51.0 AI 回答内「文献 n」引用可点击
+pref("extensions.zotero.paperpilot.citeLinksEnabled", true);
+// 0.51.0 Agent 长期记忆（JSON 数组，LRU 200）
+pref("extensions.zotero.paperpilot.agentMemory", "");
+// 0.51.0 条目详情面板「相关文献」（Semantic Scholar 推荐）
+pref("extensions.zotero.paperpilot.relatedPapersEnabled", true);
 // 0.49.0 Agent 决策模型路由（空 = 工具决策轮也用主通道模型）
 pref("extensions.zotero.paperpilot.aiAgentDecisionModel", "");
 // 0.49.0 研究者画像（注入所有 system prompt 的长期偏好，空 = 不注入）

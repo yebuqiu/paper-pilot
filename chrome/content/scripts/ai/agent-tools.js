@@ -9,16 +9,17 @@
  *
  * 安全模型（读写分离，对齐 Hermes 的 Auto / Interactive 双模式）：
  *   · 读工具（search_library / get_item_details / read_item_fulltext / list_collections
- *     / search_arxiv / get_citation_count / search_notes / export_bibliography）
+ *     / search_arxiv / get_citation_count / search_notes / export_bibliography / memory_read）
  *     无副作用，直接执行；
- *   · 写工具（add_note / add_tags / move_to_collection）默认逐次弹确认（协作模式，
+ *   · 写工具（add_note / add_tags / move_to_collection / memory_write）默认逐次弹确认（协作模式，
  *     pref aiAgentConfirmWrite，默认开）；关掉即「自主模式」。MCP 等无 UI 入口可传
  *     ctx.skipConfirm === true 绕过弹框（由调用方先做 allowWrite 校验）。
  *   · 工具白名单 pref aiAgentTools（CSV），设置面板可逐个开关。
  *
  * 写操作审计（pref agentAuditLog，JSON 数组，LRU 100 条，最新在前）：
  *   每次写操作成功后记 `{id, ts, tool, summary, undo}`；undoLast / undoEntry 按
- *   undo 描述执行撤销（removeTags / eraseNote / removeFromCollection），成功才删记录。
+ *   undo 描述执行撤销（removeTags / eraseNote / removeFromCollection /
+ *   removeMemory），成功才删记录。
  *
  * 可测性：runAgentLoop 的 callLLM / runTool 全部依赖注入（test/agent-tools.test.js
  * 不碰网络与 Zotero）；工具执行 execTool 独立于循环。
@@ -26,9 +27,10 @@
  * 消费方：chat-float.js runSend（chatAgentMode 开启时走 agent 循环）。
  * 生命周期：无 register——纯函数 + 惰性缓存；加载顺序须在 ai/chat.js 之后
  * （工具消费 AIChat.getFullText / AIChat.paperMeta）。外部能力（ArxivFetch /
- * S2Client / RefFormat）一律**运行时探测**，缺位降级为可读文案，不做加载期依赖。
+ * S2Client / RefFormat / AgentMemory）一律**运行时探测**，缺位降级为可读文案，
+ * 不做加载期依赖。
  */
-/* global Zotero, Services, Prefs, AIChat, Notes, ArxivFetch, S2Client, RefFormat */
+/* global Zotero, Services, Prefs, AIChat, Notes, ArxivFetch, S2Client, RefFormat, AgentMemory */
 
 var AgentTools = {
   PREF_TOOLS: "aiAgentTools",
@@ -44,6 +46,8 @@ var AgentTools = {
   AUDIT_MAX: 100,
   // search_notes 单次最多扫描的条目数（防超大库卡死 UI）
   NOTE_SCAN_MAX: 800,
+  // memory_read 单次最多回填的记忆条数（防 200 条记忆撑爆上下文）
+  MEMORY_READ_MAX: 50,
 
   _allItemsCache: null,
   _allItemsAt: 0,
@@ -410,6 +414,49 @@ var AgentTools = {
         return "✓ 已把「" + title + "」加入文集「" + cname + "」";
       },
     },
+    {
+      id: "memory_read", label: "读取长期记忆", readOnly: true,
+      desc: "读取 AI 长期记忆（研究方向 / 已得结论 / 用户偏好；query 可选关键词）",
+      async run(args) {
+        const M = AgentTools._memory();
+        if (!M) return "记忆模块不可用（AgentMemory 未加载）";
+        const q = String((args && args.query) || "").trim();
+        const hits = M.search(q).slice(0, AgentTools.MEMORY_READ_MAX);
+        if (!hits.length) {
+          if (!q || !M.list().length) {
+            return "暂无记忆（可用 memory_write 保存研究方向、结论、偏好）";
+          }
+          return "没有匹配「" + q + "」的记忆（共 " + M.list().length +
+            " 条）。可换关键词，或不带 query 查看全部。";
+        }
+        return "记忆清单（最新在前；[序号] [kind] text）：\n" +
+          hits.map((m, i) => "[" + (i + 1) + "] [" + m.kind + "] " + m.text).join("\n");
+      },
+    },
+    {
+      id: "memory_write", label: "写入长期记忆", readOnly: false,
+      desc: "把研究方向、结论或偏好写入长期记忆（kind: project/fact/prefer；" +
+        "写操作，执行前会请求用户确认）",
+      async run(args, ctx) {
+        const M = AgentTools._memory();
+        if (!M) return "记忆模块不可用（AgentMemory 未加载）";
+        const text = String((args && args.text) == null ? "" : args.text)
+          .replace(/\s+/g, " ").trim();
+        if (!text) return "记忆内容为空（请提供 text）。";
+        const kind = M.normKind(args && args.kind);
+        const label = M.kindLabel(kind);
+        if (!AgentTools._confirmWrite("写入长期记忆 → [" + label + "]", text, ctx)) {
+          return "用户拒绝了本次写操作（memory_write）。请基于对话继续，不要重试写入。";
+        }
+        const entry = M.add({ kind: kind, text: text, source: AgentTools._ctxSource(ctx) });
+        if (!entry) return "记忆写入失败（内容为空或 pref 不可写）。";
+        AgentTools._recordAudit("memory_write",
+          "记忆写入：[" + label + "] " + text.slice(0, 80) +
+            "（来源：" + AgentTools._ctxSource(ctx) + "）",
+          { kind: "removeMemory", memoryId: entry.id });
+        return "✓ 已记住（[" + label + "] " + entry.text + "）";
+      },
+    },
   ],
 
   /* ==================== 白名单 ==================== */
@@ -494,6 +541,16 @@ var AgentTools = {
     try {
       if (typeof RefFormat !== "undefined" && RefFormat &&
           typeof RefFormat.exportAs === "function") return RefFormat;
+    } catch (e) { /* ignore */ }
+    return null;
+  },
+
+  /** 长期记忆模块（agent-memory.js；缺位返回 null） */
+  _memory() {
+    try {
+      if (typeof AgentMemory !== "undefined" && AgentMemory &&
+          typeof AgentMemory.add === "function" &&
+          typeof AgentMemory.list === "function") return AgentMemory;
     } catch (e) { /* ignore */ }
     return null;
   },
@@ -761,6 +818,13 @@ var AgentTools = {
         await it.removeFromCollection(undo.collectionID);
         await it.saveTx();
         done = "已把条目 " + undo.itemID + " 移出文集「" + String(col.name || undo.collectionID) + "」";
+      } else if (undo.kind === "removeMemory") {
+        const M = this._memory();
+        if (!M) return { ok: false, error: "记忆模块不可用（AgentMemory 未加载）" };
+        if (!M.remove(undo.memoryId)) {
+          return { ok: false, error: "记忆不存在（可能已被删除）：" + undo.memoryId };
+        }
+        done = "已删除记忆：" + undo.memoryId;
       } else {
         return { ok: false, error: (undo.hint || "该操作不支持自动撤销") };
       }
@@ -791,6 +855,8 @@ var AgentTools = {
       add_note: "(item_id?, text)",
       add_tags: "(item_id?, tags)",
       move_to_collection: "(item_id?, collection_id)",
+      memory_read: "(query?)",
+      memory_write: "(kind?, text)",
     };
     const lines = tools.map((t) => {
       const args = ARG_HINTS[t.id] || "()";

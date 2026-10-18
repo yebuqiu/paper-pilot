@@ -36,3 +36,12 @@ paperpilot-refs-section-header = 参考文献
 paperpilot-refs-section-sidenav = 参考文献
     .label = 参考文献
     .tooltiptext = 本文参考文献：侧栏解析列表，一键入库并建立关联
+
+# 0.51.0 相关文献面板（Semantic Scholar 推荐）
+paperpilot-related-section-header = 相关文献
+    .label = 相关文献
+    .tooltiptext = Semantic Scholar 推荐的相关文献
+
+paperpilot-related-section-sidenav = 相关文献
+    .label = 相关文献
+    .tooltiptext = 相关文献：5 条 S2 推荐，一键入库

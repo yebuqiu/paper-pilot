@@ -49,6 +49,8 @@
     { id: "add_note", label: "添加笔记（写）", ro: false },
     { id: "add_tags", label: "添加标签（写）", ro: false },
     { id: "move_to_collection", label: "移动到文集（写）", ro: false },
+    { id: "memory_read", label: "读取长期记忆", ro: true },
+    { id: "memory_write", label: "写入长期记忆（写）", ro: false },
   ];
 
   function enabledToolSet() {

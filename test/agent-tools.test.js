@@ -15,6 +15,8 @@
  *      move_to_collection / export_bibliography）与外部能力缺位降级；
  *   ⑩ 写操作审计 + 撤销（净新增标签 / 三种 undo / LRU 100 / 空审计 /
  *      ctx.skipConfirm 绕过确认）。
+ *   ⑪ 长期记忆工具（memory_read 空态/清单/搜索；memory_write 确认 / skipConfirm /
+ *      空文本 / 非法 kind；审计 removeMemory 与 undoLast 端到端撤销；模块缺位降级）。
  *
  * 运行：node test/agent-tools.test.js
  */
@@ -26,6 +28,7 @@ const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
 const FILES = [
+  'chrome/content/scripts/features/agent-memory.js',
   'chrome/content/scripts/ai/agent-tools.js',
   'chrome/content/scripts/ai/chat.js',
   'chrome/content/scripts/ai/client.js',
@@ -812,6 +815,137 @@ function enableAll() {
     PrefStore.delete('agentAuditLog');
     PrefStore.delete('aiAgentTools');
   })().catch((e) => { ok(false, '审计/撤销异常: ' + e.message); });
+
+  /* ---------------- ⑪ 长期记忆工具 ---------------- */
+
+  await (async () => {
+    const AM = sandbox.AgentMemory;
+    ok(!!AM, 'AgentMemory 已随沙箱加载');
+    enableAll();
+    PrefStore.delete('agentMemory');
+    PrefStore.delete('agentAuditLog');
+    PrefStore.delete('aiAgentConfirmWrite');
+
+    // 空态
+    eq(await AT.execTool('memory_read', {}, {}),
+      '暂无记忆（可用 memory_write 保存研究方向、结论、偏好）',
+      'memory_read：空态给可行动提示');
+    eq(await AT.execTool('memory_read', { query: 'anything' }, {}),
+      '暂无记忆（可用 memory_write 保存研究方向、结论、偏好）',
+      'memory_read：空库带 query 仍是空态提示');
+
+    // 协议提示词自动派生新工具签名
+    ok(AT.protocolPrompt().indexOf('memory_read(query?)') > 0,
+      '协议自动派生 memory_read 签名');
+    ok(AT.protocolPrompt().indexOf('memory_write(kind?, text)') > 0,
+      '协议自动派生 memory_write 签名');
+
+    // memory_write：默认确认开启 → 弹一次
+    confirmState.returns = true;
+    confirmState.calls.length = 0;
+    const w1 = await AT.execTool('memory_write',
+      { kind: 'project', text: '研究方向：长文本检索增强' }, {});
+    eq(w1, '✓ 已记住（[项目] 研究方向：长文本检索增强）',
+      'memory_write：成功文案（kind 中文标签）');
+    eq(confirmState.calls.length, 1, 'memory_write：默认逐次确认');
+    eq(AM.list().length, 1, 'memory_write：真实写入记忆');
+    eq(AM.list()[0].kind, 'project', 'memory_write：kind 透传');
+    eq(AM.list()[0].source, 'ui', 'memory_write：来源写入条目');
+
+    const rec = AT.auditList()[0];
+    eq(rec.tool, 'memory_write', '审计：tool = memory_write');
+    eq(rec.undo.kind, 'removeMemory', '审计：undo.kind = removeMemory');
+    eq(rec.undo.memoryId, AM.list()[0].id, '审计：记账 memoryId');
+    ok(rec.summary.indexOf('记忆写入：[项目]') === 0,
+      '审计：summary 形如「记忆写入：[项目] …」', rec.summary);
+    ok(rec.summary.indexOf('来源：ui') > 0, '审计：summary 记上下文来源');
+
+    // memory_read：有数据
+    const read1 = await AT.execTool('memory_read', {}, {});
+    ok(read1.indexOf('[1] [project] 研究方向：长文本检索增强') > 0,
+      'memory_read：清单含 [序号] [kind] text', read1);
+    ok(read1.indexOf('记忆清单') === 0, 'memory_read：带标题行');
+
+    // 非法 kind → fact
+    const w2 = await AT.execTool('memory_write',
+      { kind: 'nonsense', text: 'BERT 是双向编码器' }, {});
+    eq(w2, '✓ 已记住（[事实] BERT 是双向编码器）', 'memory_write：非法 kind 回落事实');
+
+    // skipConfirm 路径（MCP）
+    PrefStore.set('aiAgentConfirmWrite', true);
+    confirmState.returns = false;
+    confirmState.calls.length = 0;
+    const w3 = await AT.execTool('memory_write',
+      { kind: 'prefer', text: '偏好中文回答' }, { skipConfirm: true, source: 'mcp' });
+    ok(w3.indexOf('✓') === 0, 'skipConfirm：绕过确认写入成功', w3);
+    eq(confirmState.calls.length, 0, 'skipConfirm：confirm 调用次数 = 0');
+    ok(AT.auditList()[0].summary.indexOf('来源：mcp') > 0,
+      'skipConfirm：来源 mcp 写入审计');
+    eq(AM.list()[0].source, 'mcp', 'skipConfirm：条目来源 = mcp');
+    confirmState.returns = true;
+
+    // 搜索（大小写不敏感）
+    const byQuery = await AT.execTool('memory_read', { query: 'BERT' }, {});
+    ok(byQuery.indexOf('BERT 是双向编码器') > 0, 'memory_read：关键词命中');
+    ok(byQuery.indexOf('偏好中文回答') < 0, 'memory_read：未命中的条目不返回');
+    eq(byQuery.split('\n').length, 2, 'memory_read：仅 1 条命中（标题 + 1 行）');
+    const byKind = await AT.execTool('memory_read', { query: 'prefer' }, {});
+    ok(byKind.indexOf('[1] [prefer] 偏好中文回答') > 0, 'memory_read：kind 也参与搜索');
+    const miss = await AT.execTool('memory_read', { query: 'zzz' }, {});
+    ok(miss.indexOf('没有匹配「zzz」的记忆') === 0, 'memory_read：无命中给可行动提示', miss);
+
+    // 空文本：报错且不弹确认、不落库
+    const beforeAdd = AM.list().length;
+    confirmState.calls.length = 0;
+    const bad = await AT.execTool('memory_write', { text: '   ' }, {});
+    ok(bad.indexOf('记忆内容为空') === 0, 'memory_write：空文本报错');
+    eq(confirmState.calls.length, 0, 'memory_write：空文本不弹确认');
+    eq(AM.list().length, beforeAdd, 'memory_write：空文本不落库');
+
+    // 拒绝路径
+    confirmState.returns = false;
+    confirmState.calls.length = 0;
+    const denied = await AT.execTool('memory_write', { text: '不该写' }, {});
+    ok(denied.indexOf('用户拒绝') === 0, 'memory_write：拒绝返回拒绝说明');
+    eq(confirmState.calls.length, 1, 'memory_write：拒绝前确实弹过一次确认');
+    eq(AM.list().length, beforeAdd, 'memory_write：拒绝不落库');
+    confirmState.returns = true;
+
+    // 端到端撤销：undoLast → removeMemory
+    eq(AT.auditList().length, 3, '审计：三次写入各 1 条');
+    const newest = AM.list()[0].id;
+    const u1 = await AT.undoLast();
+    ok(u1.ok && u1.done.indexOf('已删除记忆') === 0, 'undoLast:removeMemory 成功', u1);
+    eq(AM.list().filter((m) => m.id === newest).length, 0, 'undoLast:removeMemory 记忆消失');
+    eq(AT.auditList().length, 2, 'undoLast：成功后移除该条审计');
+
+    await AT.undoLast();
+    await AT.undoLast();
+    eq(AM.list().length, 0, '连续撤销后记忆清空');
+    eq(AT.auditList().length, 0, '连续撤销后审计清空');
+
+    // 记忆已被手动删除 → 撤销失败并保留记录
+    AT._recordAudit('memory_write', '记忆写入：[事实] 已不存在',
+      { kind: 'removeMemory', memoryId: 'mem-gone' });
+    const u2 = await AT.undoLast();
+    ok(!u2.ok && u2.error.indexOf('记忆不存在') >= 0,
+      'undoLast:removeMemory 目标不存在 → {ok:false,error}', u2);
+    eq(AT.auditList().length, 1, 'undoLast：失败保留记录（可重试）');
+    PrefStore.delete('agentAuditLog');
+
+    // 模块缺位降级（var 全局不可 delete，用置空模拟缺位）
+    const savedAM = sandbox.AgentMemory;
+    sandbox.AgentMemory = undefined;
+    ok((await AT.execTool('memory_read', {}, {})).indexOf('记忆模块不可用') >= 0,
+      'AgentMemory 缺位：memory_read 降级');
+    ok((await AT.execTool('memory_write', { text: 'x' }, {})).indexOf('记忆模块不可用') >= 0,
+      'AgentMemory 缺位：memory_write 降级');
+    sandbox.AgentMemory = savedAM;
+
+    PrefStore.delete('agentMemory');
+    PrefStore.delete('agentAuditLog');
+    PrefStore.delete('aiAgentTools');
+  })().catch((e) => { ok(false, '长期记忆工具异常: ' + (e && e.stack || e)); });
 
   /* ---------------- 汇总 ---------------- */
 

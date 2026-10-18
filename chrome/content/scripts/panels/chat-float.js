@@ -455,6 +455,16 @@ var ChatFloat = {
         try { p = String(Prefs.get("researcherProfile", "") || "").trim(); } catch (e) { p = ""; }
         return p ? `\n\n【研究者画像（长期偏好，回答时应遵守）】\n${p}` : "";
       })() +
+      (() => {
+        // 0.51.0 长期记忆注入（与 ai/chat.js._systemWith 同款）
+        let m = "";
+        try {
+          m = (typeof AgentMemory !== "undefined" && AgentMemory
+            && typeof AgentMemory.asPromptBlock === "function")
+            ? String(AgentMemory.asPromptBlock(20) || "").trim() : "";
+        } catch (e) { m = ""; }
+        return m ? `\n\n【长期记忆（此前对话中确认的事实与偏好）】\n${m}` : "";
+      })() +
       (zh
         ? `\n\n用户提供了 ${items.length} 篇文献作为上下文（每篇以「文献 n」标记）。` +
           "回答要求：只基于这些文献的内容；文献未提及的信息明确说明；" +
@@ -467,6 +477,168 @@ var ChatFloat = {
     messages.push(...AIChat.windowHistory(this.session.history, Prefs.get("aiHistoryRounds", 6)));
     messages.push({ role: "user", content: question });
     return messages;
+  },
+
+  /* ==================== AI 回答内引用可点击（0.51.0） ====================
+   * 多 chip 会话里模型按「文献 n」标注来源，这里把气泡里的「文献 n」变成
+   * 可点击片段 → 选中对应条目。三条约束决定了实现形态：
+   *   · 只处理 assistant 气泡（user/系统气泡保持纯文本）；
+   *   · MdLite 会转义正文里的原始 HTML（inline() 先 escape），因此无法靠
+   *     在 Markdown 里写 <a>；改为对 toHtml() 结果做「标签外文本」重写：
+   *     不碰属性、跳过 <pre>/<code> 内容，渲染与历史重建走同一条路径；
+   *   · chip 为空 / n 越界 / pref 关闭 → 原样纯文本，零副作用。 */
+
+  /** pref：AI 回答内引用可点击（默认开；坏值/读不到都按开处理） */
+  _citeLinksEnabled() {
+    try {
+      const v = Prefs.get("citeLinksEnabled", true);
+      if (v === false || v === 0 || v === "false" || v === "0") return false;
+      return true;
+    } catch (e) {
+      return true;
+    }
+  },
+
+  /**
+   * 纯函数：正文里所有「文献 n」引用的位置（供渲染层与测试复用）。
+   * 规则：`文献` + 可选空白 + 1-9 单个数字；命中后要求下一个字符不是
+   * 汉字/字母/数字（排除「文献 10」「文献 2表明」「文献综述」）；
+   * 「参考文献 n」是书目用语，不算正文引用。
+   * @param {string} text
+   * @returns {Array<{n:number,start:number,end:number}>} start 含、end 不含
+   */
+  _citeRefsOf(text) {
+    const s = String(text == null ? "" : text);
+    const re = /文献\s*([1-9])/g;
+    const out = [];
+    let m;
+    while ((m = re.exec(s))) {
+      const start = m.index;
+      const end = start + m[0].length;
+      if (start >= 2 && s.slice(start - 2, start) === "参考") continue;
+      const next = s.charAt(end);
+      if (next && /[A-Za-z0-9\u4e00-\u9fff]/.test(next)) continue;
+      out.push({ n: parseInt(m[1], 10), start, end });
+    }
+    return out;
+  },
+
+  /** 属性值转义（MdLite.escape 不管引号，title 里可能有 "） */
+  _escAttr(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  },
+
+  /** 单个文本片段 → 带引用 span 的 HTML（越界的 n 保持纯文本） */
+  _citeTextToHtml(seg, items) {
+    const refs = this._citeRefsOf(seg);
+    if (!refs.length) return seg;
+    let out = "";
+    let last = 0;
+    for (const r of refs) {
+      const it = items[r.n - 1];
+      const id = it && it.id;
+      if (!id) continue;
+      let title = "";
+      try { title = it.getDisplayTitle() || ""; } catch (e) { title = ""; }
+      out += seg.slice(last, r.start);
+      out += '<span class="pp-cf-cite" data-item-id="' + id +
+        '" title="' + this._escAttr(title) + '">' + seg.slice(r.start, r.end) + "</span>";
+      last = r.end;
+    }
+    if (!last) return seg;
+    return out + seg.slice(last);
+  },
+
+  /**
+   * HTML → 引用可点击 HTML：按标签切段，只改写标签外的文本；
+   * pre/code 内部（代码块、行内代码）保持原样，避免破坏示例文本。
+   */
+  _decorateCites(html, items) {
+    const src = String(html == null ? "" : html);
+    const list = Array.isArray(items) ? items : [];
+    if (!src || !list.length) return src;
+    const parts = src.split(/(<[^>]*>)/);
+    let depth = 0;
+    let out = "";
+    for (const seg of parts) {
+      if (!seg) continue;
+      if (seg.charAt(0) === "<" && seg.charAt(seg.length - 1) === ">") {
+        if (/^<(pre|code)\b/i.test(seg)) depth++;
+        else if (/^<\/(pre|code)>/i.test(seg)) depth = Math.max(0, depth - 1);
+        out += seg;
+        continue;
+      }
+      out += depth > 0 ? seg : this._citeTextToHtml(seg, list);
+    }
+    return out;
+  },
+
+  /** assistant 气泡统一渲染入口（历史重建 / 流式增量 / onDone 共用） */
+  _renderAssistant(entry, bubble, text) {
+    let html = null;
+    try { html = MdLite.toHtml(text); } catch (e) { html = null; }
+    if (html == null) {
+      bubble.textContent = text;
+      return bubble;
+    }
+    let out = html;
+    try {
+      if (this._citeLinksEnabled()) out = this._decorateCites(html, this._chipItems());
+    } catch (e) { out = html; }
+    try { bubble.innerHTML = out; } catch (e) { bubble.textContent = text; return bubble; }
+    this._bindCiteClicks(entry, bubble);
+    return bubble;
+  },
+
+  /** 给已渲染的引用片段挂点击（innerHTML 重建后需重新挂） */
+  _bindCiteClicks(entry, bubble) {
+    let spans = [];
+    try {
+      spans = (bubble && bubble.querySelectorAll)
+        ? Array.prototype.slice.call(bubble.querySelectorAll(".pp-cf-cite"))
+        : [];
+    } catch (e) { spans = []; }
+    const self = this;
+    for (const sp of spans) {
+      sp.addEventListener("click", (ev) => {
+        try { ev.preventDefault(); ev.stopPropagation(); } catch (e) { /* ignore */ }
+        let id = 0;
+        try { id = parseInt(sp.getAttribute("data-item-id"), 10); } catch (e) { id = 0; }
+        self._focusItem(entry, id);
+      });
+    }
+  },
+
+  /**
+   * 引用跳转：默认只选中条目（不打断阅读器，PDF 不主动打开）；
+   * 条目已被删除 → 系统气泡提示；跳转异常静默 log。
+   * @returns {boolean} 是否成功选中
+   */
+  _focusItem(entry, itemID) {
+    const id = parseInt(itemID, 10);
+    let item = null;
+    try { item = (isFinite(id) && id > 0) ? Zotero.Items.get(id) : null; }
+    catch (e) { item = null; }
+    if (!item) {
+      if (entry) {
+        try {
+          this._appendBubble(entry, "sys",
+            I18n.isZh ? "引用条目已不存在" : "The cited item no longer exists", "#c0392b");
+        } catch (e) { /* 无消息区的自定义 entry：静默 */ }
+      }
+      return false;
+    }
+    try {
+      const pane = Zotero.getActiveZoteroPane();
+      if (!pane || typeof pane.selectItem !== "function") throw new Error("no zotero pane");
+      pane.selectItem(item.id);
+      return true;
+    } catch (e) {
+      this._err(e);
+      return false;
+    }
   },
 
   /* ==================== 发送（单源：悬浮窗 / 独立窗口共用） ==================== */
@@ -1140,7 +1312,14 @@ var ChatFloat = {
         "padding:0 3px;border-radius:3px;}\n" +
         "#" + this.ROOT_ID + " .pp-cf-msg table{border-collapse:collapse;font-size:12px;margin:4px 0;}\n" +
         "#" + this.ROOT_ID + " .pp-cf-msg th,#" + this.ROOT_ID + " .pp-cf-msg td{" +
-        "border:1px solid var(--color-border,rgba(128,128,128,.4));padding:2px 6px;}\n";
+        "border:1px solid var(--color-border,rgba(128,128,128,.4));padding:2px 6px;}\n" +
+        // 0.51.0 回答内「文献 n」引用：点线底边 + accent 色，点击跳条目
+        "#" + this.ROOT_ID + " .pp-cf-cite{cursor:pointer;" +
+        "color:var(--color-accent,#2563eb);" +
+        "border-bottom:1px dotted var(--color-accent,#2563eb);" +
+        "text-decoration:none;white-space:nowrap;}\n" +
+        "#" + this.ROOT_ID + " .pp-cf-cite:hover{" +
+        "background:rgba(45,108,223,.12);}\n";
       doc.documentElement.appendChild(style);
     } catch (e) { this._err(e); }
   },
@@ -1691,8 +1870,7 @@ var ChatFloat = {
                  : "background:rgba(136,136,136,.09);border:1px solid rgba(136,136,136,.2);"),
     });
     if (isAssistant && !color) {
-      try { bubble.innerHTML = MdLite.toHtml(text); }
-      catch (e) { bubble.textContent = text; }
+      this._renderAssistant(entry, bubble, text);
     } else {
       bubble.textContent = text;
     }
@@ -1729,15 +1907,13 @@ var ChatFloat = {
           if (statusBubble) { statusBubble.remove(); statusBubble = null; }
           streamBubble = self._appendBubble(entry, "assistant", "");
         }
-        try { streamBubble.innerHTML = MdLite.toHtml(acc); }
-        catch (e) { streamBubble.textContent = acc; }
+        self._renderAssistant(entry, streamBubble, acc);
         entry.refs.msgs.scrollTop = entry.refs.msgs.scrollHeight;
       },
       onDone(text) {
         if (statusBubble) { statusBubble.remove(); statusBubble = null; }
         if (streamBubble) {
-          try { streamBubble.innerHTML = MdLite.toHtml(text); }
-          catch (e) { streamBubble.textContent = text; }
+          self._renderAssistant(entry, streamBubble, text);
         } else {
           self._appendBubble(entry, "assistant", text);
         }

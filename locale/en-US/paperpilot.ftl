@@ -35,3 +35,12 @@ paperpilot-refs-section-header = References
 paperpilot-refs-section-sidenav = References
     .label = References
     .tooltiptext = References of this paper: parsed in the sidebar, one-click import with backlink
+
+# 0.51.0 related papers pane (Semantic Scholar recommendations)
+paperpilot-related-section-header = Related Papers
+    .label = Related Papers
+    .tooltiptext = Related papers recommended by Semantic Scholar
+
+paperpilot-related-section-sidenav = Related Papers
+    .label = Related Papers
+    .tooltiptext = Related papers: 5 S2 recommendations, one-click import
