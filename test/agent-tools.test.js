@@ -947,6 +947,36 @@ function enableAll() {
     PrefStore.delete('aiAgentTools');
   })().catch((e) => { ok(false, '长期记忆工具异常: ' + (e && e.stack || e)); });
 
+  /* ---------------- ⑫ restoreFields 撤销（0.52.0 元数据医生） ---------------- */
+
+  await (async () => {
+    PrefStore.delete('agentAuditLog');
+    // 元数据医生写入后的条目：三个字段都有新值，审计里存旧值（空串）
+    const it = {
+      id: 120, itemType: 'journalArticle', _saved: 0,
+      _f: { title: 'T', DOI: '10.1/x', publicationTitle: 'Nature', date: '2015' },
+      isRegularItem: () => true,
+      getField(f) { return this._f[f] || ''; },
+      setField(f, v) { this._f[f] = v; },
+      getDisplayTitle() { return 'T'; },
+      getCreators() { return []; },
+      async saveTx() { this._saved++; },
+    };
+    LIB.push(it);
+    AT._recordAudit('meta_doctor', '元数据补全：《T》补 DOI/期刊/年份',
+      { kind: 'restoreFields', itemID: 120, fields: { DOI: '', publicationTitle: '', date: '' } });
+    const u = await AT.undoLast();
+    ok(u.ok && u.done.indexOf('已恢复字段') === 0, 'undoLast:restoreFields 成功返回恢复说明', u);
+    ok(it._f.DOI === '' && it._f.publicationTitle === '' && it._f.date === '' && it._saved === 1,
+      'undoLast:restoreFields 字段写回旧值（空串）并 saveTx', it._f);
+
+    AT._recordAudit('meta_doctor', '元数据补全：《已删除》',
+      { kind: 'restoreFields', itemID: 99911, fields: { DOI: '' } });
+    const u2 = await AT.undoLast();
+    ok(!u2.ok && u2.error.indexOf('条目不存在') >= 0, 'undoLast:restoreFields 目标条目不存在 → {ok:false,error}', u2);
+    PrefStore.delete('agentAuditLog');
+  })().catch((e) => { ok(false, 'restoreFields 撤销异常: ' + (e && e.stack || e)); });
+
   /* ---------------- 汇总 ---------------- */
 
   console.log(`\nagent-tools 测试：${pass} 通过，${fails.length} 失败`);

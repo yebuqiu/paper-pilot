@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "PaperPilot 文献副驾",
-  "version": "0.51.0",
-  "description": "PaperPilot 文献副驾 · 文献管理增强套件：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.51.0 更新：①AI 回答里的「文献 n」引用可点击，直接定位到对应条目；②智能体长期记忆——对话中自动记住研究方向/结论/偏好，之后每次对话自动带上，可随时浏览删除；③条目详情面板新增「相关文献」区：Semantic Scholar 推荐 5 条，一键入库并自动打标签。",
+  "version": "0.52.0",
+  "description": "PaperPilot 文献副驾 · 文献管理增强套件：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.52.0 更新：①条目详情新增「引文上下文」面板（Scite 风格）：谁引用了这篇、引用句原文、支持/对比/批评/中性倾向判定；②元数据医生：Crossref 反查一键补全缺失的 DOI/期刊/年份/作者（预览确认 + 可撤销）；③标注→论点速记：把 PDF 高亮与批注交给 AI 整理成「论点-证据-页码」笔记。",
   "author": "you",
   "icons": {
     "48": "chrome/content/icons/icon.png",

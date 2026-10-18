@@ -19,7 +19,9 @@
  * 写操作审计（pref agentAuditLog，JSON 数组，LRU 100 条，最新在前）：
  *   每次写操作成功后记 `{id, ts, tool, summary, undo}`；undoLast / undoEntry 按
  *   undo 描述执行撤销（removeTags / eraseNote / removeFromCollection /
- *   removeMemory），成功才删记录。
+ *   removeMemory / restoreFields），成功才删记录。
+ *   restoreFields（0.52.0，元数据医生）：`{kind:"restoreFields", itemID, fields:{字段:旧值}}`
+ *   —— 字段值写回旧值（空串 = 清空），`creators` 键按作者数组还原（[] = 清空作者）。
  *
  * 可测性：runAgentLoop 的 callLLM / runTool 全部依赖注入（test/agent-tools.test.js
  * 不碰网络与 Zotero）；工具执行 execTool 独立于循环。
@@ -825,6 +827,28 @@ var AgentTools = {
           return { ok: false, error: "记忆不存在（可能已被删除）：" + undo.memoryId };
         }
         done = "已删除记忆：" + undo.memoryId;
+      } else if (undo.kind === "restoreFields") {
+        // 元数据医生：把字段写回旧值（空串即清空）；creators 用作者数组还原
+        const it = await this._getItem(undo.itemID);
+        if (!it) return { ok: false, error: "条目不存在（可能已被删除）：" + undo.itemID };
+        const fields = (undo.fields && typeof undo.fields === "object") ? undo.fields : {};
+        const restored = [];
+        for (const f of Object.keys(fields)) {
+          try {
+            if (f === "creators") {
+              if (typeof it.setCreators !== "function") continue;
+              it.setCreators(Array.isArray(fields[f]) ? fields[f] : []);
+            } else {
+              it.setField(f, fields[f] == null ? "" : String(fields[f]));
+            }
+            restored.push(f);
+          } catch (e) {
+            // 单个字段失败（类型不支持/字段名非法）→ 跳过，其余照常还原
+          }
+        }
+        if (!restored.length) return { ok: false, error: "该记录没有可恢复的字段" };
+        await it.saveTx();
+        done = "已恢复字段：" + restored.join("、") + "（条目 " + undo.itemID + "）";
       } else {
         return { ok: false, error: (undo.hint || "该操作不支持自动撤销") };
       }

@@ -38,6 +38,10 @@ pref("extensions.zotero.paperpilot.citeLinksEnabled", true);
 pref("extensions.zotero.paperpilot.agentMemory", "");
 // 0.51.0 条目详情面板「相关文献」（Semantic Scholar 推荐）
 pref("extensions.zotero.paperpilot.relatedPapersEnabled", true);
+// 0.52.0 条目详情面板「引文上下文」（S2 citations 引用句 + 倾向）
+pref("extensions.zotero.paperpilot.citationContextEnabled", true);
+// 0.52.0 标注→论点速记（菜单入口开关）
+pref("extensions.zotero.paperpilot.annotationDigestEnabled", true);
 // 0.49.0 Agent 决策模型路由（空 = 工具决策轮也用主通道模型）
 pref("extensions.zotero.paperpilot.aiAgentDecisionModel", "");
 // 0.49.0 研究者画像（注入所有 system prompt 的长期偏好，空 = 不注入）

@@ -85,9 +85,13 @@ Zotero.PaperPilot = {
       // 0.51.0 相关文献（S2 recommendations）：扩展 S2Client，必须在 semantic-scholar.js 之后
       "features/s2-client.js",
       "features/related-papers.js",
+      // 0.52.0 引文上下文（S2 citations；消费 S2Client.citations）
+      "features/citation-context.js",
       // 0.51.0 Agent 长期记忆（agent-tools 的 memory_* 工具运行时消费）
       "features/agent-memory.js",
       "features/annotations.js",
+      // 0.52.0 标注→论点速记（读 PDF 标注 → AI 整理 → 父条目笔记）
+      "features/annotation-digest.js",
       "features/collection-stats.js",
       "features/reader-popup.js",
       "features/pdf-compare.js",
@@ -115,6 +119,8 @@ Zotero.PaperPilot = {
       "features/mindmap.js",
       "features/review-gen.js",
       "features/meta-lint.js",
+      // 0.52.0 元数据医生（Crossref 补 DOI/期刊/年份；写操作走审计撤销）
+      "features/meta-doctor.js",
       // 0.27.0 Sci-Hub / Sci-Net 补全文（Unpaywall 未命中时的补充渠道；须排在 oa-fetch 之前）
       "features/scihub.js",
       "features/oa-fetch.js",
@@ -259,6 +265,9 @@ Zotero.PaperPilot = {
     this.scheduler = Scheduler;
     // 0.51.0 Agent 长期记忆（设置面板 prefs-memory.js / system prompt 注入 / agent-tools 工具）
     this.agentMemory = AgentMemory;
+    // 0.52.0 元数据医生 / 标注速记（菜单与 hub 经此访问）
+    this.metaDoctor = MetaDoctor;
+    this.annotationDigest = AnnotationDigest;
     // 0.48.0 Agent 工具层 + 命令标签（设置面板 prefs-agent.js 经此访问；
     // 测试与排障同入口）
     this.agentTools = AgentTools;
@@ -512,6 +521,16 @@ Zotero.PaperPilot = {
       await this._diag("refs pane registered");
     } catch (e) {
       await this._diag("refs pane FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
+    // 0.52.0 条目详情「引文上下文」面板（S2 citations；开关 citationContextEnabled）
+    try {
+      if (Prefs.get("citationContextEnabled", true) && typeof CitationContext !== "undefined" && CitationContext) {
+        const _cc = CitationContext.register(id);
+        await this._diag("citation context pane " + (_cc ? "registered" : "unavailable"));
+      }
+    } catch (e) {
+      await this._diag("citation context FAILED: " + (e && (e.stack || e.message) || e));
     }
 
     // 0.51.0 条目详情「相关文献」面板（S2 推荐；开关 relatedPapersEnabled，失败静默降级）
@@ -1048,6 +1067,7 @@ Zotero.PaperPilot = {
     try { TranslatePane.unregister(); } catch (e) { Zotero.logError(e); }
     try { RefPane.unregister(); } catch (e) { Zotero.logError(e); }
     try { RelatedPapers.unregister(); } catch (e) { Zotero.logError(e); }
+    try { CitationContext.unregister(); } catch (e) { Zotero.logError(e); }
     try { RankColumn.unregister(); } catch (e) { Zotero.logError(e); }
     try { CitationColumn.unregister(); } catch (e) { Zotero.logError(e); }
     try { TitleTranslationColumn.unregister(); } catch (e) { Zotero.logError(e); }

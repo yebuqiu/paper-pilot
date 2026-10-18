@@ -8,7 +8,7 @@
  *   - menuMode / menuHiddenGroups / menuQuickItems 三个 pref 变更即时重建菜单。
  * 设计口径：只做「重组」不做「删减」——被折叠的功能仍可从功能中心（Hub）、
  * 工具菜单分组、classic 模式三处到达，任何入口都不失联。 */
-/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats, ThirdSource */
+/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats, ThirdSource, MetaDoctor, AnnotationDigest */
 
 var Menus = {
   _nodes: [], // 记录注入的 DOM 节点，shutdown 时移除
@@ -61,6 +61,8 @@ var Menus = {
     { id: "paste-check", group: "meta", labelKey: "menuPasteCheck", run: () => FakeCheck.openPasteDialog() },
     { id: "smart-cleanup", group: "meta", labelKey: "menuSmartCleanup", run: () => SmartCleanup.run() },
     { id: "meta-lint", group: "meta", labelKey: "menuMetaLint", run: () => MetaLint.runForSelected() },
+    // 0.52.0 元数据医生：Crossref 反查补全（预览→确认→可撤销）
+    { id: "meta-doctor", group: "meta", labelKey: "menuMetaDoctor", run: () => MetaDoctor.run() },
     { id: "meta-rules", group: "meta", labelKey: "menuMetaRules", run: () => MetaRules.openDialog() },
     // 中文文献工具
     { id: "cn-meta", group: "cn", labelKey: "menuCnMeta", run: () => CNMeta.runForSelected() },
@@ -526,6 +528,21 @@ var Menus = {
       () => CNFetch.splitNames());
     this._menuItem(doc, popup, "paperpilot-itemmenu-meta-lint", "menuMetaLint",
       () => MetaLint.runForSelected());
+    // 0.52.0 元数据医生（Crossref 补全，写操作走确认 + 审计可撤销）
+    this._menuItem(doc, popup, "paperpilot-itemmenu-meta-doctor", "menuMetaDoctor",
+      () => MetaDoctor.run());
+    // 0.52.0 标注→论点速记（AI；未配置 Key 时先指引）
+    this._menuItem(doc, popup, "paperpilot-itemmenu-annot-digest", "menuAnnotDigest", () => {
+      if (!Prefs.get("annotationDigestEnabled", true)) {
+        Services.prompt.alert(null, "PaperPilot", I18n.t("menuAnnotDigestDisabled"));
+        return;
+      }
+      if (!AIClient.hasKey()) {
+        Services.prompt.alert(null, "PaperPilot", AIClient.guidance() || I18n.t("chatNoKey"));
+        return;
+      }
+      AnnotationDigest.run();
+    });
     this._menuItem(doc, popup, "paperpilot-itemmenu-oa-fetch", "menuOaFetch",
       () => OAFetch.runForSelected());
     this._menuItem(doc, popup, "paperpilot-itemmenu-attach-rename", "menuAttachRename",

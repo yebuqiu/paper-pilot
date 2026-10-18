@@ -11,7 +11,16 @@
  * 端点（与 graph/v1 不同根）：
  *    GET https://api.semanticscholar.org/recommendations/v1/papers/forpaper/{paperId}
  *        ?fields=...&limit=N
+ *    GET https://api.semanticscholar.org/graph/v1/paper/{paperId}/citations
+ *        ?fields=title,year,authors,contexts,intents,isInfluential&limit=N   （0.52.0 追加）
  *    paperId 形如 DOI:10.x/xx / CorpusId:123 / ARXIV:2101.00001。
+ *
+ * ⚠️ 0.52.0 的 `citations` 与 semantic-scholar.js 里的**同名方法**冲突：
+ *    后者 `citations(paperId, fields, limit)` 返回原始 [{citingPaper}]，是
+ *    citation-trace.js 的取数入口。这里做**双模分派**而非硬覆盖：
+ *      单参（或第二参是 fields 字符串）→ 旧实现原样返回（citation-trace 不受影响）
+ *      显式传数字 limit               → 新的归一结果（带 contexts/intents）
+ *    新调用方（CitationContext）必须显式传 limit。
  *
  * 复用主客户端的四件事（保持一致，不另起一套）：
  *   ① `_req` 的应用层超时竞速——S2 限流时会挂起连接、占满 Firefox 连接池，
@@ -28,7 +37,8 @@ var S2Client = (typeof S2Client !== "undefined" && S2Client) ? S2Client : {};
 
 (function (S2) {
   if (!S2 || typeof S2 !== "object") return;
-  if (typeof S2.recommendations === "function") return; // 已扩展过：幂等
+  // 逐方法守卫（不是整段 return）：0.52.0 起同一文件里有 recommendations 与
+  // citations 两段扩展，整段 return 会让后加的那段在二次加载时永远挂不上。
 
   var RECS_API = "https://api.semanticscholar.org/recommendations/v1/papers/forpaper/";
   var RECS_FIELDS = "title,year,venue,authors,citationCount,externalIds,abstract";
@@ -148,7 +158,7 @@ var S2Client = (typeof S2Client !== "undefined" && S2Client) ? S2Client : {};
    * @returns {Promise<Array|{ok:false, error:string, reason:string}>}
    *   成功 = 归一后的数组（可能为空数组）；失败 = 明确错误对象，**绝不抛**。
    */
-  S2.recommendations = async function (paperKey, limit) {
+  S2.recommendations = S2.recommendations || async function (paperKey, limit) {
     var id = normalizeId(paperKey);
     if (!id) return { ok: false, reason: "no_id", error: "缺少可用于推荐的 paperId" };
 
@@ -188,7 +198,118 @@ var S2Client = (typeof S2Client !== "undefined" && S2Client) ? S2Client : {};
   };
 
   /** 测试与排障用：清掉内存缓存/限速时间戳 */
-  S2._recsReset = function () {
+  S2._recsReset = S2._recsReset || function () {
+    cache.clear();
+    lastAt = 0;
+    queue = Promise.resolve();
+  };
+
+  /* ---------------- citations：施引文献 + 引用句（0.52.0） ----------------
+   *
+   * 与 recommendations 共用同一条链路：_req 竞速超时 / _headers 注入 key /
+   * 串行限速（有 key 250ms、无 key 1100ms）/ 同一个 LRU（10 分钟、50 条）。
+   * 差别只在端点与归一形态：这里要的是**引用句**（contexts）与作者意图
+   * （intents / isInfluential），供 CitationContext 判定「支持 / 对比 / 批评 / 中性」。
+   */
+
+  var CITE_API = "https://api.semanticscholar.org/graph/v1/paper/";
+  var CITE_FIELDS = "title,year,authors,contexts,intents,isInfluential";
+
+  S2.CITE_API = S2.CITE_API || CITE_API;
+  S2.CITE_FIELDS = S2.CITE_FIELDS || CITE_FIELDS;
+
+  /** 施引文献归一：S2 的 [{citingPaper, contexts, intents, isInfluential}] → 扁平条目 */
+  function normalizeCite(c) {
+    var citing = (c && c.citingPaper) || {};
+    var names = [];
+    var rawAuthors = (citing && citing.authors) || [];
+    for (var i = 0; i < rawAuthors.length; i++) {
+      var n = cleanText(rawAuthors[i] && rawAuthors[i].name);
+      if (n) names.push(n);
+    }
+    var ctx = [];
+    var rawCtx = (c && c.contexts) || [];
+    for (var j = 0; j < rawCtx.length; j++) {
+      var s = cleanText(rawCtx[j]);
+      if (s) ctx.push(s);
+    }
+    var intents = [];
+    var rawIntents = (c && c.intents) || [];
+    for (var k = 0; k < rawIntents.length; k++) {
+      var v = cleanText(rawIntents[k]).toLowerCase();
+      if (v) intents.push(v);
+    }
+    var year = parseInt(citing && citing.year, 10);
+    return {
+      title: cleanText(citing && citing.title),
+      year: isFinite(year) ? year : 0,
+      authors: names.join(", "),
+      contexts: ctx,
+      intents: intents,
+      isInfluential: !!(c && c.isInfluential),
+    };
+  }
+
+  if (!S2._citationsExtended) {
+    // 旧实现：semantic-scholar.js 的 citations(paperId, fields, limit) → [{citingPaper}]
+    var legacyCitations = (typeof S2.citations === "function") ? S2.citations : null;
+    S2._citationsLegacy = legacyCitations;
+
+    /**
+     * 施引文献 + 引用句。
+     *   双模：citations(id) / citations(id, "fields", n) → 旧实现（citation-trace 用）
+     *         citations(id, 20)                        → 新归一结果
+     * @param {string} paperKey DOI / DOI: / arXiv / CorpusId / S2 paperId
+     * @param {number} [limit=20]
+     * @returns {Promise<Array|{ok:false, reason:string, error:string}>}
+     *   成功 = 归一数组（可能为空）；失败 = 明确错误对象，**绝不抛**。
+     */
+    S2.citations = async function (paperKey, limit) {
+      if (legacyCitations && (arguments.length < 2 || typeof limit === "string")) {
+        return legacyCitations.apply(S2, arguments);
+      }
+
+      var id = normalizeId(paperKey);
+      if (!id) return { ok: false, reason: "no_id", error: "缺少可用于查询引文的 paperId" };
+
+      var n = parseInt(limit, 10);
+      if (!isFinite(n) || n <= 0) n = 20;
+      n = Math.min(n, 1000); // S2 该端点上限 1000
+
+      var key = "cit:" + id + "|" + n;
+      var hit = cache.get(key);
+      if (hit && Date.now() - hit.t < CACHE_TTL) return hit.list.slice();
+
+      var url = (S2.CITE_API || CITE_API) + encodeURIComponent(id)
+        + "/citations?fields=" + encodeURIComponent(S2.CITE_FIELDS || CITE_FIELDS)
+        + "&limit=" + n;
+
+      try {
+        await throttle(apiKey() ? 250 : 1100);
+        var req = await request(url, 25000);
+        var data = req && req.response;
+        var rows = (data && Array.isArray(data.data)) ? data.data : [];
+        var list = [];
+        for (var i = 0; i < rows.length; i++) {
+          var one = normalizeCite(rows[i]);
+          if (one.title) list.push(one);
+        }
+        list = list.slice(0, n);
+        if (cache.size >= CACHE_MAX) {
+          var oldest = cache.keys().next();
+          if (!oldest.done) cache.delete(oldest.value);
+        }
+        cache.set(key, { t: Date.now(), list: list.slice() });
+        return list;
+      } catch (e) {
+        return classify(e);
+      }
+    };
+    S2._citationsExtended = true;
+  }
+
+  /** 测试与排障用：清掉引文缓存（与 recommendations 共用 cache，故一并清） */
+  S2._citationsReset = function () {
     cache.clear();
     lastAt = 0;
     queue = Promise.resolve();

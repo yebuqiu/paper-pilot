@@ -855,6 +855,17 @@
       }
      },
      "whatsNew": "①AI 回答里的「文献 n」引用现在可点击——直接定位到对应条目（多篇上下文对话时尤其实用）；②智能体长期记忆：对话中可自动记住你的研究方向、结论与偏好（memory_write），之后每次对话自动带上，设置面板「AI 记忆」可浏览、单条删除或清空，写入支持撤销；③条目详情面板新增「相关文献」区：基于 Semantic Scholar 的 5 条推荐（标题/年份/被引量），每条一键入库并自动打 #来源/S2推荐 标签（按 DOI 去重）。"
+    },
+    {
+     "version": "0.52.0",
+     "update_link": "https://gitee.com/cassiuschen9261/paper-pilot/releases/download/v0.52.0/paper-pilot-0.52.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "①条目详情新增「引文上下文」面板（Scite 风格）：Semantic Scholar 施引句原文 + 支持/对比/批评/中性倾向判定（启发式分类，方法引用不算支持），最多 8 条，可在 S2 打开；②元数据医生：选中条目右键即可用 Crossref 反查补全缺失的 DOI/期刊/年份/作者——先预览差异、确认后才写库、可用 /undo 撤销，已有值绝不覆盖；③标注→论点速记：把当前文献的 PDF 高亮与批注交给 AI，按「论点-证据-页码」证据纪律整理成笔记（每条论点必须挂标注编号与页码，不足 3 条标注时退化为要点清单）。"
     }
    ]
   }

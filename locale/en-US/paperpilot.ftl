@@ -44,3 +44,12 @@ paperpilot-related-section-header = Related Papers
 paperpilot-related-section-sidenav = Related Papers
     .label = Related Papers
     .tooltiptext = Related papers: 5 S2 recommendations, one-click import
+
+# 0.52.0 citation context pane (Scite-style)
+paperpilot-citecon-section-header = Citation Context
+    .label = Citation Context
+    .tooltiptext = How later work cites this paper: support / contrast / critique / neutral
+
+paperpilot-citecon-section-sidenav = Citation Context
+    .label = Citation Context
+    .tooltiptext = Citation contexts: S2 citing sentences with stance, top 8

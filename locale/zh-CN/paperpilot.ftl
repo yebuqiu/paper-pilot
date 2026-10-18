@@ -45,3 +45,12 @@ paperpilot-related-section-header = 相关文献
 paperpilot-related-section-sidenav = 相关文献
     .label = 相关文献
     .tooltiptext = 相关文献：5 条 S2 推荐，一键入库
+
+# 0.52.0 引文上下文面板（Scite 风格）
+paperpilot-citecon-section-header = 引文上下文
+    .label = 引文上下文
+    .tooltiptext = 后来者如何引用本文：支持 / 对比 / 批评 / 中性
+
+paperpilot-citecon-section-sidenav = 引文上下文
+    .label = 引文上下文
+    .tooltiptext = 引文上下文：S2 引用句 + 倾向判定，最多 8 条

@@ -1245,8 +1245,8 @@ ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
 for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
     ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
 _item_reg_src = menus_js.split("GROUPS:")[0]
-ok(_item_reg_src.count("labelKey:") == 48,
-   "23.7 ★ 注册表恰好 48 条命令（实测 %d；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源）" % _item_reg_src.count("labelKey:"))
+ok(_item_reg_src.count("labelKey:") == 49,
+   "23.7 ★ 注册表恰好 49 条命令（实测 %d；0.52.0 +元数据医生；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源）" % _item_reg_src.count("labelKey:"))
 ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
@@ -2539,6 +2539,52 @@ ok("test/chat-sessions.test.js" in _preflight_src and "test/scheduler.test.js" i
    and "test/related-papers.test.js" in _preflight_src,
    "44.22 ★ preflight 注册五个新测试套件（补 0.50.0 漏注册）")
 ok('id="pp-mem-result"' in prefs_xhtml, "44.23 记忆操作结果提示位")
+
+# ---------- 45. 0.52.0（引文上下文 / 元数据医生 / 标注速记） ----------
+menusjs_src = io.open(os.path.join(ROOT, "chrome/content/scripts/menus.js"), encoding="utf-8").read()
+_cc_path = os.path.join(ROOT, "chrome/content/scripts/features/citation-context.js")
+ok(os.path.exists(_cc_path), "45.1 CitationContext 模块在库（引文上下文）")
+_cc_src = io.open(_cc_path, encoding="utf-8").read() if os.path.exists(_cc_path) else ""
+ok("_classify" in _cc_src and "fetchFor" in _cc_src and "register(" in _cc_src,
+   "45.2 CitationContext API（register/fetchFor/_classify 倾向判定）")
+ok("citations" in io.open(os.path.join(ROOT, "chrome/content/scripts/features/s2-client.js"), encoding="utf-8").read(),
+   "45.3 S2Client 扩展 citations（双模分派：兼容既有 citation-trace 旧语义）")
+ok('pref("extensions.zotero.paperpilot.citationContextEnabled", true)' in prefsdef,
+   "45.4 citationContextEnabled 默认开")
+ok('"features/citation-context.js"' in mainjs and "CitationContext.register(id)" in mainjs
+   and "CitationContext.unregister()" in mainjs,
+   "45.5 ★ 引文上下文面板注册/注销接线")
+ok("paperpilot-citecon-section-header" in io.open(os.path.join(ROOT, "locale/zh-CN/paperpilot.ftl"), encoding="utf-8").read()
+   and "paperpilot-citecon-section-header" in io.open(os.path.join(ROOT, "locale/en-US/paperpilot.ftl"), encoding="utf-8").read(),
+   "45.6 ftl 双语（引文上下文 section）")
+_md_path = os.path.join(ROOT, "chrome/content/scripts/features/meta-doctor.js")
+ok(os.path.exists(_md_path), "45.7 MetaDoctor 模块在库（元数据医生）")
+_md_src = io.open(_md_path, encoding="utf-8").read() if os.path.exists(_md_path) else ""
+ok("_titleSim" in _md_src and "_previewFor" in _md_src and "restoreFields" in _md_src,
+   "45.8 MetaDoctor API（相似度/预览/restoreFields 审计）")
+ok("restoreFields" in _at_js, "45.9 agent-tools 支持 restoreFields 撤销分派")
+ok('"features/meta-doctor.js"' in mainjs and "this.metaDoctor = MetaDoctor" in mainjs,
+   "45.10 main.js 装配并暴露 metaDoctor")
+ok('"meta-doctor"' in menusjs_src and "menuMetaDoctor" in menusjs_src and "menuMetaDoctor" in io.open(os.path.join(ROOT, "chrome/content/scripts/core/utils.js"), encoding="utf-8").read(),
+   "45.11 ★ 菜单项接入（META_ITEMS + 右键 + I18n）")
+_ad_path = os.path.join(ROOT, "chrome/content/scripts/features/annotation-digest.js")
+ok(os.path.exists(_ad_path), "45.12 AnnotationDigest 模块在库（标注速记）")
+_ad_src = io.open(_ad_path, encoding="utf-8").read() if os.path.exists(_ad_path) else ""
+ok("collect(" in _ad_src and "buildPrompt" in _ad_src and "MAX_NOTES" in _ad_src,
+   "45.13 AnnotationDigest API（collect/buildPrompt/run 证据纪律契约）")
+ok('pref("extensions.zotero.paperpilot.annotationDigestEnabled", true)' in prefsdef,
+   "45.14 annotationDigestEnabled 默认开")
+ok('"features/annotation-digest.js"' in mainjs and "this.annotationDigest = AnnotationDigest" in mainjs,
+   "45.15 main.js 装配并暴露 annotationDigest")
+ok('"paperpilot-itemmenu-annot-digest"' in menusjs_src and "menuAnnotDigest" in menusjs_src
+   and "AIClient.hasKey" in menusjs_src,
+   "45.16 ★ 标注速记菜单（含 AI 未配置前置拦截）")
+ok("test/citation-context.test.js" in _preflight_src and "test/meta-doctor.test.js" in _preflight_src
+   and "test/annotation-digest.test.js" in _preflight_src,
+   "45.17 preflight 注册三个新测试套件")
+ok('preference="extensions.zotero.paperpilot.citationContextEnabled"' in prefs_xhtml
+   and 'preference="extensions.zotero.paperpilot.annotationDigestEnabled"' in prefs_xhtml,
+   "45.18 设置面板两个新开关（声明式绑定）")
 
 # ★ 分区标题遮挡修复（负下边距 → 卡片背景盖住「账号」「AI 与翻译」标签底部）
 _cat_rule = re.search(r"\.pp-root \.pp-cat-label\s*\{([^}]*)\}", prefs_css, re.S)
