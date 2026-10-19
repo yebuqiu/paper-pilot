@@ -3,6 +3,17 @@
   "papilot@dev.local": {
    "updates": [
     {
+     "version": "0.57.0",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.57.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "检索订阅 v2：五源检索（arXiv / OpenAlex / Crossref / Europe PMC / PubMed）\n按研究领域推荐主题 + 一句话 AI 建订阅 + 试跑预览\n每日 / 每周调度、启停编辑、运行历史、订阅导入导出\n自动入库关闭时不再误记为已见；推荐结果本机缓存 12 小时"
+    },
+    {
      "version": "0.56.0",
      "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.56.0.xpi",
      "applications": {

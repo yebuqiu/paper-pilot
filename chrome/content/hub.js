@@ -42,6 +42,7 @@
           { t: zh ? "库内问答（问整个库）" : "Ask the library", d: zh ? "用一句话提问，自动检索候选文献（标题/标签/摘要+全文复核）后由 AI 依据候选作答，带 [n] 引用编号" : "Natural-language Q&A across your library with [n] citations", run: () => PP.libSearch.openDialog() },
           { t: zh ? "库内检索（只看候选）" : "Retrieve only", d: zh ? "只要候选文献列表与命中片段，不调用 AI（可在对话框内关闭 AI 回答）" : "Candidate list only, no AI call", run: () => PP.libSearch.openDialog() },
           { t: zh ? "文献发现（arXiv 每日推荐）" : "Discovery (arXiv daily)", d: zh ? "用库里已有文献建兴趣画像，从 arXiv 最新提交里挑出值得看的新论文；自动排除已入库的，可一键收藏到「推荐」分类" : "arXiv recommendations built from your library's interests", run: () => PP.discovery.openDialog() },
+          { t: zh ? "检索订阅" : "Search subscriptions", d: zh ? "按研究领域推荐主题或一句话建订阅：先试跑预览，再定时多源（arXiv / OpenAlex / Crossref / PubMed）检索、去重入库并生成速递笔记" : "Topic subscriptions with preview, multi-source search and digests", run: () => PP.menus.openSettings() },
         ],
       },
       {

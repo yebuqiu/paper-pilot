@@ -110,6 +110,8 @@ NODE_SUITES = [
     ("元数据医生", "test/meta-doctor.test.js"),
     ("标注速记", "test/annotation-digest.test.js"),
     ("检索订阅", "test/search-subs.test.js"),
+    ("订阅多源适配", "test/sub-sources.test.js"),
+    ("订阅面板渲染", "test/prefs-subs.test.js"),
     ("综述工作台", "test/review-workbench.test.js"),
     ("会员域集成", "test/membership.test.js"),
     ("价格表", "test/price.test.js"),

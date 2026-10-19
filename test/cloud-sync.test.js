@@ -292,6 +292,13 @@ const E = (localSize, localMtime, etag, size) => ({ localSize, localMtime, etag,
   ok(!CS.shouldSyncPref('thirdSourcePassword'), '排除：thirdSourcePassword');
   ok(!CS.shouldSyncPref('s2ApiKey'), '排除：s2ApiKey');
   ok(CS.shouldSyncPref('aiMaxTokens'), '不误伤：aiMaxTokens 不是密钥');
+  // 检索订阅的本机运行态：跨机同步会制造幽灵行为（A 机的推荐 / 记账灌给 B 机）
+  ok(!CS.shouldSyncPref('searchSubsRecoCache'),
+    '★ 排除：推荐缓存（本机图书馆画像，且 at 每 12h 变化会让快照乒乓）');
+  ok(!CS.shouldSyncPref('searchSubsSeen'),
+    '★ 排除：投递记账（跨机后 B 机会把 A 机见过的论文当往期已见而静默不推送）');
+  ok(CS.shouldSyncPref('searchSubscriptions'),
+    '不误伤：订阅本体（纯配置）仍随云端同步');
 }
 
 {
@@ -302,6 +309,9 @@ const E = (localSize, localMtime, etag, size) => ({ localSize, localMtime, etag,
   Prefs.set('mcpToken', 'tok');
   Prefs.set('readingProgress', '{}');
   Prefs.set('cloudSyncToken', 'app-pass');
+  Prefs.set('searchSubscriptions', '[{"id":"sub-1"}]');
+  Prefs.set('searchSubsRecoCache', '{"at":1,"items":[{"id":"x"}]}');
+  Prefs.set('searchSubsSeen', '{"arXiv:2501.00001":{"at":1}}');
 
   const s1 = CS.snapshotPrefs();
   const s2 = CS.snapshotPrefs();
@@ -310,15 +320,25 @@ const E = (localSize, localMtime, etag, size) => ({ localSize, localMtime, etag,
   ok(!('mcpToken' in s1.prefs), '快照不含 mcpToken');
   ok(!('cloudSyncToken' in s1.prefs), '快照不含同步自身凭据');
   ok('aiSystemPrompt' in s1.prefs && s1.prefs.aiSystemPrompt === '请严谨', '快照含普通设置');
+  ok(!('searchSubsRecoCache' in s1.prefs), '★ 快照不含推荐缓存（纯本机，且会引发乒乓）');
+  ok(!('searchSubsSeen' in s1.prefs), '★ 快照不含投递记账（跨机会静默不推送）');
+  ok('searchSubscriptions' in s1.prefs, '快照仍含订阅本体（配置要跟人走）');
   eq(JSON.stringify(s1), JSON.stringify(s2), '快照内容稳定（两次导出完全一致，避免每轮乒乓）');
   ok(!('exportedAt' in s1), '快照不带时间戳字段');
 
   // 应用侧白名单
-  const n = CS.applySnapshot({ prefs: { aiSystemPrompt: '新提示', cnkiPassword: 'hack', cloudSyncRoot: '/evil' } });
+  const n = CS.applySnapshot({
+    prefs: {
+      aiSystemPrompt: '新提示', cnkiPassword: 'hack', cloudSyncRoot: '/evil',
+      searchSubsRecoCache: '{"at":2,"items":[]}', searchSubsSeen: '{"arXiv:1":{"at":2}}',
+    },
+  });
   eq(n, 1, '应用快照只写允许的键');
   eq(Prefs.get('aiSystemPrompt'), '新提示', '应用快照：普通键生效');
   eq(Prefs.get('cnkiPassword'), 'p@ss', '应用快照：密钥键被忽略');
   eq(Prefs.get('cloudSyncRoot', '/Papilot'), '/Papilot', '应用快照：同步自身配置被忽略');
+  eq(Prefs.get('searchSubsRecoCache'), '{"at":1,"items":[{"id":"x"}]}', '★ 应用快照：推荐缓存不被覆盖');
+  eq(Prefs.get('searchSubsSeen'), '{"arXiv:2501.00001":{"at":1}}', '★ 应用快照：投递记账不被覆盖');
 }
 
 /* ---------------- ④ 行为 ---------------- */

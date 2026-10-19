@@ -65,6 +65,11 @@ pref("extensions.zotero.papilot.scheduleLastRun", "");
 // 0.53.0 检索订阅（JSON 数组）+ 推送记账（指纹 LRU 1000）
 pref("extensions.zotero.papilot.searchSubscriptions", "");
 pref("extensions.zotero.papilot.searchSubsSeen", "");
+// 0.57.0 检索订阅 v2：被忽略的推荐主题 id（JSON 数组 LRU 100）+ OpenAlex/Crossref 礼貌邮箱（可选）
+pref("extensions.zotero.papilot.searchSubsRecoDismissed", "");
+pref("extensions.zotero.papilot.subsMailto", "");
+// 0.57.0 推荐结果缓存（JSON {at, items}，12 小时；订阅增删改即失效；空 = 无缓存）
+pref("extensions.zotero.papilot.searchSubsRecoCache", "");
 // 0.53.0 综述工作台（菜单入口开关）
 pref("extensions.zotero.papilot.reviewWorkbenchEnabled", true);
 // 0.48.x 技能包商店（Skills Hub）：已安装记账 / 本地评分 / 目录源（空 = 仅内置目录）

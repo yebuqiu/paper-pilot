@@ -1244,6 +1244,15 @@ var CloudSync = (function () {
       if (!leaf) return false;
       if (leaf.indexOf("cloudSync") === 0) return false;      // 同步配置本身
       if (leaf === "prefsFoldOpen") return false;             // 纯本机 UI 状态
+      // 检索订阅的两个本机运行态：同步过去只会制造「幽灵行为」，两边都不该带走。
+      //  · searchSubsRecoCache：推荐缓存是「本机图书馆画像」的产物。A 机的推荐灌到 B 机会
+      //    推荐 B 机根本没有的主题；且 at 每 12 小时变一次，快照内容随之变化会让同步判定
+      //    「本地已修改」，与云端口径来回打架（乒乓）。
+      //  · searchSubsSeen：本机投递记账。B 机若拿到 A 机的 seen，会把 A 机见过的论文当成
+      //    「往期已见」而静默不推送（用户以为订阅漏了）；丢掉也不要紧——库内 DOI 查重
+      //    仍能拦住重复入库。
+      if (leaf === "searchSubsRecoCache") return false;
+      if (leaf === "searchSubsSeen") return false;
       if (SECRET_LEAVES.indexOf(leaf) >= 0) return false;
       if (SECRET_LEAF_RE.test(leaf)) return false;
       return true;

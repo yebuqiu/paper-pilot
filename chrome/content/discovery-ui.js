@@ -200,6 +200,26 @@
   } catch (e) { /* ignore */ }
 
   $("pp-dc-run").addEventListener("click", refresh);
+  $("pp-dc-subs").addEventListener("click", () => {
+    // 与「检索订阅」的衔接：发现窗口的当前条件（分类 + 画像词）直接变成一条订阅草稿
+    const SS = Z.Papilot && Z.Papilot.searchSubs;
+    if (!SS || typeof SS.fromDiscovery !== "function" || typeof SS.add !== "function") {
+      setStatus(zh ? "检索订阅模块未就绪（请重启 Zotero 后再试）" : "Search subscriptions unavailable", true);
+      return;
+    }
+    const draft = SS.fromDiscovery();
+    if (!draft.keywords && !draft.categories) {
+      setStatus(zh
+        ? "当前还没有可保存的条件：先在右侧填一个 arXiv 分类，或点「刷新推荐」让画像生成后再试。"
+        : "Nothing to save yet: set a category or refresh recommendations first.", true);
+      return;
+    }
+    const sub = SS.add(draft);
+    setStatus(sub
+      ? (zh ? "已存为订阅「" + sub.name + "」（每天 " + sub.dailyTime + " 自动检索；可在 设置 → 检索订阅 试跑/修改）"
+        : "Saved as subscription: " + sub.name)
+      : (zh ? "保存订阅失败：请到 设置 → 检索订阅 手动创建" : "Failed to save subscription"), !sub);
+  });
   $("pp-dc-note").addEventListener("click", saveNote);
   $("pp-dc-close").addEventListener("click", () => window.close());
   $("pp-dc-daily").addEventListener("change", (ev) => {

@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Papilot 文献副驾",
-  "version": "0.56.0",
-  "description": "Papilot 文献副驾 · Zotero 的 AI 文献副驾：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、参考文献一键入库、阅读进度与题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.56.0 更新：商业合规改造——移除内置 easyScholar 密钥（改为用户自备，未填时回落离线数据）；补齐 SPDX 版权头、第三方声明与贡献者授权条款；客户端 Apache-2.0 / 服务端商业许可的边界写入 NOTICE。",
+  "version": "0.57.0",
+  "description": "Papilot 文献副驾 · Zotero 的 AI 文献副驾：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、参考文献一键入库、阅读进度与题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.57.0 更新：检索订阅 v2——arXiv / OpenAlex / Crossref / Europe PMC / PubMed 五源检索、试跑预览、按研究领域推荐主题、一句话 AI 建订阅、每日 / 每周调度与运行历史、订阅导入导出；自动入库关闭时不再误记为已见。",
   "author": "Cassiuschen",
   "homepage_url": "https://gitee.com/cassiuschen9261/zotero-papilot",
   "icons": {

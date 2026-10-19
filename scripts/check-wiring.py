@@ -2943,6 +2943,62 @@ ok("BlockedTemporarily" in _cloud_core_js and "retryAfterMs" in _cloud_core_js
    and "retryAfterMs" in _cloud_sync_js,
    "48.19 ★ 限流单独归因（BlockedTemporarily → RATE_LIMIT + 长等待）")
 
+# ---------- 49. 0.57.0 检索订阅 v2（推荐 / 试跑 / 多源 / AI 边界） ----------
+# 这一版的价值全在「接缝」：推荐没接上=空白卡；预览写脏数据=吃掉正式订阅；
+# AI 未就绪没降级=整块不可用；多源装配顺序错=运行时 ReferenceError。
+_ssrc_path = os.path.join(ROOT, "chrome/content/scripts/features/sub-sources.js")
+ok(os.path.exists(_ssrc_path), "49.1 SubSources 多源适配层在库")
+_ssrc = io.open(_ssrc_path, encoding="utf-8").read() if os.path.exists(_ssrc_path) else ""
+ok("normalizeOpenAlex" in _ssrc and "normalizeCrossref" in _ssrc and "normalizePubMed" in _ssrc
+   and "abstractFromInverted" in _ssrc and "dedupe(" in _ssrc,
+   "49.2 ★ 三源归一 + 倒排摘要 + 跨源去重")
+ok("_openalex" in _ssrc and "_crossref" in _ssrc and "_pubmed" in _ssrc
+   and "bySource" in _ssrc and "partial" in _ssrc,
+   "49.3 ★ 多源容错（单源失败不拖垮整次订阅）")
+ok('"features/sub-sources.js"' in mainjs and "this.subSources" in mainjs,
+   "49.4 main.js 装配并暴露 subSources")
+ok(mainjs.index('"features/sub-sources.js"') < mainjs.index('"features/search-subs.js"'),
+   "49.5 ★ 适配层排在订阅模块之前（运行时全局可见）")
+
+_ssv2 = io.open(_ss_path, encoding="utf-8").read() if os.path.exists(_ss_path) else ""
+ok("async preview(" in _ssv2 and "async suggest(" in _ssv2 and "async aiParseQuery(" in _ssv2
+   and "async aiRerank(" in _ssv2 and "async aiDigest(" in _ssv2,
+   "49.6 ★ v2 五个能力（预览/推荐/AI 解析/AI 复核/AI 速览）")
+ok("_isPlannedDay" in _ssv2 and '"weekly"' in _ssv2 and "weekdays" in _ssv2,
+   "49.7 每周计划日调度")
+ok("_pushRunLog" in _ssv2 and "RUNLOG_MAX" in _ssv2 and "lastStatus" in _ssv2,
+   "49.8 运行历史与最近状态")
+ok("searchSubsRecoDismissed" in _ssv2 and "dismissReco" in _ssv2,
+   "49.9 推荐可忽略（持久化）")
+ok("preview(" in _ssv2 and "_seenSave" in _ssv2 and "不写 pref" in _ssv2,
+   "49.10 ★ 预览不写记账（避免吃掉正式订阅内容）")
+
+ok('id="pp-subs-reco"' in prefs_xhtml and 'id="pp-sub-nl"' in prefs_xhtml
+   and 'id="pp-sub-src-openalex"' in prefs_xhtml and 'id="pp-sub-src-europepmc"' in prefs_xhtml
+   and 'id="pp-sub-mode"' in prefs_xhtml
+   and 'id="pp-sub-freq"' in prefs_xhtml and 'id="pp-sub-maxagedays"' in prefs_xhtml,
+   "49.11 设置面板推荐/一句话/多源/模式/频率/时间窗控件齐全")
+ok("normalizeEuropePmc" in _ssrc and "_europepmc" in _ssrc and "europePmcQuery" in _ssrc,
+   "49.11b ★ Europe PMC 源（NCBI 不可达时的生物医学替代）")
+ok('id="pp-sub-mailto"' in prefs_xhtml and 'subsMailto' in prefsdef,
+   "49.12 礼貌邮箱（OpenAlex/Crossref 配额）")
+_psrc = io.open(os.path.join(ROOT, "chrome/content/prefs-subs.js"), encoding="utf-8").read()
+ok("loadReco" in _psrc and "doPreview" in _psrc and "aiParse" in _psrc
+   and "commitDraftForPreview" in _psrc and "renderReco" in _psrc,
+   "49.13 ★ 面板四段交互（推荐/试跑/一句话/表单）")
+ok("pp-sub-ai-rerank" in _psrc and "pp-sub-ai-digest" in _psrc,
+   "49.14 AI 两个开关（默认关）")
+
+_dsrc = io.open(os.path.join(ROOT, "chrome/content/discovery-ui.js"), encoding="utf-8").read()
+ok('id="pp-dc-subs"' in io.open(os.path.join(ROOT, "chrome/content/discovery.xhtml"), encoding="utf-8").read()
+   and "fromDiscovery" in _dsrc,
+   "49.15 ★ 文献发现 → 订阅的衔接入口（存为订阅）")
+ok("test/sub-sources.test.js" in _preflight_src and "test/search-subs.test.js" in _preflight_src
+   and "test/prefs-subs.test.js" in _preflight_src,
+   "49.16 preflight 注册订阅 / 多源 / 面板三个套件")
+ok("search subs selfTest" in mainjs and "SearchSubs.selfTest()" in mainjs,
+   "49.17 ★ 启动写订阅自检结论（真机排查入口）")
+
 print("=" * 60)
 for p in passes:
     print("  OK  " + p)

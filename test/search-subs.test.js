@@ -202,6 +202,10 @@ function makeEnv(opts) {
   };
   if (opts.arxiv) sandbox.ArxivFetch = opts.arxiv;
   if (opts.MdLite) sandbox.MdLite = opts.MdLite;
+  if (opts.ai) sandbox.AIClient = opts.ai;
+  if (opts.discovery) sandbox.Discovery = opts.discovery;
+  if (opts.subSources) sandbox.SubSources = opts.subSources;
+  if (opts.arxivCategories) sandbox.ArxivCategories = opts.arxivCategories;
 
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(SRC, 'utf8'), sandbox, { filename: 'search-subs.js' });
@@ -403,6 +407,49 @@ async function main() {
     has(html, 'Paper 3', '③ 笔记列出第 3 条');
     has(html, '未入库', '③ 标注为未入库');
     notHas(html, '本次无新增', '③ 有新命中时不写空态');
+  }
+
+  /* ③-2b ★ autoImport=false 不写 seen：之后改成自动入库仍能收到（回归：静默丢论文） */
+  {
+    const env = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ autoImport: false })]) },
+      arxiv: makeArxiv([entry(1), entry(2), entry(3)]),
+    });
+    const r1 = await env.S.run('sub-1', { now: AT });
+    eq(r1.added, 0, '③ ★ autoImport=false 不入库');
+    eq(env.items.length, 0, '③ ★ autoImport=false 不建条目');
+    eq(env.seen()['arXiv:2501.00001'], undefined, '③ ★ autoImport=false 不写 seen（第 1 条）');
+    eq(env.seen()['arXiv:2501.00002'], undefined, '③ ★ autoImport=false 不写 seen（第 2 条）');
+    eq(Object.keys(env.seen() || {}).length, 0, '③ ★ autoImport=false 完全不记账');
+
+    // 再跑一次：因为没有记账，仍然能列出全部结果（不会被自己标成「往期已见」）
+    const r2 = await env.S.run('sub-1', { now: AT });
+    eq(r2.ok, true, '③ 第二次运行仍 ok');
+    eq(r2.skipped, 0, '③ 第二次运行 skipped=0（不自我判重）');
+    eq(env.notes.length, 2, '③ 第二次运行仍生成速递');
+    const html = env.notes[1].html;
+    has(html, 'Paper 1', '③ 第二次速递仍列出第 1 条');
+    has(html, 'Paper 2', '③ 第二次速递仍列出第 2 条');
+    has(html, 'Paper 3', '③ 第二次速递仍列出第 3 条');
+    eq(env.items.length, 0, '③ 第二次运行仍未入库');
+  }
+
+  /* ③-2c ★ 批内去重：同一批里重复出现的同一条只处理一次（不写 pref） */
+  {
+    const env = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ autoImport: false })]) },
+      arxiv: makeArxiv([entry(1), entry(1), entry(2)]),
+    });
+    const r = await env.S.run('sub-1', { now: AT });
+    eq(r.ok, true, '③ 批内重复仍 ok');
+    eq(r.skipped, 1, '③ ★ 批内重复条目计入 skipped');
+    eq(r.added, 0, '③ 批内重复不新增');
+    eq(env.items.length, 0, '③ autoImport=false 仍不入库');
+    const html = env.notes[0].html;
+    has(html, '共 2 条结果', '③ ★ 速递去重后只列 2 条');
+    eq(html.split('Paper 1').length - 1, 1, '③ ★ Paper 1 只出现一次');
+    eq(html.split('Paper 2').length - 1, 1, '③ Paper 2 只出现一次');
+    eq(Object.keys(env.seen() || {}).length, 0, '③ 批内去重不写 seen（纯本次执行的内存集合）');
   }
 
   /* ③-3 全部已在 seen → 空态文案 */
@@ -698,6 +745,538 @@ async function main() {
     await env.S._lastCheck;
     eq(env.notes.length, 1, '⑤ 同一天第二次轮询不重复建笔记');
     env.S.stop();
+  }
+
+  /* ================== ⑥ v2：模型 / 预览 / 频率 / 运行历史 ================== */
+
+  /* ⑥-1 v2 字段归一 + 旧订阅迁移 */
+  {
+    const env = makeEnv();
+    const S = env.S;
+    const a = S.add({
+      name: '多源订阅', keywords: 'sparse attention', categories: 'cs.LG',
+      sources: ['arxiv', 'openalex', 'bogus'], mode: 'any', exclude: 'survey',
+      maxAgeDays: 14, freq: 'weekly', dailyTime: '7:30', weekdays: [1, 3, 5],
+      aiRerank: true, aiDigest: true, seedProfile: true, enabled: false, autoImport: false,
+    });
+    ok(!!a, '⑥ add v2 字段');
+    eq(JSON.stringify(a.sources), '["arxiv","openalex"]', '⑥ 未知来源被过滤');
+    eq(a.mode, 'any', '⑥ 布尔模式');
+    eq(a.freq, 'weekly', '⑥ 每周频率');
+    eq(a.dailyTime, '07:30', '⑥ 时间归一');
+    eq(JSON.stringify(a.weekdays), '[1,3,5]', '⑥ 星期归一');
+    eq(a.enabled, false, '⑥ 停用状态');
+    eq(a.maxAgeDays, 14, '⑥ 时间窗');
+    eq(a.aiRerank, true, '⑥ AI 复核开关');
+    eq(a.autoImport, false, '⑥ 自动入库开关');
+
+    const b = S.add({ name: '每周无时间', keywords: 'x', freq: 'weekly' });
+    eq(b.freq, 'manual', '⑥ 每周但无时间 → 降级手动');
+
+    const raw = S.list().filter((x) => x.id === a.id)[0];
+    eq(JSON.stringify(raw.sources), '["arxiv","openalex"]', '⑥ 落盘后仍保留来源');
+
+    // 旧版（0.53）只有 keywords/categories/dailyTime 的订阅
+    const legacy = env.S._normSub({ id: 'sub-old', name: '旧订阅', keywords: 'x', categories: '', dailyTime: '07:30', max: 10, autoImport: true, lastRun: '', createdAt: 1 });
+    eq(legacy.sources[0], 'arxiv', '⑥ 旧订阅默认 arxiv');
+    eq(legacy.enabled, true, '⑥ 旧订阅默认启用');
+    eq(legacy.freq, 'daily', '⑥ 旧订阅带时间 → 每日');
+    eq(legacy.mode, 'all', '⑥ 旧订阅默认 AND');
+  }
+
+  /* ⑥-2 preview：只读、不写 pref、不入库、不记账 */
+  {
+    const SUBP = sub({ id: 'sub-1', name: '预览订阅', keywords: 'attention' });
+    const env = makeEnv({
+      prefs: {
+        [PREFIX + 'searchSubscriptions']: JSON.stringify([SUBP]),
+        [PREFIX + 'searchSubsSeen']: JSON.stringify({ 'arXiv:2501.00001': { at: 1 } }),
+      },
+      arxiv: makeArxiv([entry(1), entry(2)]),
+    });
+    const r = await env.S.preview('sub-1', { now: AT, limit: 10 });
+    eq(r.ok, true, '⑥ preview ok');
+    eq(r.entries.length, 2, '⑥ preview 返回条目');
+    eq(r.entries.filter((e) => e.status === 'seen').length, 1, '⑥ 往期已见标注');
+    eq(r.entries.filter((e) => e.status === 'new').length, 1, '⑥ 新命中标注');
+    eq(env.items.length, 0, '⑥ preview 不入库');
+    eq(env.notes.length, 0, '⑥ preview 不出笔记');
+    eq(env.seen()['arXiv:2501.00002'], undefined, '⑥ preview 不写 seen');
+    eq(env.subs()[0].lastRun, '', '⑥ preview 不写 lastRun');
+    eq(env.subs()[0].lastStatus || '', '', '⑥ preview 不写运行状态');
+
+    const bad = await env.S.preview('sub-nope');
+    eq(bad.reason, 'no_sub', '⑥ preview 未知订阅');
+    const noQ = await env.S.preview({ name: 'x' });
+    eq(noQ.reason, 'no_query', '⑥ preview 无条件 → no_query');
+
+    // 草稿预览：不落盘
+    const before = env.subs().length;
+    const d = await env.S.preview({ name: '草稿', keywords: 'attention' }, { now: AT });
+    eq(d.ok, true, '⑥ 草稿预览 ok');
+    eq(env.subs().length, before, '⑥ 草稿预览不创建订阅');
+  }
+
+  /* ⑥-3 启停 / 每周计划日 */
+  {
+    const env = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ enabled: false, dailyTime: '07:30' })]) },
+      arxiv: makeArxiv([entry(1)]),
+    });
+    const done = await env.S.checkDue(AT);
+    eq(JSON.stringify(done), '[]', '⑥ 停用订阅不自动跑');
+    eq(env.arxiv.calls.length, 0, '⑥ 停用订阅不发请求');
+  }
+  {
+    const weekly = sub({ id: 'sub-1', name: '每周', dailyTime: '07:30', freq: 'weekly', weekdays: [1] });
+    const monday = new Date(2026, 9, 19, 8, 0, 0);
+    const env1 = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([weekly]) },
+      arxiv: makeArxiv([entry(1)]),
+    });
+    const sundayDone = await env1.S.checkDue(AT);
+    eq(JSON.stringify(sundayDone), '[]', '⑥ 周日不在计划日 → 不跑');
+    const env2 = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([weekly]) },
+      arxiv: makeArxiv([entry(1)]),
+    });
+    const mondayDone = await env2.S.checkDue(monday);
+    eq(JSON.stringify(mondayDone), '["sub-1"]', '⑥ 周一在计划日 → 跑');
+    eq(env2.subs()[0].lastRun, '2026-10-19', '⑥ 每周写当天 lastRun');
+  }
+
+  /* ⑥-4 运行历史（最新在前，最多 5 条） */
+  {
+    const env = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ id: 'sub-1' })]) },
+      arxiv: makeArxiv([entry(1)]),
+    });
+    await env.S.run('sub-1', { now: AT });
+    await env.S.run('sub-1', { now: AT });
+    const s = env.subs()[0];
+    eq(s.runLog.length, 2, '⑥ 两次运行 → 两条历史');
+    eq(s.runLog[0].added, 0, '⑥ 最新一条在前（第二次全跳过）');
+    eq(s.runLog[0].skipped, 1, '⑥ 第二次跳过 1');
+    eq(s.runLog[1].added, 1, '⑥ 第一条记录入库 1');
+    has(s.lastStatus, '新入库', '⑥ lastStatus 可读');
+
+    const five = [1, 2, 3, 4, 5].map((i) => ({ at: '2026-10-1' + i, added: i, skipped: 0, failed: 0, trigger: 'manual', reason: '' }));
+    const env2 = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ id: 'sub-1', runLog: five })]) },
+      arxiv: makeArxiv([entry(1)]),
+    });
+    await env2.S.run('sub-1', { now: AT });
+    eq(env2.subs()[0].runLog.length, 5, '⑥ 运行历史最多 5 条');
+  }
+
+  /* ================== ⑦ v2：AI 辅助（失败必须降级） ================== */
+
+  /* ⑦-1 一句话 → 草稿：白名单校验 + 强制不入库 */
+  {
+    const ai = {
+      status: () => 'ok',
+      hasKey: () => true,
+      chat: async () => '```json\n' + JSON.stringify({
+        name: '稀疏注意力',
+        keywords: ['sparse attention', 'long context'],
+        categories: ['cs.CL', 'cs.nope'],
+        sources: ['arxiv', 'bogus'],
+        mode: 'any',
+        exclude: ['survey'],
+        maxAgeDays: 14,
+        freq: 'daily',
+        dailyTime: '9:05',
+        autoImport: true,
+      }) + '\n```',
+    };
+    const cats = {
+      ALL: [{ code: 'cs.CL' }, { code: 'cs.nope' }],
+      checkAll: (list) => ({ valid: (list || []).filter((c) => c === 'cs.CL'), unknown: ['cs.nope'], malformed: [], suggestions: [] }),
+    };
+    const env = makeEnv({ ai, arxivCategories: cats });
+    const r = await env.S.aiParseQuery('追踪稀疏注意力');
+    eq(r.ok, true, '⑦ AI 解析 ok');
+    eq(r.input.name, '稀疏注意力', '⑦ 保留 AI 名称');
+    eq(r.input.keywords, 'sparse attention, long context', '⑦ 关键词数组拼串');
+    eq(r.input.categories, 'cs.CL', '⑦ 非法分类被丢弃');
+    eq(JSON.stringify(r.input.sources), '["arxiv"]', '⑦ 未知来源被丢弃');
+    eq(r.input.mode, 'any', '⑦ 模式保留');
+    eq(r.input.dailyTime, '09:05', '⑦ 时间归一');
+    eq(r.input.autoImport, false, '⑦ ★ 强制先预览，不自动入库');
+    eq(r.input.maxAgeDays, 14, '⑦ 时间窗保留');
+    eq(env.S.list().length, 0, '⑦ 解析不创建订阅');
+  }
+
+  /* ⑦-2 解析失败 / AI 未配置 / 调用异常 */
+  {
+    const bad = makeEnv({ ai: { status: () => 'ok', chat: async () => '抱歉，我无法完成。' } });
+    const r1 = await bad.S.aiParseQuery('随便写点');
+    eq(r1.ok, false, '⑦ 非 JSON → 失败');
+    eq(r1.reason, 'parse_failed', '⑦ 非 JSON → parse_failed');
+
+    const noai = makeEnv();
+    const r2 = await noai.S.aiParseQuery('追踪稀疏注意力');
+    eq(r2.ok, false, '⑦ 无 AI 模块 → 失败');
+    eq(r2.reason, 'no_ai', '⑦ 无 AI → no_ai');
+    ok(!!r2.guide, '⑦ 无 AI 给出指引');
+
+    const err = makeEnv({ ai: { status: () => 'ok', chat: async () => { throw new Error('429 quota'); } } });
+    const r3 = await err.S.aiParseQuery('追踪稀疏注意力');
+    eq(r3.reason, 'ai_failed', '⑦ AI 抛错 → ai_failed');
+    has(r3.guide, '429', '⑦ 错误原因透出');
+
+    const login = makeEnv({ ai: { status: () => 'not_logged_in', chat: async () => '' } });
+    const r4 = await login.S.aiParseQuery('追踪稀疏注意力');
+    eq(r4.reason, 'not_logged_in', '⑦ 未登录 → 精确原因');
+    has(r4.guide, '登录', '⑦ 未登录给出登录指引');
+  }
+
+  /* ⑦-3 AI 复核排序；失败保持原序 */
+  {
+    const entries = [
+      { source: 'arxiv', arxivId: '1', title: 'A', summary: 'x' },
+      { source: 'arxiv', arxivId: '2', title: 'B', summary: 'y' },
+    ];
+    const env = makeEnv({
+      ai: { status: () => 'ok', chat: async () => '[{"i":2,"score":90,"why":"best"},{"i":1,"score":10,"why":"meh"}]' },
+    });
+    const out = await env.S.aiRerank(sub(), entries);
+    eq(out[0].title, 'B', '⑦ AI 复核重排');
+    eq(out[0].aiScore, 90, '⑦ 分数落地');
+    eq(out[0].aiWhy, 'best', '⑦ 理由落地');
+
+    const bad = makeEnv({ ai: { status: () => 'ok', chat: async () => 'not json' } });
+    const same = await bad.S.aiRerank(sub(), entries);
+    eq(same[0].title, 'A', '⑦ 解析失败保持原序');
+    eq(same[0].aiScore, undefined, '⑦ 解析失败不写分数');
+
+    const none = makeEnv();
+    const same2 = await none.S.aiRerank(sub(), entries);
+    eq(same2[0].title, 'A', '⑦ 无 AI 保持原序');
+  }
+
+  /* ================== ⑧ v2：基于库内领域的推荐 ================== */
+
+  function libItem(title, tags, cats, daysAgo) {
+    return {
+      dateAdded: new Date(AT.getTime() - daysAgo * 86400000).toISOString(),
+      _cats: cats,
+      getField(f) {
+        if (f === 'title') return title;
+        if (f === 'abstractNote') return '';
+        return '';
+      },
+      getTags() { return (tags || []).map((t) => ({ tag: t })); },
+    };
+  }
+
+  {
+    const items = [
+      libItem('Sparse attention for long context', ['attention'], ['cs.LG'], 10),
+      libItem('Sparse attention efficiency', ['attention'], ['cs.LG'], 40),
+      libItem('Unrelated topic about biology', ['bio'], ['q-bio.NC'], 200),
+    ];
+    const discovery = {
+      collectLibraryItems: async () => items,
+      buildProfile: () => ({ terms: [{ term: 'sparse', weight: 9 }, { term: 'attention', weight: 8 }, { term: 'context', weight: 3 }], categories: ['cs.LG'], scanned: 3 }),
+      extractArxiv: (it) => ({ categories: it._cats, arxivId: '' }),
+      tokenize: (s) => String(s || '').toLowerCase().split(/[^a-z0-9\u4e00-\u9fa5]+/).filter((x) => x && x.length >= 2),
+    };
+    const env = makeEnv({ discovery });
+    const list = await env.S.suggest({ max: 3, now: AT });
+    ok(list.length >= 1, '⑧ 产出推荐主题', list.length);
+    ok(list.length <= 3, '⑧ 不超过 max');
+    has(list[0].keywords, 'sparse', '⑧ 关键词来自画像');
+    ok(list[0].coverage >= 2, '⑧ 覆盖篇数可解释', list[0].coverage);
+    ok(!!list[0].reason, '⑧ 给出推荐理由');
+    ok(list[0].sources.indexOf('arxiv') >= 0, '⑧ 默认来源含 arXiv');
+    eq(list[0].autoImport, undefined, '⑧ 推荐不携带自动入库决定');
+
+    // 忽略后不再出现
+    const id = list[0].id;
+    env.S.dismissReco(id);
+    const again = await env.S.suggest({ max: 3, now: AT });
+    ok(!again.some((x) => x.id === id), '⑧ 忽略的推荐不再出现');
+  }
+
+  {
+    // 现有订阅已覆盖同主题 → 不再推荐
+    const items = [
+      libItem('Sparse attention for long context', ['attention'], ['cs.LG'], 10),
+      libItem('Sparse attention efficiency', ['attention'], ['cs.LG'], 40),
+    ];
+    const discovery = {
+      collectLibraryItems: async () => items,
+      buildProfile: () => ({ terms: [{ term: 'sparse', weight: 9 }, { term: 'attention', weight: 8 }], categories: ['cs.LG'], scanned: 2 }),
+      extractArxiv: (it) => ({ categories: it._cats }),
+      tokenize: (s) => String(s || '').toLowerCase().split(/[^a-z0-9\u4e00-\u9fa5]+/).filter(Boolean),
+    };
+    const env = makeEnv({
+      discovery,
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ keywords: 'sparse, attention', categories: 'cs.LG' })]) },
+    });
+    const list = await env.S.suggest({ max: 3, now: AT });
+    eq(list.length, 0, '⑧ 与现有订阅重复 → 不推荐');
+  }
+
+  {
+    // 冷启动：库为空 → 用「研究者画像」文本
+    const env = makeEnv({
+      discovery: {
+        collectLibraryItems: async () => [],
+        buildProfile: () => ({ terms: [], categories: [], scanned: 0 }),
+        extractArxiv: () => ({ categories: [] }),
+        tokenize: (s) => String(s || '').toLowerCase().split(/[^a-z0-9\u4e00-\u9fa5]+/).filter((x) => x && x.length >= 2),
+      },
+      prefs: { [PREFIX + 'researcherProfile']: 'graph neural networks for molecular property prediction' },
+    });
+    const list = await env.S.suggest({ max: 3, now: AT });
+    eq(list.length, 1, '⑧ 冷启动回退研究者画像');
+    has(list[0].name, '研究方向', '⑧ 冷启动命名');
+    has(list[0].keywords, 'graph', '⑧ 画像词进入关键词');
+  }
+
+  /* ⑧-4 ★ 12h 推荐缓存 / 强制刷新 / 订阅变化失效 / 忽略命中缓存 */
+  {
+    let scans = 0;
+    const items = [
+      libItem('Sparse attention for long context', ['attention'], ['cs.LG'], 10),
+      libItem('Sparse attention efficiency', ['attention'], ['cs.LG'], 40),
+      libItem('Vision transformer scaling', ['vit'], ['cs.CV'], 5),
+    ];
+    const discovery = {
+      collectLibraryItems: async () => { scans++; return items; },
+      buildProfile: () => ({ terms: [{ term: 'sparse' }, { term: 'attention' }, { term: 'context' }], categories: ['cs.LG'], scanned: 3 }),
+      extractArxiv: (it) => ({ categories: it._cats }),
+      tokenize: (s) => String(s || '').toLowerCase().split(/[^a-z0-9\u4e00-\u9fa5]+/).filter(Boolean),
+    };
+    const env = makeEnv({ discovery });
+
+    const a = await env.S.suggest({ max: 3, now: AT });
+    eq(scans, 1, '⑧ 首次推荐扫描库内条目');
+    ok(a.length >= 1, '⑧ 首次推荐有结果', a.length);
+    eq(env.S.recoFromCache(), false, '⑧ 首次推荐不算缓存命中');
+    ok(!!env.prefs('searchSubsRecoCache'), '⑧ 计算结果写入缓存 pref');
+
+    const b = await env.S.suggest({ max: 3, now: AT });
+    eq(scans, 1, '⑧ ★ 12h 内再次 suggest 走缓存（只扫描 1 次）');
+    eq(b.length, a.length, '⑧ 缓存返回相同数量');
+    eq(env.S.recoFromCache(), true, '⑧ 缓存命中可被面板识别');
+
+    const c = await env.S.suggest({ max: 3, force: true, now: AT });
+    eq(scans, 2, '⑧ ★ suggest({force:true}) 强制重新扫描');
+    eq(env.S.recoFromCache(), false, '⑧ force 时不算缓存命中');
+    ok(c.length >= 1, '⑧ force 仍有结果', c.length);
+
+    // 忽略后：即使命中缓存也不能返回该 id
+    const id = c[0].id;
+    ok(env.S.dismissReco(id), '⑧ 忽略推荐成功');
+    ok(JSON.stringify(env.prefs('searchSubsRecoCache')).indexOf(id) < 0, '⑧ 缓存里也已剔除被忽略的 id');
+    const d = await env.S.suggest({ max: 3, now: AT });
+    ok(!d.some((x) => x.id === id), '⑧ ★ 忽略的推荐即使命中缓存也不返回');
+    // 缓存被删空时按「无缓存」重算（空推荐不写缓存），这里不为扫描次数写死断言
+
+    // add() / update() / remove() 都会让「与现有订阅去重」的结论失效
+    ok(!!env.S.add({ name: '新增订阅', keywords: 'vision transformer' }), '⑧ 新增订阅成功');
+    eq(env.prefs('searchSubsRecoCache'), '', '⑧ ★ add() 后缓存被清空');
+    let before = scans;
+    await env.S.suggest({ max: 3, now: AT });
+    eq(scans, before + 1, '⑧ ★ add() 后 suggest 重新扫描');
+
+    const subId = env.subs()[0].id;
+    ok(!!env.S.update(subId, { max: 12 }), '⑧ 修改订阅成功');
+    eq(env.prefs('searchSubsRecoCache'), '', '⑧ update() 后缓存被清空');
+    before = scans;
+    await env.S.suggest({ max: 3, now: AT });
+    eq(scans, before + 1, '⑧ update() 后重新扫描');
+
+    env.S.remove(subId);
+    eq(env.prefs('searchSubsRecoCache'), '', '⑧ remove() 后缓存被清空');
+
+    // 过期 / 损坏的缓存：按无缓存处理，绝不抛
+    env.store.set(PREFIX + 'searchSubsRecoCache', JSON.stringify({ at: Date.now() - env.S.RECO_TTL_MS - 1000, items: a }));
+    before = scans;
+    await env.S.suggest({ max: 3, now: AT });
+    eq(scans, before + 1, '⑧ ★ 超过 12h 的缓存视为过期 → 重新扫描');
+
+    env.store.set(PREFIX + 'searchSubsRecoCache', '{oops');
+    before = scans;
+    await env.S.suggest({ max: 3, now: AT });
+    eq(scans, before + 1, '⑧ 坏缓存按无缓存处理（不抛）');
+
+    // 脏元素过滤：缓存是跨版本残留的 JSON，坏元素渲染推荐卡时会直接抛错
+    env.store.set(PREFIX + 'searchSubsRecoCache',
+      JSON.stringify({ at: Date.now(), items: ['junk', 42, null, { id: 'ok' }] }));
+    const loaded = env.S._recoCacheLoad();
+    ok(!!loaded, '⑧ 含脏元素的缓存仍可加载');
+    eq(loaded.items.length, 1, '⑧ ★ 脏元素被过滤，只留合法对象');
+    eq(loaded.items[0].id, 'ok', '⑧ 过滤后保留合法推荐');
+
+    env.store.set(PREFIX + 'searchSubsRecoCache',
+      JSON.stringify({ at: Date.now(), items: ['junk', 42, null, []] }));
+    eq(env.S._recoCacheLoad(), null, '⑧ ★ 全是脏元素 → 视为无缓存');
+  }
+
+  /* ⑧-5 空推荐不写缓存（否则「暂无推荐」会被冻结 12 小时） */
+  {
+    const env = makeEnv({
+      discovery: {
+        collectLibraryItems: async () => [],
+        buildProfile: () => ({ terms: [], categories: [], scanned: 0 }),
+        extractArxiv: () => ({ categories: [] }),
+        tokenize: (s) => String(s || '').toLowerCase().split(/[^a-z0-9\u4e00-\u9fa5]+/).filter((x) => x && x.length >= 2),
+      },
+    });
+    const list = await env.S.suggest({ max: 3, now: AT });
+    eq(list.length, 0, '⑧ 空库且无画像 → 无推荐');
+    eq(env.prefs('searchSubsRecoCache'), '', '⑧ ★ 空推荐不写缓存（pref 写回空串，下次立刻重算）');
+  }
+
+  /* ================== ⑨ v2：从文献发现衔接 ================== */
+  {
+    const env = makeEnv({
+      discovery: {
+        loadCache: () => ({ profile: { terms: [{ term: 'sparse' }, { term: 'attention' }] } }),
+      },
+      prefs: { [PREFIX + 'discoveryCategories']: 'cs.CL, cs.AI' },
+    });
+    const d = env.S.fromDiscovery();
+    eq(d.categories, 'cs.CL, cs.AI', '⑨ 继承发现分类');
+    eq(d.keywords, 'sparse, attention', '⑨ 继承画像词');
+    eq(d.freq, 'daily', '⑨ 默认每日');
+    eq(d.autoImport, false, '⑨ 默认不自动入库');
+    ok(env.S.add(d), '⑨ 草稿可直接创建');
+  }
+
+  /* ================== ⑩ v2：导出 / 导入（剪贴板 JSON） ================== */
+
+  {
+    const env = makeEnv({
+      prefs: {
+        [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({
+          id: 'sub-1', name: 'A', keywords: 'attention', categories: '', dailyTime: '08:00',
+          freq: 'daily', sources: ['arxiv', 'openalex'], max: 12, autoImport: false,
+          lastRun: DAY, lastStatus: '2026-10-18 08:00 · +1 新入库 / 0 跳过',
+          runLog: [{ at: '2026-10-18 08:00', added: 1, skipped: 0, failed: 0, trigger: 'daily', reason: '' }],
+          createdAt: 12345,
+        })]),
+      },
+    });
+
+    const json = env.S.exportJson();
+    ok(/^ {2}"app":/.test(String(json).split('\n')[1] || ''), '⑩ 导出 JSON 为 2 空格缩进');
+    const obj = JSON.parse(json);
+    eq(obj.app, 'papilot', '⑩ 导出带 app 标记');
+    eq(obj.kind, 'searchSubscriptions', '⑩ 导出 kind');
+    eq(obj.version, 2, '⑩ 导出 version=2');
+    eq(obj.subscriptions.length, 1, '⑩ 导出条目数');
+
+    const s0 = obj.subscriptions[0];
+    eq(s0.id, undefined, '⑩ ★ 不导出 id');
+    eq(s0.lastRun, undefined, '⑩ ★ 不导出 lastRun');
+    eq(s0.lastStatus, undefined, '⑩ ★ 不导出 lastStatus');
+    eq(s0.runLog, undefined, '⑩ ★ 不导出 runLog');
+    eq(s0.createdAt, undefined, '⑩ ★ 不导出 createdAt');
+    eq(s0.name, 'A', '⑩ 导出 name');
+    eq(s0.keywords, 'attention', '⑩ 导出 keywords');
+    eq(JSON.stringify(s0.sources), '["arxiv","openalex"]', '⑩ 导出 sources');
+    eq(s0.freq, 'daily', '⑩ 导出 freq');
+    eq(s0.dailyTime, '08:00', '⑩ 导出 dailyTime');
+    eq(s0.max, 12, '⑩ 导出 max');
+    eq(s0.autoImport, false, '⑩ 导出 autoImport');
+    eq(s0.enabled, true, '⑩ 导出 enabled');
+
+    /* 坏输入：一律 ok:false + error，不抛 */
+    const badJson = env.S.importJson('{oops');
+    eq(badJson.ok, false, '⑩ 坏 JSON → ok:false');
+    eq(badJson.error, 'parse_failed', '⑩ 坏 JSON → parse_failed');
+    eq(badJson.added, 0, '⑩ 坏 JSON 不新增');
+    eq(env.S.importJson('').error, 'empty', '⑩ 空串 → empty');
+    eq(env.S.importJson('{"a":1}').error, 'bad_shape', '⑩ 结构不认识 → bad_shape');
+    eq(env.S.list().length, 1, '⑩ 坏输入不写订阅');
+
+    /* 裸数组：字段保真 + 重新分配 id + 运行态清零 */
+    const raw = [{
+      name: '导入订阅', keywords: 'graph neural network', categories: '', sources: ['openalex', 'arxiv'],
+      mode: 'any', exclude: 'survey', maxAgeDays: 14, freq: 'weekly', dailyTime: '9:05',
+      weekdays: [1, 3], max: 7, autoImport: false, aiRerank: true, aiDigest: true, seedProfile: true,
+      enabled: false,
+      id: 'sub-hacked', lastRun: '2026-01-01', lastStatus: '旧机器状态',
+      runLog: [{ at: '2026-01-01 08:00', added: 3, skipped: 0, failed: 0, trigger: 'daily', reason: '' }],
+      createdAt: 1,
+    }];
+    const r1 = env.S.importJson(JSON.stringify(raw));
+    eq(r1.ok, true, '⑩ 裸数组可导入');
+    eq(r1.added, 1, '⑩ 裸数组 added=1');
+    eq(r1.skipped, 0, '⑩ 裸数组 skipped=0');
+    eq(env.S.list().length, 2, '⑩ 导入后订阅数 +1');
+
+    const imp = env.S.list()[0];
+    eq(imp.name, '导入订阅', '⑩ 导入 name');
+    ok(imp.id !== 'sub-hacked', '⑩ ★ 重新分配 id（不沿用外来 id）');
+    ok(/^sub-[0-9a-z]+$/.test(imp.id), '⑩ 新 id 形如 sub-<ts36>', imp.id);
+    eq(imp.lastRun, '', '⑩ ★ 导入清零 lastRun');
+    eq(imp.lastStatus, '', '⑩ ★ 导入清零 lastStatus');
+    eq(JSON.stringify(imp.runLog), '[]', '⑩ ★ 导入清零 runLog');
+    ok(Number(imp.createdAt) > 1000000000000, '⑩ createdAt 重新写入', imp.createdAt);
+    eq(JSON.stringify(imp.sources), '["openalex","arxiv"]', '⑩ 导入 sources 保真');
+    eq(imp.mode, 'any', '⑩ 导入 mode 保真');
+    eq(imp.exclude, 'survey', '⑩ 导入 exclude 保真');
+    eq(imp.maxAgeDays, 14, '⑩ 导入 maxAgeDays 保真');
+    eq(imp.freq, 'weekly', '⑩ 导入 freq 保真');
+    eq(imp.dailyTime, '09:05', '⑩ 导入 dailyTime 归一');
+    eq(JSON.stringify(imp.weekdays), '[1,3]', '⑩ 导入 weekdays 保真');
+    eq(imp.max, 7, '⑩ 导入 max 保真');
+    eq(imp.autoImport, false, '⑩ 导入 autoImport 保真');
+    eq(imp.aiRerank, true, '⑩ 导入 aiRerank 保真');
+    eq(imp.aiDigest, true, '⑩ 导入 aiDigest 保真');
+    eq(imp.seedProfile, true, '⑩ 导入 seedProfile 保真');
+    eq(imp.enabled, false, '⑩ 导入 enabled 保真');
+    eq(Object.keys(env.seen() || {}).length, 0, '⑩ ★ 导入不写 seen');
+
+    /* 同名 → 跳过 */
+    const r2 = env.S.importJson(JSON.stringify(raw));
+    eq(r2.ok, true, '⑩ 重复导入仍 ok');
+    eq(r2.added, 0, '⑩ ★ 同名订阅被跳过');
+    eq(r2.skipped, 1, '⑩ 同名计入 skipped');
+    eq(env.S.list().length, 2, '⑩ 跳过时不新增');
+
+    /* 包裹格式 + 无效条目（无名 / 无检索条件） */
+    const wrap = {
+      app: 'papilot', kind: 'searchSubscriptions', version: 2,
+      subscriptions: [
+        { name: '', keywords: 'x' },
+        { name: '只有名字' },
+        { name: '包裹订阅', categories: 'cs.CL' },
+      ],
+    };
+    const r3 = env.S.importJson(JSON.stringify(wrap));
+    eq(r3.ok, true, '⑩ 包裹格式可导入');
+    eq(r3.added, 1, '⑩ 只导入合法条目');
+    eq(r3.skipped, 2, '⑩ 无名 / 无条件条目被跳过');
+    eq(env.S.list().length, 3, '⑩ 合法条目落库');
+
+    /* 夹带说明文字也能捞出来（用户从聊天窗口粘贴常见） */
+    const noisy = env.S.importJson('订阅如下：\n' + JSON.stringify([{ name: '夹带订阅', keywords: 'diffusion' }]) + '\n以上。');
+    eq(noisy.ok, true, '⑩ 夹带说明文字仍可解析');
+    eq(noisy.added, 1, '⑩ 夹带文本导入成功');
+  }
+
+  /* ================== ⑪ 启动自检（纯本地、不写 pref、不抛） ================== */
+
+  {
+    const env = makeEnv();
+    const r = env.S.selfTest();
+    eq(typeof r, 'string', '⑪ selfTest 返回字符串');
+    ok(r.indexOf('ok ') === 0, '⑪ ★ selfTest 以 "ok " 开头', r);
+    has(r, 'fp=1', '⑪ DOI 指纹归一通过');
+    has(r, 'mig=1', '⑪ v1 订阅迁移通过（sources/freq/enabled）');
+    has(r, 'week=1', '⑪ weekly 计划日通过');
+    has(r, 'ttl=1', '⑪ 推荐缓存 TTL 通过');
+    eq(env.S.RECO_TTL_MS, 12 * 3600 * 1000, '⑪ 推荐缓存 12 小时');
+    eq(env.S.PREF_RECO_CACHE, 'searchSubsRecoCache', '⑪ 缓存 pref 名');
+    eq(env.store.size, 0, '⑪ ★ selfTest 不写任何 pref');
+    eq(env.errors.length, 0, '⑪ selfTest 不抛（未走 logError）');
   }
 
 } // main

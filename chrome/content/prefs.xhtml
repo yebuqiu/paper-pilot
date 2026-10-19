@@ -746,33 +746,98 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 4 · 阅读器划词浮窗 ============ -->
-  <!-- ============ 3c2 · 检索订阅（0.53.0：检索式 → 定时检索 → 自动入库 + 速递笔记） ============ -->
-  <html:div class="pp-card pp-fold" data-fold="subscriptions" data-search-strings-raw="订阅 检索 定时 自动入库 arxiv 速递 subscription search saved query">
+  <!-- ============ 3c2 · 检索订阅 v2（0.57.0：推荐 → 一句话/AI 配置 → 试跑 → 定时多源检索） ============ -->
+  <html:div class="pp-card pp-fold" data-fold="subscriptions" data-search-strings-raw="订阅 检索 定时 自动入库 arxiv openalex pubmed 速递 推荐 subscription search saved query">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">📡</html:span><html:span class="pp-card-title">检索订阅</html:span>
-      <html:span class="pp-card-desc">用检索式订阅 arXiv：到点自动检索、去重入库、生成「订阅速递」笔记</html:span>
+      <html:span class="pp-card-desc">按研究领域推荐主题，一句话建订阅；先试跑预览，再定时多源检索、去重入库、生成速递笔记</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
-      <html:div id="pp-subs-list" class="pp-datasets"></html:div>
-      <html:div class="pp-sub" style="margin-top:10px;">
-        <html:div class="pp-sub-title">新建订阅</html:div>
+      <!-- 3c2.1 智能推荐 -->
+      <html:div class="pp-sub" style="margin-top:0;">
+        <html:div class="pp-sub-title">根据你的研究领域推荐</html:div>
+        <html:div class="pp-hint">扫描库内文献的标题 / 标签 / 摘要，给出可解释的主题订阅。默认只预览、不创建。</html:div>
+        <html:div id="pp-subs-reco" style="margin-top:6px;"></html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+          <html:button id="pp-subs-reco-refresh" class="pp-btn pp-btn-sm">重新分析我的库</html:button>
+          <html:span id="pp-subs-reco-msg" class="pp-msg"></html:span>
+        </html:div>
+      </html:div>
+
+      <!-- 3c2.2 一句话创建（AI 解析） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">用一句话创建</html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+          <html:input id="pp-sub-nl" class="pp-input pp-grow" style="min-width:300px;" placeholder="例如：追踪大模型推理效率与稀疏注意力，主要看 arXiv 和 OpenAlex"/>
+          <html:button id="pp-sub-ai" class="pp-btn pp-btn-sm">AI 解析</html:button>
+          <html:span id="pp-sub-nl-msg" class="pp-msg"></html:span>
+        </html:div>
+        <html:div class="pp-hint">AI 只把描述翻译成检索条件（英文关键词 / 分类 / 来源），不会自动创建、不会自动入库；解析结果会填进下方表单，由你确认并试跑。</html:div>
+      </html:div>
+
+      <!-- 3c2.3 订阅列表 + 试跑结果 -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">我的订阅</html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+          <html:button id="pp-subs-export" class="pp-btn pp-btn-sm">导出到剪贴板</html:button>
+          <html:button id="pp-subs-import" class="pp-btn pp-btn-sm">从剪贴板导入</html:button>
+          <html:span class="pp-hint">导出只含配置（名称 / 条件 / 来源 / 频率 / 开关），不含运行记录；导入会重新分配 id，并跳过同名订阅。</html:span>
+        </html:div>
+        <html:div id="pp-subs-list" class="pp-datasets"></html:div>
+        <html:div id="pp-subs-detail" style="margin-top:6px;"></html:div>
+      </html:div>
+
+      <!-- 3c2.4 新建 / 编辑表单（共用） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title" id="pp-subs-form-title">新建订阅</html:div>
         <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
           <html:input id="pp-sub-name" class="pp-input" placeholder="名称（如：图神经网络）" style="width:180px;"/>
-          <html:input id="pp-sub-keywords" class="pp-input" placeholder="关键词（逗号分隔）" style="width:220px;"/>
-          <html:input id="pp-sub-cats" class="pp-input" placeholder="arXiv 分类（cs.LG,cs.AI）" style="width:180px;"/>
+          <html:input id="pp-sub-keywords" class="pp-input" placeholder="关键词（逗号分隔，建议英文）" style="width:240px;"/>
+          <html:input id="pp-sub-cats" class="pp-input" placeholder="arXiv 分类（cs.LG,cs.CL）" style="width:180px;"/>
         </html:div>
-        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
-          <html:input id="pp-sub-time" class="pp-input" placeholder="每日 08:00（留空=仅手动）" style="width:200px;"/>
-          <html:label class="pp-check">
-            <html:input type="checkbox" id="pp-sub-auto"/>
-            <html:span>命中自动入库</html:span>
-          </html:label>
-          <html:button id="pp-subs-add" class="pp-btn pp-btn-primary pp-btn-sm">添加订阅</html:button>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;align-items:center;">
+          <html:span class="pp-hint">来源：</html:span>
+          <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-src-arxiv"/><html:span>arXiv</html:span></html:label>
+          <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-src-openalex"/><html:span>OpenAlex</html:span></html:label>
+          <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-src-crossref"/><html:span>Crossref</html:span></html:label>
+          <html:label class="pp-check" style="margin-top:0;" title="生物医学（含 PubMed 记录与预印本）；国内网络通常比 NCBI 稳定"><html:input type="checkbox" id="pp-sub-src-europepmc"/><html:span>Europe PMC</html:span></html:label>
+          <html:label class="pp-check" style="margin-top:0;" title="NCBI 官方检索；部分网络不可达时单独报错，不影响其它源"><html:input type="checkbox" id="pp-sub-src-pubmed"/><html:span>PubMed</html:span></html:label>
+          <html:select id="pp-sub-mode" class="pp-select" style="width:130px;">
+            <html:option value="all">多词同时命中</html:option>
+            <html:option value="any">任一命中</html:option>
+            <html:option value="phrase">整句短语</html:option>
+          </html:select>
+          <html:input id="pp-sub-exclude" class="pp-input" placeholder="排除词（逗号分隔）" style="width:180px;"/>
+        </html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+          <html:select id="pp-sub-freq" class="pp-select" style="width:110px;">
+            <html:option value="manual">仅手动</html:option>
+            <html:option value="daily">每日</html:option>
+            <html:option value="weekly">每周</html:option>
+          </html:select>
+          <html:input id="pp-sub-time" class="pp-input" placeholder="08:00" style="width:90px;"/>
+          <html:input id="pp-sub-weekdays" class="pp-input" placeholder="每周：1,3,5（1=周一）" style="width:170px;"/>
+          <html:input id="pp-sub-maxagedays" class="pp-input" placeholder="只看近 N 天（0=不限）" style="width:150px;"/>
+          <html:input id="pp-sub-max" class="pp-input" placeholder="每次最多 10" style="width:110px;"/>
+        </html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;">
+          <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-auto"/><html:span>命中自动入库</html:span></html:label>
+          <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-ai-rerank" title="只发送命中条目的标题与摘要片段，最多 12 条/次；失败自动退回确定性排序"/><html:span>AI 相关性复核</html:span></html:label>
+          <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-ai-digest" title="最多 15 条/次；失败时速递笔记照常生成"/><html:span>AI 速递速览</html:span></html:label>
+          <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-seed" title="把库内画像高频词并入关键词；建议配合「任一命中」，否则条件可能过严"/><html:span>并入库内画像词</html:span></html:label>
+        </html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center;">
+          <html:button id="pp-subs-preview" class="pp-btn pp-btn-sm">试跑预览</html:button>
+          <html:button id="pp-subs-add" class="pp-btn pp-btn-primary pp-btn-sm">保存订阅</html:button>
+          <html:button id="pp-subs-cancel" class="pp-btn pp-btn-sm" style="display:none;">取消编辑</html:button>
           <html:span id="pp-sub-msg" class="pp-msg"></html:span>
         </html:div>
-        <html:div class="pp-hint">关键词多词默认 AND；分类多值按并集；每日执行一次（错过 6 小时内补跑），去重记账保留最近 1000 条。</html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+          <html:span class="pp-hint">礼貌邮箱（可选，提高 OpenAlex / Crossref 配额）：</html:span>
+          <html:input id="pp-sub-mailto" class="pp-input" preference="extensions.zotero.papilot.subsMailto" placeholder="you@example.com" style="width:200px;"/>
+        </html:div>
+        <html:div class="pp-hint">试跑只取数不入库；保存后才按频率执行。关键词多词默认 AND；分类多值为并集；每日/每周错过 6 小时内补跑；去重记账保留最近 1000 条。OpenAlex / Crossref / PubMed 免费无需 Key。</html:div>
       </html:div>
     </html:div>
   </html:div>

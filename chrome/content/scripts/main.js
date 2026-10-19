@@ -198,6 +198,9 @@ Zotero.Papilot = {
       "features/reading-stats.js",
       // 0.49.0 定时任务（研究晨报/阅读周报/库体检；依赖 reading-stats / meta-lint 的运行时探测）
       "features/scheduler.js",
+      // 0.57.0 检索订阅 v2 的多源适配层（必须排在 search-subs.js 之前：
+      // 后者在运行时经全局 SubSources 取 arXiv/OpenAlex/Crossref/PubMed）
+      "features/sub-sources.js",
       // 0.53.0 检索订阅（ArxivFetch 消费；独立 60s 轮询）
       "features/search-subs.js",
       // 0.46.0 阅读进度 2.0：位置进度数据域（心跳捕获 + 原生上次位置 + 标注页融合）。
@@ -344,8 +347,9 @@ Zotero.Papilot = {
     // 0.52.0 元数据医生 / 标注速记（菜单与 hub 经此访问）
     this.metaDoctor = MetaDoctor;
     this.annotationDigest = AnnotationDigest;
-    // 0.53.0 检索订阅 / 综述工作台
+    // 0.53.0 检索订阅 / 综述工作台（0.57.0 起订阅增加多源适配层 SubSources）
     this.searchSubs = SearchSubs;
+    this.subSources = (typeof SubSources !== "undefined") ? SubSources : null;
     this.reviewWorkbench = ReviewWorkbench;
     // 0.48.0 Agent 工具层 + 命令标签（设置面板 prefs-agent.js 经此访问；
     // 测试与排障同入口）
@@ -828,6 +832,12 @@ Zotero.Papilot = {
     try {
       SearchSubs.start();
       await this._diag("search subs started (" + SearchSubs.list().length + " 条订阅)");
+      // 0.57.0 订阅核心不变量自检（纯本地、不写 pref、不联网）：真机排查先看这一行
+      try {
+        await this._diag("search subs selfTest " + SearchSubs.selfTest());
+      } catch (e2) {
+        await this._diag("search subs selfTest FAILED: " + (e2 && (e2.stack || e2.message) || e2));
+      }
     } catch (e) {
       await this._diag("search subs FAILED: " + (e && (e.stack || e.message) || e));
     }
