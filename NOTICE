@@ -11,7 +11,7 @@ This product includes software developed by Cassiuschen
    以 Apache License 2.0 发布，全文见 LICENSE。允许商业使用、修改与再分发，
    但须保留本 NOTICE 与许可证副本。
 
-2. 账号与计费服务端（papilot-server：注册登录、会员、订单、余额、官方模型网关）
+2. 账号与网关服务端（papilot-server：注册登录、订单与官方模型网关）
    为独立商业许可，不包含在本仓库的 Apache-2.0 授权范围内。
    商业合作与授权请联系：<在此填写商务邮箱>。
 
