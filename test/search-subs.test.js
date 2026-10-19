@@ -108,6 +108,7 @@ function makeEnv(opts) {
   const notes = [];
   const intervals = [];
   const errors = [];
+  const pws = [];
   let seq = 100;
   let failNextSave = false;
 
@@ -134,6 +135,22 @@ function makeEnv(opts) {
     }
   }
 
+  /** 系统通知桩：只记录调用（弹窗本身不可测，但「弹没弹 / 弹了什么」必须可断言） */
+  class FakeProgressWindow {
+    constructor(opts) {
+      this.opts = opts || {};
+      this.headline = '';
+      this.lines = [];
+      this.shown = 0;
+      this.closeMs = null;
+      pws.push(this);
+    }
+    changeHeadline(t) { this.headline = String(t == null ? '' : t); }
+    addDescription(t) { this.lines.push(String(t == null ? '' : t)); }
+    show() { this.shown++; }
+    startCloseTimer(ms) { this.closeMs = ms; }
+  }
+
   const Zotero = {
     locale: 'zh-CN',
     Prefs: {
@@ -143,8 +160,14 @@ function makeEnv(opts) {
     Libraries: { userLibraryID: 1 },
     Items: {
       getByDOI(doi) { return opts.byDoi ? opts.byDoi(doi) : null; },
+      /** 收藏查重要求确认「记账里的条目还在」：返回已保存条目或 null */
+      getAsync(id) {
+        const hit = items.filter((x) => x.id === id)[0];
+        return Promise.resolve(hit || null);
+      },
     },
     Item: FakeItem,
+    ProgressWindow: FakeProgressWindow,
     Papilot: {
       diags: [],
       _diag(msg) { Zotero.Papilot.diags.push(String(msg)); return Promise.resolve(); },
@@ -217,6 +240,7 @@ function makeEnv(opts) {
     notes: notes,
     intervals: intervals,
     errors: errors,
+    pws: pws,
     diags: Zotero.Papilot.diags,
     arxiv: opts.arxiv || null,
     failNext: () => { failNextSave = true; },
@@ -229,6 +253,11 @@ function makeEnv(opts) {
     subs: () => {
       const raw = store.get(PREFIX + 'searchSubscriptions');
       if (!raw) return [];
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    },
+    feedback: () => {
+      const raw = store.get(PREFIX + 'searchSubsFeedback');
+      if (!raw) return {};
       try { return JSON.parse(raw); } catch (e) { return null; }
     },
   };
@@ -1277,6 +1306,354 @@ async function main() {
     eq(env.S.PREF_RECO_CACHE, 'searchSubsRecoCache', '⑪ 缓存 pref 名');
     eq(env.store.size, 0, '⑪ ★ selfTest 不写任何 pref');
     eq(env.errors.length, 0, '⑪ selfTest 不抛（未走 logError）');
+  }
+
+  /* ================== ⑫ 0.58.0：作者追踪（模型 / 归一 / 迁移 / 导出） ================== */
+
+  {
+    const env = makeEnv();
+    const S = env.S;
+
+    eq(JSON.stringify(S._normAuthors('Ada Lovelace, ada lovelace; Turing\nB,  A ')),
+      '["Ada Lovelace","Turing"]', '⑫ 作者串：逗号/分号/换行切分 + 去重 + 丢单字符');
+    eq(JSON.stringify(S._normAuthors('')), '[]', '⑫ 空作者 → 空数组');
+    eq(S._normAuthors('A1, B2, C3, D4, E5, F6, G7').length, 6, '⑫ ★ 作者最多 6 个');
+    eq(JSON.stringify(S._normAuthors(['Alan Turing', 'alan turing'])), '["Alan Turing"]', '⑫ 数组输入也归一');
+
+    const a = S.add({ name: '追踪作者', authors: 'Ada Lovelace, Alan Turing' });
+    ok(!!a, '⑫ ★ 只填作者也能建订阅');
+    eq(a.authors, 'Ada Lovelace, Alan Turing', '⑫ authors 归一落库');
+    eq(a.notify, true, '⑫ notify 缺省为 true');
+    eq(a.keywords, '', '⑫ 纯作者订阅关键词为空');
+
+    const legacy = S._normSub({ id: 'sub-old', name: '旧订阅', keywords: 'x' });
+    eq(legacy.authors, '', '⑫ 旧订阅 authors 为空串（迁移安全）');
+    eq(legacy.notify, true, '⑫ 旧订阅 notify 默认 true');
+
+    eq(S.add({ name: '空条件', keywords: '', categories: '', authors: ' , ; ' }), null,
+      '⑫ 关键词/分类/作者全空 → 拒绝');
+
+    const u = S.update(a.id, { keywords: '', categories: '' });
+    ok(!!u, '⑫ update 清空关键词后作者仍支撑订阅');
+    eq(u.authors, 'Ada Lovelace, Alan Turing', '⑫ update 保留作者');
+    eq(S.update(a.id, { authors: '', keywords: '', categories: '' }), null, '⑫ update 三者全清 → 拒绝');
+    eq(S.update(a.id, { notify: false }).notify, false, '⑫ notify 可关闭');
+
+    has(S._condLine(S._normSub({ id: 's', keywords: 'x', authors: 'Ada Lovelace' })),
+      '作者：Ada Lovelace', '⑫ 条件行含「作者：…」');
+
+    const obj = JSON.parse(S.exportJson());
+    eq(obj.subscriptions[0].authors, 'Ada Lovelace, Alan Turing', '⑫ ★ 导出带 authors');
+    eq(obj.subscriptions[0].notify, false, '⑫ ★ 导出带 notify（关了通知，导入后不会又变开）');
+    eq(S._statusText('ignored'), '已忽略', '⑫ ignored 状态文案');
+  }
+
+  /* ================== ⑬ 0.58.0：收藏 / 忽略反馈学习 ================== */
+
+  /* ⑬-1 记录与调分 */
+  {
+    const env = makeEnv();
+    const S = env.S;
+
+    const rec = S._feedbackPut(entry(1), 1, 'sub-1');
+    ok(!!rec, '⑬ _feedbackPut 写入成功');
+    eq(rec.v, 1, '⑬ 收藏记 v=1');
+    ok(rec.terms.length > 0 && rec.terms.length <= 6, '⑬ terms 记录 ≤6 个词元', rec.terms);
+    eq(JSON.stringify(rec.authors), '["ada lovelace","alan turing"]', '⑬ ★ authors 归一为小写姓名');
+    eq(rec.sub, 'sub-1', '⑬ 记录来源订阅');
+    eq(S._feedbackPut({ title: '   ' }, 1), null, '⑬ 空指纹不记（无脏数据）');
+
+    const got = S.feedbackOf(entry(1));
+    ok(!!got && got.v === 1, '⑬ feedbackOf 按指纹取回');
+    eq(S.feedbackOf(entry(2)), null, '⑬ 未反馈的条目 → null');
+    eq(S.isIgnored(entry(1)), false, '⑬ 收藏项不算忽略');
+
+    const adj = S._feedbackAdjust(entry(1));
+    eq(adj.score, 2, '⑬ ★ 收藏反馈加分上限 +2');
+    ok(adj.reasons.indexOf('ada lovelace') >= 0, '⑬ 加分理由含命中作者', adj.reasons);
+
+    const other = Object.assign({}, entry(9), {
+      title: 'Quantum chemistry', summary: 'Molecules and bonds', authors: ['Someone Else'],
+    });
+    eq(S._feedbackAdjust(other).score, 0, '⑬ 无关条目不因反馈加分');
+    S._feedbackPut(other, -1);
+    ok(S._feedbackAdjust(other).score < 0, '⑬ ★ 忽略反馈 → 负分', S._feedbackAdjust(other).score);
+    eq(S.isIgnored(other), true, '⑬ isIgnored 命中 v=-1');
+
+    // 坏 pref：不抛、不误判
+    env.store.set(PREFIX + 'searchSubsFeedback', '{oops');
+    eq(JSON.stringify(S._feedbackLoad()), '{}', '⑬ 坏反馈 JSON → 空 map（不抛）');
+    eq(S._feedbackAdjust(entry(1)).score, 0, '⑬ 反馈不可用时调分为 0');
+  }
+
+  /* ⑬-2 accept：入库 + 记 +1 + 写 seen + 清缓存；已在库时复用条目 */
+  {
+    const env = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ id: 'sub-1', name: '订阅一' })]) },
+      arxiv: makeArxiv([entry(1), entry(2)]),
+    });
+    const p = await env.S.preview('sub-1', { now: AT, limit: 10 });
+    eq(p.entries[0].status, 'new', '⑬ 预览初始状态为 new');
+    const target = p.entries.filter((x) => x.title === 'Paper 1')[0];
+    ok(!!target, '⑬ 预览返回 Paper 1');
+    env.store.set(PREFIX + 'searchSubsRecoCache', JSON.stringify({ at: Date.now(), items: [{ id: 'x' }] }));
+
+    const r = await env.S.accept(target, 'sub-1');
+    eq(r.ok, true, '⑬ ★ accept 成功');
+    eq(r.existed, false, '⑬ 首次收藏不是「已存在」');
+    ok(r.itemID != null, '⑬ accept 返回 itemID');
+    eq(env.items.length, 1, '⑬ accept 建了 1 个条目');
+    eq(env.items[0].fields.title, 'Paper 1', '⑬ 入库标题正确');
+    eq(JSON.stringify(env.items[0].tags), JSON.stringify(['#订阅/订阅一']), '⑬ 条目带来源订阅标签');
+    eq(env.feedback()['arXiv:2501.00001'].v, 1, '⑬ ★ 写入 +1 反馈');
+    ok(env.seen()['arXiv:2501.00001'] && env.seen()['arXiv:2501.00001'].itemID === r.itemID,
+      '⑬ ★ 收藏写 seen（含 itemID）');
+    eq(env.prefs('searchSubsRecoCache'), '', '⑬ 收藏后推荐缓存清空');
+
+    // ★ 无 DOI 条目连点两次收藏：第二次必须识别为「已存在」，不能再入库一条
+    const again = await env.S.accept(target, 'sub-1');
+    eq(again.ok, true, '⑬ ★ 同一无 DOI 条目再收藏一次仍 ok');
+    eq(again.existed, true, '⑬ ★ 第二次收藏识别为已存在（seen + getAsync 查重）');
+    eq(again.itemID, r.itemID, '⑬ 复用第一次的 itemID');
+    eq(env.items.length, 1, '⑬ ★ 连点两次只入库 1 条');
+    eq(env.feedback()['arXiv:2501.00001'].v, 1, '⑬ 重复收藏不改变反馈（仍是 +1）');
+  }
+  {
+    // seen 记账里的条目已被用户删除 → 视为未收藏，照常新建（不能因为记账卡住）
+    const env = makeEnv({
+      prefs: {
+        [PREFIX + 'searchSubsSeen']: JSON.stringify({ 'arXiv:2502.00009': { at: 1, itemID: 999 } }),
+      },
+    });
+    const r = await env.S.accept({
+      source: 'arxiv', title: 'Gone Already', arxivId: '2502.00009', summary: 'x', authors: ['A B'],
+    });
+    eq(r.ok, true, '⑬ 记账条目已删除 → 仍可收藏');
+    eq(r.existed, false, '⑬ ★ 取不到条目视为已删除（走新建）');
+    eq(env.items.length, 1, '⑬ 重建 1 条');
+    ok(r.itemID !== 999, '⑬ 新条目 id 不是失效的记账 id', r.itemID);
+  }
+  {
+    const env = makeEnv({ byDoi: (d) => (d.toLowerCase() === '10.5/accepted' ? { id: 777 } : null) });
+    const e = {
+      source: 'crossref', title: 'Already There', summary: 'about sparse things',
+      doi: '10.5/ACCEPTED', authors: ['Grace Hopper'], published: '2026-09-01',
+    };
+    const r = await env.S.accept(e, null);
+    eq(r.ok, true, '⑬ 已在库也能收藏（不报错）');
+    eq(r.existed, true, '⑬ ★ existed=true');
+    eq(r.itemID, 777, '⑬ 复用已有条目 id');
+    eq(env.items.length, 0, '⑬ 已在库不重复建条目');
+    ok(!!env.feedback()['doi:10.5/accepted'], '⑬ 已在库仍记 +1 反馈');
+    ok(env.seen()['doi:10.5/accepted'], '⑬ 已在库也写 seen（itemID 可能为空）');
+
+    const env2 = makeEnv();
+    env2.failNext();
+    const bad = await env2.S.accept({ source: 'arxiv', title: 'Boom', arxivId: '2502.00001', summary: 'x' });
+    eq(bad.ok, false, '⑬ ★ 入库失败 → ok:false（不抛给面板）');
+    eq(JSON.stringify(env2.feedback()), '{}', '⑬ 失败不写反馈（不留脏数据）');
+  }
+
+  /* ⑬-3 ignore：预览标 ignored、run 跳过且不入库不记账 */
+  {
+    const env = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ id: 'sub-1', name: '订阅一' })]) },
+      arxiv: makeArxiv([entry(1), entry(2)]),
+    });
+    ok(env.S.ignoreEntry(entry(2), 'sub-1'), '⑬ ignoreEntry 写入成功');
+    eq(env.feedback()['arXiv:2501.00002'].v, -1, '⑬ 忽略记 v=-1');
+    eq(env.prefs('searchSubsRecoCache'), '', '⑬ 忽略后推荐缓存清空');
+
+    const p = await env.S.preview('sub-1', { now: AT, limit: 10 });
+    eq(p.ok, true, '⑬ 忽略项仍出现在预览里（用户能看见自己忽略过）');
+    const ig = p.entries.filter((x) => x.status === 'ignored');
+    eq(ig.length, 1, '⑬ ★ 忽略项状态为 ignored');
+    eq(ig[0].title, 'Paper 2', '⑬ 被忽略的是指定条目');
+    eq(p.entries.filter((x) => x.status === 'new').length, 1, '⑬ 其余条目仍是 new');
+
+    const r = await env.S.run('sub-1', { now: AT, trigger: 'manual' });
+    eq(r.ok, true, '⑬ run 正常完成');
+    eq(r.added, 1, '⑬ ★ 忽略项不入库（只入库另一条）');
+    eq(r.skipped, 1, '⑬ ★ 忽略项计入 skipped');
+    eq(env.items.length, 1, '⑬ 实际只建了 1 个条目');
+    eq(env.seen()['arXiv:2501.00002'], undefined, '⑬ ★ 忽略项不写 seen（改主意还能再收到）');
+    notHas(env.notes[0].html, 'Paper 2', '⑬ ★ 速递里不再出现被忽略的条目（连标题都不占位）');
+    has(env.notes[0].html, 'Paper 1', '⑬ 速递只列真正的新命中');
+  }
+
+  /* ⑬-4 统计 / 清空 */
+  {
+    const env = makeEnv();
+    env.S._feedbackPut(entry(1), 1);
+    env.S._feedbackPut(entry(2), -1);
+    const st = env.S.feedbackStats();
+    eq(st.liked, 1, '⑬ 统计收藏数');
+    eq(st.ignored, 1, '⑬ 统计忽略数');
+
+    env.store.set(PREFIX + 'searchSubsRecoCache', JSON.stringify({ at: Date.now(), items: [{ id: 'x' }] }));
+    ok(env.S.feedbackClear(), '⑬ ★ feedbackClear 成功');
+    eq(env.prefs('searchSubsFeedback'), '', '⑬ 反馈已清空');
+    eq(env.prefs('searchSubsRecoCache'), '', '⑬ 清空反馈同时作废推荐缓存');
+    eq(env.S.feedbackStats().liked, 0, '⑬ 清空后统计归零');
+    eq(JSON.stringify(env.S._feedbackLoad()), '{}', '⑬ 清空后 map 为空');
+  }
+
+  /* ⑬-5 ★ 忽略项不占 max 名额（修复：先剔 ignored 再截断） */
+  {
+    const ig = entry(1, {
+      title: 'Sparse attention ignored', summary: 'Abstract ignored', authors: ['Ada Lovelace'],
+      publishedDay: '2026-10-17', published: '2026-10-17T00:00:00Z',
+    });
+    const fresh = entry(2, {
+      title: 'Brand new paper', summary: 'Nothing to see', authors: ['Someone Else'],
+      publishedDay: '2025-05-01', published: '2025-05-01T00:00:00Z',
+    });
+    const env = makeEnv({
+      prefs: {
+        [PREFIX + 'searchSubscriptions']: JSON.stringify([
+          sub({ id: 'sub-1', name: '名额订阅', keywords: 'attention', max: 1 }),
+        ]),
+      },
+      arxiv: makeArxiv([ig, fresh]),
+    });
+    ok(env.S.ignoreEntry(ig, 'sub-1'), '⑬ 先忽略第一条');
+    // 忽略项本身打分更高（标题含关键词 + 新鲜度），修复前会把唯一名额占掉
+    const subNorm = env.S._normSub(env.subs()[0]);
+    const ranked = env.S._rank([env.S._normEntry(ig), env.S._normEntry(fresh)], subNorm, AT.getTime());
+    eq(ranked[0].title, 'Sparse attention ignored', '⑬ 前提：忽略项排序在前（否则测不到名额问题）');
+
+    const r = await env.S.run('sub-1', { now: AT });
+    eq(r.ok, true, '⑬ 名额场景 run ok');
+    eq(r.added, 1, '⑬ ★ 忽略项不占 max 名额（新条目仍入库）');
+    eq(r.skipped, 1, '⑬ 被剔除的忽略项计入 skipped');
+    eq(env.items.length, 1, '⑬ 只入库 1 条');
+    eq(env.items[0].fields.title, 'Brand new paper', '⑬ ★ 入库的是新条目，不是被忽略的那条');
+  }
+
+  /* ================== ⑭ 0.58.0：系统通知（定时才弹 / 手动不弹 / 可关） ================== */
+
+  {
+    const env = makeEnv({
+      prefs: {
+        [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ id: 'sub-1', name: '通知订阅', dailyTime: '07:30' })]),
+      },
+      arxiv: makeArxiv([entry(1)]),
+    });
+    const done = await env.S.checkDue(AT);
+    eq(JSON.stringify(done), '["sub-1"]', '⑭ 定时触发一次');
+    eq(env.pws.length, 1, '⑭ ★ 定时运行有新入库 → 弹系统通知');
+    eq(env.pws[0].headline, 'Papilot 检索订阅', '⑭ 通知标题');
+    has(env.pws[0].lines[0] || '', '通知订阅', '⑭ 通知正文含订阅名');
+    has(env.pws[0].lines[0] || '', '新增 1 篇', '⑭ 通知正文含新增数');
+    has(env.pws[0].lines[1] || '', '订阅速递', '⑭ 通知第二行是速递标题');
+    eq(env.pws[0].shown, 1, '⑭ 真的 show()');
+    eq(env.pws[0].closeMs, 8000, '⑭ 8 秒后自动关闭');
+    eq(env.pws[0].opts.closeOnClick, true, '⑭ 点击即关闭');
+  }
+  {
+    const env = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ id: 'sub-1' })]) },
+      arxiv: makeArxiv([entry(1)]),
+    });
+    const r = await env.S.run('sub-1', { now: AT, trigger: 'manual' });
+    eq(r.added, 1, '⑭ 手动运行入库 1 条');
+    eq(env.pws.length, 0, '⑭ ★ 手动运行不弹通知（用户就在面板前）');
+  }
+  {
+    // 缺省 trigger（内部 / 测试调用）也必须按 manual 处理，不能误弹
+    const env = makeEnv({
+      prefs: { [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ id: 'sub-1' })]) },
+      arxiv: makeArxiv([entry(1)]),
+    });
+    const r = await env.S.run('sub-1', { now: AT });
+    eq(r.added, 1, '⑭ 未传 trigger 的运行仍正常入库');
+    eq(env.pws.length, 0, '⑭ ★ 不传 trigger 视为 manual → 不弹通知');
+    eq(env.subs()[0].runLog[0].trigger, 'manual', '⑭ 运行历史把缺省 trigger 记为 manual');
+  }
+  {
+    const env = makeEnv({
+      prefs: {
+        [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ id: 'sub-1', notify: false, dailyTime: '07:30' })]),
+      },
+      arxiv: makeArxiv([entry(1)]),
+    });
+    await env.S.checkDue(AT);
+    eq(env.pws.length, 0, '⑭ ★ notify=false 不弹通知');
+  }
+  {
+    const env = makeEnv({
+      prefs: {
+        [PREFIX + 'searchSubscriptions']: JSON.stringify([sub({ id: 'sub-1', dailyTime: '07:30' })]),
+        [PREFIX + 'searchSubsSeen']: JSON.stringify({ 'arXiv:2501.00001': { at: 1 } }),
+      },
+      arxiv: makeArxiv([entry(1)]),
+    });
+    await env.S.checkDue(AT);
+    eq(env.pws.length, 0, '⑭ 没有新增就不弹通知');
+  }
+  {
+    // 直接调 _notify：notify=false / 无订阅对象 → 静默返回 false（绝不抛）
+    const env = makeEnv();
+    eq(env.S._notify({ name: 'x', notify: true }, 3, ''), true, '⑭ 正常情形 _notify 返回 true');
+    eq(env.S._notify({ name: 'x', notify: false }, 3, ''), false, '⑭ notify=false 时 _notify 直接返回 false');
+    eq(env.S._notify(null, 3, ''), false, '⑭ 无订阅对象 → 不弹');
+  }
+
+  /* ================== ⑮ 0.58.0：推荐里的作者轨道 ================== */
+
+  {
+    function authorItem(title, creators, cats, daysAgo) {
+      const it = libItem(title, ['t'], cats, daysAgo);
+      it.getCreators = () => creators.map((n) => {
+        const parts = String(n).split(' ');
+        return {
+          firstName: parts.slice(0, -1).join(' '),
+          lastName: parts[parts.length - 1],
+          creatorType: 'author',
+        };
+      });
+      return it;
+    }
+    const items = [
+      authorItem('Sparse attention for long context', ['Ada Lovelace', 'Alan Turing'], ['cs.LG'], 10),
+      authorItem('Sparse attention efficiency', ['Ada Lovelace'], ['cs.LG'], 40),
+      authorItem('Unrelated biology work', ['Grace Hopper'], ['q-bio.NC'], 200),
+    ];
+    const discovery = {
+      collectLibraryItems: async () => items,
+      buildProfile: () => ({ terms: [{ term: 'sparse' }, { term: 'attention' }], categories: ['cs.LG'], scanned: 3 }),
+      extractArxiv: (it) => ({ categories: it._cats }),
+      tokenize: (s) => String(s || '').toLowerCase().split(/[^a-z0-9\u4e00-\u9fa5]+/).filter(Boolean),
+    };
+    const env = makeEnv({ discovery });
+    const list = await env.S.suggest({ max: 3, now: AT });
+    const authorCand = list.filter((x) => x.kind === 'author')[0];
+    ok(!!authorCand, '⑮ ★ 产出作者追踪候选', list.map((x) => x.kind));
+    if (authorCand) {
+      eq(authorCand.authors, 'Ada Lovelace', '⑮ 作者候选填 authors');
+      has(authorCand.name, '追踪作者：Ada Lovelace', '⑮ 作者候选命名');
+      has(authorCand.reason, '库内 2 篇由该作者参与', '⑮ 作者候选理由给篇数');
+      eq(typeof authorCand.keywords, 'string', '⑮ 作者候选关键词可为空串');
+      ok(authorCand.sources.indexOf('arxiv') >= 0, '⑮ 作者候选带默认来源');
+    }
+
+    const env2 = makeEnv({
+      discovery,
+      prefs: {
+        [PREFIX + 'searchSubscriptions']: JSON.stringify([
+          sub({ id: 'sub-1', name: '已有作者订阅', keywords: 'x', authors: 'ada lovelace' }),
+        ]),
+      },
+    });
+    const list2 = await env2.S.suggest({ max: 3, now: AT });
+    ok(!list2.some((x) => x.kind === 'author'), '⑮ ★ 已订阅该作者 → 不再推荐');
+
+    const env3 = makeEnv({ discovery });
+    env3.S.ignoreEntry({
+      source: 'arxiv', title: 'Any', summary: 'x', authors: ['Ada Lovelace'], arxivId: '2503.00001',
+    }, null);
+    const list3 = await env3.S.suggest({ max: 3, now: AT });
+    ok(!list3.some((x) => x.kind === 'author'), '⑮ ★ 被忽略过的作者不再推荐');
   }
 
 } // main

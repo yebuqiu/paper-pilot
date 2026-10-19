@@ -2999,6 +2999,53 @@ ok("test/sub-sources.test.js" in _preflight_src and "test/search-subs.test.js" i
 ok("search subs selfTest" in mainjs and "SearchSubs.selfTest()" in mainjs,
    "49.17 ★ 启动写订阅自检结论（真机排查入口）")
 
+# ---------- 49b. 0.58.0 检索订阅 P1（反馈学习 / 作者追踪 / 通知 / OpenAlex Key） ----------
+# 这四项都是「少一行就静默失效」的接线：作者没进归一=表单白填；反馈没进打分=收藏没反应；
+# 通知没接 ProgressWindow=用户永远不知道有新论文；Key 没进 URL=配额没变化。
+ok("_normAuthors" in _ssv2 and "MAX_AUTHORS" in _ssv2 and '"authors" in p' in _ssv2,
+   "49.18 ★ 作者追踪进订阅模型（_normAuthors 归一 + update 补丁 + 上限）")
+ok("authorsOf" in _ssrc and "raw_author_name.search" in _ssrc
+   and "AUTH:" in _ssrc and "[au]" in _ssrc and "query.author" in _ssrc,
+   "49.18b ★ 四源作者查询式（OpenAlex filter / EPMC AUTH / PubMed [au] / Crossref query.author）")
+ok("_personKey" in _ssrc and "authors" in _ssrc and "matches(sub, e)" in _ssrc,
+   "49.18c 作者本地复核（matches 不误杀无作者条目）")
+
+ok("searchSubsFeedback" in _ssv2 and "_feedbackLoad" in _ssv2 and "_feedbackPut" in _ssv2
+   and "_feedbackAdjust" in _ssv2 and "feedbackOf" in _ssv2,
+   "49.19 ★ 收藏/忽略反馈学习（pref + 记录 + 调分）")
+ok("async accept(" in _ssv2 and "ignoreEntry(" in _ssv2 and "feedbackClear(" in _ssv2
+   and "feedbackStats(" in _ssv2,
+   "49.19b ★ 四个反馈入口（收藏 / 忽略 / 清空 / 统计）")
+ok("ignoredFps" in _ssv2 and "已忽略" in _ssv2 and 'status = "ignored"' in _ssv2,
+   "49.19c ★ 忽略项在 run / preview 里被识别（ignoredFps + 已忽略 文案）")
+
+ok("_itemByID" in _ssv2 and "getAsync" in _ssv2 and "fetchLimit" in _ssv2,
+   "49.19d ★ 收藏查重（seen + Items.getAsync）与忽略项不占名额（fetchLimit）")
+ok("_scrub" in _ssrc and "api_key=***" in _ssrc,
+   "49.21d ★ 失败原因脱敏（bySource.reason 不带 api_key 明文）")
+
+ok("ProgressWindow" in _ssv2 and "_notify" in _ssv2 and "closeOnClick" in _ssv2
+   and "startCloseTimer" in _ssv2,
+   "49.20 ★ 系统通知（ProgressWindow + 点击关闭 + 8s 计时）")
+ok('(o.trigger || "manual") !== "manual"' in _ssv2 and "notify === false" in _ssv2,
+   "49.20b 通知只在定时运行 + notify=true 时弹（缺省 trigger 视为手动）")
+
+ok("searchSubsFeedback" in prefsdef and "openAlexApiKey" in prefsdef,
+   "49.21 两个新 pref 在 prefs.js 有默认值")
+ok("_oaKey" in _ssrc and '"api_key="' in _ssrc,
+   "49.21b ★ OpenAlex 免费 Key 进请求参数")
+ok('id="pp-sub-openalex-key"' in prefs_xhtml
+   and 'preference="extensions.zotero.papilot.openAlexApiKey"' in prefs_xhtml
+   and 'id="pp-sub-authors"' in prefs_xhtml and 'id="pp-sub-notify"' in prefs_xhtml,
+   "49.21c 设置面板：OpenAlex Key（password）/ 作者 / 通知开关控件齐全")
+
+ok("s.accept(" in _psrc and "s.ignoreEntry(" in _psrc and "feedbackClear" in _psrc,
+   "49.22 ★ 预览卡接了收藏 / 忽略，按钮行接了清空反馈")
+ok('id="pp-subs-feedback-clear"' in prefs_xhtml and "pp-subs-feedback-clear" in _psrc,
+   "49.22b 清空反馈学习按钮接线完整")
+ok("关键词、分类、作者至少填一个" in _psrc,
+   "49.22c 表单校验文案同步（作者也算检索条件）")
+
 print("=" * 60)
 for p in passes:
     print("  OK  " + p)

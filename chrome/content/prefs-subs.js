@@ -1,22 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Cassiuschen. All rights reserved.
 
-/* Papilot 设置窗格脚本 · 检索订阅 v2（0.57.0）
+/* Papilot 设置窗格脚本 · 检索订阅 v2（0.58.0）
  *
  * 交互模型（四步，任何一步失败都不阻断其余功能）：
- *   ① 推荐：扫描库内画像 → 3 张可解释的主题卡 → [预览] / [创建] / [忽略]
+ *   ① 推荐：扫描库内画像 → 3 张可解释的主题卡（含「追踪作者」）→ [预览] / [创建] / [忽略]
  *   ② 一句话：AI 只做「描述 → 检索条件」的翻译，结果填进表单（不创建、不入库）
- *   ③ 试跑：preview 只取数不入库、不记账，让用户在创建/运行前看到真实结果
+ *   ③ 试跑：preview 只取数不入库、不记账；结果卡上可 [收藏]（入库 + 记为感兴趣）
+ *      或 [忽略]（记 -1，之后标「已忽略」并跳过）
  *   ④ 保存/运行：列表里可暂停、编辑、看历史；运行时显示 +N 新入库 / M 跳过
  *
  * 集成方在 prefs.xhtml 里提供的节点（缺任何一个都不会炸，只是那块不渲染）：
  *   推荐：#pp-subs-reco / #pp-subs-reco-refresh / #pp-subs-reco-msg
  *   一句话：#pp-sub-nl / #pp-sub-ai / #pp-sub-nl-msg
  *   列表：#pp-subs-list / #pp-subs-detail / #pp-subs-export / #pp-subs-import
- *   表单：#pp-sub-name / -keywords / -cats / -exclude / -mode / -freq / -time / -weekdays
- *         / -maxagedays / -max / -src-arxiv / -src-openalex / -src-crossref / -src-pubmed
- *         / -auto / -ai-rerank / -ai-digest / -seed / #pp-subs-add / #pp-subs-preview
- *         / #pp-subs-cancel / #pp-sub-msg
+ *         / #pp-subs-feedback-clear（清空收藏/忽略学习）
+ *   表单：#pp-sub-name / -keywords / -cats / -authors / -exclude / -mode / -freq / -time
+ *         / -weekdays / -maxagedays / -max / -src-arxiv / -src-openalex / -src-crossref
+ *         / -src-pubmed / -src-europepmc / -auto / -notify / -ai-rerank / -ai-digest / -seed
+ *         / #pp-subs-add / #pp-subs-preview / #pp-subs-cancel / #pp-sub-msg
  *
  * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测 #pp-subs-list，
  *    不存在就延迟重试（同 prefs-schedule.js / prefs-agent.js 纪律）。
@@ -94,6 +96,7 @@
       parts.push("关键词：" + sub.keywords + "（" + mode + "）");
     }
     if (sub.categories) parts.push("分类：" + sub.categories);
+    if (sub.authors) parts.push("作者：" + sub.authors);
     if (sub.exclude) parts.push("排除：" + sub.exclude);
     if (sub.maxAgeDays) parts.push("近 " + sub.maxAgeDays + " 天");
     return parts.length ? parts.join(" · ") : "（未设置检索条件）";
@@ -140,6 +143,7 @@
     if (status === "new") return "新命中";
     if (status === "seen") return "往期已见";
     if (status === "known") return "已在库";
+    if (status === "ignored") return "已忽略";
     return status || "";
   }
 
@@ -309,7 +313,7 @@
 
   /* ================== 试跑预览 ================== */
 
-  function previewCard(e, idx) {
+  function previewCard(e, idx, subId) {
     const box = el("div", {
       style: "padding:8px 10px;border:1px solid var(--pp-border);border-radius:8px;margin-top:6px;background:var(--pp-surface-2);",
     });
@@ -350,6 +354,51 @@
       bPdf.addEventListener("click", () => openUrl(e.pdfUrl));
       right.appendChild(bPdf);
     }
+    // 收藏 / 忽略：把「人工判断」沉淀成之后排序与过滤的依据（feedback learning）
+    const bAccept = el("button", { class: "pp-btn pp-btn-sm pp-subs-accept", title: "入库并记为感兴趣（之后同类结果排序靠前）" }, "收藏");
+    bAccept.addEventListener("click", async () => {
+      const s = S();
+      if (!s || typeof s.accept !== "function") {
+        setMsg("pp-sub-msg", "检索订阅模块未就绪（请重启 Zotero 后再试）", "bad");
+        return;
+      }
+      bAccept.disabled = true;
+      let r = null;
+      try {
+        r = await s.accept(e, subId || null);
+      } catch (err) {
+        r = { ok: false };
+      }
+      bAccept.disabled = false;
+      if (r && r.ok) {
+        setMsg("pp-sub-msg", "已收藏并记为感兴趣：" + (e.title || ""), "good");
+      } else {
+        setMsg("pp-sub-msg", "收藏失败（条目可能重复或库不可写）", "bad");
+      }
+    });
+    right.appendChild(bAccept);
+
+    const bIgnore = el("button", { class: "pp-btn pp-btn-sm pp-subs-ignore", title: "记为不感兴趣（之后该条目标「已忽略」并从订阅里跳过）" }, "忽略");
+    bIgnore.addEventListener("click", () => {
+      const s = S();
+      if (!s || typeof s.ignoreEntry !== "function") {
+        setMsg("pp-sub-msg", "检索订阅模块未就绪（请重启 Zotero 后再试）", "bad");
+        return;
+      }
+      let ok = false;
+      try { ok = !!s.ignoreEntry(e, subId || null); } catch (err) { ok = false; }
+      if (!ok) {
+        setMsg("pp-sub-msg", "忽略失败（条目指纹为空）", "bad");
+        return;
+      }
+      setMsg("pp-sub-msg", "已忽略：" + (e.title || "") + "（之后不再出现在订阅里）", "good");
+      // 从本轮预览里移除这张卡（保留结果条数提示不动，避免误导）
+      const parent = box.parentNode;
+      if (parent && typeof parent.removeChild === "function") {
+        try { parent.removeChild(box); } catch (err) { /* ignore */ }
+      }
+    });
+    right.appendChild(bIgnore);
     top.appendChild(right);
     box.appendChild(top);
     return box;
@@ -359,6 +408,8 @@
     const s = S();
     const host = $("pp-subs-detail");
     if (!host) return;
+    // 收藏 / 忽略要记住「来自哪条订阅」：按 id 预览时写该订阅 id，草稿预览写 null
+    const currentSubId = (typeof input === "string" && input) ? input : "";
     if (!s || typeof s.preview !== "function") {
       host.textContent = "";
       host.appendChild(el("div", { class: "pp-hint", style: "color:var(--pp-danger);" }, "检索订阅模块未就绪（请重启 Zotero 后再试）"));
@@ -413,9 +464,11 @@
 
     const entries = r.entries || [];
     const fresh = entries.filter((e) => e.status === "new").length;
-    const known = entries.filter((e) => e.status !== "new").length;
+    const ignoredCount = entries.filter((e) => e.status === "ignored").length;
+    const known = entries.length - fresh - ignoredCount;
     host.appendChild(el("div", { class: "pp-hint", style: "margin-top:2px;" },
       "共 " + entries.length + " 条 · 新命中 " + fresh + " · 已在库/往期 " + known
+      + (ignoredCount ? " · 已忽略 " + ignoredCount : "")
       + (r.partial ? " · 部分来源失败" : "")));
     if (r.bySource) {
       const bad = Object.keys(r.bySource).filter((k) => r.bySource[k] && r.bySource[k].ok === false);
@@ -428,7 +481,7 @@
       host.appendChild(el("div", { class: "pp-hint" }, "没有命中。可放宽关键词、去掉分类限制，或把「只看近 N 天」调大。"));
       return;
     }
-    entries.forEach((e, i) => host.appendChild(previewCard(e, i)));
+    entries.forEach((e, i) => host.appendChild(previewCard(e, i, currentSubId)));
   }
 
   /* ================== 推荐 ================== */
@@ -440,6 +493,10 @@
     box.appendChild(el("div", { style: "font-weight:600;font-size:13px;" }, item.name || "推荐主题"));
     box.appendChild(el("div", { class: "pp-hint", style: "margin-top:2px;" },
       "关键词：" + (item.keywords || "-") + (item.categories ? " · 分类：" + item.categories : "")));
+    if (item.authors) {
+      box.appendChild(el("div", { class: "pp-hint pp-subs-reco-authors", style: "margin-top:2px;" },
+        "作者：" + item.authors));
+    }
     box.appendChild(el("div", { class: "pp-hint", style: "margin-top:2px;" }, item.reason || ""));
     if (item.coverage) {
       box.appendChild(el("div", { class: "pp-hint", style: "margin-top:2px;color:var(--pp-accent);" },
@@ -572,10 +629,43 @@
       + (skipped ? "（跳过 " + skipped + " 条重复或无效）" : ""), "good");
   }
 
+  /* ================== 反馈学习（收藏 / 忽略）清空 ================== */
+
+  /** 清空反馈学习：二次确认 → feedbackClear（内部同时作废推荐缓存），并回报 liked / ignored */
+  function doFeedbackClear() {
+    const s = S();
+    if (!s || typeof s.feedbackClear !== "function") {
+      setMsg("pp-sub-msg", "检索订阅模块未就绪（请重启 Zotero 后再试）", "bad");
+      return;
+    }
+    let stats = { liked: 0, ignored: 0 };
+    try { stats = s.feedbackStats() || stats; } catch (e) { stats = { liked: 0, ignored: 0 }; }
+    let go = true;
+    try {
+      if (typeof Services !== "undefined" && Services && Services.prompt &&
+        typeof Services.prompt.confirm === "function") {
+        go = !!Services.prompt.confirm(window, "清空反馈学习",
+          "将清空 " + (stats.liked || 0) + " 条「收藏」与 " + (stats.ignored || 0)
+          + " 条「忽略」记录，排序回到默认。继续？");
+      }
+    } catch (e) { go = true; }
+    if (!go) {
+      setMsg("pp-sub-msg", "已取消");
+      return;
+    }
+    let ok = false;
+    try { ok = !!s.feedbackClear(); } catch (e) { ok = false; }
+    if (!ok) {
+      setMsg("pp-sub-msg", "清空失败（本地配置不可写）", "bad");
+      return;
+    }
+    setMsg("pp-sub-msg", "已清空反馈学习（收藏 " + (stats.liked || 0) + " / 忽略 " + (stats.ignored || 0) + "）", "good");
+  }
+
   /* ================== 表单 ================== */
 
   function clearForm() {
-    for (const id of ["pp-sub-name", "pp-sub-keywords", "pp-sub-cats", "pp-sub-exclude",
+    for (const id of ["pp-sub-name", "pp-sub-keywords", "pp-sub-cats", "pp-sub-authors", "pp-sub-exclude",
       "pp-sub-time", "pp-sub-weekdays", "pp-sub-maxagedays", "pp-sub-max"]) {
       const node = $(id);
       if (node) node.value = "";
@@ -588,9 +678,9 @@
     if (mode) mode.value = "all";
     const freq = $("pp-sub-freq");
     if (freq) freq.value = "manual";
-    for (const id of ["pp-sub-auto", "pp-sub-ai-rerank", "pp-sub-ai-digest", "pp-sub-seed"]) {
+    for (const id of ["pp-sub-auto", "pp-sub-notify", "pp-sub-ai-rerank", "pp-sub-ai-digest", "pp-sub-seed"]) {
       const node = $(id);
-      if (node) node.checked = id === "pp-sub-auto";
+      if (node) node.checked = id === "pp-sub-auto" || id === "pp-sub-notify";
     }
   }
 
@@ -608,6 +698,7 @@
     set("pp-sub-name", o.name);
     set("pp-sub-keywords", o.keywords);
     set("pp-sub-cats", o.categories);
+    set("pp-sub-authors", o.authors);
     set("pp-sub-exclude", o.exclude);
     set("pp-sub-time", o.dailyTime);
     set("pp-sub-weekdays", Array.isArray(o.weekdays) ? o.weekdays.join(",") : o.weekdays);
@@ -624,6 +715,7 @@
     if (freq) freq.value = o.freq === "daily" || o.freq === "weekly" ? o.freq : "manual";
     const check = (id, v) => { const n = $(id); if (n) n.checked = !!v; };
     check("pp-sub-auto", o.autoImport === undefined ? true : o.autoImport);
+    check("pp-sub-notify", o.notify === undefined ? true : o.notify);
     check("pp-sub-ai-rerank", o.aiRerank);
     check("pp-sub-ai-digest", o.aiDigest);
     check("pp-sub-seed", o.seedProfile);
@@ -643,6 +735,7 @@
       name: val("pp-sub-name"),
       keywords: val("pp-sub-keywords"),
       categories: val("pp-sub-cats"),
+      authors: val("pp-sub-authors"),
       exclude: val("pp-sub-exclude"),
       sources: sources.length ? sources : ["arxiv"],
       mode: val("pp-sub-mode") || "all",
@@ -652,6 +745,7 @@
       maxAgeDays: val("pp-sub-maxagedays"),
       max: val("pp-sub-max") || 10,
       autoImport: chk("pp-sub-auto"),
+      notify: chk("pp-sub-notify"),
       aiRerank: chk("pp-sub-ai-rerank"),
       aiDigest: chk("pp-sub-ai-digest"),
       seedProfile: chk("pp-sub-seed"),
@@ -671,8 +765,8 @@
       if (n && n.focus) try { n.focus(); } catch (e) { /* ignore */ }
       return;
     }
-    if (!draft.keywords && !draft.categories) {
-      setMsg("pp-sub-msg", "关键词与分类至少填一个", "bad");
+    if (!draft.keywords && !draft.categories && !draft.authors) {
+      setMsg("pp-sub-msg", "关键词、分类、作者至少填一个", "bad");
       const n = $("pp-sub-keywords");
       if (n && n.focus) try { n.focus(); } catch (e) { /* ignore */ }
       return;
@@ -684,7 +778,7 @@
       sub = null;
     }
     if (!sub) {
-      setMsg("pp-sub-msg", "保存失败（名称与检索条件必填）", "bad");
+      setMsg("pp-sub-msg", "保存失败（名称与检索条件必填：关键词 / 分类 / 作者至少一个）", "bad");
       return;
     }
     setMsg("pp-sub-msg", (editingId ? "已保存：" : "已创建：") + sub.name, "good");
@@ -759,11 +853,11 @@
       bind("pp-subs-preview", "click", (ev) => {
         try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
         const draft = readForm();
-        if (!draft.keywords && !draft.categories) {
-          setMsg("pp-sub-msg", "关键词与分类至少填一个再试跑", "bad");
+        if (!draft.keywords && !draft.categories && !draft.authors) {
+          setMsg("pp-sub-msg", "关键词、分类、作者至少填一个再试跑", "bad");
           return;
         }
-        if (!draft.name) draft.name = draft.keywords || draft.categories;
+        if (!draft.name) draft.name = draft.keywords || draft.categories || draft.authors;
         commitDraftForPreview(draft);
       });
       bind("pp-subs-cancel", "click", () => { resetForm(); setMsg("pp-sub-msg", "已取消编辑"); });
@@ -775,6 +869,10 @@
       bind("pp-subs-import", "click", (ev) => {
         try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
         doImport();
+      });
+      bind("pp-subs-feedback-clear", "click", (ev) => {
+        try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
+        doFeedbackClear();
       });
       bind("pp-sub-ai", "click", (ev) => {
         try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }

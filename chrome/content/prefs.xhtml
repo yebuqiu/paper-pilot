@@ -747,10 +747,10 @@
   </html:div>
 
   <!-- ============ 3c2 · 检索订阅 v2（0.57.0：推荐 → 一句话/AI 配置 → 试跑 → 定时多源检索） ============ -->
-  <html:div class="pp-card pp-fold" data-fold="subscriptions" data-search-strings-raw="订阅 检索 定时 自动入库 arxiv openalex pubmed 速递 推荐 subscription search saved query">
+  <html:div class="pp-card pp-fold" data-fold="subscriptions" data-search-strings-raw="订阅 检索 定时 自动入库 arxiv openalex pubmed 速递 推荐 作者 收藏 忽略 通知 反馈 subscription search saved query author notify feedback">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">📡</html:span><html:span class="pp-card-title">检索订阅</html:span>
-      <html:span class="pp-card-desc">按研究领域推荐主题，一句话建订阅；先试跑预览，再定时多源检索、去重入库、生成速递笔记</html:span>
+      <html:span class="pp-card-desc">按研究领域推荐主题（含作者追踪），一句话建订阅；先试跑预览（可收藏 / 忽略），再定时多源检索、去重入库、生成速递笔记并弹系统通知</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -779,9 +779,10 @@
       <!-- 3c2.3 订阅列表 + 试跑结果 -->
       <html:div class="pp-sub" style="margin-top:12px;">
         <html:div class="pp-sub-title">我的订阅</html:div>
-        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
           <html:button id="pp-subs-export" class="pp-btn pp-btn-sm">导出到剪贴板</html:button>
           <html:button id="pp-subs-import" class="pp-btn pp-btn-sm">从剪贴板导入</html:button>
+          <html:button id="pp-subs-feedback-clear" class="pp-btn pp-btn-sm" title="清空「收藏 / 忽略」学习记录（之后预览不再据此加减分）">清空反馈学习</html:button>
           <html:span class="pp-hint">导出只含配置（名称 / 条件 / 来源 / 频率 / 开关），不含运行记录；导入会重新分配 id，并跳过同名订阅。</html:span>
         </html:div>
         <html:div id="pp-subs-list" class="pp-datasets"></html:div>
@@ -795,6 +796,7 @@
           <html:input id="pp-sub-name" class="pp-input" placeholder="名称（如：图神经网络）" style="width:180px;"/>
           <html:input id="pp-sub-keywords" class="pp-input" placeholder="关键词（逗号分隔，建议英文）" style="width:240px;"/>
           <html:input id="pp-sub-cats" class="pp-input" placeholder="arXiv 分类（cs.LG,cs.CL）" style="width:180px;"/>
+          <html:input id="pp-sub-authors" class="pp-input" placeholder="作者（逗号分隔，最多 6 位）" style="width:220px;"/>
         </html:div>
         <html:div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;align-items:center;">
           <html:span class="pp-hint">来源：</html:span>
@@ -823,6 +825,7 @@
         </html:div>
         <html:div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;">
           <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-auto"/><html:span>命中自动入库</html:span></html:label>
+          <html:label class="pp-check" style="margin-top:0;" title="定时运行有新入库时弹一条系统通知；手动「立即运行」不打扰"><html:input type="checkbox" id="pp-sub-notify"/><html:span>有新增时系统通知</html:span></html:label>
           <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-ai-rerank" title="只发送命中条目的标题与摘要片段，最多 12 条/次；失败自动退回确定性排序"/><html:span>AI 相关性复核</html:span></html:label>
           <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-ai-digest" title="最多 15 条/次；失败时速递笔记照常生成"/><html:span>AI 速递速览</html:span></html:label>
           <html:label class="pp-check" style="margin-top:0;"><html:input type="checkbox" id="pp-sub-seed" title="把库内画像高频词并入关键词；建议配合「任一命中」，否则条件可能过严"/><html:span>并入库内画像词</html:span></html:label>
@@ -837,7 +840,11 @@
           <html:span class="pp-hint">礼貌邮箱（可选，提高 OpenAlex / Crossref 配额）：</html:span>
           <html:input id="pp-sub-mailto" class="pp-input" preference="extensions.zotero.papilot.subsMailto" placeholder="you@example.com" style="width:200px;"/>
         </html:div>
-        <html:div class="pp-hint">试跑只取数不入库；保存后才按频率执行。关键词多词默认 AND；分类多值为并集；每日/每周错过 6 小时内补跑；去重记账保留最近 1000 条。OpenAlex / Crossref / PubMed 免费无需 Key。</html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+          <html:span class="pp-hint">OpenAlex Key（可选，提高调用配额）：</html:span>
+          <html:input id="pp-sub-openalex-key" type="password" class="pp-input" preference="extensions.zotero.papilot.openAlexApiKey" placeholder="可选：openalex.org/settings/api 免费申请" style="width:260px;"/>
+        </html:div>
+        <html:div class="pp-hint">试跑只取数不入库；保存后才按频率执行。关键词多词默认 AND；分类多值为并集；作者与关键词同时填写时，作者组与关键词组按 AND 组合（多个作者之间为 OR）；每日/每周错过 6 小时内补跑；去重记账保留最近 1000 条。预览卡上的「收藏 / 忽略」会微调之后的排序；被忽略的条目不再进入速递笔记（只计入跳过数），可在上方「清空反馈学习」重置。OpenAlex / Crossref / PubMed 免费无需 Key（OpenAlex 可选填免费 Key）。</html:div>
       </html:div>
     </html:div>
   </html:div>

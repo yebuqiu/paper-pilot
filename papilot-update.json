@@ -3,6 +3,17 @@
   "papilot@dev.local": {
    "updates": [
     {
+     "version": "0.58.0",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.58.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "检索订阅增强：收藏 / 忽略反馈学习（微调排序，忽略不再进速递）\n作者追踪：订阅可填作者，五源支持作者检索 + 推荐作者轨道\n定时运行有新增时弹系统通知（可关）\nOpenAlex 可选免费 Key（提高配额，不进云同步）"
+    },
+    {
      "version": "0.57.0",
      "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.57.0.xpi",
      "applications": {

@@ -95,12 +95,12 @@ const IDS = [
   'pp-subs-reco', 'pp-subs-reco-refresh', 'pp-subs-reco-msg',
   'pp-sub-nl', 'pp-sub-ai', 'pp-sub-nl-msg',
   'pp-subs-list', 'pp-subs-detail', 'pp-subs-form-title',
-  'pp-subs-export', 'pp-subs-import',
-  'pp-sub-name', 'pp-sub-keywords', 'pp-sub-cats', 'pp-sub-exclude',
+  'pp-subs-export', 'pp-subs-import', 'pp-subs-feedback-clear',
+  'pp-sub-name', 'pp-sub-keywords', 'pp-sub-cats', 'pp-sub-authors', 'pp-sub-exclude',
   'pp-sub-mode', 'pp-sub-freq', 'pp-sub-time', 'pp-sub-weekdays',
   'pp-sub-maxagedays', 'pp-sub-max',
   'pp-sub-src-arxiv', 'pp-sub-src-openalex', 'pp-sub-src-crossref', 'pp-sub-src-europepmc', 'pp-sub-src-pubmed',
-  'pp-sub-auto', 'pp-sub-ai-rerank', 'pp-sub-ai-digest', 'pp-sub-seed',
+  'pp-sub-auto', 'pp-sub-notify', 'pp-sub-ai-rerank', 'pp-sub-ai-digest', 'pp-sub-seed',
   'pp-subs-add', 'pp-subs-preview', 'pp-subs-cancel', 'pp-sub-msg',
 ];
 
@@ -127,6 +127,7 @@ function stubSubs(calls, opts) {
   const o = opts || {};
   const sub = {
     id: 'sub-1', name: '稀疏注意力', keywords: 'sparse attention', categories: 'cs.LG',
+    authors: 'Ada Lovelace', notify: false,
     sources: ['arxiv'], mode: 'any', exclude: '', maxAgeDays: 7, freq: 'daily', dailyTime: '08:00',
     weekdays: [1, 2, 3, 4, 5], max: 10, autoImport: true, aiRerank: false, aiDigest: false,
     enabled: true, lastStatus: '2026-10-19 08:00 · +1 新入库 / 0 跳过',
@@ -145,6 +146,7 @@ function stubSubs(calls, opts) {
         entries: [
           { source: 'arxiv', title: 'Sparse Attention Works', published: '2026-10-18', summary: 'A paper', status: 'new', score: 7, url: 'https://arxiv.org/abs/1' },
           { source: 'openalex', title: 'Known Paper', published: '2026-10-17', summary: 'B paper', status: 'known', score: 2, url: '', citationCount: 5 },
+          { source: 'crossref', title: 'Ignored Paper', published: '2026-10-16', summary: 'C paper', status: 'ignored', score: 1, url: '' },
         ],
         bySource: { arxiv: { ok: true, count: 1 }, openalex: { ok: false, count: 0, reason: 'HTTP 503' } },
         partial: true,
@@ -156,6 +158,10 @@ function stubSubs(calls, opts) {
         id: 'reco-cat-1', name: '追踪 cs.LG', keywords: 'sparse, attention', categories: 'cs.LG',
         sources: ['arxiv', 'openalex'], mode: 'any', maxAgeDays: 14, coverage: 12, recent: 3,
         reason: '库内 12 篇属于 cs.LG',
+      }, {
+        id: 'reco-author-ada', name: '追踪作者：Ada Lovelace', keywords: '', categories: '',
+        authors: 'Ada Lovelace', sources: ['arxiv', 'openalex'], mode: 'any', maxAgeDays: 14,
+        coverage: 3, recent: 1, reason: '库内 3 篇由该作者参与', kind: 'author',
       }];
     },
     recoFromCache: () => !!o.recoCacheHit,
@@ -168,6 +174,16 @@ function stubSubs(calls, opts) {
       return { ok: true, added: 1, skipped: 3 };
     },
     dismissReco: (id) => { calls.dismiss.push(id); return true; },
+    accept: async (entry, subId) => {
+      calls.accept.push({ entry, subId });
+      return { ok: true, itemID: 42, existed: !!(o.acceptExisted) };
+    },
+    ignoreEntry: (entry, subId) => {
+      calls.ignore.push({ entry, subId });
+      return true;
+    },
+    feedbackClear: () => { calls.feedbackClear.push(1); return true; },
+    feedbackStats: () => ({ liked: 2, ignored: 1 }),
     aiParseQuery: async (text) => {
       calls.ai.push(text);
       return {
@@ -181,12 +197,16 @@ function stubSubs(calls, opts) {
 
 function run(opts) {
   const dom = makeDom();
-  const calls = { add: [], update: [], preview: [], run: [], suggest: [], dismiss: [], ai: [], export: [], import: [] };
+  const calls = {
+    add: [], update: [], preview: [], run: [], suggest: [], dismiss: [], ai: [], export: [], import: [],
+    accept: [], ignore: [], feedbackClear: [],
+  };
   const subs = stubSubs(calls, opts);
   const timers = [];
   const rejections = [];
   const onRej = (e) => rejections.push(e);
   process.on('unhandledRejection', onRej);
+  const confirms = [];
 
   const Zotero = {
     Prefs: { get: () => undefined, set: () => {} },
@@ -198,14 +218,25 @@ function run(opts) {
   const window = {
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
   };
+  const Services = {
+    prompt: {
+      confirm(win, title, text) {
+        confirms.push({ title, text });
+        return !(opts && opts.denyConfirm);
+      },
+    },
+  };
   const sandbox = {
-    Zotero, window, document: dom.document, console,
+    Zotero, window, document: dom.document, console, Services,
     Math, Date, JSON, Object, Array, String, Number, Boolean, Map, Set, Promise, Error, RegExp,
     parseInt, isNaN, isFinite,
   };
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(SRC, 'utf8'), sandbox, { filename: 'prefs-subs.js' });
-  return { dom, calls, subs, timers, rejections, off: () => process.removeListener('unhandledRejection', onRej) };
+  return {
+    dom, calls, subs, timers, rejections, confirms,
+    off: () => process.removeListener('unhandledRejection', onRej),
+  };
 }
 
 const tick = () => new Promise((r) => setImmediate(r));
@@ -242,6 +273,7 @@ async function main() {
     ok(reco.children.length > 0, '② 推荐卡渲染');
     ok(reco.textContent.indexOf('追踪 cs.LG') >= 0, '② 推荐卡显示主题名');
     ok(reco.textContent.indexOf('cs.LG') >= 0, '② 推荐卡显示理由/分类');
+    ok(reco.textContent.indexOf('作者：Ada Lovelace') >= 0, '② 推荐卡展示作者（0.58.0 作者轨道）');
     eq(env.rejections.length, 0, '② 初始化无未捕获异常');
     env.off();
   }
@@ -392,6 +424,135 @@ async function main() {
       '⑨ 强制刷新提示已重新分析', fresh.dom.byId.get('pp-subs-reco-msg').textContent);
     eq(fresh.rejections.length, 0, '⑨ 推荐刷新无未捕获异常');
     fresh.off();
+  }
+
+  /* ⑩ 0.58.0：新控件的静态体检 */
+  {
+    const xhtml = fs.readFileSync(XHTML, 'utf8');
+    for (const id of ['pp-sub-authors', 'pp-sub-notify', 'pp-subs-feedback-clear', 'pp-sub-openalex-key']) {
+      ok(xhtml.indexOf('id="' + id + '"') >= 0, '⑩ prefs.xhtml 含 ' + id);
+    }
+    ok(xhtml.indexOf('preference="extensions.zotero.papilot.openAlexApiKey"') >= 0,
+      '⑩ ★ OpenAlex Key 输入框绑定 pref');
+    ok(/id="pp-sub-openalex-key"[^>]*type="password"|type="password"[^>]*id="pp-sub-openalex-key"/.test(xhtml),
+      '⑩ Key 输入框用 password 类型（不明文回显）');
+    const src = fs.readFileSync(SRC, 'utf8');
+    ok(src.indexOf('关键词、分类、作者至少填一个') >= 0, '⑩ 表单提示改为「关键词、分类、作者至少填一个」');
+    ok(src.indexOf('s.accept(') >= 0 && src.indexOf('s.ignoreEntry(') >= 0,
+      '⑩ ★ 预览卡接了 accept / ignoreEntry');
+    ok(src.indexOf('feedbackClear') >= 0 && src.indexOf('feedbackStats') >= 0,
+      '⑩ 面板接了反馈清空 / 统计');
+  }
+
+  /* ⑪ 0.58.0：表单读写（作者 / 通知开关） */
+  {
+    const env = run();
+    for (const t of env.timers.splice(0)) t.fn();
+    await tick();
+    const editBtn = env.dom.byId.get('pp-subs-list').querySelectorAll('.pp-subs-edit')[0];
+    ok(!!editBtn, '⑪ 列表行有「编辑」按钮');
+    if (editBtn) editBtn.fire('click');
+    eq(env.dom.byId.get('pp-sub-authors').value, 'Ada Lovelace', '⑪ ★ fillForm 回填 authors');
+    eq(env.dom.byId.get('pp-sub-notify').checked, false, '⑪ ★ fillForm 回填 notify');
+    eq(env.rejections.length, 0, '⑪ 编辑回填无未捕获异常');
+    env.off();
+  }
+  {
+    const env = run();
+    for (const t of env.timers.splice(0)) t.fn();
+    await tick();
+    env.dom.byId.get('pp-sub-name').value = '作者订阅';
+    env.dom.byId.get('pp-sub-authors').value = 'Ada Lovelace, Alan Turing';
+    env.dom.byId.get('pp-sub-notify').checked = false;
+    env.dom.byId.get('pp-subs-add').fire('click');
+    await tick();
+    eq(env.calls.add.length, 1, '⑪ ★ 只填作者也能保存（readForm 带 authors）');
+    const a = env.calls.add[0] || {};
+    eq(a.authors, 'Ada Lovelace, Alan Turing', '⑪ readForm 带 authors');
+    eq(a.notify, false, '⑪ readForm 带 notify');
+    eq(env.dom.byId.get('pp-sub-authors').value, '', '⑪ 保存后清空作者输入');
+    eq(env.dom.byId.get('pp-sub-notify').checked, true, '⑪ 清空后通知默认勾选');
+    eq(env.rejections.length, 0, '⑪ 保存流程无未捕获异常');
+    env.off();
+  }
+  {
+    // 三者全空 → 拦截保存（不调 add）
+    const env = run();
+    for (const t of env.timers.splice(0)) t.fn();
+    await tick();
+    env.dom.byId.get('pp-sub-name').value = '空条件';
+    env.dom.byId.get('pp-subs-add').fire('click');
+    await tick();
+    eq(env.calls.add.length, 0, '⑪ ★ 关键词/分类/作者全空 → 不调 add');
+    ok(env.dom.byId.get('pp-sub-msg').textContent.indexOf('关键词、分类、作者至少填一个') >= 0,
+      '⑪ 提示文案说明三个条件之一', env.dom.byId.get('pp-sub-msg').textContent);
+    env.off();
+  }
+
+  /* ⑫ 0.58.0：预览卡的 [收藏] / [忽略] */
+  {
+    const env = run();
+    for (const t of env.timers.splice(0)) t.fn();
+    await tick();
+    const btn = env.dom.byId.get('pp-subs-list').querySelectorAll('.pp-subs-preview')[0];
+    ok(!!btn, '⑫ 列表行有「预览」按钮');
+    if (btn) {
+      btn.fire('click');
+      await tick();
+      await tick();
+    }
+    const detail = env.dom.byId.get('pp-subs-detail');
+    ok(detail.textContent.indexOf('已忽略') >= 0, '⑫ 忽略状态渲染为「已忽略」');
+    ok(detail.textContent.indexOf('已忽略 1') >= 0, '⑫ 结果行统计忽略条数');
+
+    const acceptBtn = detail.querySelectorAll('button').filter((b) => b.textContent === '收藏')[0];
+    ok(!!acceptBtn, '⑫ ★ 预览卡有「收藏」按钮');
+    if (acceptBtn) {
+      acceptBtn.fire('click');
+      await tick();
+      await tick();
+    }
+    eq(env.calls.accept.length, 1, '⑫ ★ 收藏调用 accept');
+    eq(env.calls.accept[0].subId, 'sub-1', '⑫ 收藏带上当前订阅 id');
+    eq(env.calls.accept[0].entry.title, 'Sparse Attention Works', '⑫ 收藏的是该卡条目');
+    ok(env.dom.byId.get('pp-sub-msg').textContent.indexOf('已收藏并记为感兴趣') >= 0,
+      '⑫ 收藏有提示', env.dom.byId.get('pp-sub-msg').textContent);
+
+    const ignoreBtn = detail.querySelectorAll('button').filter((b) => b.textContent === '忽略')[0];
+    ok(!!ignoreBtn, '⑫ ★ 预览卡有「忽略」按钮');
+    if (ignoreBtn) ignoreBtn.fire('click');
+    eq(env.calls.ignore.length, 1, '⑫ ★ 忽略调用 ignoreEntry');
+    eq(env.calls.ignore[0].entry.title, 'Sparse Attention Works', '⑫ 忽略的是该卡条目');
+    ok(detail.textContent.indexOf('Sparse Attention Works') < 0, '⑫ ★ 忽略后该卡从预览里移除');
+    ok(env.dom.byId.get('pp-sub-msg').textContent.indexOf('已忽略') >= 0, '⑫ 忽略有提示');
+    eq(env.rejections.length, 0, '⑫ 收藏 / 忽略流程无未捕获异常');
+    env.off();
+  }
+
+  /* ⑬ 0.58.0：清空反馈学习（二次确认） */
+  {
+    const env = run();
+    for (const t of env.timers.splice(0)) t.fn();
+    await tick();
+    env.dom.byId.get('pp-subs-feedback-clear').fire('click');
+    await tick();
+    eq(env.calls.feedbackClear.length, 1, '⑬ ★ 点「清空反馈学习」调用 feedbackClear');
+    eq(env.confirms.length, 1, '⑬ 清空前二次确认');
+    ok((env.confirms[0] || {}).text && env.confirms[0].text.indexOf('2 条「收藏」') >= 0,
+      '⑬ 确认文案带统计', (env.confirms[0] || {}).text);
+    ok(env.dom.byId.get('pp-sub-msg').textContent.indexOf('已清空反馈学习') >= 0,
+      '⑬ 清空后有提示（含 liked / ignored）', env.dom.byId.get('pp-sub-msg').textContent);
+    eq(env.rejections.length, 0, '⑬ 清空流程无未捕获异常');
+    env.off();
+
+    const deny = run({ denyConfirm: true });
+    for (const t of deny.timers.splice(0)) t.fn();
+    await tick();
+    deny.dom.byId.get('pp-subs-feedback-clear').fire('click');
+    await tick();
+    eq(deny.calls.feedbackClear.length, 0, '⑬ 取消确认则不执行清空');
+    ok(deny.dom.byId.get('pp-sub-msg').textContent.indexOf('已取消') >= 0, '⑬ 取消有提示');
+    deny.off();
   }
 }
 

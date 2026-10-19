@@ -70,6 +70,10 @@ pref("extensions.zotero.papilot.searchSubsRecoDismissed", "");
 pref("extensions.zotero.papilot.subsMailto", "");
 // 0.57.0 推荐结果缓存（JSON {at, items}，12 小时；订阅增删改即失效；空 = 无缓存）
 pref("extensions.zotero.papilot.searchSubsRecoCache", "");
+// 0.58.0 收藏 / 忽略反馈学习（JSON map：指纹 → {v, at, terms, authors, sub}，LRU 500；空 = 无反馈）
+pref("extensions.zotero.papilot.searchSubsFeedback", "");
+// 0.58.0 OpenAlex 免费 API Key（可选，openalex.org/settings/api 申请；空 = 匿名访问；属密钥，不参与云同步）
+pref("extensions.zotero.papilot.openAlexApiKey", "");
 // 0.53.0 综述工作台（菜单入口开关）
 pref("extensions.zotero.papilot.reviewWorkbenchEnabled", true);
 // 0.48.x 技能包商店（Skills Hub）：已安装记账 / 本地评分 / 目录源（空 = 仅内置目录）

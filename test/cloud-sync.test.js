@@ -291,6 +291,8 @@ const E = (localSize, localMtime, etag, size) => ({ localSize, localMtime, etag,
   ok(!CS.shouldSyncPref('mcpToken'), '排除：mcpToken');
   ok(!CS.shouldSyncPref('thirdSourcePassword'), '排除：thirdSourcePassword');
   ok(!CS.shouldSyncPref('s2ApiKey'), '排除：s2ApiKey');
+  ok(!CS.shouldSyncPref('openAlexApiKey'),
+    '★ 排除：openAlexApiKey（0.58.0 免费 Key，属密钥；SECRET_LEAF_RE 的 apikey 分支命中）');
   ok(CS.shouldSyncPref('aiMaxTokens'), '不误伤：aiMaxTokens 不是密钥');
   // 检索订阅的本机运行态：跨机同步会制造幽灵行为（A 机的推荐 / 记账灌给 B 机）
   ok(!CS.shouldSyncPref('searchSubsRecoCache'),

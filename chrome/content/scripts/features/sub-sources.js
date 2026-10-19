@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Cassiuschen. All rights reserved.
 
-/* Papilot 检索订阅 · 数据源适配层（0.57.0）
+/* Papilot 检索订阅 · 数据源适配层（0.58.0）
  *
  * 为什么单独一层：订阅的「条件」与「去哪查」不是一回事。arXiv 只覆盖预印本，
  * 医学/社科用户的库大半在 PubMed / 期刊库里；把多源塞进 search-subs.js 会让
  * 调度、去重、入库三件事与 HTTP 细节纠缠。这里只做四件事：
  *
- *   1) 把统一的订阅条件（keywords / categories / mode / exclude / maxAgeDays）
+ *   1) 把统一的订阅条件（keywords / authors / categories / mode / exclude / maxAgeDays）
  *      翻译成各源自己的查询（build 纯函数，可离线单测）
  *   2) 发请求（每源自己的节奏与分页；arXiv 复用 ArxivFetch 的 3s 限速）
  *   3) 把各源返回归一成同一个 entry 形状（normalize 纯函数）
@@ -25,7 +25,7 @@ var SubSources = {
   /** 支持的源（UI 顺序即此顺序）。capabilities 用于表单联动与提示。 */
   LIST: [
     { id: "arxiv", label: "arXiv", caps: { categories: true, keywords: true, exclude: true, citations: false }, hint: "预印本，覆盖数理/CS/生医等；3 秒/次的官方限速" },
-    { id: "openalex", label: "OpenAlex", caps: { categories: false, keywords: true, exclude: true, citations: true }, hint: "跨学科期刊与会议，带被引量/开放获取链接；免费无需 Key" },
+    { id: "openalex", label: "OpenAlex", caps: { categories: false, keywords: true, authors: true, exclude: true, citations: true }, hint: "跨学科期刊与会议，带被引量/开放获取链接；免费（可选填免费 Key 提高配额）" },
     { id: "crossref", label: "Crossref", caps: { categories: false, keywords: true, exclude: true, citations: true }, hint: "以 DOI 为中心的元数据，覆盖全学科出版物" },
     { id: "europepmc", label: "Europe PMC", caps: { categories: false, keywords: true, exclude: true, citations: true }, hint: "生物医学（含 PubMed 记录与预印本）；国内网络通常比 NCBI 稳定" },
     { id: "pubmed", label: "PubMed", caps: { categories: false, keywords: true, exclude: true, citations: false }, hint: "NCBI 官方检索；部分网络不可达时单独报错，不影响其它源" },
@@ -71,6 +71,8 @@ var SubSources = {
 
   keywordsOf(sub) { return this.split(sub && sub.keywords).slice(0, 12); },
   categoriesOf(sub) { return this.split(sub && sub.categories).slice(0, 6); },
+  /** 作者（0.58.0）：最多 6 个，各源映射到自己的字段语法 */
+  authorsOf(sub) { return this.split(sub && sub.authors).slice(0, 6); },
   excludeOf(sub) { return this.split(sub && sub.exclude).slice(0, 12); },
 
   modeOf(sub) {
@@ -127,18 +129,26 @@ var SubSources = {
   },
 
   /**
-   * PubMed 检索式：每词限定 [tiab]（标题/摘要），剔除纯分类。
-   * 无关键词时返回 ""（PubMed 不吃 arXiv 分类）。
+   * PubMed 检索式：每词限定 [tiab]（标题/摘要），作者走 [au]。
+   * 只有作者时也能出查询（作者本身就是完整检索轴）；两者都没有返回 ""。
    */
   pubmedTerm(sub) {
     const kws = this.keywordsOf(sub);
-    if (!kws.length) return "";
+    const authors = this.authorsOf(sub);
     const mode = this.modeOf(sub);
-    const parts = kws.map((k) => (/[\s-]/.test(k) ? this._q(k) : k) + "[tiab]");
-    let q;
-    if (mode === "phrase") q = this._q(kws.join(" ")) + "[tiab]";
-    else if (parts.length === 1) q = parts[0];
-    else q = "(" + parts.join(mode === "any" ? " OR " : " AND ") + ")";
+    let kwQ = "";
+    if (kws.length) {
+      const parts = kws.map((k) => (/[\s-]/.test(k) ? this._q(k) : k) + "[tiab]");
+      if (mode === "phrase") kwQ = this._q(kws.join(" ")) + "[tiab]";
+      else if (parts.length === 1) kwQ = parts[0];
+      else kwQ = "(" + parts.join(mode === "any" ? " OR " : " AND ") + ")";
+    }
+    const authParts = authors.map((a) => (/[\s-]/.test(a) ? this._q(a) : a) + "[au]");
+    const authQ = authParts.length > 1 ? "(" + authParts.join(" OR ") + ")" : (authParts[0] || "");
+    let q = "";
+    if (kwQ && authQ) q = "(" + kwQ + " AND " + authQ + ")";
+    else q = kwQ || authQ;
+    if (!q) return "";
     const ex = this.excludeOf(sub);
     if (ex.length) q += " NOT (" + ex.map((k) => (/[\s-]/.test(k) ? this._q(k) : k) + "[tiab]").join(" OR ") + ")";
     return q;
@@ -146,20 +156,31 @@ var SubSources = {
 
   /**
    * Europe PMC 检索式：与 PubMed 不同，它直接支持引号与 AND/OR/NOT。
-   * 无关键词时返回 ""（分类只对 arXiv 有意义）。
+   * 作者走 `AUTH:"name"`（多个作者 OR 分组）；有关键词时 `(关键词组) AND (作者组)`。
+   * 两者都没有返回 ""（分类只对 arXiv 有意义）。
    */
   europePmcQuery(sub) {
     const kws = this.keywordsOf(sub);
-    if (!kws.length) return "";
+    const authors = this.authorsOf(sub);
     const mode = this.modeOf(sub);
-    if (mode === "phrase") return this._q(kws.join(" "));
-    let q = kws.map((k) => (/[\s-]/.test(k) ? this._q(k) : k)).join(mode === "any" ? " OR " : " AND ");
+    let kwQ = "";
+    if (kws.length) {
+      kwQ = mode === "phrase"
+        ? this._q(kws.join(" "))
+        : kws.map((k) => (/[\s-]/.test(k) ? this._q(k) : k)).join(mode === "any" ? " OR " : " AND ");
+    }
+    const authParts = authors.map((a) => "AUTH:" + this._q(a));
+    const authQ = authParts.length > 1 ? "(" + authParts.join(" OR ") + ")" : (authParts[0] || "");
+    let q = "";
+    if (kwQ && authQ) q = "(" + kwQ + ") AND " + authQ;
+    else q = kwQ || authQ;
+    if (!q) return "";
     const ex = this.excludeOf(sub);
     if (ex.length) q += " NOT (" + ex.map((k) => (/[\s-]/.test(k) ? this._q(k) : k)).join(" OR ") + ")";
     return q;
   },
 
-  /** arXiv spec（Discovery / ArxivFetch 同款语义：多分类并集、关键词 AND/OR） */
+  /** arXiv spec（Discovery / ArxivFetch 同款语义：多分类并集、关键词与作者按 boolean 组合） */
   arxivSpec(sub, now) {
     const kws0 = this.keywordsOf(sub);
     const cats = this.categoriesOf(sub);
@@ -168,6 +189,7 @@ var SubSources = {
     const kws = mode === "phrase" && kws0.length > 1 ? [kws0.join(" ")] : kws0;
     const spec = {
       keywords: kws,
+      authors: this.authorsOf(sub),
       categories: cats,
       categoryMode: "OR",
       boolean: mode === "any" ? "OR" : "AND",
@@ -396,21 +418,63 @@ var SubSources = {
 
   /**
    * 对「不保证布尔语义」的源（OpenAlex / Crossref）做二次过滤。
-   * 只查标题+摘要，大小写不敏感；all = 全命中，any = 任一，phrase = 连续短语。
+   * 关键词：只查标题+摘要，大小写不敏感；all = 全命中，any = 任一，phrase = 连续短语。
+   * 作者（0.58.0）：entries 带 authors 时要求至少一个目标作者命中；
+   *   entries 没有作者信息时**不误杀**（宁可多留一条，也别把真命中的论文过滤掉）。
    */
   matches(sub, e) {
     const kws = this.keywordsOf(sub);
-    if (!kws.length) return true;
-    const title = String((e && e.title) || "");
-    const summary = String((e && e.summary) || "");
-    const blob = (title + " " + summary).toLowerCase();
-    // 没有摘要时无法判断「是否真的相关」——不误杀，交给源自身的相关度排序
-    if (!summary.trim()) return true;
-    const mode = this.modeOf(sub);
-    const hit = (k) => blob.indexOf(String(k).toLowerCase()) >= 0;
-    if (mode === "phrase") return hit(kws.join(" "));
-    if (mode === "any") return kws.some(hit);
-    return kws.every(hit);
+    const authors = this.authorsOf(sub);
+    if (kws.length) {
+      const title = String((e && e.title) || "");
+      const summary = String((e && e.summary) || "");
+      const blob = (title + " " + summary).toLowerCase();
+      // 没有摘要时无法判断「是否真的相关」——不误杀，交给源自身的相关度排序
+      if (summary.trim()) {
+        const mode = this.modeOf(sub);
+        const hit = (k) => blob.indexOf(String(k).toLowerCase()) >= 0;
+        if (mode === "phrase") {
+          if (!hit(kws.join(" "))) return false;
+        } else if (mode === "any") {
+          if (!kws.some(hit)) return false;
+        } else if (!kws.every(hit)) return false;
+      }
+    }
+    if (!authors.length) return true;
+    const names = (e && Array.isArray(e.authors) ? e.authors : []).map((a) => this._personKey(a)).filter(Boolean);
+    if (!names.length) return true;
+    const blob2 = " " + names.join(" ~ ") + " ";
+    const hits = (a) => {
+      const key = this._personKey(a);
+      if (!key) return false;
+      if (blob2.indexOf(" " + key + " ") >= 0) return true;
+      // 姓名写法差异（"Alexander Fleming" vs "Fleming A"）：退一步按姓氏复核
+      const parts = key.split(" ").filter(Boolean);
+      const last = parts.length ? parts[parts.length - 1] : "";
+      return !!last && last.length >= 3 && blob2.indexOf(" " + last + " ") >= 0;
+    };
+    return authors.some(hits);
+  },
+
+  /** 姓名归一（小写 + 去标点 + 折叠空白）：跨源作者写法差异的比对基准 */
+  _personKey(name) {
+    return String(name == null ? "" : name)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  },
+
+  /**
+   * 失败原因脱敏：把 URL 里可能出现的凭据参数（api_key / mailto）替换成 ***。
+   * bySource.reason 会流到面板提示、运行历史与速递笔记，用户可能整屏截图外发。
+   * @param {string} s
+   * @returns {string}
+   */
+  _scrub(s) {
+    return String(s == null ? "" : s)
+      .replace(/api_key=[^&\s"'<>]+/gi, "api_key=***")
+      .replace(/mailto=[^&\s"'<>]+/gi, "mailto=***");
   },
 
   /* ================== 网络 ================== */
@@ -449,6 +513,16 @@ var SubSources = {
     } catch (e) { return ""; }
   },
 
+  /**
+   * OpenAlex 免费 API Key（可选，openalex.org/settings/api 免费申请）。
+   * 留空 = 匿名访问（限额更低但仍可用）。
+   * ★ 值本身**永不打日志 / 永不进 bySource.reason**——用户可能把配额 Key 当凭据看。
+   */
+  _oaKey() {
+    try { return String(Prefs.get("openAlexApiKey", "") || "").trim(); }
+    catch (e) { return ""; }
+  },
+
   async _arxiv(sub, limit, now) {
     if (typeof ArxivFetch === "undefined" || !ArxivFetch || typeof ArxivFetch.search !== "function") {
       throw new Error("arXiv 模块未就绪");
@@ -479,19 +553,26 @@ var SubSources = {
 
   async _openalex(sub, limit, now) {
     const q = this.openAlexQuery(sub);
-    if (!q) throw new Error("OpenAlex 需要关键词（分类仅 arXiv 支持）");
+    const authors = this.authorsOf(sub);
+    if (!q && !authors.length) throw new Error("OpenAlex 需要关键词或作者（分类仅 arXiv 支持）");
     const filters = [];
     const from = this.dateFrom(sub, now);
     if (from) filters.push("from_publication_date:" + from);
     filters.push("type:article|preprint|review");
-    const params = [
-      "search=" + encodeURIComponent(q),
-      "filter=" + encodeURIComponent(filters.join(",")),
-      "sort=publication_date:desc",
-      "per-page=" + Math.max(1, Math.min(50, limit)),
-    ];
+    // 作者在源侧过滤（raw_author_name.search 多值 OR 已实测可用）：先缩小集合，
+    // 本地 matches() 只做兜底复核，避免整页都是不相关的结果。
+    if (authors.length) {
+      filters.push("raw_author_name.search:" + authors.map((a) => String(a).replace(/[,|]/g, " ").trim()).join("|"));
+    }
+    const params = [];
+    if (q) params.push("search=" + encodeURIComponent(q));
+    params.push("filter=" + encodeURIComponent(filters.join(",")));
+    params.push("sort=publication_date:desc");
+    params.push("per-page=" + Math.max(1, Math.min(50, limit)));
     const mail = this._mailto();
     if (mail) params.push("mailto=" + encodeURIComponent(mail));
+    const key = this._oaKey();
+    if (key) params.push("api_key=" + encodeURIComponent(key));
     const url = "https://api.openalex.org/works?" + params.join("&");
     await this._gate("openalex");
     const r = await this._json(url);
@@ -502,17 +583,19 @@ var SubSources = {
 
   async _crossref(sub, limit, now) {
     const q = this.crossrefQuery(sub);
-    if (!q) throw new Error("Crossref 需要关键词（分类仅 arXiv 支持）");
+    const authors = this.authorsOf(sub);
+    if (!q && !authors.length) throw new Error("Crossref 需要关键词或作者（分类仅 arXiv 支持）");
     const filters = [];
     const from = this.dateFrom(sub, now);
     if (from) filters.push("from-pub-date:" + from);
-    const params = [
-      "query.bibliographic=" + encodeURIComponent(q),
-      "rows=" + Math.max(1, Math.min(50, limit)),
-      "sort=published",
-      "order=desc",
-      "select=" + encodeURIComponent("DOI,title,author,abstract,published,container-title,URL,type,is-referenced-by-count,volume,issue,page"),
-    ];
+    const params = [];
+    if (q) params.push("query.bibliographic=" + encodeURIComponent(q));
+    // Crossref 的作者查询只接受单个名字：用第一个作者缩小集合，其余靠本地 matches() 复核
+    if (authors.length) params.push("query.author=" + encodeURIComponent(authors[0]));
+    params.push("rows=" + Math.max(1, Math.min(50, limit)));
+    params.push("sort=published");
+    params.push("order=desc");
+    params.push("select=" + encodeURIComponent("DOI,title,author,abstract,published,container-title,URL,type,is-referenced-by-count,volume,issue,page"));
     if (filters.length) params.push("filter=" + encodeURIComponent(filters.join(",")));
     const mail = this._mailto();
     if (mail) params.push("mailto=" + encodeURIComponent(mail));
@@ -526,7 +609,7 @@ var SubSources = {
 
   async _europepmc(sub, limit, now) {
     const q = this.europePmcQuery(sub);
-    if (!q) throw new Error("Europe PMC 需要关键词（分类仅 arXiv 支持）");
+    if (!q) throw new Error("Europe PMC 需要关键词或作者（分类仅 arXiv 支持）");
     const params = [
       "query=" + encodeURIComponent(q),
       "format=json",
@@ -546,7 +629,7 @@ var SubSources = {
 
   async _pubmed(sub, limit) {
     const term = this.pubmedTerm(sub);
-    if (!term) throw new Error("PubMed 需要关键词（分类对其不适用）");
+    if (!term) throw new Error("PubMed 需要关键词或作者（分类对其不适用）");
     const n = Math.max(1, Math.min(50, limit));
     const esearch = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json"
       + "&sort=pub+date&retmax=" + n + "&term=" + encodeURIComponent(term)
@@ -601,7 +684,10 @@ var SubSources = {
         all.push.apply(all, rows);
         anyOk = true;
       } catch (e) {
-        const msg = String((e && (e.message || e)) || "失败");
+        // 失败原因会进 bySource.reason → 面板提示 / 运行历史 / 速递，可能被用户截图外发。
+        // 异常串里偶尔会带完整 URL（含 api_key / mailto），必须就地脱敏：
+        // OpenAlex 的 Key 是「免费顺手填」的，用户不一定把它当凭据看，但泄漏后果一样。
+        const msg = this._scrub(String((e && (e.message || e)) || "失败"));
         bySource[id] = { ok: false, count: 0, reason: msg };
         if (!firstReason) firstReason = this.label(id) + "：" + msg;
       }

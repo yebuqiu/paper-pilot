@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Cassiuschen. All rights reserved.
 
-/* Papilot · 检索订阅 v2（0.57.0）
+/* Papilot · 检索订阅 v2（0.58.0）
+ * 0.58.0 在 v2 之上补四项「让订阅越用越准」的能力（全部保持失败降级、不抛 UI、不写脏数据）：
+ *   E. 收藏 / 忽略反馈学习：searchSubsFeedback（fingerprint → {v, at, terms, authors, sub}）。
+ *      收藏 = accept()：入库 + 记 +1 + 写 seen + 清推荐缓存；忽略 = ignoreEntry()：记 -1。
+ *      _feedbackAdjust() 把「词命中 / 作者命中」折算成小幅加减分（用户偏好只微调排序，
+ *      不能压过关键词本身的相关度），并在 run/preview 里把 v=-1 的条目置为「已忽略」。
+ *   F. 作者追踪：订阅新增 authors（≤6），四源各有作者查询式；matches() 做本地作者复核；
+ *      suggest() 新增「作者轨道」（库内 ≥2 篇同作者 → 追踪该作者）。
+ *   G. 系统通知：订阅 notify=true 时，非手动运行且有新增 → Zotero.ProgressWindow 弹一条。
+ *   H. OpenAlex 免费 Key（可选）：openAlexApiKey → api_key 参数（永不打日志）。
  *
  * 0.53.0 的第一版只有一条链路：关键词/分类 → 每日一次 → arXiv → 自动入库 → 速递笔记。
  * 真实使用暴露了四类问题（也是 v2 的设计输入）：
@@ -18,11 +27,12 @@
  *   D. AI 辅助（全部可选、失败即降级）：一句话建订阅 aiParseQuery()、相关性复核 aiRerank()、
  *      速递速览 aiDigest()
  *
- * 数据面（三个 pref，均为 JSON 字符串）：
+ * 数据面（四个 pref，均为 JSON 字符串）：
  *   searchSubscriptions      订阅数组，最新在前（v2 字段对 v1 向后兼容）
  *   searchSubsSeen           去重记账 map：fingerprint → { itemID?, at }，LRU 1000
  *   searchSubsRecoDismissed  被忽略的推荐主题 id 数组（LRU 100）
  *   searchSubsRecoCache      推荐结果缓存 { at, items }，12 小时有效（订阅增删改即失效）
+ *   searchSubsFeedback       收藏 / 忽略反馈 map：fingerprint → { v, at, terms, authors, sub? }，LRU 500
  *
  * 去重三层：
  *   ① 记账（主）：fingerprint 命中即「往期已见」，跨订阅也拦得住；
@@ -48,6 +58,7 @@ var SearchSubs = {
   PREF_SEEN: "searchSubsSeen",
   PREF_RECO_DISMISSED: "searchSubsRecoDismissed",
   PREF_RECO_CACHE: "searchSubsRecoCache",
+  PREF_FEEDBACK: "searchSubsFeedback",
 
   /** 推荐结果缓存有效期（12 小时）：库内画像扫描是纯本地计算，但会遍历全库，不必每次进设置都重算 */
   RECO_TTL_MS: 12 * 3600 * 1000,
@@ -58,6 +69,13 @@ var SearchSubs = {
   WINDOW_MIN: 360,
   /** 去重记账上限（LRU） */
   MAX_SEEN: 1000,
+  /** 收藏 / 忽略反馈上限（LRU） */
+  MAX_FEEDBACK: 500,
+  /** 每条反馈最多记几个词元 / 几个作者（太小没辨识度，太大变成宽泛加分） */
+  FEEDBACK_TERMS: 6,
+  FEEDBACK_AUTHORS: 3,
+  /** 订阅可填的作者数上限 */
+  MAX_AUTHORS: 6,
   /** 单条订阅每次最多取多少条（与 add 的夹紧区间一致） */
   MAX_LIMIT: 30,
   MIN_LIMIT: 1,
@@ -205,6 +223,26 @@ var SearchSubs = {
     return out.length ? out : ["arxiv"];
   },
 
+  /**
+   * 作者串归一：逗号 / 分号 / 换行切分、去重（大小写不敏感）、长度 ≥2、最多 MAX_AUTHORS 个。
+   * 返回数组（订阅里存的是 join(", ") 后的字符串，便于在面板里直接编辑）。
+   */
+  _normAuthors(raw) {
+    const list = Array.isArray(raw) ? raw : String(raw == null ? "" : raw).split(/[,;，；\n]+/);
+    const out = [];
+    const seen = new Set();
+    for (const x of list) {
+      const name = String(x == null ? "" : x).replace(/\s+/g, " ").trim();
+      if (name.length < 2) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+      if (out.length >= this.MAX_AUTHORS) break;
+    }
+    return out;
+  },
+
   _normWeekdays(raw) {
     const list = Array.isArray(raw) ? raw : String(raw == null ? "" : raw).split(/[,;\s]+/);
     const out = [];
@@ -252,6 +290,7 @@ var SearchSubs = {
       sources: this._normSources(r.sources),
       keywords: String(r.keywords == null ? "" : r.keywords).trim(),
       categories: String(r.categories == null ? "" : r.categories).trim(),
+      authors: this._normAuthors(r.authors).join(", "),
       mode: mode,
       exclude: String(r.exclude == null ? "" : r.exclude).trim(),
       maxAgeDays: this._clampAge(r.maxAgeDays),
@@ -260,6 +299,7 @@ var SearchSubs = {
       weekdays: weekdays.length ? weekdays : [1, 2, 3, 4, 5],
       max: this._clampMax(r.max),
       autoImport: r.autoImport === undefined ? true : !!r.autoImport,
+      notify: r.notify === undefined ? true : !!r.notify,
       aiRerank: !!r.aiRerank,
       aiDigest: !!r.aiDigest,
       seedProfile: !!r.seedProfile,
@@ -324,6 +364,7 @@ var SearchSubs = {
       sources: sources,
       keywords: String(o.keywords == null ? "" : o.keywords).trim(),
       categories: String(o.categories == null ? "" : o.categories).trim(),
+      authors: this._normAuthors(o.authors).join(", "),
       mode: mode === "any" || mode === "phrase" ? mode : "all",
       exclude: String(o.exclude == null ? "" : o.exclude).trim(),
       maxAgeDays: this._clampAge(o.maxAgeDays),
@@ -332,6 +373,7 @@ var SearchSubs = {
       weekdays: this._normWeekdays(o.weekdays),
       max: this._clampMax(o.max),
       autoImport: o.autoImport === undefined ? true : !!o.autoImport,
+      notify: o.notify === undefined ? true : !!o.notify,
       aiRerank: !!o.aiRerank,
       aiDigest: !!o.aiDigest,
       seedProfile: !!o.seedProfile,
@@ -351,19 +393,20 @@ var SearchSubs = {
 
   /**
    * 新建订阅。
-   * @param {{name:string, keywords?:string, categories?:string, sources?:string[],
+   * @param {{name:string, keywords?:string, categories?:string, authors?:string, sources?:string[],
    *          mode?:string, exclude?:string, maxAgeDays?:number, dailyTime?:string,
    *          freq?:string, weekdays?:number[], max?:number, autoImport?:boolean,
-   *          aiRerank?:boolean, aiDigest?:boolean, seedProfile?:boolean}} input
-   * @returns {object|null} 成功返回订阅对象；name 空 / 关键词与分类全空 / 写 pref 失败 → null
+   *          notify?:boolean, aiRerank?:boolean, aiDigest?:boolean, seedProfile?:boolean}} input
+   * @returns {object|null} 成功返回订阅对象；name 空 / 关键词·分类·作者全空 / 写 pref 失败 → null
    */
   add(input) {
     const o = input || {};
     const name = String(o.name == null ? "" : o.name).trim();
     const keywords = String(o.keywords == null ? "" : o.keywords).trim();
     const categories = String(o.categories == null ? "" : o.categories).trim();
+    const authors = this._normAuthors(o.authors).join(", ");
     if (!name) return null;
-    if (!keywords && !categories) return null;
+    if (!keywords && !categories && !authors) return null;
     const list = this._loadList();
     const sub = this._coerce(o, this._newId(list));
     sub.createdAt = Date.now();
@@ -394,7 +437,8 @@ var SearchSubs = {
     }
     if ("keywords" in p) next.keywords = String(p.keywords == null ? "" : p.keywords).trim();
     if ("categories" in p) next.categories = String(p.categories == null ? "" : p.categories).trim();
-    if (!next.keywords && !next.categories) return null;
+    if ("authors" in p) next.authors = this._normAuthors(p.authors).join(", ");
+    if (!next.keywords && !next.categories && !next.authors) return null;
     if ("sources" in p) next.sources = this._normSources(p.sources);
     if ("mode" in p) {
       const m = String(p.mode || "all").toLowerCase();
@@ -404,6 +448,7 @@ var SearchSubs = {
     if ("maxAgeDays" in p) next.maxAgeDays = this._clampAge(p.maxAgeDays);
     if ("max" in p) next.max = this._clampMax(p.max);
     if ("autoImport" in p) next.autoImport = !!p.autoImport;
+    if ("notify" in p) next.notify = !!p.notify;
     if ("aiRerank" in p) next.aiRerank = !!p.aiRerank;
     if ("aiDigest" in p) next.aiDigest = !!p.aiDigest;
     if ("seedProfile" in p) next.seedProfile = !!p.seedProfile;
@@ -506,6 +551,284 @@ var SearchSubs = {
   _seenTouch(map, fp, at) {
     if (!map || !fp || !map[fp]) return;
     map[fp].at = Number(at) || Date.now();
+  },
+
+  /* ================== 收藏 / 忽略反馈学习（pref map，LRU） ================== */
+
+  /**
+   * 读反馈 map。坏 JSON / 非对象 / 单条脏记录一律跳过（面板与 run 直接消费它，不能抛）。
+   * @returns {Object<string, {v:number, at:number, terms:string[], authors:string[], sub?:string}>}
+   */
+  _feedbackLoad() {
+    let raw = "";
+    try { raw = String(this._prefGet(this.PREF_FEEDBACK, "") || ""); } catch (e) { raw = ""; }
+    if (!raw) return {};
+    let obj = null;
+    try { obj = JSON.parse(raw); } catch (e) { return {}; }
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+    const out = {};
+    for (const key of Object.keys(obj)) {
+      const rec = obj[key];
+      if (!rec || typeof rec !== "object" || Array.isArray(rec)) continue;
+      const v = Number(rec.v);
+      if (v !== 1 && v !== -1) continue;
+      const terms = [];
+      for (const t of (Array.isArray(rec.terms) ? rec.terms : [])) {
+        const s = String(t == null ? "" : t).toLowerCase().replace(/\s+/g, " ").trim();
+        if (s && terms.indexOf(s) < 0) terms.push(s);
+        if (terms.length >= this.FEEDBACK_TERMS) break;
+      }
+      const authors = [];
+      for (const a of (Array.isArray(rec.authors) ? rec.authors : [])) {
+        const s = this._personKey(a);
+        if (s && authors.indexOf(s) < 0) authors.push(s);
+        if (authors.length >= this.FEEDBACK_AUTHORS) break;
+      }
+      const item = { v: v, at: Number(rec.at) || 0, terms: terms, authors: authors };
+      const sub = String(rec.sub == null ? "" : rec.sub).trim();
+      if (sub) item.sub = sub;
+      out[key] = item;
+    }
+    return out;
+  },
+
+  _feedbackSave(map) {
+    try { return !!this._prefSet(this.PREF_FEEDBACK, JSON.stringify(map || {})); }
+    catch (e) { this._log("feedback write failed", e); return false; }
+  },
+
+  /** 姓名归一：小写 + 去标点 + 折叠空白（"Fleming, A." → "fleming a"） */
+  _personKey(name) {
+    return String(name == null ? "" : name)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  },
+
+  /**
+   * 写一条反馈（同指纹覆盖：用户改主意时以最后一次为准）。
+   * @param {object} entry 条目（各源形状都接受，内部走 _normEntry）
+   * @param {number} vote +1 收藏 / -1 忽略
+   * @param {string} [subId] 来源订阅 id（记下来便于解释，不参与打分）
+   * @returns {object|null} 写入的记录；指纹为空 / 条目非法 → null
+   */
+  _feedbackPut(entry, vote, subId) {
+    const e = this._normEntry(entry);
+    if (!e) return null;
+    const fp = this._fingerprint(e);
+    if (!fp) return null;
+    const terms = this._termsOfText(String(e.title || "") + " " + String(e.summary || ""))
+      .slice(0, this.FEEDBACK_TERMS);
+    const authors = [];
+    for (const a of (Array.isArray(e.authors) ? e.authors : [])) {
+      const key = this._personKey(typeof a === "string" ? a : (a && (a.name || a.literal)) || "");
+      if (!key || authors.indexOf(key) >= 0) continue;
+      authors.push(key);
+      if (authors.length >= this.FEEDBACK_AUTHORS) break;
+    }
+    const map = this._feedbackLoad();
+    const rec = { v: Number(vote) < 0 ? -1 : 1, at: Date.now(), terms: terms, authors: authors };
+    const sid = String(subId == null ? "" : subId).trim();
+    if (sid) rec.sub = sid;
+    map[fp] = rec;
+    const keys = Object.keys(map);
+    if (keys.length > this.MAX_FEEDBACK) {
+      keys.sort(function (a, b) { return (Number(map[a].at) || 0) - (Number(map[b].at) || 0); });
+      const drop = keys.length - this.MAX_FEEDBACK;
+      for (let i = 0; i < drop; i++) delete map[keys[i]];
+    }
+    this._feedbackSave(map);
+    return rec;
+  },
+
+  /** 取某条目的反馈记录（没有 → null） */
+  feedbackOf(entry) {
+    const e = this._normEntry(entry);
+    if (!e) return null;
+    const fp = this._fingerprint(e);
+    if (!fp) return null;
+    const map = this._feedbackLoad();
+    return map[fp] || null;
+  },
+
+  /** 条目是否被用户忽略过（fp 命中 v=-1） */
+  isIgnored(entry) {
+    const rec = this.feedbackOf(entry);
+    return !!(rec && rec.v === -1);
+  },
+
+  /**
+   * 反馈加分：把「收藏 / 忽略」历史折算成小幅加减分。
+   *
+   * 权重（刻意保守——用户偏好只微调排序，不能盖过关键词本身的相关度）：
+   *   · 每条反馈里 terms 命中标题/摘要：+0.4 / 个，单条上限 3；
+   *   · authors 命中条目作者：+1.0 / 个，单条上限 2；
+   *   · 乘 v（收藏 +1 / 忽略 -1）后累加，总区间 [-3, +2]。
+   *
+   * @returns {{score:number, reasons:string[]}}
+   */
+  _feedbackAdjust(entry) {
+    const out = { score: 0, reasons: [] };
+    try {
+      const map = this._feedbackLoad();
+      const keys = Object.keys(map);
+      if (!keys.length) return out;
+      const e = this._normEntry(entry) || {};
+      const blob = (String(e.title || "") + " " + String(e.summary || "")).toLowerCase();
+      const authorKeys = [];
+      for (const a of (Array.isArray(e.authors) ? e.authors : [])) {
+        const k = this._personKey(typeof a === "string" ? a : (a && (a.name || a.literal)) || "");
+        if (k) authorKeys.push(k);
+      }
+      const authorBlob = " " + authorKeys.join(" ~ ") + " ";
+      let total = 0;
+      const reasons = [];
+      for (const fp of keys) {
+        const rec = map[fp];
+        if (!rec) continue;
+        let s = 0;
+        const hitTerms = [];
+        for (const t of rec.terms || []) {
+          if (!t || t.length < 2) continue;
+          if (blob.indexOf(t) >= 0) hitTerms.push(t);
+        }
+        if (hitTerms.length) s += Math.min(3, 0.4 * hitTerms.length);
+        const hitAuthors = [];
+        for (const a of rec.authors || []) {
+          if (!a) continue;
+          if (authorBlob.indexOf(" " + a + " ") >= 0) hitAuthors.push(a);
+        }
+        if (hitAuthors.length) s += Math.min(2, hitAuthors.length);
+        if (!(s > 0)) continue;
+        total += s * rec.v;
+        for (const t of hitTerms) reasons.push(t);
+        for (const a of hitAuthors) reasons.push(a);
+      }
+      out.score = Math.round(Math.max(-3, Math.min(2, total)) * 100) / 100;
+      out.reasons = [...new Set(reasons)];
+      return out;
+    } catch (err) {
+      this._log("feedback adjust failed", err);
+      return { score: 0, reasons: [] };
+    }
+  },
+
+  /**
+   * 按 itemID 取回条目（收藏查重时确认「记账里的条目还在」）。
+   * Zotero 7 用 Items.getAsync，6.x 用 Items.get —— 哪个存在用哪个；
+   * 都不可用或抛错一律返回 null（视为已被删除，调用方照常新建，不报错）。
+   * @param {number|string} id
+   * @returns {Promise<object|null>}
+   */
+  async _itemByID(id) {
+    const n = Number(id);
+    if (!isFinite(n) || n <= 0) return null;
+    try {
+      const Items = (typeof Zotero !== "undefined" && Zotero && Zotero.Items) || null;
+      if (!Items) return null;
+      if (typeof Items.getAsync === "function") {
+        const it = await Items.getAsync(n);
+        return it || null;
+      }
+      if (typeof Items.get === "function") {
+        const it = Items.get(n);
+        return it || null;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  },
+
+  /**
+   * 收藏一条预览结果：入库（DOI 已存在 / seen 已记账且条目还在则复用）+ 记 +1 + 写 seen + 清推荐缓存。
+   * 失败（条目非法 / 库写入失败）返回 {ok:false}，绝不抛给面板。
+   *
+   * ★ 查重必须走两条路：DOI（期刊条目）+ seen 指纹（arXiv / 无 DOI 条目）。
+   *   只有 DOI 查重时，同一无 DOI 条目连点两次会入库两条，「往期已见」的卡点收藏也会再建一条。
+   *
+   * @param {object} entry 预览返回的条目
+   * @param {string|null} [subId] 来源订阅 id（决定入库标签；为空时标「收藏」）
+   * @returns {Promise<{ok:boolean, itemID?:number|null, existed?:boolean}>}
+   */
+  async accept(entry, subId) {
+    const e = this._normEntry(entry);
+    if (!e) return { ok: false };
+    const sid = String(subId == null ? "" : subId).trim();
+    const sub = sid ? this._find(sid) : null;
+    const fp = this._fingerprint(e);
+    let itemID = null;
+    let existed = false;
+    try {
+      const doi = this._cleanDOI(e.doi);
+      const exist = doi ? await this._findByDOI(doi) : null;
+      if (exist) {
+        existed = true;
+        itemID = exist.id == null ? null : exist.id;
+      } else {
+        // 无 DOI 的条目（arXiv 预印本等）只能靠 seen 记账查重；记账里的条目可能已被用户删掉，
+        // 所以要用 getAsync/get 再确认一次存在性——取不到就照常新建。
+        const rec = fp ? this._seenLoad()[fp] : null;
+        const prevID = rec && rec.itemID != null ? rec.itemID : null;
+        const prevItem = prevID == null ? null : await this._itemByID(prevID);
+        if (prevItem) {
+          existed = true;
+          itemID = prevID;
+        } else {
+          const item = this._buildItem(e, (sub && sub.name) || "收藏");
+          await item.saveTx();
+          itemID = item.id == null ? null : item.id;
+        }
+      }
+    } catch (err) {
+      this._log("accept failed: " + String(e.title || ""), err);
+      return { ok: false };
+    }
+    try {
+      this._feedbackPut(e, 1, sid);
+      // 收藏 = 已投递：不写 seen 会让它下次以「新命中」再推一遍
+      if (fp && itemID != null) {
+        const seen = this._seenLoad();
+        this._seenPut(seen, fp, itemID, Date.now());
+        this._seenSave(seen);
+      }
+      this._clearRecoCache();
+    } catch (err) {
+      this._log("accept bookkeeping failed", err);
+    }
+    return { ok: true, itemID: itemID, existed: existed };
+  },
+
+  /**
+   * 忽略一条结果：记 -1（之后 preview 标注「已忽略」、run 直接跳过且不入库不记账）。
+   * @returns {boolean} 是否写入成功（指纹为空 → false）
+   */
+  ignoreEntry(entry, subId) {
+    const rec = this._feedbackPut(entry, -1, subId);
+    if (!rec) return false;
+    this._clearRecoCache();
+    return true;
+  },
+
+  /** 清空全部反馈并作废推荐缓存（推荐结果会受反馈影响，必须重算） */
+  feedbackClear() {
+    let ok = false;
+    try { ok = !!this._prefSet(this.PREF_FEEDBACK, ""); } catch (e) { ok = false; }
+    this._clearRecoCache();
+    return ok;
+  },
+
+  /** 反馈统计：{liked, ignored}（面板「清空反馈学习」提示用） */
+  feedbackStats() {
+    const map = this._feedbackLoad();
+    let liked = 0;
+    let ignored = 0;
+    for (const key of Object.keys(map)) {
+      if (map[key].v === 1) liked++;
+      else if (map[key].v === -1) ignored++;
+    }
+    return { liked: liked, ignored: ignored };
   },
 
   /* ================== 指纹 / 归一（纯函数） ================== */
@@ -755,6 +1078,7 @@ var SearchSubs = {
     const mode = String(sub && sub.mode || "all").toLowerCase();
     return {
       keywords: this._splitList(sub.keywords),
+      authors: this._splitList(sub.authors),
       categories: this._splitList(sub.categories),
       // 多分类是「并集」语义：订阅 cs.LG, cs.CL 应看到两个分类的新论文
       categoryMode: "OR",
@@ -832,7 +1156,14 @@ var SearchSubs = {
         if (days >= 0 && days < 7) score += 3 * (1 - days / 7);
       }
     } catch (err) { /* ignore */ }
-    return { score: Math.round(score * 100) / 100, reasons: [...new Set(reasons)] };
+    // 收藏 / 忽略反馈：小幅加减分（失败一律 0，不影响确定性排序）
+    let fbReasons = [];
+    try {
+      const fb = this._feedbackAdjust(e);
+      if (fb && fb.score) score += fb.score;
+      if (fb && fb.reasons && fb.reasons.length) fbReasons = fb.reasons;
+    } catch (err) { /* 反馈缺失不影响打分 */ }
+    return { score: Math.round(score * 100) / 100, reasons: [...new Set(reasons.concat(fbReasons))] };
   },
 
   /** 打分排序（纯函数）：结果多于上限时优先保留最相关 + 最新 */
@@ -851,6 +1182,7 @@ var SearchSubs = {
     if (status === "failed") return "入库失败";
     if (status === "seen") return "往期已见";
     if (status === "known") return "已在库";
+    if (status === "ignored") return "已忽略";
     return "未入库";
   },
 
@@ -867,6 +1199,7 @@ var SearchSubs = {
     const parts = [];
     if (sub.keywords) parts.push("关键词：" + sub.keywords + (sub.mode === "any" ? "（任一）" : sub.mode === "phrase" ? "（短语）" : "（全部）"));
     if (sub.categories) parts.push("分类：" + sub.categories);
+    if (sub.authors) parts.push("作者：" + sub.authors);
     if (sub.exclude) parts.push("排除：" + sub.exclude);
     if (sub.maxAgeDays) parts.push("近 " + sub.maxAgeDays + " 天");
     return parts.join(" · ");
@@ -917,6 +1250,29 @@ var SearchSubs = {
   },
 
   /**
+   * 系统通知（Zotero.ProgressWindow）：只报「新增 N 篇」，8 秒后自动关闭。
+   * 没装 / 被策略拦 / notify=false 一律静默返回 false——通知失败绝不能影响订阅本身。
+   * @returns {boolean} 是否真的弹出了窗口
+   */
+  _notify(sub, added, noteTitle) {
+    try {
+      if (!sub || sub.notify === false) return false;
+      const PW = (typeof Zotero !== "undefined" && Zotero && Zotero.ProgressWindow) || null;
+      if (typeof PW !== "function") return false;
+      const pw = new PW({ closeOnClick: true });
+      pw.changeHeadline("Papilot 检索订阅");
+      pw.addDescription("「" + String(sub.name || "订阅") + "」新增 " + added + " 篇");
+      if (noteTitle) pw.addDescription(String(noteTitle));
+      pw.show();
+      if (pw.startCloseTimer) pw.startCloseTimer(8000);
+      return true;
+    } catch (e) {
+      this._log("notify failed", e);
+      return false;
+    }
+  },
+
+  /**
    * 执行一次订阅（会入库、会写记账、会生成笔记）。
    * @param {string} id
    * @param {{noNote?:boolean, now?:Date|number, trigger?:string, noAi?:boolean}} [opts]
@@ -932,7 +1288,7 @@ var SearchSubs = {
     if (!sub) return Object.assign({ ok: false, reason: "no_sub" }, zero);
     if (this._running[id]) return Object.assign({ ok: false, reason: "busy" }, zero);
     if (!this._subSources() && !this._arxiv()) return Object.assign({ ok: false, reason: "no_arxiv" }, zero);
-    if (!sub.keywords && !sub.categories) return Object.assign({ ok: false, reason: "no_query" }, zero);
+    if (!sub.keywords && !sub.categories && !sub.authors) return Object.assign({ ok: false, reason: "no_query" }, zero);
 
     this._running[id] = true;
     let added = 0;
@@ -940,7 +1296,19 @@ var SearchSubs = {
     let failed = 0;
     try {
       const limit = this._clampMax(sub.max);
-      const res = await this._search(sub, limit, at);
+      // 反馈里 v=-1 的指纹集合：整批取一次，避免每条都读 pref。
+      // ★ 必须在取数**之前**算出来：忽略项会占掉取数名额，若只按 max 取，
+      //   「前几条都被忽略」时会把真正的新增挤在门外（用户看到 +0，实际有货）。
+      const ignoredFps = new Set();
+      try {
+        const fbMap = this._feedbackLoad();
+        for (const k of Object.keys(fbMap)) if (fbMap[k].v === -1) ignoredFps.add(k);
+      } catch (e) { /* 反馈不可用 → 不过滤 */ }
+      // 有忽略历史时多取一点余量（最多 +10），保证过滤后仍能凑满 max
+      const fetchLimit = ignoredFps.size
+        ? Math.min(this.MAX_LIMIT, limit + Math.min(10, ignoredFps.size))
+        : limit;
+      const res = await this._search(sub, fetchLimit, at);
       if (!res.ok) {
         const reason = res.reason === "no_arxiv" ? "no_arxiv" : "network";
         this._pushRunLog(id, { at: this._stamp(at), trigger: o.trigger || "manual", reason: reason });
@@ -957,10 +1325,18 @@ var SearchSubs = {
       // 批内去重（只活在本次执行，不写 pref）：多源合并 / 分页重叠会让同一条在一个批次里
       // 出现两次。没有它，autoImport=false 的速递会把同一篇论文列两遍。
       const seenThisRun = new Set();
+      // ★ 忽略项必须在**截断之前**剔除：否则 ignored 条目会占掉 max 名额，
+      //   把真正的新增挤出去（用户看到「+0 新入库」，实际有新论文）。
+      const candidates = [];
+      for (const rec of res.entries) {
+        const cfp = this._fingerprint(this._normEntry(rec));
+        if (cfp && ignoredFps.has(cfp)) { skipped++; continue; }
+        candidates.push(rec);
+      }
       // 结果多于上限时按相关度截断；未超限时保持源返回顺序（旧行为不变，便于追溯）
-      let ordered = res.entries.length > limit
-        ? this._rank(res.entries, sub, stamp).slice(0, limit)
-        : res.entries;
+      let ordered = candidates.length > limit
+        ? this._rank(candidates, sub, stamp).slice(0, limit)
+        : candidates;
       // AI 复核是用户显式开启的可选项：只改顺序与解读，不改变「是否入库」的确定性判定
       if (!o.noAi && sub.aiRerank) {
         try { ordered = await this.aiRerank(sub, ordered); } catch (e) { /* 保持原序 */ }
@@ -980,6 +1356,15 @@ var SearchSubs = {
           continue;
         }
         if (fp) seenThisRun.add(fp);
+
+        // 防御分支：忽略项已在上面的 candidates 预过滤里剔除（不占 max 名额），
+        // 这里再兜一次，防止未来有别的入口把 ignored 指纹带进来。
+        // 即便走到这里也不入库、不写 seen（用户改主意时还能再收到），并留一行「已忽略」。
+        if (fp && ignoredFps.has(fp)) {
+          skipped++;
+          rows.push({ rec: normalized, status: "ignored", itemID: null });
+          continue;
+        }
 
         if (fp && seen[fp]) {
           skipped++;
@@ -1046,6 +1431,9 @@ var SearchSubs = {
         at: this._stamp(at), added: added, skipped: skipped, failed: failed,
         trigger: o.trigger || "manual", reason: "",
       });
+      // 系统通知：只报「有新增」的定时运行；手动运行用户就在面板前，不打扰。
+      // ★ 缺省 trigger 视为 manual（与 _pushRunLog 的口径一致），否则内部调用会误弹。
+      if (added > 0 && (o.trigger || "manual") !== "manual") this._notify(sub, added, out.noteTitle);
       return out;
     } catch (e) {
       // 兜底：任何未预期异常都以 network 语义返回，绝不抛给调用方
@@ -1073,7 +1461,7 @@ var SearchSubs = {
     } else {
       sub = this._coerce(input || {});
     }
-    if (!sub.keywords && !sub.categories) return { ok: false, entries: [], bySource: {}, reason: "no_query" };
+    if (!sub.keywords && !sub.categories && !sub.authors) return { ok: false, entries: [], bySource: {}, reason: "no_query" };
     if (!this._subSources() && !this._arxiv()) return { ok: false, entries: [], bySource: {}, reason: "no_arxiv" };
 
     const limit = Math.max(1, Math.min(this.MAX_LIMIT, parseInt(o.limit, 10) || 10));
@@ -1081,6 +1469,12 @@ var SearchSubs = {
     if (!res.ok) return { ok: false, entries: [], bySource: res.bySource || {}, reason: res.reason || "network" };
 
     const seen = this._seenLoad();
+    // 反馈里被忽略的指纹：preview 仍返回它们（用户要能看见「我忽略过这条」），但状态标 ignored
+    const ignoredFps = new Set();
+    try {
+      const fbMap = this._feedbackLoad();
+      for (const k of Object.keys(fbMap)) if (fbMap[k].v === -1) ignoredFps.add(k);
+    } catch (e) { /* 反馈不可用 → 不标注 */ }
     let ranked = this._rank(res.entries, sub, at.getTime());
     if (sub.aiRerank) {
       try { ranked = await this.aiRerank(sub, ranked); } catch (e) { /* 保持确定性排序 */ }
@@ -1091,7 +1485,8 @@ var SearchSubs = {
       const e = this._normEntry(rec);
       const fp = this._fingerprint(e);
       let status = "new";
-      if (fp && seen[fp]) status = "seen";
+      if (fp && ignoredFps.has(fp)) status = "ignored";
+      else if (fp && seen[fp]) status = "seen";
       else if (this._cleanDOI(e.doi)) {
         const exist = await this._findByDOI(e.doi);
         if (exist) status = "known";
@@ -1227,6 +1622,7 @@ var SearchSubs = {
    *      - 分类轨道：库内出现最多的 1-2 个 arXiv 分类，各自再画像取词
    *      - 全局主题：全库画像 Top 词
    *      - 近期关注：近 180 天入库条目的画像 Top 词
+   *      - 作者轨道：库内 ≥2 篇由同一作者参与 → 追踪该作者（关键词取其条目画像 Top2，可空）
    *   3) 可解释性：每条给出覆盖篇数 / 近 90 天新增 / 生成理由
    *   4) 去重：与现有订阅关键词 Jaccard ≥ 0.5 的主题不再推荐
    *   5) 缓存：12 小时内直接复用上次结果（订阅增删改会让缓存失效）；force 强制重算
@@ -1313,13 +1709,17 @@ var SearchSubs = {
     };
     const mk = (kind, name, kws, cats, extra) => {
       const keywords = [...new Set(kws.map((x) => String(x || "").trim()).filter((x) => x.length >= 2))].slice(0, 5);
-      if (!keywords.length) return null;
+      const authors = this._normAuthors(extra && extra.authors).join(", ");
+      // 作者轨道允许「只有作者、没有关键词」——作者本身就是一条完整的检索轴
+      if (!keywords.length && !authors) return null;
       const cov = cover(keywords);
+      const seed = keywords.length ? keywords.slice(0, 3).join("-") : authors;
       return Object.assign({
-        id: "reco-" + kind + "-" + this._normTitle(keywords.slice(0, 3).join("-")).slice(0, 24),
+        id: "reco-" + kind + "-" + this._normTitle(seed).slice(0, 24),
         name: name,
         keywords: keywords.join(", "),
         categories: cats || "",
+        authors: authors,
         sources: ["arxiv", "openalex"],
         mode: "any",
         maxAgeDays: 14,
@@ -1372,10 +1772,69 @@ var SearchSubs = {
       }
     }
 
+    // 作者轨道：作者是比主题更「稳」的检索轴（库内 ≥2 篇由同一作者参与 → 提议追踪该作者）。
+    // 关键词取该作者条目画像的 Top 2（可能为空：纯作者订阅仍然成立）。
+    const authorMap = new Map();
+    for (const it of items) {
+      let creators = [];
+      try { creators = (typeof it.getCreators === "function" ? it.getCreators() : []) || []; } catch (e) { creators = []; }
+      const seenName = new Set();
+      for (const c of creators) {
+        const raw = c && (c.name || [c.firstName, c.lastName].filter(Boolean).join(" ") || c.lastName);
+        const name = String(raw == null ? "" : raw).replace(/\s+/g, " ").trim();
+        const key = name.toLowerCase();
+        if (!name || key.length < 3 || seenName.has(key)) continue;
+        seenName.add(key);
+        let rec = authorMap.get(key);
+        if (!rec) { rec = { name: name, items: [] }; authorMap.set(key, rec); }
+        rec.items.push(it);
+      }
+    }
+    const recentCount = (list) => list.filter((it) => {
+      try {
+        const t = Number(it.dateAdded ? new Date(it.dateAdded).getTime() : 0);
+        return !!t && (now.getTime() - t) <= 90 * 86400000;
+      } catch (e) { return false; }
+    }).length;
+    const authorTargets = [...authorMap.values()]
+      .filter((x) => x.items.length >= 2)
+      .sort((a, b) => (b.items.length - a.items.length) || String(a.name).localeCompare(String(b.name)));
+    const topAuthor = authorTargets[0];
+    if (topAuthor) {
+      const ap = profileOf(topAuthor.items, 12);
+      const akws = (ap.terms || []).map((t) => t.term).slice(0, 2);
+      const ac = mk("author", "追踪作者：" + topAuthor.name, akws, "", {
+        authors: topAuthor.name,
+        coverage: topAuthor.items.length,
+        recent: recentCount(topAuthor.items),
+        reason: "库内 " + topAuthor.items.length + " 篇由该作者参与",
+      });
+      if (ac) cands.push(ac);
+    }
+
     const existing = this._loadList().map((s) => this._kwSet(s.keywords));
+    // 已订阅过的作者不再推荐；被「忽略」过的作者也不再推荐（用户已经明确表过态）
+    const existingAuthors = new Set();
+    for (const s of this._loadList()) {
+      for (const a of this._normAuthors(s.authors)) existingAuthors.add(this._personKey(a));
+    }
+    const ignoredAuthors = new Set();
+    try {
+      const fb = this._feedbackLoad();
+      for (const k of Object.keys(fb)) {
+        if (fb[k].v !== -1) continue;
+        for (const a of fb[k].authors || []) ignoredAuthors.add(a);
+      }
+    } catch (e) { /* 反馈不可用 → 不做作者过滤 */ }
     const out = [];
     for (const c of cands) {
       if (dismissed.has(c.id)) continue;
+      if (c.kind === "author") {
+        const key = this._personKey(String(c.authors || "").split(",")[0]);
+        if (key && (existingAuthors.has(key) || ignoredAuthors.has(key))) continue;
+        out.push(c);
+        continue;
+      }
       const set = this._kwSet(c.keywords);
       if (existing.some((e) => this._jaccard(e, set) >= 0.5)) continue;
       if (out.some((x) => this._jaccard(this._kwSet(x.keywords), set) >= 0.6)) continue;
@@ -1418,8 +1877,8 @@ var SearchSubs = {
   /* ================== 导出 / 导入（剪贴板；多机同步、点对点分享） ================== */
 
   /** 导出时会带上的配置字段（顺序即 JSON 里的顺序，便于人工核对） */
-  EXPORT_FIELDS: ["name", "enabled", "sources", "keywords", "categories", "mode", "exclude",
-    "maxAgeDays", "freq", "dailyTime", "weekdays", "max", "autoImport", "aiRerank", "aiDigest", "seedProfile"],
+  EXPORT_FIELDS: ["name", "enabled", "sources", "keywords", "categories", "authors", "mode", "exclude",
+    "maxAgeDays", "freq", "dailyTime", "weekdays", "max", "autoImport", "notify", "aiRerank", "aiDigest", "seedProfile"],
 
   /**
    * 订阅 → 可粘贴的 JSON 文本。
@@ -1492,7 +1951,7 @@ var SearchSubs = {
     for (const item of arr) {
       if (!item || typeof item !== "object" || Array.isArray(item)) { skipped++; continue; }
       const sub = this._coerce(item, "");
-      if (!sub.name || (!sub.keywords && !sub.categories)) { skipped++; continue; }
+      if (!sub.name || (!sub.keywords && !sub.categories && !sub.authors)) { skipped++; continue; }
       const nk = nameKey(sub);
       if (names.has(nk)) { skipped++; continue; }
       sub.id = this._newId(list.concat(fresh));
@@ -1911,15 +2370,17 @@ var SearchSubs = {
    *   fp   —— DOI 指纹归一（去 doi.org 前缀 + 小写）→ 去重的地基；
    *   mig  —— v1（0.53）订阅迁移：无 sources → arxiv、有 dailyTime → daily、enabled 默认 true；
    *   week —— weekly 计划日按 ISO 星期（1=周一）判定；
-   *   ttl  —— 推荐缓存 TTL 常量存在且为正。
+   *   ttl  —— 推荐缓存 TTL 常量存在且为正；
+   *   au   —— 作者串归一（去重 / 长度门槛 / 保序），作者订阅的地基。
    *
-   * @returns {string} "ok fp=1 mig=1 week=1 ttl=1"，任一项失败则 "FAIL ..."（每项 1/0）
+   * @returns {string} "ok fp=1 mig=1 week=1 ttl=1 au=1"，任一项失败则 "FAIL ..."（每项 1/0）
    */
   selfTest() {
     let fp = 0;
     let mig = 0;
     let week = 0;
     let ttl = 0;
+    let au = 0;
     try {
       fp = this._fingerprint({ doi: "https://doi.org/10.1/A" }) === "doi:10.1/a" ? 1 : 0;
     } catch (e) { fp = 0; }
@@ -1935,9 +2396,13 @@ var SearchSubs = {
     try {
       ttl = Number(this.RECO_TTL_MS) > 0 ? 1 : 0;
     } catch (e) { ttl = 0; }
-    const okAll = fp === 1 && mig === 1 && week === 1 && ttl === 1;
+    try {
+      const list = this._normAuthors("Ada Lovelace, ada lovelace; A, Turing");
+      au = (list.length === 2 && list[0] === "Ada Lovelace" && list[1] === "Turing") ? 1 : 0;
+    } catch (e) { au = 0; }
+    const okAll = fp === 1 && mig === 1 && week === 1 && ttl === 1 && au === 1;
     return (okAll ? "ok" : "FAIL")
-      + " fp=" + fp + " mig=" + mig + " week=" + week + " ttl=" + ttl;
+      + " fp=" + fp + " mig=" + mig + " week=" + week + " ttl=" + ttl + " au=" + au;
   },
 };
 

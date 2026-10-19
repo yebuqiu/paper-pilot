@@ -1251,6 +1251,8 @@ var CloudSync = (function () {
       //  · searchSubsSeen：本机投递记账。B 机若拿到 A 机的 seen，会把 A 机见过的论文当成
       //    「往期已见」而静默不推送（用户以为订阅漏了）；丢掉也不要紧——库内 DOI 查重
       //    仍能拦住重复入库。
+      // ★ 口径：searchSubsFeedback（收藏 / 忽略）是**用户显式偏好**——跟人走，正常同步；
+      //   seen / recoCache 是**本机运行态**——跟机器走，同步只会互相污染。
       if (leaf === "searchSubsRecoCache") return false;
       if (leaf === "searchSubsSeen") return false;
       if (SECRET_LEAVES.indexOf(leaf) >= 0) return false;

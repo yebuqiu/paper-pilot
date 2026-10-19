@@ -368,6 +368,132 @@ async function main() {
     has(decoded, 'resultType=core', '⑧ 带摘要');
     has(decoded, 'P_PDATE_D desc', '⑧ 按发表日期排序');
   }
+  /* ================== ⑨ 0.58.0：作者追踪（四源查询 / OpenAlex Key / 本地复核） ================== */
+  {
+    const { S } = makeEnv();
+    eq(JSON.stringify(S.authorsOf({ authors: 'Ada Lovelace, Alan Turing, , X' })),
+      '["Ada Lovelace","Alan Turing","X"]', '⑨ authorsOf 切分');
+    eq(S.authorsOf({ authors: Array.from({ length: 9 }, (_, i) => 'Author ' + i) }).length, 6,
+      '⑨ authorsOf 最多 6 个');
+
+    const ax = S.arxivSpec({ keywords: '', authors: 'Ada Lovelace' });
+    eq(JSON.stringify(ax.authors), '["Ada Lovelace"]', '⑨ arXiv spec 带 authors');
+    eq(JSON.stringify(ax.keywords), '[]', '⑨ 作者-only 时 keywords 为空');
+
+    eq(S.pubmedTerm({ authors: 'Ada Lovelace' }), '"Ada Lovelace"[au]', '⑨ PubMed 作者-only 也能出查询');
+    eq(S.pubmedTerm({ keywords: 'sparse attention', authors: 'Ada Lovelace, Alan Turing' }),
+      '("sparse attention"[tiab] AND ("Ada Lovelace"[au] OR "Alan Turing"[au]))',
+      '⑨ ★ PubMed 关键词 + 作者用 AND，多作者 OR 分组');
+    eq(S.pubmedTerm({ keywords: '', authors: '' }), '', '⑨ 关键词与作者都空 → 空串');
+    eq(S.pubmedTerm({ keywords: '', categories: 'q-bio.NC' }), '', '⑨ 只有分类 → 空串（分类只对 arXiv 有意义）');
+
+    eq(S.europePmcQuery({ authors: 'Ada Lovelace' }), 'AUTH:"Ada Lovelace"', '⑨ Europe PMC 作者-only');
+    eq(S.europePmcQuery({ keywords: 'sparse attention', authors: 'Ada Lovelace, Alan Turing' }),
+      '("sparse attention") AND (AUTH:"Ada Lovelace" OR AUTH:"Alan Turing")',
+      '⑨ ★ Europe PMC (关键词组) AND (作者组)');
+    eq(S.europePmcQuery({ keywords: '', authors: '' }), '', '⑨ Europe PMC 无条件 → 空串');
+  }
+
+  {
+    // OpenAlex 作者-only：filter 里带 raw_author_name.search，且不带 search 参数
+    const { S, calls } = makeEnv({
+      http: () => ({ status: 200, body: { results: [openAlexWork()] } }),
+    });
+    const r = await S.search(sub({ sources: ['openalex'], keywords: '', authors: 'Ada Lovelace, Alan Turing' }),
+      { limit: 5, now: AT });
+    eq(r.ok, true, '⑨ OpenAlex 作者-only 检索 ok');
+    eq(r.entries.length, 1, '⑨ OpenAlex 作者-only 有结果');
+    const url = calls[0].url;
+    has(decodeURIComponent(url), 'raw_author_name.search:Ada Lovelace|Alan Turing',
+      '⑨ ★ OpenAlex 作者过滤（| 分隔 = OR）');
+    ok(url.indexOf('search=') < 0, '⑨ ★ 作者-only 不带 search 参数', url);
+    ok(url.indexOf('api_key=') < 0, '⑨ 未配置 Key 时不带 api_key');
+  }
+
+  {
+    // OpenAlex 免费 Key：配置后进 URL；绝不进 bySource / 日志
+    const { S, calls } = makeEnv({
+      prefs: { 'extensions.zotero.papilot.openAlexApiKey': 'KEY-123' },
+      http: () => ({ status: 200, body: { results: [openAlexWork()] } }),
+    });
+    const r = await S.search(sub({ sources: ['openalex'], keywords: 'sparse attention' }), { limit: 5, now: AT });
+    eq(r.ok, true, '⑨ 配 Key 后 OpenAlex 仍 ok');
+    eq(r.entries.length, 1, '⑨ 配 Key 不影响检索结果');
+    has(calls[0].url, 'api_key=KEY-123', '⑨ ★ OpenAlex Key 进 URL');
+    ok(JSON.stringify(r.bySource).indexOf('KEY-123') < 0, '⑨ ★ Key 不进 bySource（不写日志/不回显）');
+    eq(S._oaKey(), 'KEY-123', '⑨ _oaKey 读 pref');
+    eq(makeEnv().S._oaKey(), '', '⑨ 未配置时 _oaKey 为空串');
+  }
+
+  {
+    // Crossref：作者走 query.author（只支持第一个），其余靠本地复核
+    const { S, calls } = makeEnv({
+      http: () => ({
+        status: 200,
+        body: {
+          message: {
+            items: [crossrefWork({ title: ['Author Paper'], author: [{ given: 'Ada', family: 'Lovelace' }] })],
+          },
+        },
+      }),
+    });
+    const r = await S.search(sub({ sources: ['crossref'], keywords: '', authors: 'Ada Lovelace, Alan Turing' }),
+      { limit: 5, now: AT });
+    eq(r.ok, true, '⑨ Crossref 作者-only 检索 ok');
+    eq(r.entries.length, 1, '⑨ Crossref 作者-only 有结果');
+    const decoded = decodeURIComponent(calls[0].url);
+    has(decoded, 'query.author=Ada Lovelace', '⑨ ★ Crossref 用第一个作者查');
+    ok(calls[0].url.indexOf('query.bibliographic') < 0, '⑨ 作者-only 不带 bibliographic', calls[0].url);
+  }
+
+  {
+    // Europe PMC / PubMed 作者-only 也要真的发出请求（不是静默跳过）
+    const { S, calls } = makeEnv({
+      http: (url) => {
+        if (url.indexOf('europepmc') >= 0) return { status: 200, body: { resultList: { result: [] } } };
+        return { status: 200, body: { esearchresult: { idlist: [] } } };
+      },
+    });
+    const r1 = await S.search(sub({ sources: ['europepmc'], keywords: '', authors: 'Ada Lovelace' }), { limit: 5, now: AT });
+    eq(r1.ok, true, '⑨ Europe PMC 作者-only 检索 ok');
+    has(decodeURIComponent(calls[0].url), 'AUTH:"Ada Lovelace"', '⑨ ★ Europe PMC 作者查询进了请求');
+
+    const r2 = await S.search(sub({ sources: ['pubmed'], keywords: '', authors: 'Fleming A' }), { limit: 5, now: AT });
+    eq(r2.ok, true, '⑨ PubMed 作者-only 检索 ok');
+    has(decodeURIComponent(calls[calls.length - 1].url), '"Fleming A"[au]', '⑨ ★ PubMed 作者查询进了请求');
+  }
+
+  {
+    // 本地作者复核：命中保留 / 不命中过滤 / 条目无作者时不误杀
+    const { S } = makeEnv();
+    const target = { authors: 'Ada Lovelace' };
+    ok(S.matches(target, { title: 'T', summary: 'abstract here', authors: ['Ada Lovelace', 'X Y'] }),
+      '⑨ 作者命中 → 保留');
+    ok(!S.matches(target, { title: 'T', summary: 'x', authors: ['Grace Hopper'] }),
+      '⑨ ★ 作者不命中 → 过滤掉');
+    ok(S.matches(target, { title: 'T', summary: 'x', authors: [] }), '⑨ 条目作者为空 → 不误杀');
+    ok(S.matches(target, { title: 'T', summary: 'x' }), '⑨ 条目无 authors 字段 → 不误杀');
+    ok(S.matches({ authors: 'Alexander Fleming' }, { title: 'T', summary: 'x', authors: ['Fleming A'] }),
+      '⑨ 姓名写法差异（全名 vs 缩写）也能命中');
+    ok(!S.matches({ keywords: 'sparse', authors: 'Ada Lovelace' },
+      { title: 'Quantum', summary: 'about quantum', authors: ['Ada Lovelace'] }),
+      '⑨ ★ 关键词不命中时，作者命中也不放行');
+    ok(S.matches({ keywords: 'sparse', authors: 'Ada Lovelace' },
+      { title: 'Sparse', summary: 'about sparse', authors: ['Ada Lovelace'] }),
+      '⑨ 关键词与作者都命中 → 保留');
+  }
+  {
+    // 失败原因里带的凭据必须脱敏（reason 会进面板提示 / 运行历史 / 速递）
+    const { S } = makeEnv({
+      http: () => new Error('bad https://api.openalex.org/works?api_key=SECRET123&x=1'),
+    });
+    const r = await S.search(sub({ sources: ['openalex'], keywords: 'sparse attention' }), { limit: 5, now: AT });
+    eq(r.ok, false, '⑨ Key 脱敏：请求失败仍 ok:false');
+    ok(String(r.reason).indexOf('SECRET123') < 0, '⑨ ★ 汇总 reason 不含 api_key 明文', r.reason);
+    ok(String(r.bySource.openalex.reason).indexOf('SECRET123') < 0, '⑨ ★ bySource.reason 已脱敏');
+    has(String(r.bySource.openalex.reason), 'api_key=***', '⑨ 脱敏成 api_key=***');
+    has(String(r.bySource.openalex.reason), '&x=1', '⑨ 只遮凭据，不动其余信息');
+  }
 }
 
 main().then(() => {
