@@ -3,6 +3,17 @@
   "papilot@dev.local": {
    "updates": [
     {
+     "version": "0.60.2",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.60.2.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "设置面板新增「免费版 vs 专业版」对照表：AI 额度 / 可用模型 / 第三方文献源 / 共有能力一目了然\n免费版已含全部核心功能，差异集中标注，不再靠营销文案猜测"
+    },
+    {
      "version": "0.60.1",
      "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.60.1.xpi",
      "applications": {

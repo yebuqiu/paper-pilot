@@ -220,6 +220,32 @@ function boot(accountOver) {
 const flush = () => new Promise((r) => setImmediate(r));
 
 (async () => {
+  /* ============ 0. 免费版 vs 专业版对照表（静态结构） ============
+   * 表格是 xhtml 里的静态结构（不靠 Account 数据渲染），所以这里直接扫源码：
+   * 断言差异项齐全、专业版列有高亮类、样式已挂，避免「表格写了但样式没跟上」
+   * 或「文案与真实门控不一致」（第三方文献源只有 Pro 可用）。 */
+  {
+    const xhtml = fs.readFileSync(XHTML, 'utf8');
+    const css = fs.readFileSync(path.join(ROOT, 'chrome', 'content', 'prefs.css'), 'utf8');
+    ok(xhtml.indexOf('id="pp-mb-compare"') >= 0, 'Z1 ★ 会员卡片内含「免费版 vs 专业版」对照表');
+    has(xhtml, '免费版 vs 专业版', 'Z2 表格标题');
+    has(xhtml, 'AI 额度', 'Z3 对照项：AI 额度');
+    has(xhtml, '每月 ¥20', 'Z4 专业版每月 ¥20 额度');
+    has(xhtml, '注册赠送 ¥6', 'Z5 免费版注册赠送 ¥6');
+    has(xhtml, '全部官方模型', 'Z6 专业版开放全部官方模型');
+    has(xhtml, 'deepseek-v4-flash', 'Z7 免费版模型范围写清楚（基础模型）');
+    has(xhtml, '第三方文献源', 'Z8 对照项：第三方文献源');
+    has(xhtml, '检索订阅 / 云同步', 'Z9 共有能力如实标注（免费版也有）');
+    const yes = (xhtml.match(/pp-cmp-yes/g) || []).length;
+    ok(yes >= 8, 'Z10 ★ 共有/可用项用 ✓ 标注（至少 8 处）', yes);
+    const pro = (xhtml.match(/pp-cmp-pro/g) || []).length;
+    ok(pro >= 6, 'Z11 ★ 专业版整列带高亮类 pp-cmp-pro', pro);
+    ok(css.indexOf('.pp-mb-compare') >= 0 && css.indexOf('--pp-accent-weak') >= 0,
+      'Z12 ★ 对照表样式已挂（专业版列浅色底）');
+    ok(css.indexOf('.pp-cmp-yes') >= 0 && css.indexOf('--pp-success') >= 0,
+      'Z13 ✓ 用成功色（深浅主题都可见）');
+  }
+
   /* ============ A. Pro 用户：剩余 3 天 + 用量趋势 ============ */
   let { registry } = boot({});
 

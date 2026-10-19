@@ -208,7 +208,68 @@
               <html:div id="pp-mb-pay-result" class="pp-msg"></html:div>
             </html:div>
           </html:div>
-          <!-- 会话持久化异常提示（0.23.0：写盘失败不再静默） -->
+          <!-- 0.60.2 免费版 vs 专业版对照表：把「会员与非会员到底差在哪」一次说清。
+             内容按**真实门控**写，不照抄营销文案：除了 AI 额度 / 模型范围 /
+             第三方文献源（试验）与支持方式，其余核心功能免费版同样可用。 -->
+        <html:div id="pp-mb-compare" class="pp-mb-compare">
+          <html:div class="pp-mb-compare-head">免费版 vs 专业版</html:div>
+          <html:table>
+            <html:thead>
+              <html:tr>
+                <html:th class="pp-cmp-k">对比项</html:th>
+                <html:th>免费版</html:th>
+                <html:th class="pp-cmp-pro">专业版</html:th>
+              </html:tr>
+            </html:thead>
+            <html:tbody>
+              <html:tr>
+                <html:td class="pp-cmp-k">AI 额度</html:td>
+                <html:td>注册赠送 ¥6<br/><html:span class="pp-cmp-sub">30 天内有效</html:span></html:td>
+                <html:td class="pp-cmp-pro">每月 ¥20<br/><html:span class="pp-cmp-sub">当月有效，不结转</html:span></html:td>
+              </html:tr>
+              <html:tr>
+                <html:td class="pp-cmp-k">官方模型</html:td>
+                <html:td>auto + 基础模型<br/><html:span class="pp-cmp-sub">deepseek-v4-flash</html:span></html:td>
+                <html:td class="pp-cmp-pro">全部官方模型<br/><html:span class="pp-cmp-sub">含推理档 / 长上下文</html:span></html:td>
+              </html:tr>
+              <html:tr>
+                <html:td class="pp-cmp-k">第三方文献源<html:span class="pp-cmp-sub">（试验）</html:span></html:td>
+                <html:td><html:span class="pp-cmp-no">—</html:span></html:td>
+                <html:td class="pp-cmp-pro"><html:span class="pp-cmp-yes">✓</html:span> 可用</html:td>
+              </html:tr>
+              <html:tr>
+                <html:td class="pp-cmp-k">期刊分区 / 标签治理 / 附件体检</html:td>
+                <html:td><html:span class="pp-cmp-yes">✓</html:span></html:td>
+                <html:td class="pp-cmp-pro"><html:span class="pp-cmp-yes">✓</html:span></html:td>
+              </html:tr>
+              <html:tr>
+                <html:td class="pp-cmp-k">库内问答 / PDF 对比翻译</html:td>
+                <html:td><html:span class="pp-cmp-yes">✓</html:span></html:td>
+                <html:td class="pp-cmp-pro"><html:span class="pp-cmp-yes">✓</html:span></html:td>
+              </html:tr>
+              <html:tr>
+                <html:td class="pp-cmp-k">检索订阅 / 云同步</html:td>
+                <html:td><html:span class="pp-cmp-yes">✓</html:span></html:td>
+                <html:td class="pp-cmp-pro"><html:span class="pp-cmp-yes">✓</html:span></html:td>
+              </html:tr>
+              <html:tr>
+                <html:td class="pp-cmp-k">自带 API Key</html:td>
+                <html:td><html:span class="pp-cmp-yes">✓</html:span></html:td>
+                <html:td class="pp-cmp-pro"><html:span class="pp-cmp-yes">✓</html:span> 多通道切换</html:td>
+              </html:tr>
+              <html:tr>
+                <html:td class="pp-cmp-k">支持方式</html:td>
+                <html:td>社区</html:td>
+                <html:td class="pp-cmp-pro">邮件优先</html:td>
+              </html:tr>
+            </html:tbody>
+          </html:table>
+          <html:div class="pp-mb-compare-note">
+            免费版已包含全部核心功能；专业版的差异集中在 AI 额度、可用模型范围与试验性文献源。
+            额度用完后仍可继续使用自己的 API Key，不受额度限制。
+          </html:div>
+        </html:div>
+        <!-- 会话持久化异常提示（0.23.0：写盘失败不再静默） -->
           <html:div id="pp-mb-persist-warn" class="pp-mb-warn" style="display:none;"></html:div>
           <!-- 登录设备（0.24.7）：自查「我在几台机器上登录着」并能踢掉可疑设备 -->
           <html:div id="pp-dev-block" class="pp-dev-block" style="display:none;">
