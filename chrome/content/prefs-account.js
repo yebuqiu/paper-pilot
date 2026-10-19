@@ -1,5 +1,8 @@
-/* PaperPilot 设置窗格脚本·账号与模型通道（0.14.0 新增；0.15.0 随设置界面重构改版）
- * 与 prefs-pane.js 同窗格运行；经 Zotero.PaperPilot.account / .channels 访问
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格脚本·账号与模型通道（0.14.0 新增；0.15.0 随设置界面重构改版）
+ * 与 prefs-pane.js 同窗格运行；经 Zotero.Papilot.account / .channels 访问
  * bootstrap 作用域的 Account / Channels 模块。
  * 交互逻辑移植自「AI 带教中心」模型通道面板：状态卡 + 通道行（切换/实测/参数/删除）
  * + 新增/编辑表单（厂商预设自动填充、密钥检测、上游拉取模型、模型 chips、extraBody）。
@@ -12,7 +15,7 @@
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const $ = (id) => document.getElementById(id);
-  const PP = () => Zotero.PaperPilot || {};
+  const PP = () => Zotero.Papilot || {};
   const account = () => PP().account;
   const channels = () => PP().channels;
 
@@ -32,7 +35,7 @@
    * 防窥屏常开：账号服务器地址与 AI 通道 baseUrl 一律完整隐藏主机名（不再提供
    * 「显示完整地址」出口——排查连接问题看「连接测试」结果即可，不需要看明文）。 */
 
-  const PREF_PREFIX = "extensions.zotero.paperpilot.";
+  const PREF_PREFIX = "extensions.zotero.papilot.";
 
   /**
    * URL 掩码（完全隐藏）：主机名整体打码，只保留协议形状、端口与路径分段
@@ -514,6 +517,30 @@
         const msg = el("div", { class: "pp-msg pp-dlg-msg" });
         body.appendChild(content); body.appendChild(amount); body.appendChild(tail);
         body.appendChild(rows); body.appendChild(qr); body.appendChild(note); body.appendChild(msg);
+
+        // 2026-10-19：付费前告知。虚拟服务一经使用不支持退款，条款须在付款动作之前可见，
+        // 而不是藏在注册页（用户在插件内续费时根本看不到那个页面）。
+        try {
+          const legal = el("div", { class: "pp-dlg-legal",
+            style: "margin-top:8px;font-size:11.5px;line-height:1.6;color:var(--pp-muted)" });
+          legal.appendChild(document.createTextNode("付款即表示同意"));
+          const mk = (label, path) => {
+            const a = el("a", { href: "#", style: "color:var(--pp-accent);text-decoration:underline" }, label);
+            a.addEventListener("click", (ev) => {
+              try {
+                ev.preventDefault();
+                Zotero.launchURL(A.serverUrl() + path);
+              } catch (e) { /* 打不开浏览器时不影响下单 */ }
+            });
+            return a;
+          };
+          legal.appendChild(mk("《用户协议》", "/terms"));
+          legal.appendChild(document.createTextNode("与"));
+          legal.appendChild(mk("《隐私政策》", "/privacy"));
+          legal.appendChild(document.createTextNode("；虚拟服务一经使用不支持退款。"));
+          body.appendChild(legal);
+        } catch (e) { /* 法律文本挂载失败不阻断交易 */ }
+
         card.appendChild(body);
 
         const acts = el("div", { class: "pp-dlg-actions" });
@@ -909,7 +936,7 @@
     const A = account();
     if (!A) return;
     const cur = d.deviceLabel || "";
-    const name = Services_promptInput(Zotero.getMainWindow(), "PaperPilot",
+    const name = Services_promptInput(Zotero.getMainWindow(), "Papilot",
       "给这台设备起个名字（例如「办公室台式」，留空可清除）：", cur);
     if (name === null) return;
     try {
@@ -924,7 +951,7 @@
     const A = account();
     if (!A) return;
     const name = d.deviceLabel || d.platform || "该设备";
-    const ok = Services_promptConfirm(Zotero.getMainWindow(), "PaperPilot",
+    const ok = Services_promptConfirm(Zotero.getMainWindow(), "Papilot",
       "踢出「" + name + "」？\n它下次使用时会要求重新登录；不影响当前设备。");
     if (!ok) return;
     try {
@@ -938,7 +965,7 @@
   async function onKickOtherDevices() {
     const A = account();
     if (!A) return;
-    if (!Services_promptConfirm(Zotero.getMainWindow(), "PaperPilot",
+    if (!Services_promptConfirm(Zotero.getMainWindow(), "Papilot",
       "踢出除本机外的全部设备？其他机器需要重新登录。")) return;
     try {
       const r = await A.revokeOtherSessions();
@@ -1744,7 +1771,7 @@
   function onDelete(id) {
     const win = Zotero.getMainWindow();
     const ok = Services_promptConfirm(win,
-      "PaperPilot",
+      "Papilot",
       "删除通道 " + id + "？（该通道的配置与密钥将被移除，不影响其他通道）");
     if (!ok) return;
     channels().remove(id);
@@ -2015,7 +2042,7 @@
   let _offSession = null; // 会话变化回调句柄（窗口关闭必须注销）
 
   function init() {
-    if (typeof Zotero === "undefined" || !Zotero.PaperPilot || !account() || !channels()) {
+    if (typeof Zotero === "undefined" || !Zotero.Papilot || !account() || !channels()) {
       window.setTimeout(init, 400);
       return;
     }

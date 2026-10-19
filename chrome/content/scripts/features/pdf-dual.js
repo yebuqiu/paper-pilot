@@ -1,4 +1,7 @@
-/* PaperPilot PDF 对照翻译 · 左原右译（0.36.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 对照翻译 · 左原右译（0.36.0）
  *
  * 产品形态（用户明确要求，取代 0.34.0 的「阅读器内页内叠加」）：
  *   「全文对照翻译」打开一个双栏窗口 —— **左栏 = 原版 PDF 页面**，
@@ -20,9 +23,9 @@
 /* global Zotero, Services, Prefs, I18n, ItemSel, AIChat, TranslateSvc, PdfText, PdfInline, BilingualTranslate, Notes, PdfExport */
 
 var PdfDual = {
-  WINDOW_TYPE: "paperpilot:pdf-dual",
-  WINDOW_URL: "chrome://paperpilot/content/pdf-dual.xhtml",
-  WINDOW_NAME: "paperpilot-pdf-dual",
+  WINDOW_TYPE: "papilot:pdf-dual",
+  WINDOW_URL: "chrome://papilot/content/pdf-dual.xhtml",
+  WINDOW_NAME: "papilot-pdf-dual",
 
   _win: null,          // 最近一次窗口（进度回传用）
   _rightReader: null,  // 右栏 reader（停止/导出时定位内核 state）
@@ -35,12 +38,12 @@ var PdfDual = {
     const items = ItemSel.regularOnly(zp.getSelectedItems() || []);
     if (!items.length) { ItemSel.alertEmpty(); return null; }
     if (items.length > 1) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         I18n.isZh ? "PDF 对照翻译一次请只选一篇" : "Select only one item at a time");
       return null;
     }
     if (!TranslateSvc.available()) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         TranslateSvc.unavailableHint() || I18n.t("chatNoKey"));
       return null;
     }
@@ -68,7 +71,7 @@ var PdfDual = {
     if (!item) return null;
     const att = await this._pdfAttachment(item);
     if (!att) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         I18n.isZh ? "该条目没有可用的 PDF 附件" : "No PDF attachment");
       return null;
     }
@@ -100,7 +103,7 @@ var PdfDual = {
       this._win = w;
       return w;
     } catch (e) {
-      Zotero.logError(new Error("PaperPilot: 打开 PDF 对照翻译窗口失败"));
+      Zotero.logError(new Error("Papilot: 打开 PDF 对照翻译窗口失败"));
       Zotero.logError(e);
       return null;
     }
@@ -211,11 +214,24 @@ var PdfDual = {
     }, 10000);
   },
 
+  /** 窗口关闭：**释放**右栏内核状态（P1-8）。
+   *  这里必须用 disposeState 而不是 stop：stop 只停 UI/定时器，state 仍以 reader 为键
+   *  挂在 PdfInline._states 里（含已 detach 的页面 DOM 与每页字符数组），
+   *  关一次窗口就泄漏一份。老版本内核没有 disposeState 时退回 stop，保持兼容。 */
   _stopRight() {
     const r = this._rightReader;
     this._rightReader = null;
     if (!r) return;
-    try { PdfInline.stop(r, { keepPref: true }); } catch (e) { /* ignore */ }
+    try {
+      if (typeof PdfInline.disposeState === "function") PdfInline.disposeState(r);
+      else PdfInline.stop(r, { keepPref: true });
+    } catch (e) { /* ignore */ }
+  },
+
+  /** 插件卸载（main.js destroy 调用）：释放右栏状态并丢掉窗口引用 */
+  dispose() {
+    try { this._stopRight(); } catch (e) { /* ignore */ }
+    this._win = null;
   },
 
   /** 重新翻译：清内核文本缓存 + 重铺（§ 不重启窗口） */
@@ -471,7 +487,11 @@ var PdfDual = {
               }
               out.ok = out.fallbackKernel.blocks > 0;
             }
-            try { PdfInline.stop(r2, { keepPref: true }); } catch (e) { /* ignore */ }
+            // 自检临时开的 reader：连 state 一起释放（只 stop 会把它留在 PdfInline._states）
+            try {
+              if (typeof PdfInline.disposeState === "function") PdfInline.disposeState(r2);
+              else PdfInline.stop(r2, { keepPref: true });
+            } catch (e) { /* ignore */ }
             try { if (r2 && r2.tabID) Zotero_Tabs.close(r2.tabID); } catch (e) { /* ignore */ }
           } catch (e) {
             out.fallbackError = String((e && e.message) || e);

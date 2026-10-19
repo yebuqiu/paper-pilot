@@ -1,11 +1,14 @@
-/* PaperPilot MCP 对外供给（0.24.0，功能借鉴 cookjohn/zotero-mcp）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot MCP 对外供给（0.24.0，功能借鉴 cookjohn/zotero-mcp）
  *
- * 解决的问题：PaperPilot 目前是「用 AI 的工具」。反过来——让**别人的 AI 客户端
+ * 解决的问题：Papilot 目前是「用 AI 的工具」。反过来——让**别人的 AI 客户端
  * （Claude Desktop / Cursor / 自建 Agent）能调用你的文献库**，是另一个生态位：
  * 把「库检索 / 读全文 / 读批注 / 写笔记 / 看分类」封装成 MCP 工具对外供给。
  *
  * 零外部依赖的载体：Zotero 自己就有一个只监听 127.0.0.1 的 HTTP 服务（默认 23119）。
- * 我们注册一个端点 /paperpilot/mcp，实现 JSON-RPC 2.0 + MCP 的 Streamable HTTP
+ * 我们注册一个端点 /papilot/mcp，实现 JSON-RPC 2.0 + MCP 的 Streamable HTTP
  * 传输里「单次 JSON 响应」那一支（服务器一次性返回 application/json，不用 SSE）。
  *
  * 安全纪律：
@@ -16,18 +19,18 @@
  * 可测性：handleMessage / handlePayload / toolsList / _authOk / _timingSafeEq 全是纯逻辑，
  * 不碰 Zotero，可离线断言；只有 callTool 里的工具实现需要真实库。
  */
-/* 0.50.0 追加「反向供给」：把 PaperPilot 自己的 Agent 工具（AgentTools.TOOLS）
+/* 0.50.0 追加「反向供给」：把 Papilot 自己的 Agent 工具（AgentTools.TOOLS）
  * 以 list_agent_tools / run_agent_tool 两个 MCP 工具暴露给外部 AI。
  * 与上面 8 个原生工具的区别：原生工具是直接操作 Zotero API 的窄接口，
  * 这两个是**桥接**——外部 AI 能复用「检索/详情/全文/笔记/标签」同一套实现，
- * 行为与 PaperPilot 内置 AI 助手完全一致。
+ * 行为与 Papilot 内置 AI 助手完全一致。
  * 写操作门控：MCP 无人交互，绝不用 Services.prompt.confirm 阻塞请求，
  * 改为要求调用方在参数里传 allowWrite: true 显式授权。
  */
 /* global Zotero, Services, Prefs, I18n, LibSearch, AIChat, Annotations, MdLite, AgentTools */
 
 var MCP = {
-  PATH: "/paperpilot/mcp",
+  PATH: "/papilot/mcp",
   PROTOCOL_VERSIONS: ["2025-06-18", "2025-03-26", "2024-11-05"],
   DEFAULT_PROTOCOL: "2025-06-18",
   _registered: false,
@@ -112,17 +115,17 @@ var MCP = {
       },
     },
 
-    /* ---- 0.50.0 桥接 PaperPilot 的 Agent 工具（只列/只跑用户在设置里启用的） ---- */
+    /* ---- 0.50.0 桥接 Papilot 的 Agent 工具（只列/只跑用户在设置里启用的） ---- */
 
     {
       name: "list_agent_tools",
-      description: "列出 PaperPilot AI 助手当前启用的 Agent 工具（id、名称、说明、是否只读、参数说明）。" +
+      description: "列出 Papilot AI 助手当前启用的 Agent 工具（id、名称、说明、是否只读、参数说明）。" +
         "这些工具用 run_agent_tool 调用；只列出用户在设置里启用的（被禁用的不会出现）。",
       inputSchema: { type: "object", properties: {} },
     },
     {
       name: "run_agent_tool",
-      description: "调用 PaperPilot AI 助手的一个 Agent 工具（先用 list_agent_tools 查可用 id）。" +
+      description: "调用 Papilot AI 助手的一个 Agent 工具（先用 list_agent_tools 查可用 id）。" +
         "读工具直接执行；**写工具**（会修改文献库）需要额外传 allowWrite: true 显式授权，" +
         "否则直接返回拒绝说明——MCP 无人在场确认，不会弹窗阻塞。",
       inputSchema: {
@@ -143,7 +146,7 @@ var MCP = {
   },
 
   serverVersion() {
-    try { return String(Zotero.PaperPilot.version || "0"); } catch (e) { return "0"; }
+    try { return String(Zotero.Papilot.version || "0"); } catch (e) { return "0"; }
   },
 
   /* ---------------- JSON-RPC 2.0（纯逻辑） ---------------- */
@@ -175,8 +178,8 @@ var MCP = {
         return isNotification ? null : this.ok(id, {
           protocolVersion,
           capabilities: { tools: { listChanged: false } },
-          serverInfo: { name: "paperpilot", title: "PaperPilot (Zotero)", version: this.serverVersion() },
-          instructions: "PaperPilot 把用户的本地 Zotero 文献库作为工具提供。先用 search_library 找文献，" +
+          serverInfo: { name: "papilot", title: "Papilot (Zotero)", version: this.serverVersion() },
+          instructions: "Papilot 把用户的本地 Zotero 文献库作为工具提供。先用 search_library 找文献，" +
             "拿到条目 key 后用 read_fulltext / list_annotations 深读，用 get_item 取元数据，用 create_note 写回笔记。",
         });
       }
@@ -280,7 +283,7 @@ var MCP = {
     const auth = String(pick("authorization") || pick("Authorization") || "");
     const m = auth.match(/^Bearer\s+(.+)$/i);
     if (m) got = m[1];
-    if (!got) got = String(pick("x-paperpilot-token") || pick("X-PaperPilot-Token") || "");
+    if (!got) got = String(pick("x-papilot-token") || pick("X-Papilot-Token") || "");
     if (!got && searchParams) {
       try { got = String((typeof searchParams.get === "function" ? searchParams.get("token") : searchParams.token) || ""); } catch (e) { got = ""; }
     }
@@ -325,7 +328,7 @@ var MCP = {
   clientConfig() {
     return {
       mcpServers: {
-        paperpilot: {
+        papilot: {
           type: "http",
           url: this.endpointUrl(),
           headers: { Authorization: "Bearer " + this.token() },
@@ -337,14 +340,14 @@ var MCP = {
   info() {
     const st = this.serverStatus();
     return {
-      server: "paperpilot-mcp",
+      server: "papilot-mcp",
       version: this.serverVersion(),
       protocolVersion: this.DEFAULT_PROTOCOL,
       endpoint: this.endpointUrl(),
       enabled: this.enabled(),
       zoteroServer: { enabled: st.enabled, running: st.running, port: st.port },
       transport: "Streamable HTTP（单次 application/json 响应）",
-      auth: "Authorization: Bearer <token>；令牌见 PaperPilot 的 MCP 窗口",
+      auth: "Authorization: Bearer <token>；令牌见 Papilot 的 MCP 窗口",
       tools: this.TOOLS.map((t) => t.name),
     };
   },
@@ -354,7 +357,7 @@ var MCP = {
     const headers = (req && req.headers) || {};
     const sp = req && req.searchParams;
     if (!this.enabled()) {
-      return [503, "application/json", JSON.stringify(this.err(null, -32000, "MCP endpoint is disabled. Enable it in PaperPilot → MCP."))];
+      return [503, "application/json", JSON.stringify(this.err(null, -32000, "MCP endpoint is disabled. Enable it in Papilot → MCP."))];
     }
     if (!this._authOk(headers, sp)) {
       // Zotero 的 responseCodes 没有 401，用 403（语义等价：拒绝）
@@ -790,12 +793,12 @@ var MCP = {
     const win = Zotero.getMainWindow();
     if (!win) return null;
     try {
-      const en = Services.wm.getEnumerator("paperpilot:mcp");
+      const en = Services.wm.getEnumerator("papilot:mcp");
       if (en.hasMoreElements()) { const w = en.getNext(); w.focus(); return w; }
     } catch (e) { /* ignore */ }
     return win.openDialog(
-      "chrome://paperpilot/content/mcp.xhtml",
-      "paperpilot-mcp",
+      "chrome://papilot/content/mcp.xhtml",
+      "papilot-mcp",
       "chrome,centerscreen,resizable,dialog=no",
       { Zotero, Services }
     );

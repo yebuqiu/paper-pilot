@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 中文文献 AI 增强（0.42.0，P1-P3）测试
  *
  * 覆盖四层（全部离线、无网络、无 Zotero）：
@@ -60,7 +63,7 @@ const sandbox = {
   _ppDiag: () => {},
 };
 sandbox.Prefs = {
-  PREFIX: 'extensions.zotero.paperpilot.',
+  PREFIX: 'extensions.zotero.papilot.',
   get(k, d) { return PrefStore.has(k) ? PrefStore.get(k) : d; },
   set(k, v) { PrefStore.set(k, v); },
 };

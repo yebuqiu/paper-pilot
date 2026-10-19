@@ -1,9 +1,9 @@
-# PaperPilot 功能路线图（基于 Zotero 插件生态 Top 100 功能借鉴地图）
+# Papilot 功能路线图（基于 Zotero 插件生态 Top 100 功能借鉴地图）
 
-> 来源：`docs/PaperPilot-功能借鉴地图-Zotero插件Top100.html`（100 个插件 / 16 个功能域 / 23 项「强烈建议参考」）
+> 来源：`docs/Papilot-功能借鉴地图-Zotero插件Top100.html`（100 个插件 / 16 个功能域 / 23 项「强烈建议参考」）
 > 原则：**只借鉴功能与交互设计，不搬运代码**；优先做「本地可验证、无外部强依赖」的能力。
 
-## 一、PaperPilot 当前功能坐标
+## 一、Papilot 当前功能坐标
 
 | 功能域 | 现状 | 说明 |
 |---|---|---|
@@ -98,7 +98,7 @@
 
 ### 接入点
 
-- `main.js`：加载 3 个模块并暴露为 `Zotero.PaperPilot.libSearch / tagCurator / attachDoctor`
+- `main.js`：加载 3 个模块并暴露为 `Zotero.Papilot.libSearch / tagCurator / attachDoctor`
 - `menus.js`：工具菜单新增「库内问答…」；条目右键新增「附件体检」「标签治理（只读）」「标签归一（执行合并）」
 - `hub.js`：新增「🧭 检索与发现」类别（库内问答）；「🩺 库健康」新增「附件体检」；「🏷 标签与状态」新增标签治理/归一
 - `prefs.js`：`libSearchContextChars`（12000）、`libSearchTopN`（8）
@@ -112,7 +112,7 @@
 | 核心逻辑单测（`E:/tmp/pp_test/pp22-test.js`，vm + 最小 mock） | **47 项断言全通过**：归一化 8 项（含全角字母/全角空格/尾随标点/全角斜杠）、变体分析 12 项、分词 7 项、打分与覆盖率 3 项、全文复核 3 项、上下文与消息 7 项、附件报告渲染 7 项 |
 | 全模块加载冒烟（`pp22-smoke.js`，深 Proxy 顶替 Zotero/Services） | 按 main.js 顺序加载 **42 个模块，0 失败**，关键全局无缺失 |
 | 接线一致性（静态扫描） | hub.js 的 `PP.*` 引用全部在 main.js 暴露；menus.js 调用的 26 个模块名均有声明；features 目录无漏加载文件 |
-| 打包产物复测 | `dist/paper-pilot-0.22.0.xpi`（73 文件）解包后重跑单测（47/47）与冒烟（42/42）**全绿**，包内 manifest version = 0.22.0 |
+| 打包产物复测 | `dist/papilot-0.22.0.xpi`（73 文件）解包后重跑单测（47/47）与冒烟（42/42）**全绿**，包内 manifest version = 0.22.0 |
 
 ### 发版记录（2026-10-03 完成）
 
@@ -120,7 +120,7 @@
 |---|---|
 | 提交 | `9338d24`「0.22.0: 库内问答 + 标签治理 + 附件体检」（另有 `2f7b11e` 为 0.21.3 的 PDF 对比修复，此前未提交，一并清账） |
 | 标签 | `v0.22.0`（Gitee 已推送；GitHub Releases 自 v0.14.5 后停用，不再创建） |
-| Gitee | `main` 已推送；远端 `paperpilot-update.json` 最新版本 = 0.22.0；`dist/paper-pilot-0.22.0.xpi` 下载 **sha256 与本地一致**（309745 字节，包内 73 文件 / manifest 0.22.0） |
+| Gitee | `main` 已推送；远端 `papilot-update.json` 最新版本 = 0.22.0；`dist/papilot-0.22.0.xpi` 下载 **sha256 与本地一致**（309745 字节，包内 73 文件 / manifest 0.22.0） |
 | GitHub | API 同步完成（commit `c0fa878ebf`，自检「远端 132 个 blob 与本地完全一致」）；raw 通道 update.json 与 xpi 均 200 可访问 |
 | 客户端 | **未做真机验证**：需在 Zotero 中实装 0.22.0 后验证三个入口与对话框（本地强制升级流程见项目记忆） |
 
@@ -155,8 +155,8 @@
 | 项 | 状态 |
 |---|---|
 | 提交 | `0.23.0: 自动化引擎 + 入库自动精读（阶段 2 第一批）` |
-| Gitee | `main` + 标签 `v0.23.0`；远端 `paperpilot-update.json` 最新版本 = 0.23.0 |
-| 产物校验 | `dist/paper-pilot-0.23.0.xpi` 远端 sha256 与本地一致、包内 manifest 版本一致 |
+| Gitee | `main` + 标签 `v0.23.0`；远端 `papilot-update.json` 最新版本 = 0.23.0 |
+| 产物校验 | `dist/papilot-0.23.0.xpi` 远端 sha256 与本地一致、包内 manifest 版本一致 |
 | GitHub | API 同步 + tree 自检一致 |
 
 ## 七、阶段 2 第二批实施记录（笔记关系图谱 + 阅读行为统计）
@@ -193,7 +193,7 @@
 |---|---|
 | `chrome/content/scripts/features/discovery.js` | 文献发现：`buildProfile()`（标题 ×3 / 标签 ×3 / 期刊 ×2 / 摘要 ×1 加权词频，泛词过滤下限 3 条）+ `extractArxiv()`（从 extra / url / archiveID 抽 arXiv id 与分类）+ `parseAtom()`（自写 arXiv Atom 正则解析器，含 XML 实体解码）+ `scoreEntry()`（标题 ×3 / 摘要 ×1 + 分类加成 + 7 天新近度）+ `rank()`（去重 / 排除已入库 / 排除忽略 / 截断）+ `buildQuery()`（分类优先，否则画像词元）+ `run()`（全流程 + 按天缓存）+ 每日定时 + `collect()`（建 preprint 条目并加入「arXiv 推荐」分类） |
 | `chrome/content/discovery.xhtml` + `discovery-ui.js` | 推荐窗口：分类输入、刷新、每日自动刷新开关、卡片（标题 / 作者 / 日期 / 分类 / 命中理由 / 摘要展开）、打开 / PDF / 收藏到库 / 忽略、存为笔记、恢复已忽略 |
-| `chrome/content/scripts/features/mcp.js` | MCP 服务：JSON-RPC 2.0 核心（`handleMessage` / `handlePayload`，支持 initialize、tools/list、tools/call、ping、resources/list、prompts/list 与 batch）、8 个工具定义与实现、Bearer 鉴权（常量时间比较）、`Zotero.Server.Endpoints['/paperpilot/mcp']` 注册（GET 返回 info / POST 走 JSON-RPC）、`serverStatus()` 与 `ensureServer()`（检测并恢复 Zotero 本地 HTTP 服务）、端到端 `selfTest()` |
+| `chrome/content/scripts/features/mcp.js` | MCP 服务：JSON-RPC 2.0 核心（`handleMessage` / `handlePayload`，支持 initialize、tools/list、tools/call、ping、resources/list、prompts/list 与 batch）、8 个工具定义与实现、Bearer 鉴权（常量时间比较）、`Zotero.Server.Endpoints['/papilot/mcp']` 注册（GET 返回 info / POST 走 JSON-RPC）、`serverStatus()` 与 `ensureServer()`（检测并恢复 Zotero 本地 HTTP 服务）、端到端 `selfTest()` |
 | `chrome/content/mcp.xhtml` + `mcp-ui.js` | 状态与配置窗口：启停、端点、令牌（显示 / 重置）、工具清单、Zotero 本地服务状态（含一键启用）、自检、可复制的客户端配置 JSON |
 | `chrome/content/scripts/features/meta-rules.js` | 元数据体检：`normJournal` / `journalIndex`（内置 100 条刊表 + 用户自定义）/ `journalHint`（expand \| abbrev \| both \| off）/ `normalizeCreators`（单栏拆分、逗号逆序、全角空格与空白、尾随句点且不误伤 Jr.）/ `doiHint` / `fixPages` / `snapshot` / `detect`（9 条规则，fix 与 warn 两类）/ `scanAll`（含重复 DOI 索引）/ 报告与笔记 |
 | `chrome/content/meta-rules.xhtml` + `meta-rules-ui.js` | 体检窗口：范围（选中 / 整库）、期刊方向、按「分组 → 规则 → 条目」渲染的清单、逐条与逐规则勾选、全选 / 全不选、修复勾选项、存为报告笔记 |

@@ -1,4 +1,4 @@
-# AGENTS.md · PaperPilot 文献副驾
+# AGENTS.md · Papilot 文献副驾
 
 > 本文件面向 AI 编码代理与人类协作者，说明**本仓库真实现状**下的开发方式。
 > 所有命令、路径、工具链均来自仓库实际内容（`scripts/`、`test/`、`server/`、`manifest.json`）。
@@ -8,14 +8,14 @@
 
 ## 1. 项目概览
 
-PaperPilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstrapped），外加一套**随仓库自带的零依赖 Node 账号后台**。两者版本各自独立演进。
+Papilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstrapped），外加一套**随仓库自带的零依赖 Node 账号后台**。两者版本各自独立演进。
 
 | 组成 | 说明 | 版本锚点 |
 |---|---|---|
-| **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.32.0`） |
+| **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.55.0`） |
 | **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.8.1`） |
 
-- 插件 ID：`paperpilot@dev.local`；兼容 `strict_min_version: "6.999"` → `strict_max_version: "99.*"`。
+- 插件 ID：`papilot@dev.local`；兼容 `strict_min_version: "6.999"` → `strict_max_version: "99.*"`。
 - 授权：**Apache-2.0**（见 [LICENSE](LICENSE) / [NOTICE](NOTICE)）。插件本体永久免费开源。
 - 设计参考了官方 `Make It Red` / `zotero-plugin-template` / `zoterostyle` 的插件结构（见 `bootstrap.js` 头注释）。
 
@@ -46,7 +46,7 @@ PaperPilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstra
 
 - **插件与后台零运行时依赖**——不要为省事引入 npm 包；`server/` 明确以"零依赖"为设计约束。
 - 需要临时脚本依赖时，装到 managed 隔离目录，**不要全局 `npm install -g`，也不要污染系统 Python**。
-- **任何密钥一律不进 git**：`prefs.js` 默认值留空；`server/data/` 已被 `.gitignore` 排除（含用户、令牌、通道密钥、日志）。唯一例外是插件内置的 `ES_OFFICIAL_KEY`（用户决策"开箱即用"，优先级 = 用户 pref > 内置 Key）。
+- **任何密钥一律不进 git**：`prefs.js` 默认值留空；`server/data/` 已被 `.gitignore` 排除（含用户、令牌、通道密钥、日志）。**0.56.0 起不再有任何内置密钥**——`ES_OFFICIAL_KEY` 已移除（第三方 Key 无商用授权），easyScholar 一律由用户自填。
 - 提交身份必须是 noreply：`cassiuschen9261` / `67265949+13920519261@users.noreply.github.com`。
 
 ---
@@ -105,7 +105,7 @@ python scripts/build-arxiv-core.py --check
 
 ```bash
 python scripts/build-xpi.py 0.27.0
-# 产物：dist/paper-pilot-0.27.0.xpi（zip，源码目录内容置于根，含包内清单与版本自检）
+# 产物：dist/papilot-0.27.0.xpi（zip，源码目录内容置于根，含包内清单与版本自检）
 ```
 
 - 打包内容 = 顶层文件（`bootstrap.js` / `LICENSE` / `NOTICE` / `prefs.js` / `README.md` / `manifest.json`）+ 遍历 `chrome/` + `locale/`。
@@ -122,14 +122,14 @@ cd server && node account-server.js
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-account-server.ps1
 
 # 图形启动器（账号后台 + 公网通道 + 模型通道 + 账号管理 + 会员管理）
-启动PaperPilot后台.bat          # 双击运行；内部经 wscript 无窗拉起 launcher.ps1
+启动Papilot后台.bat          # 双击运行；内部经 wscript 无窗拉起 launcher.ps1
 
 # 健康检查
 curl http://127.0.0.1:8000/api/health
 ```
 
 - **改了服务端代码必须同轮重启生产 :8000**，否则新客户端会配到旧服务端。
-- 守护脚本 `scripts/guard-paperpilot.ps1` **已重构为项目内自包含**（2026-10-16：不再依赖 `~/.cloudflared` 与 `_brain`；pass2 走 `runtime\cloudflared\`）。计划任务 `PaperPilotGuard` **已不再注册**——需要时手动注册（每分钟一次，不因代码更新而重启）；`server/data/stopped-account.flag` 与 `runtime/cloudflared/stopped.flag` 存在时各自保持停机。
+- 守护脚本 `scripts/guard-papilot.ps1` **已重构为项目内自包含**（2026-10-16：不再依赖 `~/.cloudflared` 与 `_brain`；pass2 走 `runtime\cloudflared\`）。计划任务 `PapilotGuard` **已不再注册**——需要时手动注册（每分钟一次，不因代码更新而重启）；`server/data/stopped-account.flag` 与 `runtime/cloudflared/stopped.flag` 存在时各自保持停机。
 - `scripts/start-account-server.ps1` 直接调用会被本机执行策略拦；走上面的 `powershell -ExecutionPolicy Bypass` 形式。
 
 ### 3.8 公网通道（Cloudflare 隧道，项目内自包含）
@@ -146,7 +146,7 @@ curl http://127.0.0.1:8000/api/health
 powershell -File scripts/tunnel/tunnel.ps1 status|start|stop|restart
 ```
 
-- 固定参数：隧道 `paperpilot`（a445d5c2）→ `pp.xinglintools.top` → `127.0.0.1:8000`；metrics `127.0.0.1:20250`；健康判据 = `/ready` 的 `readyConnections > 0`（**端口通 ≠ 健康**）。
+- 固定参数：隧道 `papilot`（a445d5c2）→ `pp.xinglintools.top` → `127.0.0.1:8000`；metrics `127.0.0.1:20250`；健康判据 = `/ready` 的 `readyConnections > 0`（**端口通 ≠ 健康**）。
 - 令牌：`runtime/cloudflared/token.txt`（gitignore；`--token-file` 传递，不进命令行）。丢失/轮换后 `powershell -File scripts/tunnel/refresh-token.ps1` 从同级 `..\_brain` 重新提取。
 - 二进制：`runtime/cloudflared/cloudflared.exe`（~55MB）与 `runtime/node/node.exe` 均**随盘携带、不入库**；换机/换盘符零配置（脚本全部相对自身位置解析路径）。
 
@@ -163,7 +163,7 @@ powershell -File scripts/tunnel/tunnel.ps1 status|start|stop|restart
 1. `PP_PUBLIC_URL` 必须显式配置为**公网 https 地址**（写在 `server/data/pp.env`）——
    回调地址由它决定。**不要依赖 Host 头推断**：下单是公网请求，Host 可被伪造，
    会把 `notify_url` 指向攻击者域名。未配置时 `onlinePayReady()` 为 false，在线支付不可用。
-2. 账号后台的公网入口必须在（项目内公网通道 `paperpilot` → `pp.xinglintools.top` → `:8000`；
+2. 账号后台的公网入口必须在（项目内公网通道 `papilot` → `pp.xinglintools.top` → `:8000`；
    起停见 §3.8；`powershell -File scripts/tunnel/tunnel.ps1 status` 一键自检），
    否则网关的异步通知到不了。**但即使丢了通知也不会漏单**：客户端的「刷新订单状态」
    走主动查单，确认即入账。
@@ -253,13 +253,13 @@ token 优先 `PP_GITEE_TOKEN` 环境变量，回退 `~/.git-credentials`。
 ## 4. 目录与文件组织说明
 
 ```
-paper-pilot/
+zotero-papilot/
 ├── manifest.json              ★ 插件版本号在此迭代
 ├── bootstrap.js               ★ 插件入口（加载 main.js、注册 chrome 协议、诊断日志）
 ├── prefs.js                   ★ 全部 pref 默认值（无密钥）
-├── paperpilot-update.json     Zotero 更新清单（Gitee raw 直链，逐版追加）
-├── 启动PaperPilot后台.bat      启动器入口（GBK 编码 + chcp 936）
-├── 升级PaperPilot.bat          本地强制覆盖安装插件（GBK 编码）
+├── papilot-update.json     Zotero 更新清单（Gitee raw 直链，逐版追加）
+├── 启动Papilot后台.bat      启动器入口（GBK 编码 + chcp 936）
+├── 升级Papilot.bat          本地强制覆盖安装插件（GBK 编码）
 ├── LICENSE / NOTICE           Apache-2.0
 │
 ├── chrome/content/            插件前端与逻辑（打包进 xpi）
@@ -277,7 +277,7 @@ paper-pilot/
 │   ├── data/journal-rank.json  分区列离线兜底数据
 │   ├── icons/                图标（icon.png / chat.svg）
 │   └── scripts/
-│       ├── main.js           ★ 模块装配清单（files[] 依赖序 + 挂 Zotero.PaperPilot）
+│       ├── main.js           ★ 模块装配清单（files[] 依赖序 + 挂 Zotero.Papilot）
 │       ├── menus.js          工具菜单注入
 │       ├── core/utils.js     Prefs 包装 / I18n / Markdown→笔记 HTML / Notes / 选中归一化
 │       ├── ai/               账号 / 模型通道 / LLM 客户端(SSE) / 问答 / Prompt / 自动标签 / S2
@@ -288,7 +288,7 @@ paper-pilot/
 │       ├── columns/          期刊分区列 / 被引量列
 │       └── panels/           侧栏 section（AI 问答 / PDF 速览）
 │
-├── locale/{en-US,zh-CN}/paperpilot.ftl   XHTML 用文案
+├── locale/{en-US,zh-CN}/papilot.ftl   XHTML 用文案
 │
 ├── server/                   账号后台（独立于 xpi，零依赖）
 │   ├── account-server.js     ★ 入口：路由 + HTTP + 限速 + 网关
@@ -311,7 +311,7 @@ paper-pilot/
 │   ├── sync-github.py        同步 GitHub 镜像
 │   ├── reconcile.js          收款对账 CLI
 │   ├── launcher.ps1          启动器 GUI（WinForms；含「公网通道」组）
-│   ├── guard-paperpilot.ps1  守护（账号后台 + 公网通道，项目内自包含）
+│   ├── guard-papilot.ps1  守护（账号后台 + 公网通道，项目内自包含）
 │   ├── start-account-server.ps1 / start-server-hidden.vbs  无窗拉起
 │   ├── tunnel/tunnel.ps1     公网通道 CLI：status/start/stop/restart
 │   └── tunnel/refresh-token.ps1  从 _brain 重新提取隧道令牌
@@ -356,14 +356,14 @@ paper-pilot/
 - 每个功能模块是**一个全局对象**：`var Xxx = { ... };`，放在 `chrome/content/scripts/{core,ai,features,columns,panels}/` 下。
 - 新模块必须**同时**做两件事：
   1. 在 `chrome/content/scripts/main.js` 的 `files[]` 数组里，**按依赖顺序**加入相对路径（被依赖者在前）；
-  2. 在 `init()` 里把对象挂到 `Zotero.PaperPilot.<name>`，供独立窗口/面板脚本访问（它们运行在各自作用域，**看不到 bootstrap 作用域**）。
+  2. 在 `init()` 里把对象挂到 `Zotero.Papilot.<name>`，供独立窗口/面板脚本访问（它们运行在各自作用域，**看不到 bootstrap 作用域**）。
 - 独立窗口脚本拿 `Zotero`/`Services` 只经 `window.arguments`（`openDialog(..., { Zotero, Services })`）传递，**不要用 `opener.Zotero` 或窗口内 `importESModule`**。
 - 需要跨窗口/UI 的模块在 `destroy()` 里必须**成对**注销（`unregister`/`stop`），见 `main.js` 的 `destroy()`。
 - 加载脚本一律带 `?v=<version>` 查询串做缓存破坏（热升级会命中旧编译产物）。
 
 ### 5.3 配置（pref）
 
-- 键名：`extensions.zotero.paperpilot.<key>`；**默认值只在 `prefs.js` 声明**，代码里通过 `Prefs.get(key, fallback)` / `Prefs.set(key, value)`（`core/utils.js`）读写。
+- 键名：`extensions.zotero.papilot.<key>`；**默认值只在 `prefs.js` 声明**，代码里通过 `Prefs.get(key, fallback)` / `Prefs.set(key, value)`（`core/utils.js`）读写。
 - Mozilla pref **没有浮点类型**：小数（温度、字号缩放、不透明度）一律存字符串，代码里 `Number()` 解析。
 - 新增/改名 pref 后，`prefs.js` 与 `check-wiring.py`（键 vs 默认值）要同步。
 
@@ -371,7 +371,7 @@ paper-pilot/
 
 - 设置面板 CSS 用 `PreferencePanes.register({ stylesheets: [...] })` 注入；明暗靠 `prefers-color-scheme`，**类名统一 `.pp-` 前缀并收在 `.pp-root` 下**。
 - 颜色一律用 CSS 变量，禁止硬编码 hex（主题换肤依赖变量层叠）。
-- 菜单等无法走 Fluent 的地方用 `I18n.t(key)`（内联词表在 `core/utils.js`）；XHTML 文案走 `locale/*/paperpilot.ftl`。
+- 菜单等无法走 Fluent 的地方用 `I18n.t(key)`（内联词表在 `core/utils.js`）；XHTML 文案走 `locale/*/papilot.ftl`。
 - **AI 未就绪时不得静默 `return`**：一律"照常渲染 + 精确原因 + 一键去设置"。
 
 ### 5.5 服务端（`server/`）
@@ -425,7 +425,7 @@ paper-pilot/
 
 ## 7. 提交与分支规范
 
-- **主分支 `main`**。`origin` = Gitee（`cassiuschen9261/paper-pilot`），`github` = GitHub 镜像（`yebuqiu/paper-pilot`）。
+- **主分支 `main`**。`origin` = Gitee（`cassiuschen9261/zotero-papilot`），`github` = GitHub 镜像（`yebuqiu/zotero-papilot`）。
 - **禁止 `git add -A` / `git add .`**：一律**显式列出路径**。本工作区可能多会话并发，混合 diff 的归属要在提交信息里说明。
 - **提交信息格式**：以版本/批次为前缀，例如
   - 插件：`0.24.8(服务端 1.4.9): 套餐 AI 能力分级 —— 官方模型白名单 + 新用户全模型试用`
@@ -446,11 +446,11 @@ paper-pilot/
 1. `git status` 辨他人在制品；
 2. 显式 `git add <paths>` + `git tag v<x.y.z>`；
 3. `git push origin main` + `git push origin v<x.y.z>`；
-4. `curl -L` 取远端 `paperpilot-update.json` 验证 + 下载 xpi 比 sha256 与包内 `manifest.json` 版本；
+4. `curl -L` 取远端 `papilot-update.json` 验证 + 下载 xpi 比 sha256 与包内 `manifest.json` 版本；
 5. `python scripts/sync-github.py`（自检 blob 数）；
 6. `python scripts/github-release.py --version <x.y.z>`（GitHub 侧 tag + Release + xpi 附件）。
 
-> ⚠️ **"双推 + curl 验证"只证明服务端就绪**。Zotero 只在自身启动时查更新，发版后要交叉核对**客户端真实版本**：profile 内 xpi 的 sha1 / `paperpilot-boot.log` 末行 / `extensions.json` 的 `version`。
+> ⚠️ **"双推 + curl 验证"只证明服务端就绪**。Zotero 只在自身启动时查更新，发版后要交叉核对**客户端真实版本**：profile 内 xpi 的 sha1 / `papilot-boot.log` 末行 / `extensions.json` 的 `version`。
 
 ---
 
@@ -465,7 +465,7 @@ paper-pilot/
 
 ### 8.2 新增 / 修改一个 pref
 
-1. `prefs.js` 加/改默认值（键名 `extensions.zotero.paperpilot.<key>`）。
+1. `prefs.js` 加/改默认值（键名 `extensions.zotero.papilot.<key>`）。
 2. 代码里用 `Prefs.get/set`；需要即时生效的，在 `main.js` 的 `_watchPrefs()` 注册观察者并在 `_onPrefChanged()` 处理。
 3. `python scripts/check-wiring.py` 会校验"新键 vs prefs.js 默认值"。
 
@@ -523,10 +523,10 @@ python scripts/preflight.py --fast    # 含「arXiv 生成物同步」漂移检�
 
 ### 8.6 本地强制升级插件（Zotero 未运行）
 
-备份 profile 内 xpi / `extensions.json` / `addonStartup.json.lz4` → 覆盖 profile 里的 xpi → **删除 `addonStartup.json.lz4`**（缺失即触发全量重扫）。或直接双击 `升级PaperPilot.bat`（注意其内写死的版本号/路径需按需更新）。
+备份 profile 内 xpi / `extensions.json` / `addonStartup.json.lz4` → 覆盖 profile 里的 xpi → **删除 `addonStartup.json.lz4`**（缺失即触发全量重扫）。或直接双击 `升级Papilot.bat`（注意其内写死的版本号/路径需按需更新）。
 
 profile 路径：`C:\Users\Administrator\AppData\Roaming\Zotero\Zotero\Profiles\swc79sqh.default`，
-xpi 固定名 `extensions/paperpilot@dev.local.xpi`。
+xpi 固定名 `extensions/papilot@dev.local.xpi`。
 
 **实机验证（改完插件必做一次，光看单测绿是不够的）**：
 
@@ -539,7 +539,7 @@ xpi 固定名 `extensions/paperpilot@dev.local.xpi`。
    - **必须用 `DETACHED_PROCESS` 直接 CreateProcess 启动**（Python `subprocess.Popen` +
      `creationflags=0x8|0x200`）。用 Bash 的 `&` 启动，或经 `cmd /c start` 中转，
      都会被工具调用的进程树回收——表现为「日志一行都没写」。
-4. 读**数据目录**的 `paperpilot-boot.log`（`C:\Users\Administrator\Zotero\`）与 profile 同名文件，
+4. 读**数据目录**的 `papilot-boot.log`（`C:\Users\Administrator\Zotero\`）与 profile 同名文件，
    核对：`startup begin v<ver>`、新增功能各自的 `... registered`、**无 `STARTUP FAILED`**、
    `init complete`。插件模块加载失败只写 `loadSubScript FAILED <file>` 一行，容易被忽略。
 5. 三处交叉核对版本：profile xpi 的 sha256 / boot 日志的 `v<ver>` / `extensions.json` 的 `version`
@@ -549,8 +549,8 @@ xpi 固定名 `extensions/paperpilot@dev.local.xpi`。
 ### 8.7 重启账号后台
 
 ```bash
-# 停：干掉占用 8000 的进程（若注册过 PaperPilotGuard 计划任务，先停任务或置 stopped 标记，防复活）
-# 起：双击 启动PaperPilot后台.bat，或
+# 停：干掉占用 8000 的进程（若注册过 PapilotGuard 计划任务，先停任务或置 stopped 标记，防复活）
+# 起：双击 启动Papilot后台.bat，或
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-account-server.ps1
 ```
 
@@ -575,4 +575,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start-account-server
 - [docs/使用教程.md](docs/使用教程.md) — 安装与逐功能说明
 - [docs/账号系统与模型通道.md](docs/账号系统与模型通道.md) — 账号/网关部署
 - [docs/账号持久化与会员体系.md](docs/账号持久化与会员体系.md) — 会话持久化 + 会员实现/迁移/运维手册
-- [docs/PaperPilot-功能路线图.md](docs/PaperPilot-功能路线图.md) — 分阶段功能规划
+- [docs/Papilot-功能路线图.md](docs/Papilot-功能路线图.md) — 分阶段功能规划

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* AI 技能包商店窗口（skill-store.js）迷你 DOM 烟测
  *
  * 背景（2026-10-18 排障）：用户报告「技能商店无法正常显示技能包」。核心域
@@ -116,10 +119,10 @@ function _diag(msg) { diagMsgs.push(String(msg)); }
 /* ---------------- 核心域桩环境（对齐 skill-packs.test.js） ---------------- */
 
 const PrefStore = new Map();
-const PP_PREFIX = 'extensions.zotero.paperpilot.';
+const PP_PREFIX = 'extensions.zotero.papilot.';
 // 模拟包内 prefs.js 默认值（真机由 bootstrap 注册；桩环境需手动提供）
 PrefStore.set(PP_PREFIX + 'skillStoreSource',
-  'https://gitee.com/cassiuschen9261/paper-pilot/raw/main/server/public/skill-catalog.json');
+  'https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/server/public/skill-catalog.json');
 
 const Prefs = {
   PREFIX: PP_PREFIX,
@@ -211,9 +214,9 @@ vm.runInContext(fs.readFileSync(path.join(ROOT, 'chrome/content/scripts/features
 const SP = sandbox.SkillPacks;
 ok(typeof SP === 'object' && SP !== null, 'SkillPacks 模块加载成功');
 
-// ② PaperPilot 门面（窗口经 Zotero.PaperPilot.skillPacks 访问）
-const PaperPilot = { skillPacks: SP, commandTags: CommandTags, _diag };
-Zotero.PaperPilot = PaperPilot;
+// ② Papilot 门面（窗口经 Zotero.Papilot.skillPacks 访问）
+const Papilot = { skillPacks: SP, commandTags: CommandTags, _diag };
+Zotero.Papilot = Papilot;
 
 // ③ 窗口脚本后装（真实文件）
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'chrome/content/skill-store.js'), 'utf8'),

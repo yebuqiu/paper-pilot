@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* AI 自动打标签 v2（0.46.0）· 纯函数层 + 编排层测试
  *
  * 为什么要有它：v2 把打标从「一句 prompt + 正则抓 #」升级为
@@ -39,7 +42,7 @@ function ok(c, label, extra) {
 function eq(a, b, label) { return ok(a === b, label, { got: a, want: b }); }
 
 /* ---------- 沙箱 ----------
- * 注意：真机 Prefs 会加 extensions.zotero.paperpilot. 前缀，本桩直存裸键，
+ * 注意：真机 Prefs 会加 extensions.zotero.papilot. 前缀，本桩直存裸键，
  * 所以 PrefStore 的键一律不带前缀（与 Prefs.get 的调用参数一致）。 */
 const PrefStore = new Map();
 

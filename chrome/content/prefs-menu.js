@@ -1,6 +1,9 @@
-/* PaperPilot 设置窗格脚本·菜单定制（0.29.0 新增）
- * 与 prefs-pane.js / prefs-account.js 同窗格运行；经 Zotero.PaperPilot.menus /
- * Zotero.PaperPilot.i18n 访问 bootstrap 作用域的 Menus 注册表与 i18n（单一真源，
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格脚本·菜单定制（0.29.0 新增）
+ * 与 prefs-pane.js / prefs-account.js 同窗格运行；经 Zotero.Papilot.menus /
+ * Zotero.Papilot.i18n 访问 bootstrap 作用域的 Menus 注册表与 i18n（单一真源，
  * 面板里的分组与直达项直接遍历注册表渲染，不维护第二份列表）。
  *
  * 渲染内容：菜单结构切换（menuMode，走 prefs.xhtml 声明式 preference 绑定）
@@ -21,7 +24,7 @@
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const $ = (id) => document.getElementById(id);
-  const PP = () => Zotero.PaperPilot || {};
+  const PP = () => Zotero.Papilot || {};
   const M = () => PP().menus;
   const T = () => PP().i18n;
 
@@ -36,8 +39,8 @@
   };
 
   const PREF = {
-    hidden: "extensions.zotero.paperpilot.menuHiddenGroups",
-    quick: "extensions.zotero.paperpilot.menuQuickItems",
+    hidden: "extensions.zotero.papilot.menuHiddenGroups",
+    quick: "extensions.zotero.papilot.menuQuickItems",
   };
 
   function setMsg(text, color) {

@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · 收款流水对账（服务端 1.4.5）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · 收款流水对账（服务端 1.4.5）
  *
  * 解决什么：人工核销是运营瓶颈 —— 用户付了钱要等人点一下，夜里下单就干等。
  * 做法（零支付资质，纯对账自动化）：**下单时给每笔订单分配一个同金额内唯一的小数尾数**

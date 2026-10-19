@@ -1,4 +1,7 @@
-/* PaperPilot 文献统计图谱报告（0.11.0，Chartero/Inciteful 品类的轻量路线）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 文献统计图谱报告（0.11.0，Chartero/Inciteful 品类的轻量路线）
  * 对当前分类（或整个文库）生成自包含 HTML 报告：年份分布、期刊 Top10、
  * 作者 Top10、标签 Top15、条目类型占比，纯内联 SVG 柱状图，无外部依赖，
  * 深浅主题中性配色。报告写入临时目录并调起系统浏览器。
@@ -89,7 +92,7 @@ var LibGraph = {
       `<section><h2>${title}</h2>${svg}</section>`;
     return `<!DOCTYPE html>
 <html lang="${zh ? "zh-CN" : "en"}"><head><meta charset="utf-8">
-<title>PaperPilot · ${zh ? "文献统计图谱" : "Library Report"}</title>
+<title>Papilot · ${zh ? "文献统计图谱" : "Library Report"}</title>
 <style>
 body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;margin:0;padding:24px;background:#f7f7f8;color:#222}
 h1{font-size:20px;margin:0 0 4px} .sub{color:#777;font-size:13px;margin-bottom:20px}
@@ -99,7 +102,7 @@ h2{font-size:15px;margin:0 0 10px;color:#333}
 body{background:#1c1c1f;color:#ddd} section{background:#26262a;border-color:#3a3a40}
 h2{color:#ddd} svg text{fill:#bbb}}
 </style></head><body>
-<h1>PaperPilot · ${zh ? "文献统计图谱" : "Library Report"}</h1>
+<h1>Papilot · ${zh ? "文献统计图谱" : "Library Report"}</h1>
 <div class="sub">${esc(scopeName)} · ${zh ? "共 " : ""}${stats.total}${zh ? " 篇 · 生成于 " : " items · "}${new Date().toLocaleString()}</div>
 ${section(zh ? "年份分布" : "By year", this._yearSvg(stats.years))}
 ${section(zh ? "期刊 Top10" : "Top journals", this._barSvg(stats.journals))}
@@ -130,8 +133,8 @@ ${section(zh ? "条目类型" : "Item types", this._barSvg(stats.types))}
     if (!items.length) {
       try {
         const pw0 = new Zotero.ProgressWindow({ closeOnClick: true });
-        pw0.changeHeadline("PaperPilot");
-        const p0 = new pw0.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+        pw0.changeHeadline("Papilot");
+        const p0 = new pw0.ItemProgress("chrome://papilot/content/icons/chat.svg",
           zh ? "范围内没有条目" : "No items in scope");
         p0.setProgress(100);
         pw0.show();
@@ -141,8 +144,8 @@ ${section(zh ? "条目类型" : "Item types", this._barSvg(stats.types))}
     }
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + I18n.t("menuLibGraph"));
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    pw.changeHeadline("Papilot · " + I18n.t("menuLibGraph"));
+    const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       zh ? "生成统计报告…" : "Building report…");
     pw.show();
 
@@ -150,7 +153,7 @@ ${section(zh ? "条目类型" : "Item types", this._barSvg(stats.types))}
       const stats = this._buildStats(items);
       const html = this.buildHtml(stats, scopeName);
       const tmp = Zotero.getTempDirectory();
-      tmp.append("paperpilot-libgraph.html");
+      tmp.append("papilot-libgraph.html");
       await Zotero.File.putContentsAsync(tmp.path, html);
       progress.setProgress(100);
       try { Zotero.launchFile(tmp.path); } catch (e) {

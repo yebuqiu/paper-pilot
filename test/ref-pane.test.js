@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 阅读器右侧栏 · 参考文献面板 渲染与行为测试（0.40.0）
  *
  * 无人环境点不了 Zotero 的 ItemPane section，而它承担的是「参考文献入口本身」——
@@ -97,7 +100,7 @@ async function drain(cond, maxRounds = 60) {
 /* ---------------- 桩环境 ---------------- */
 
 const PrefStore = new Map(); // 完整 pref key -> 值
-const calls = { fetch: 0, fetchOpts: null, importOpts: null, imported: null, section: null, unregistered: null };
+const calls = { fetch: 0, fetchOpts: null, importOpts: null, imported: null, section: null, unregistered: null, prefSets: 0 };
 
 function makeItem(id, key) {
   return {
@@ -115,13 +118,13 @@ function makeItem(id, key) {
 const Zotero = {
   Prefs: {
     get: (k) => (PrefStore.has(k) ? PrefStore.get(k) : undefined),
-    set: (k, v) => PrefStore.set(k, v),
+    set: (k, v) => { calls.prefSets++; PrefStore.set(k, v); },
   },
   ItemPaneManager: {
-    registerSection(opts) { calls.section = opts; return 'paperpilot@dev.local-paperpilot-refs'; },
+    registerSection(opts) { calls.section = opts; return 'papilot@dev.local-papilot-refs'; },
     unregisterSection(id) { calls.unregistered = id; },
   },
-  PaperPilot: {},
+  Papilot: {},
   logError() {},
 };
 
@@ -175,25 +178,25 @@ RI.importRecords = async (recs, opts) => {
 
 /* ================= ① section 注册参数 + ftl 条目 ================= */
 
-ok(!!Zotero.PaperPilot.RefPane, '① 加载后挂上 PaperPilot.RefPane（主线注册入口）');
+ok(!!Zotero.Papilot.RefPane, '① 加载后挂上 Papilot.RefPane（主线注册入口）');
 
-RP.register('paperpilot@dev.local');
+RP.register('papilot@dev.local');
 const sec = calls.section;
 ok(!!sec, '① registerSection 被调用');
-eq(sec.paneID, 'paperpilot-refs', '① paneID 正确');
-eq(sec.header.l10nID, 'paperpilot-refs-section-header', '① header l10nID 正确');
-eq(sec.sidenav.l10nID, 'paperpilot-refs-section-sidenav', '① sidenav l10nID 正确');
+eq(sec.paneID, 'papilot-refs', '① paneID 正确');
+eq(sec.header.l10nID, 'papilot-refs-section-header', '① header l10nID 正确');
+eq(sec.sidenav.l10nID, 'papilot-refs-section-sidenav', '① sidenav l10nID 正确');
 has(sec.header.icon, 'refs.svg', '① 使用参考文献图标');
 eq(typeof sec.onRender, 'function', '① onRender 必须存在（Z10 schema 缺了会静默返回 false）');
 eq(typeof sec.onItemChange, 'function', '① onItemChange 存在');
 eq(typeof sec.onDestroy, 'function', '① onDestroy 存在');
 
-const ftlZh = fs.readFileSync(path.join(ROOT, 'locale', 'zh-CN', 'paperpilot.ftl'), 'utf8');
-const ftlEn = fs.readFileSync(path.join(ROOT, 'locale', 'en-US', 'paperpilot.ftl'), 'utf8');
-has(ftlZh, 'paperpilot-refs-section-header', '① zh-CN ftl 有 header 条目（缺了注册静默失败）');
-has(ftlZh, 'paperpilot-refs-section-sidenav', '① zh-CN ftl 有 sidenav 条目');
-has(ftlEn, 'paperpilot-refs-section-header', '① en-US ftl 有 header 条目');
-has(ftlEn, 'paperpilot-refs-section-sidenav', '① en-US ftl 有 sidenav 条目');
+const ftlZh = fs.readFileSync(path.join(ROOT, 'locale', 'zh-CN', 'papilot.ftl'), 'utf8');
+const ftlEn = fs.readFileSync(path.join(ROOT, 'locale', 'en-US', 'papilot.ftl'), 'utf8');
+has(ftlZh, 'papilot-refs-section-header', '① zh-CN ftl 有 header 条目（缺了注册静默失败）');
+has(ftlZh, 'papilot-refs-section-sidenav', '① zh-CN ftl 有 sidenav 条目');
+has(ftlEn, 'papilot-refs-section-header', '① en-US ftl 有 header 条目');
+has(ftlEn, 'papilot-refs-section-sidenav', '① en-US ftl 有 sidenav 条目');
 
 /* ================= ② 面板结构 ================= */
 
@@ -265,9 +268,13 @@ async function main() {
   has(dotEls.s2.style.background, '#88888855', '④ S2 无命中不点亮');
   has(dotEls.cnki.style.background, 'accent', '④ CNKI 圆点点亮');
 
-  // 缓存写入：pref 里有该条目的记录
-  const cacheRaw = PrefStore.get('extensions.paperpilot.refPaneCache');
-  ok(!!cacheRaw, '④ 缓存写入 pref extensions.paperpilot.refPaneCache');
+  // 缓存写入：pref 里有该条目的记录（0.54.1：键改回规范命名空间，
+  // 旧键 extensions.papilot.refPaneCache 会被 Zotero 再补一次前缀 → 实际落到
+  // extensions.zotero.extensions.papilot.refPaneCache 孤儿键）
+  RP.flushCache();   // 0.54.1：缓存改为防抖落盘，断言前显式 flush
+  const cacheRaw = PrefStore.get('extensions.zotero.papilot.refPaneCache');
+  ok(!!cacheRaw, '④ 缓存写入 pref extensions.zotero.papilot.refPaneCache');
+  ok(!PrefStore.has('extensions.papilot.refPaneCache'), '④ 不再写旧的非规范键');
   const cacheObj = JSON.parse(cacheRaw);
   ok(!!cacheObj.KEY1 && cacheObj.KEY1.records.length === 3, '④ 按条目 key 缓存了 3 条记录');
   ok(cacheObj.KEY1.records[0].abstract === undefined, '④ 缓存是精简记录（不含 abstract 等重字段）');
@@ -288,7 +295,10 @@ async function main() {
 
   const savedMax = RP.CACHE_MAX;
   RP.CACHE_MAX = 3;
-  PrefStore.delete('extensions.paperpilot.refPaneCache'); // 清掉 KEY1/KEY2，LRU 段只看 lr* 键
+  // 同时清内存副本（0.54.1 起读走内存，只删 pref 不会影响本轮断言）
+  RP._cacheMem = null;
+  RP._cacheDirty = false;
+  PrefStore.delete('extensions.zotero.papilot.refPaneCache'); // 清掉 KEY1/KEY2，LRU 段只看 lr* 键
   RP._cacheSet('lr1', { records: [], t: 10 });
   RP._cacheSet('lr2', { records: [], t: 20 });
   RP._cacheSet('lr3', { records: [], t: 30 });
@@ -297,12 +307,18 @@ async function main() {
   let keys = Object.keys(RP._cacheReadAll()).filter((k) => /^lr/.test(k));
   eq(keys.sort().join(','), 'lr3,lr4,lr5', '⑥ LRU 超上限淘汰最旧的条目', keys);
   RP._cacheGet('lr3'); // 访问 lr3 -> 它变最新
+  const setsBefore = calls.prefSets;
+  RP._cacheGet('lr3');
+  eq(calls.prefSets, setsBefore, '⑥b 读缓存不产生 pref 写入（0.54.1 读放大修复）');
   RP._cacheSet('lr6', { records: [], t: 60 });
   keys = Object.keys(RP._cacheReadAll()).filter((k) => /^lr/.test(k));
   eq(keys.sort().join(','), 'lr3,lr5,lr6', '⑥ 访问过的条目免于淘汰（LRU 而非 FIFO）', keys);
   RP.CACHE_MAX = savedMax;
-  PrefStore.delete('extensions.paperpilot.refPaneCache'); // 清掉 LRU 垃圾，恢复面板缓存
+  RP._cacheMem = null;
+  RP._cacheDirty = false;
+  PrefStore.delete('extensions.zotero.papilot.refPaneCache'); // 清掉 LRU 垃圾，恢复面板缓存
   RP._cacheSet('KEY1', { records: RECS.map((r) => RP._slim(clone(r))), channels: { pdf: 2 } });
+  RP.flushCache();
 
   /* ================= ⑦ 刷新按钮：单击缓存 / 长按强刷 ================= */
 
@@ -377,7 +393,7 @@ async function main() {
   sec.onItemChange({ paneID: 'p1', item: null, setEnabled: (e) => { enabled = e; } });
   eq(enabled, false, '⑫ 无条目 -> section 禁用');
   RP.unregister();
-  eq(calls.unregistered, 'paperpilot@dev.local-paperpilot-refs',
+  eq(calls.unregistered, 'papilot@dev.local-papilot-refs',
     '⑫ 注销用 registerSection 的返回值（不是注册时的 paneID）');
 
   /* ---------------- 输出 ---------------- */

@@ -1,8 +1,8 @@
 ﻿# ============================================================
-# PaperPilot 后台 · 统一控制台 v1（WinForms GUI）
-# 双击项目根目录"启动PaperPilot后台.bat"无窗拉起本脚本。
+# Papilot 后台 · 统一控制台 v1（WinForms GUI）
+# 双击项目根目录"启动Papilot后台.bat"无窗拉起本脚本。
 #
-# 功能（对标心血管药物学习平台启动管理器，适配 PaperPilot 账号后台）：
+# 功能（对标心血管药物学习平台启动管理器，适配 Papilot 账号后台）：
 #   1. 账号后台控制：启动 / 停止 / 重启 / 查看日志 / 状态灯（端口 8000 健康检测）
 #   2. AI 模型通道管理：列表 / 新增 / 编辑 / 删除 / 设为活动 / 实测 / 🔍检测 / 📡拉取模型
 #      （通道 = 官方网关上游池；Zotero 插件登录用户经 /v1 网关使用活动通道）
@@ -20,9 +20,9 @@ try { [void][System.Windows.Forms.Application]::EnableVisualStyles() } catch {}
 
 # ---------------- 启动日志 / 致命错误兜底 ----------------
 # bat 用 wscript 隐藏拉起本脚本：如果脚本在窗口出现前就失败，用户只会看到「双击没反应」。
-# 这里把每个启动阶段写进 %TEMP%\paperpilot-launcher-boot.log，并用 trap 弹窗（默认桌面，
+# 这里把每个启动阶段写进 %TEMP%\papilot-launcher-boot.log，并用 trap 弹窗（默认桌面，
 # 避免隐藏进程的弹窗被其他窗口盖住）。
-$script:BootLog = Join-Path $env:TEMP 'paperpilot-launcher-boot.log'
+$script:BootLog = Join-Path $env:TEMP 'papilot-launcher-boot.log'
 function Write-Boot([string]$msg) {
   try {
     $line = '[' + (Get-Date).ToString('HH:mm:ss.fff') + '] ' + $msg + "`r`n"
@@ -37,7 +37,7 @@ trap {
   try {
     [System.Windows.Forms.MessageBox]::Show(
       '控制台启动失败：' + $_.Exception.Message + "`n`n日志：" + $script:BootLog,
-      'PaperPilot 后台', 'OK', 'Error', 'Button1', 'DefaultDesktopOnly') | Out-Null
+      'Papilot 后台', 'OK', 'Error', 'Button1', 'DefaultDesktopOnly') | Out-Null
   } catch { }
   exit 1
 }
@@ -54,17 +54,21 @@ public class PpWin32 {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+  // 窗口应答探测：进程活着 != 界面能用。UI 线程被同步探测卡住时，
+  // SetForegroundWindow 会被排队但永不处理，用户看到的就是「再双击也没反应」。
+  [DllImport("user32.dll")] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg,
+      IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 }
 '@
 [void][PpWin32]::SetProcessDPIAware()
 
 # 全局异常兜底：WinForms 的事件处理器里一旦抛出未捕获异常，进程会**静默退出**。
-# 这里统一记录到 %TEMP%\paperpilot-launcher-error.log 并弹窗，避免“点一下窗口就没了”。
+# 这里统一记录到 %TEMP%\papilot-launcher-error.log 并弹窗，避免“点一下窗口就没了”。
 try {
   [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
   [System.Windows.Forms.Application]::add_ThreadException({
     param($s, $e)
-    $log = Join-Path $env:TEMP 'paperpilot-launcher-error.log'
+    $log = Join-Path $env:TEMP 'papilot-launcher-error.log'
     try {
       $line = '[' + (Get-Date).ToString('o') + '] ' + $e.Exception.ToString() + "`r`n"
       [System.IO.File]::AppendAllText($log, $line, (New-Object System.Text.UTF8Encoding($false)))
@@ -72,45 +76,83 @@ try {
     try {
       [System.Windows.Forms.MessageBox]::Show(
         '界面异常：' + $e.Exception.Message + "`n`n日志：" + $log,
-        'PaperPilot 控制台', 'OK', 'Error', 'Button1', 'DefaultDesktopOnly') | Out-Null
+        'Papilot 控制台', 'OK', 'Error', 'Button1', 'DefaultDesktopOnly') | Out-Null
     } catch { }
   })
 } catch { }
 
 # 单实例锁：已在运行则把窗口拉到前台；正在启动则等 5 秒；确实找不到才提示。
-$script:mutex = New-Object System.Threading.Mutex($false, 'PaperPilotLauncherMutex')
+$script:mutex = New-Object System.Threading.Mutex($false, 'PapilotLauncherMutex')
 if (-not $script:mutex.WaitOne(0)) {
-  $hwnd = [PpWin32]::FindWindow([IntPtr]::Zero, 'PaperPilot 后台 · 控制台')
+  $hwnd = [PpWin32]::FindWindow([IntPtr]::Zero, 'Papilot 后台 · 控制台')
   if ($hwnd -eq [IntPtr]::Zero) {
     for ($i = 0; $i -lt 10; $i++) {
       Start-Sleep -Milliseconds 500
-      $hwnd = [PpWin32]::FindWindow([IntPtr]::Zero, 'PaperPilot 后台 · 控制台')
+      $hwnd = [PpWin32]::FindWindow([IntPtr]::Zero, 'Papilot 后台 · 控制台')
       if ($hwnd -ne [IntPtr]::Zero) { break }
     }
   }
   if ($hwnd -ne [IntPtr]::Zero) {
-    [void][PpWin32]::ShowWindow($hwnd, 9)
-    [void][PpWin32]::SetForegroundWindow($hwnd)
     # 把已有实例的 PID 写进 pid 文件：bat 用它做「是否真的起来了」的存活判断。
+    $ownerPid = [uint32]0
     try {
-      $ownerPid = [uint32]0
       [void][PpWin32]::GetWindowThreadProcessId($hwnd, [ref]$ownerPid)
       if ($ownerPid -gt 0) {
-        [System.IO.File]::WriteAllText((Join-Path $env:TEMP 'paperpilot-launcher.pid'), [string]$ownerPid,
+        [System.IO.File]::WriteAllText((Join-Path $env:TEMP 'papilot-launcher.pid'), [string]$ownerPid,
           (New-Object System.Text.UTF8Encoding($false)))
       }
     } catch { }
-    Write-Boot 'duplicate launch: activated existing window'
+
+    # ★ 进程活着 ≠ 界面能用。UI 线程被同步探测卡死时，ShowWindow/SetForegroundWindow
+    #   只会被排队、永远不处理 —— 用户看到的正是「再双击也没反应」。
+    #   这里用 400ms 窗口应答探测区分两种情形，卡住时给一键重启（不影响后台服务）。
+    $probe = [IntPtr]::Zero
+    $answered = [PpWin32]::SendMessageTimeout($hwnd, 0, [IntPtr]::Zero, [IntPtr]::Zero, 2, 400, [ref]$probe)
+    if ($answered -ne [IntPtr]::Zero) {
+      [void][PpWin32]::ShowWindow($hwnd, 9)
+      [void][PpWin32]::SetForegroundWindow($hwnd)
+      Write-Boot 'duplicate launch: activated existing window'
+      exit 0
+    }
+
+    Write-Boot ('duplicate launch: window found but NOT responding (pid=' + $ownerPid + ')')
+    $ans = [System.Windows.Forms.MessageBox]::Show(
+      '控制台已经在运行，但界面 400ms 内没有响应（UI 线程被卡住了）。' + "`n`n" +
+      '要结束它并重新打开吗？' + "`n" +
+      '账号后台与公网通道是独立进程，不受影响。',
+      'Papilot 后台 · 界面无响应', 'YesNo', 'Warning', 'Button1', 'DefaultDesktopOnly')
+    if ($ans -eq 'Yes' -and $ownerPid -gt 0) {
+      try { Stop-Process -Id ([int]$ownerPid) -Force -ErrorAction Stop } catch { }
+      # 等旧进程真的消失再拉起：否则新实例会抢不到单实例锁，落到「已在运行但没窗口」分支。
+      for ($i = 0; $i -lt 30; $i++) {
+        $still = $false
+        try { [void](Get-Process -Id ([int]$ownerPid) -ErrorAction Stop); $still = $true } catch { $still = $false }
+        if (-not $still) { break }
+        Start-Sleep -Milliseconds 100
+      }
+      try { Remove-Item (Join-Path $env:TEMP 'papilot-launcher.pid') -Force -ErrorAction SilentlyContinue } catch { }
+      try {
+        # 这里不能复用 Start-HiddenProcess：它在脚本更后面才定义，而这段代码在启动早期执行。
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName = 'powershell.exe'
+        $psi.Arguments = '-NoProfile -STA -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $PSCommandPath + '"'
+        $psi.WorkingDirectory = (Split-Path -Parent $PSScriptRoot)
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        [void][System.Diagnostics.Process]::Start($psi)
+      } catch { }
+      Write-Boot 'duplicate launch: killed hung instance and relaunched'
+    }
     exit 0
   }
   Write-Boot 'duplicate launch: mutex held but no window found'
   [System.Windows.Forms.MessageBox]::Show(
     '控制台已在运行，但窗口没找到（可能正在启动或卡在初始化）。' + "`n`n请等 10 秒再双击；仍然不行就查看日志：" + $script:BootLog,
-    'PaperPilot 后台', 'OK', 'Warning', 'Button1', 'DefaultDesktopOnly') | Out-Null
+    'Papilot 后台', 'OK', 'Warning', 'Button1', 'DefaultDesktopOnly') | Out-Null
   exit 0
 }
 try {
-  [System.IO.File]::WriteAllText((Join-Path $env:TEMP 'paperpilot-launcher.pid'), [string]$PID,
+  [System.IO.File]::WriteAllText((Join-Path $env:TEMP 'papilot-launcher.pid'), [string]$PID,
     (New-Object System.Text.UTF8Encoding($false)))
 } catch { }
 Write-Boot 'mutex acquired'
@@ -132,8 +174,8 @@ Write-Boot ('root=' + $ProjectRoot)
 # 依赖全部在 runtime\cloudflared\（cloudflared.exe + token.txt + 运行器），
 # 随移动硬盘走：换电脑 / 换盘符均可直接使用（勿改成绝对路径）。
 $CfDir             = Join-Path $ProjectRoot 'runtime\cloudflared'
-$TunnelBat         = Join-Path $CfDir 'cloudflared-run-paperpilot.bat'
-$TunnelLog         = Join-Path $CfDir 'logs\cf-run-paperpilot.log'
+$TunnelBat         = Join-Path $CfDir 'cloudflared-run-papilot.bat'
+$TunnelLog         = Join-Path $CfDir 'logs\cf-run-papilot.log'
 $TunnelTokenFile   = Join-Path $CfDir 'token.txt'
 $TunnelMetricsPort = 20250
 $TunnelReadyUrl    = 'http://127.0.0.1:' + $TunnelMetricsPort + '/ready'
@@ -175,9 +217,19 @@ function Start-HiddenProcess($fileName, $arguments, $workDir) {
 }
 
 function Get-PortOwnerPid {
+  # ★ 不要用 Get-NetTCPConnection：本机实测 1200ms（走 CIM 提供程序），在 UI 线程上就是硬卡顿。
+  #   netstat -ano 约 100ms，且不依赖 WMI 服务健康状态。
   try {
-    $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($conn) { return [int]$conn.OwningProcess }
+    $lines = & "$env:SystemRoot\System32\netstat.exe" -ano -p tcp 2>$null
+    foreach ($ln in $lines) {
+      if (-not $ln) { continue }
+      $parts = ($ln -replace '\s+', ' ').Trim().Split(' ')
+      if ($parts.Length -lt 5) { continue }
+      if ($parts[1] -notmatch (':' + $Port + '$')) { continue }
+      if ($parts[3] -ne 'LISTENING') { continue }
+      $p = 0
+      if ([int]::TryParse($parts[4], [ref]$p)) { return $p }
+    }
   } catch {}
   return 0
 }
@@ -228,8 +280,9 @@ function Get-ServerProcess {
 }
 
 function Test-Health {
+  # ⚠ 仅用于显式诊断（一次 1 秒的同步 HTTP）。UI 定时器 / 点击链路一律走
+  #   Get-HealthCached（带端口前置 + 负缓存），不要再直接调用本函数。
   try {
-    # 1s：健康检查在 UI 定时器里每 3s 跑一次，超时越长越容易拖住窗口
     $r = Invoke-RestMethod -Uri $HealthUrl -UseBasicParsing -TimeoutSec 1 -ErrorAction Stop
     return ($null -ne $r -and $r.ok)
   } catch { return $false }
@@ -251,7 +304,8 @@ function Get-ServerState([object]$HealthOk = $null) {
   if (Test-PortOpen $Port 150) {
     $portPid = Get-PortOwnerPidCached
     if ($HealthOk -eq $true) { return @{ State = 'running'; PortPid = $portPid } }
-    if ($null -eq $HealthOk -and (Test-Health)) { return @{ State = 'running'; PortPid = $portPid } }
+    # ★ 这里不再兜底调 Test-Health：那是一次 1 秒的同步 HTTP，藏在状态机里最容易被忽略。
+    #   健康快照由 Get-HealthCached 统一负责（带端口前置 + 负缓存），调用方传入即可。
     $age = 999
     $started = $null
     if ($portPid -gt 0) { $started = Get-ProcessStart $portPid }
@@ -338,7 +392,7 @@ function Start-Server {
   if ((Get-ServerProcess).Count -gt 0) { return 'starting' }
   try {
     if (-not (Test-Path $DataDir)) { New-Item -ItemType Directory -Path $DataDir -Force | Out-Null }
-    # 清除手动停机标记：用户点了启动 = 明确要服务运行（PaperPilotGuard 守护据此恢复守护）
+    # 清除手动停机标记：用户点了启动 = 明确要服务运行（PapilotGuard 守护据此恢复守护）
     Remove-Item (Join-Path $DataDir 'stopped-account.flag') -Force -ErrorAction SilentlyContinue
     if ((Test-Path $ServerLog) -and (Get-Item $ServerLog).Length -gt 20MB) {
       $rotName = 'server-console-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log'
@@ -361,6 +415,16 @@ function Start-Server {
 function Stop-Server {
   $killed = 0
   $portPid = Get-PortOwnerPid
+  # ★ 先留痕再杀：Stop-Process -Force 走 TerminateProcess，服务端的 SIGTERM 处理器
+  #   （account-server.js 的 shutdown）永远不会执行，日志里就不会有 shutdown 记录 ——
+  #   历史上「后端无声消失」查不出是谁动的手，就是缺了这一行。
+  if ($portPid -gt 0) {
+    try {
+      $enc = New-Object System.Text.UTF8Encoding($false)
+      [System.IO.File]::AppendAllText($ServerLog,
+        ('[' + (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss.fffZ') + '] (launcher) stop-server: terminate pid ' + $portPid + "`r`n"), $enc)
+    } catch { }
+  }
   if ($portPid -gt 0) {
     try { Stop-Process -Id $portPid -Force -ErrorAction Stop; $killed++ } catch {}
   }
@@ -369,10 +433,9 @@ function Stop-Server {
       try { Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop; $killed++ } catch {}
     }
   }
-  # 手动停机标记：PaperPilotGuard 守护看到此标记不会复活服务（下次 Start-Server 自动清除）
-  if ($killed -gt 0) {
-    try { Set-Content (Join-Path $DataDir 'stopped-account.flag') 'stopped by launcher' -Encoding ASCII } catch {}
-  }
+  # 手动停机标记：看门狗 / PapilotGuard 看到此标记不会复活服务（下次 Start-Server 自动清除）。
+  # ★ 不看 $killed：用户点了「停止」就是明确意图，哪怕当时进程已经不在，也不该被 9 秒后自动拉起。
+  try { Set-Content (Join-Path $DataDir 'stopped-account.flag') ('stopped by launcher @ ' + (Get-Date).ToString('o') + ' killed=' + $killed) -Encoding ASCII } catch {}
   Clear-PortPidCache
   $script:srvProcAt = [datetime]::MinValue
   return $killed
@@ -406,7 +469,8 @@ function Invoke-AdminApi([string]$method, [string]$path, $body) {
     Method = $method
     Uri = ('http://127.0.0.1:' + $Port + $path)
     UseBasicParsing = $true
-    TimeoutSec = 30
+    # ★ 30s 会让「保存」这类按钮把整个窗口冻住半分钟；本机回环 8s 已经非常宽裕。
+    TimeoutSec = 8
     ErrorAction = 'Stop'
   }
   if ($null -ne $body) {
@@ -440,7 +504,8 @@ function Get-HttpErrorDetail($err) {
 }
 
 function Require-ServerRunning {
-  if (Test-Health) { return $true }
+  # 走缓存（8s），别在这里再开一次同步 HTTP——点击链路上每多一次探测就多一次白屏
+  if (Get-HealthCached 8) { return $true }
   [System.Windows.Forms.MessageBox]::Show('账号后台服务未运行，请先在主窗口点击「启动后台」。', '服务未运行', 'OK', 'Warning') | Out-Null
   return $false
 }
@@ -1181,7 +1246,7 @@ function Show-RegisterUser {
         if ($r2.membership -and $r2.membership.expiresAt) { $exp = ([string]$r2.membership.expiresAt).Substring(0, 10) }
         $extra = "`n" + '已开通 Pro ' + $months + ' 个月，到期 ' + $exp
       }
-      [System.Windows.Forms.MessageBox]::Show('已注册 ' + $txtEmail.Text.Trim() + $extra + "`n`n" + '可在 Zotero：设置 → PaperPilot 中登录使用。', '注册成功', 'OK', 'Information') | Out-Null
+      [System.Windows.Forms.MessageBox]::Show('已注册 ' + $txtEmail.Text.Trim() + $extra + "`n`n" + '可在 Zotero：设置 → Papilot 中登录使用。', '注册成功', 'OK', 'Information') | Out-Null
       $dlg.Close()
     } catch {
       $lblMsg2.Text = '注册失败：' + (Get-HttpErrorDetail $_)
@@ -2643,8 +2708,8 @@ function Show-MembershipManager {
 
 # ---------------- 开机自启（HKCU Run 键：账号后台 + 公网通道） ----------------
 $script:RunKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-$script:RunKeyName = 'PaperPilotAccountServer'
-$script:RunKeyNameTunnel = 'PaperPilotTunnel'
+$script:RunKeyName = 'PapilotAccountServer'
+$script:RunKeyNameTunnel = 'PapilotTunnel'
 function Get-StartupEnabled {
   try {
     $p = Get-ItemProperty -Path $script:RunKeyPath -ErrorAction Stop
@@ -2655,7 +2720,7 @@ function Set-Startup([bool]$enable) {
   if ($enable) {
     Set-ItemProperty -Path $script:RunKeyPath -Name $script:RunKeyName -Value (Join-Path $PSScriptRoot 'start-server-hidden.vbs')
     # 公网通道自启：项目内 vbs（随移动硬盘走；换电脑后点两次本按钮即可刷新路径）
-    Set-ItemProperty -Path $script:RunKeyPath -Name $script:RunKeyNameTunnel -Value (Join-Path $ProjectRoot 'runtime\cloudflared\cloudflared-run-paperpilot-hidden.vbs')
+    Set-ItemProperty -Path $script:RunKeyPath -Name $script:RunKeyNameTunnel -Value (Join-Path $ProjectRoot 'runtime\cloudflared\cloudflared-run-papilot-hidden.vbs')
   } else {
     Remove-ItemProperty -Path $script:RunKeyPath -Name $script:RunKeyName -ErrorAction SilentlyContinue
     Remove-ItemProperty -Path $script:RunKeyPath -Name $script:RunKeyNameTunnel -ErrorAction SilentlyContinue
@@ -2664,7 +2729,7 @@ function Set-Startup([bool]$enable) {
 
 # ---------------- 随控制台自动拉起后台与通道（1.8.1） ----------------
 # 默认开启：双击 bat 后不需要再点两个「启动」。偏好存 HKCU，换盘不影响。
-$script:PrefKey = 'HKCU:\Software\PaperPilot'
+$script:PrefKey = 'HKCU:\Software\Papilot'
 function Get-AutoBootServices {
   try {
     $p = Get-ItemProperty -Path $script:PrefKey -Name AutoStartServices -ErrorAction Stop
@@ -2754,6 +2819,10 @@ $script:tunProcCount = 0
 $script:lastSvcState = ''
 $script:lastTunState = ''
 $script:lastBacklogOverdue = $false
+# 健康探测的负缓存 / 退避（见 Get-HealthCached）：失败也要记账，否则一拍会重发多次探测
+$script:healthFailAt = [datetime]::MinValue
+$script:healthHardFail = 0
+$script:tickBusy = $false
 
 # ---------------- 通用控件工厂 ----------------
 function New-UiLabel {
@@ -2885,15 +2954,37 @@ function Invoke-UiApi {
 }
 
 function Get-HealthCached {
-  param([int]$MaxAgeSec = 6)
-  if ($script:health -and ((Get-Date) - $script:healthAt).TotalSeconds -lt $MaxAgeSec) { return $script:health }
+  param([int]$MaxAgeSec = 8)
+  $now = Get-Date
+  if ($script:health -and ($now - $script:healthAt).TotalSeconds -lt $MaxAgeSec) { return $script:health }
+
+  # ★ 负缓存：失败也要记账。历史 bug 是「只在成功时写 healthAt」，于是后端一挂，
+  #   每个 UI 定时器拍子都会重发 2~3 次探测，每次吃满 1 秒 → 窗口彻底不响应。
+  #   连续 3 次超时视为「后端半死」，冷却拉到 15 秒，避免把 UI 线程耗在黑洞上。
+  $cool = 4
+  if ([int]$script:healthHardFail -ge 3) { $cool = 15 }
+  if ($script:healthFailAt -ne [datetime]::MinValue -and
+      ($now - $script:healthFailAt).TotalSeconds -lt $cool) { return $null }
+
+  # ★ 端口前置：端口没开就不要发 HTTP。本机对「关闭的回环端口」发一次请求要等满 1 秒
+  #   （SYN 被丢弃，约 2s 才失败），这一次 TCP 探测只要 120ms。
+  if (-not (Test-PortOpen $Port 120)) {
+    $script:health = $null
+    $script:healthFailAt = $now
+    return $null
+  }
+
   try {
     $h = Invoke-UiApi 'GET' '/api/health' $null 1
     $script:health = $h
-    $script:healthAt = Get-Date
+    $script:healthAt = $now
+    $script:healthFailAt = [datetime]::MinValue
+    $script:healthHardFail = 0
     return $h
   } catch {
     $script:health = $null
+    $script:healthFailAt = $now
+    $script:healthHardFail = [int]$script:healthHardFail + 1
     return $null
   }
 }
@@ -2926,7 +3017,7 @@ function Get-LatestXpi {
 
 # ---------------- 页面骨架 ----------------
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'PaperPilot 后台 · 控制台'
+$form.Text = 'Papilot 后台 · 控制台'
 $form.ClientSize = New-Object System.Drawing.Size(1000, 700)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedSingle'
@@ -2947,7 +3038,7 @@ $logo.SetBounds(18, 18, 30, 30)
 $logo.SizeMode = 'Zoom'
 try { $logo.Image = $script:appIcon.ToBitmap() } catch { }
 [void]$side.Controls.Add($logo)
-[void](New-UiLabel $side 'PaperPilot' 56 15 126 22 12 $true ([System.Drawing.Color]::White))
+[void](New-UiLabel $side 'Papilot' 56 15 126 22 12 $true ([System.Drawing.Color]::White))
 [void](New-UiLabel $side '后台控制台' 56 38 126 18 8.5 $false ([System.Drawing.Color]::FromArgb(148, 163, 184)))
 
 $navDefs = @(
@@ -3052,7 +3143,7 @@ $script:ui.btnRestart = New-UiButton $gQuick '重启后台' 228 28 100 30 { Do-R
 [void](New-UiButton $gQuick '测试公网' 452 28 96 30 { Do-TestSite })
 [void](New-UiButton $gQuick '刷新状态' 556 28 96 30 { $script:healthAt = [datetime]::MinValue; Update-All })
 [void](New-UiButton $gQuick '计费与会员' 660 28 100 30 { Show-UiPage 'billing' })
-[void](New-UiLabel $gQuick '停止/重启会中断正在进行的 AI 请求；关闭窗口只最小化到托盘，不影响服务。' 12 60 744 18 8 $false $script:ColMuted)
+[void](New-UiLabel $gQuick '停止/重启会中断正在进行的 AI 请求；关闭窗口 = 退出控制台（后台服务继续运行）。' 12 60 744 18 8 $false $script:ColMuted)
 
 $gEvents = New-UiGroup $pgOverview '最近事件（控制台操作审计）' 16 306 772 274
 $script:ui.evtList = New-Object System.Windows.Forms.ListView
@@ -3289,26 +3380,47 @@ function Format-Uptime([datetime]$Started) {
 function Notify-Transition {
   param([string]$Text, [string]$Level = 'Warning')
   if (-not $tray.Visible) { return }
-  try { $tray.ShowBalloonTip(3000, 'PaperPilot 后台', $Text, $Level) } catch { }
+  try { $tray.ShowBalloonTip(3000, 'Papilot 后台', $Text, $Level) } catch { }
 }
 
 function Update-StatusUI {
-  $h = Get-HealthCached 6
+  $h = Get-HealthCached 8
   $st = Get-ServerState ($null -ne $h)
+  # 服务端在 /api/health 里回 pid：直接用它，省掉一次 netstat；顺便把缓存喂给其它调用方
+  if ($h -and $h.pid) {
+    $hp = 0
+    if ([int]::TryParse([string]$h.pid, [ref]$hp) -and $hp -gt 0) {
+      $script:portPidCache = $hp
+      $st.PortPid = $hp
+    }
+  }
   $script:svcState = $st.State
   $ver = '—'
   if ($h -and $h.version) { $ver = [string]$h.version }
+  # 事件循环延迟（服务端自报）：>500ms 说明后端被同步 IO 堵住，正是"端口在听但不干活的"前兆
+  $lagMs = 0
+  $lagTxt = ''
+  if ($h -and $null -ne $h.lagMs) {
+    try { $lagMs = [int]$h.lagMs } catch { $lagMs = 0 }
+    if ($lagMs -ge 200) { $lagTxt = ' · 事件循环延迟 ' + $lagMs + 'ms' }
+  }
 
   if ($st.State -eq 'running') {
     $up = ''
     $started = Get-ProcessStart $st.PortPid
     if ($started) { $up = ' · 已运行 ' + (Format-Uptime $started) }
-    Set-UiCard $script:ui.svcCard '运行中' ('PID ' + $st.PortPid + $up) $script:ColGreen
+    if ($lagMs -ge 1000) {
+      Set-UiCard $script:ui.svcCard '运行中（卡顿）' ('事件循环延迟 ' + $lagMs + 'ms' + $up) $script:ColAmber
+      $script:ui.pillSvc.Text = '● 后台 卡顿'
+      $script:ui.pillSvc.ForeColor = $script:ColAmber
+    } else {
+      Set-UiCard $script:ui.svcCard '运行中' ('PID ' + $st.PortPid + $up) $script:ColGreen
+      $script:ui.pillSvc.Text = '● 后台 运行中'
+      $script:ui.pillSvc.ForeColor = $script:ColGreen
+    }
     $script:ui.svcLine.Text = '● 运行中'
     $script:ui.svcLine.ForeColor = $script:ColGreen
-    $script:ui.svcMeta.Text = 'PID ' + $st.PortPid + $up + ' · 服务端 v' + $ver
-    $script:ui.pillSvc.Text = '● 后台 运行中'
-    $script:ui.pillSvc.ForeColor = $script:ColGreen
+    $script:ui.svcMeta.Text = 'PID ' + $st.PortPid + $up + ' · 服务端 v' + $ver + $lagTxt
     $script:ui.btnSvcStart.Enabled = $false
     $script:ui.btnSvcStop.Enabled = $true
     $script:ui.btnSvcRestart.Enabled = $true
@@ -3372,7 +3484,78 @@ function Update-StatusUI {
   if ($st.State -eq 'running') { $stateTxt = '运行中' }
   elseif ($st.State -eq 'starting') { $stateTxt = '启动中' }
   elseif ($st.State -eq 'degraded') { $stateTxt = '异常' }
-  try { $tray.Text = 'PaperPilot 后台 · ' + $stateTxt } catch { }
+  try { $tray.Text = 'Papilot 后台 · ' + $stateTxt } catch { }
+  Invoke-ServiceWatchdog $st.State
+}
+
+# ---------------- 自愈看门狗（v1.9.0） ----------------
+# 后端「无声消失」是这个项目的历史顽疾：没有守护计划任务，崩溃只丢 stderr，控制台只剩一个红点。
+# 控制台本来就是最常驻的进程，让它兼任看门狗：
+#   · 连续 3 拍（约 9s）确认服务不在 → 自动拉起
+#   · 2 分钟内不重复；每小时最多 5 次，超过就停手并提示人工介入（避免起不来时疯狂重启）
+#   · 用户点了「停止」（stopped-account.flag）或关了开机自启 → 一律不插手
+#   · 同时尊重 $script:busy：用户正在手动启停时绝不并发操作
+$script:svcFailStreak = 0
+$script:lastAutoRestartAt = [datetime]::MinValue
+$script:autoRestartCount = 0
+$script:autoRestartHourAt = [datetime]::MinValue
+$script:watchdogGaveUp = $false
+
+function Invoke-ServiceWatchdog([string]$State) {
+  if ($script:watchdogGaveUp) { return }
+  if ($script:busy) { return }
+  if ($State -eq 'running' -or $State -eq 'starting') { $script:svcFailStreak = 0; return }
+  if (-not (Get-AutoBootServices)) { return }
+  try { if (Test-Path (Join-Path $DataDir 'stopped-account.flag')) { return } } catch { return }
+
+  $script:svcFailStreak = [int]$script:svcFailStreak + 1
+  if ($script:svcFailStreak -lt 3) { return }
+
+  $now = Get-Date
+  if ($script:lastAutoRestartAt -ne [datetime]::MinValue -and
+      ($now - $script:lastAutoRestartAt).TotalSeconds -lt 120) { return }
+  if ($script:autoRestartHourAt -eq [datetime]::MinValue -or
+      ($now - $script:autoRestartHourAt).TotalHours -ge 1) {
+    $script:autoRestartHourAt = $now
+    $script:autoRestartCount = 0
+  }
+  if ([int]$script:autoRestartCount -ge 5) {
+    $script:watchdogGaveUp = $true
+    $lblMsg.Text = '后台反复启动失败，已停止自动拉起：请查 server\data\server-console.log'
+    Write-LauncherAudit 'watchdog-giveup' ('count=' + $script:autoRestartCount) $false
+    Write-Boot 'watchdog: give up after 5 restarts in one hour'
+    return
+  }
+
+  $script:svcFailStreak = 0
+  $r = Start-Server
+  # 'starting' = 端口没开但还有 node 残留（上一次退出的余波）。这不是一次真正的重启尝试，
+  # 不能吃掉 2 分钟退避，否则明明立刻能起也会白等两分钟。
+  if ($r -eq 'starting') {
+    if ([int]$script:autoRestartCount -gt 0) { $script:autoRestartCount = [int]$script:autoRestartCount - 1 }
+    Write-Boot 'watchdog: pending server process found, wait next window'
+    return
+  }
+  $script:lastAutoRestartAt = $now
+  $script:autoRestartCount = [int]$script:autoRestartCount + 1
+  $ok = -not ([string]$r).StartsWith('error:')
+  Write-LauncherAudit 'watchdog-restart' ([string]$r) $ok
+  Write-Boot ('watchdog: auto restart -> ' + $r)
+  if ($r -eq 'started') {
+    $lblMsg.Text = '检测到后台已停止，看门狗已自动拉起（约 10~30 秒就绪）…'
+    $script:pendingSince = Get-Date
+    $script:timeoutNotified = $false
+    Notify-Transition '账号后台已停止，控制台已自动重新拉起' 'Warning'
+  } else {
+    $lblMsg.Text = '看门狗拉起失败：' + [string]$r
+  }
+  # 让下一拍立即重新探测（否则负缓存会把它压住，看起来像没生效）
+  $script:health = $null
+  $script:healthAt = [datetime]::MinValue
+  $script:healthFailAt = [datetime]::MinValue
+  $script:healthHardFail = 0
+  Clear-PortPidCache
+  $script:srvProcAt = [datetime]::MinValue
 }
 
 function Update-TunnelUI {
@@ -3520,7 +3703,7 @@ function Update-BillingUI {
   }
   if ($Force -or -not $script:plans -or ((Get-Date) - $script:plansAt).TotalSeconds -gt 60) {
     try {
-      $script:plans = Invoke-UiApi 'GET' '/api/plans' $null 4
+      $script:plans = Invoke-UiApi 'GET' '/api/plans' $null 2
       $script:plansAt = Get-Date
     } catch { }
   }
@@ -3582,7 +3765,7 @@ function Update-BillingUI {
   # ---- 在线支付网关详情（1.8.3，缓存 15 秒；本机管理接口仅本机可访问）----
   if ($Force -or $null -eq $script:payGw -or ((Get-Date) - $script:payGwAt).TotalSeconds -gt 15) {
     try {
-      $script:payGw = Invoke-UiApi 'GET' '/api/admin/payment' $null 4
+      $script:payGw = Invoke-UiApi 'GET' '/api/admin/payment' $null 2
     } catch {
       $script:payGw = $null
     }
@@ -3672,7 +3855,7 @@ function Update-OpsUI {
   $script:opsAt = Get-Date
 
   try {
-    $b = Invoke-UiApi 'GET' '/api/admin/backups' $null 4
+    $b = Invoke-UiApi 'GET' '/api/admin/backups' $null 2
     if ($b.items -and @($b.items).Count -gt 0) {
       $first = @($b.items)[0]
       $script:ui.snapLine.Text = '最近快照：' + [string]$first.id + ' · ' + [string]$first.reason + ' · ' + (Format-Bytes $first.size)
@@ -3680,7 +3863,7 @@ function Update-OpsUI {
   } catch { }
 
   try {
-    $a = Invoke-UiApi 'GET' '/api/admin/alerts' $null 4
+    $a = Invoke-UiApi 'GET' '/api/admin/alerts' $null 2
     if ($a.alerts) {
       $rcp = @($a.alerts.recipients).Count
       if ($rcp -gt 0) {
@@ -3696,7 +3879,7 @@ function Update-OpsUI {
   } catch { }
 
   try {
-    $au = Invoke-UiApi 'GET' '/api/admin/audit?limit=8' $null 4
+    $au = Invoke-UiApi 'GET' '/api/admin/audit?limit=8' $null 2
     $script:ui.auditList.Items.Clear()
     foreach ($e in @($au.items)) {
       $when = ''
@@ -3720,7 +3903,7 @@ function Update-AboutUI {
   if ($xpi) { $script:ui.verXpi.Text = '最新安装包：' + $xpi.Name } else { $script:ui.verXpi.Text = '最新安装包：dist 下暂无' }
   $script:ui.envNode.Text = 'Node：' + $NodeExe
   $cfExe = Join-Path $CfDir 'cloudflared.exe'
-  $cfRun = Join-Path $CfDir 'cloudflared-run-paperpilot.bat'
+  $cfRun = Join-Path $CfDir 'cloudflared-run-papilot.bat'
   $okCf = (Test-Path $cfExe) -and (Test-Path $cfRun)
   $script:ui.envCf.Text = 'cloudflared：' + $(if ($okCf) { '就绪（exe + 运行器）' } else { '缺失（检查 runtime\cloudflared）' })
   $script:ui.envCf.ForeColor = $(if ($okCf) { $script:ColText } else { $script:ColRed })
@@ -3743,6 +3926,15 @@ function Update-All {
   $script:ui.lblRefresh.Text = '刷新 ' + (Get-Date -Format 'HH:mm:ss')
 }
 
+# 等一会儿但**保持窗口可响应**：所有按钮处理里的等待都走这里，不许裸 Start-Sleep。
+function Wait-Ui([int]$Ms) {
+  $deadline = (Get-Date).AddMilliseconds($Ms)
+  while ((Get-Date) -lt $deadline) {
+    [System.Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 40
+  }
+}
+
 # ============================================================
 # 操作封装（按钮 / 托盘共用）
 # ============================================================
@@ -3750,11 +3942,13 @@ function Do-StartServer {
   if ($script:busy) { return }
   $script:busy = $true
   try {
+    $lblMsg.Text = '正在启动账号后台…'
+    [System.Windows.Forms.Application]::DoEvents()
     $r = Start-Server
     $ok = -not ($r -eq 'error:') -and -not ([string]$r).StartsWith('occupied:')
     Write-LauncherAudit 'start-server' ([string]$r) $ok
     Show-StartResult $r
-    Start-Sleep -Milliseconds 300
+    Wait-Ui 300
     Update-All
   } finally { $script:busy = $false }
 }
@@ -3768,10 +3962,14 @@ function Do-StopServer {
   }
   $script:busy = $true
   try {
+    $lblMsg.Text = '正在停止账号后台…'
+    [System.Windows.Forms.Application]::DoEvents()
     $n = Stop-Server
     Write-LauncherAudit 'stop-server' ('killed=' + $n) $true
     if ($n -gt 0) { $lblMsg.Text = '已停止账号后台服务' } else { $lblMsg.Text = '后台未在运行' }
     $script:health = $null
+    $script:healthFailAt = [datetime]::MinValue
+    $script:healthHardFail = 0
     $script:channels = $null
     Update-All
   } finally { $script:busy = $false }
@@ -3783,16 +3981,25 @@ function Do-RestartServer {
   if ($ans -ne 'Yes') { return }
   $script:busy = $true
   try {
+    $lblMsg.Text = '正在停止账号后台…'
+    [System.Windows.Forms.Application]::DoEvents()
     $n = Stop-Server
-    for ($i = 0; $i -lt 20; $i++) {
-      if ((Get-PortOwnerPid) -eq 0) { break }
-      Start-Sleep -Milliseconds 500
+    # ★ 原实现是 20 × (Get-NetTCPConnection 1.2s + Start-Sleep 500ms) ≈ 最坏 40 秒不响应。
+    #   现在用 150ms TCP 探测 + Wait-Ui（内部 DoEvents），总预算 8 秒，窗口全程可用。
+    $deadline = (Get-Date).AddSeconds(8)
+    while ((Get-Date) -lt $deadline) {
+      if (-not (Test-PortOpen $Port 150)) { break }
+      Wait-Ui 150
     }
-    Start-Sleep -Milliseconds 300
+    Wait-Ui 200
+    $lblMsg.Text = '正在启动账号后台…'
+    [System.Windows.Forms.Application]::DoEvents()
     $r = Start-Server
     Write-LauncherAudit 'restart-server' ('killed=' + $n + ' / ' + [string]$r) $true
     Show-StartResult $r
     $script:health = $null
+    $script:healthFailAt = [datetime]::MinValue
+    $script:healthHardFail = 0
     $script:channels = $null
     Update-All
   } finally { $script:busy = $false }
@@ -3810,7 +4017,7 @@ function Do-StartTunnel {
       [System.Windows.Forms.MessageBox]::Show('缺少令牌文件：runtime\cloudflared\token.txt' + "`n" + '可运行 scripts\tunnel\refresh-token.ps1 从 _brain 重新提取。', '无法启动', 'OK', 'Warning') | Out-Null
     }
     elseif ($r -eq 'missing') {
-      [System.Windows.Forms.MessageBox]::Show('缺少运行器：runtime\cloudflared\cloudflared-run-paperpilot.bat' + "`n" + '（cloudflared.exe 是否随盘携带？）', '无法启动', 'OK', 'Warning') | Out-Null
+      [System.Windows.Forms.MessageBox]::Show('缺少运行器：runtime\cloudflared\cloudflared-run-papilot.bat' + "`n" + '（cloudflared.exe 是否随盘携带？）', '无法启动', 'OK', 'Warning') | Out-Null
     }
     else { $lblMsg.Text = '启动失败：' + [string]$r }
     $script:tunTick = 0
@@ -3861,6 +4068,8 @@ function Do-TestPayGateway {
       $script:ui.pgwMsg.Text = $(if ($Deep) { '深度测试中（最长 30 秒）…' } else { '连接测试中…' })
       $script:ui.pgwMsg.ForeColor = $script:ColMuted
     }
+    # 先把「测试中」画出来再阻塞，否则用户只会看到一片白
+    [System.Windows.Forms.Application]::DoEvents()
     $res = $null
     try {
       $res = Invoke-UiApi 'POST' '/api/admin/payment/test' @{ deep = $Deep } 30
@@ -3960,29 +4169,31 @@ function Fill-LauncherEvents {
 # ============================================================
 $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Icon = $script:appIcon
-$tray.Text = 'PaperPilot 后台 · 控制台'
-$tray.Visible = $false
+$tray.Text = 'Papilot 后台 · 控制台'
+# ★ 托盘图标常驻：旧版只在「关闭窗口」时才显示，而 Win11 默认把新图标折叠进溢出区，
+#   用户既关不掉窗口也找不到托盘 → 只能当它卡死。现在从启动起就可见。
+$tray.Visible = $true
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $miShow = $menu.Items.Add('显示主窗口')
+$miHide = $menu.Items.Add('最小化到托盘')
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 $miStart = $menu.Items.Add('启动后台')
 $miStop = $menu.Items.Add('停止后台')
 $miAdmin = $menu.Items.Add('打开管理页')
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
-$miExit = $menu.Items.Add('退出程序')
+$miExit = $menu.Items.Add('退出程序（关闭控制台）')
 $tray.ContextMenuStrip = $menu
 
 $script:trayTipShown = $false
 $script:allowExit = $false
 
 function Hide-ToTray {
-  $form.WindowState = 'Minimized'
   $form.Hide()
   $tray.Visible = $true
   if (-not $script:trayTipShown) {
     $script:trayTipShown = $true
-    $tray.ShowBalloonTip(2000, 'PaperPilot 后台', '控制台已最小化到系统托盘继续运行，点击托盘图标恢复窗口。', 'Info')
+    $tray.ShowBalloonTip(2500, 'Papilot 后台', '控制台已收到托盘，服务继续运行；左键点托盘图标可恢复窗口。', 'Info')
   }
 }
 
@@ -3991,7 +4202,7 @@ function Show-MainWindow {
   $form.WindowState = 'Normal'
   $form.Activate()
   $form.BringToFront()
-  $tray.Visible = $false
+  $tray.Visible = $true
 }
 
 function Exit-App {
@@ -4004,6 +4215,7 @@ function Exit-App {
 }
 
 $miShow.add_Click({ Show-MainWindow })
+$miHide.add_Click({ Hide-ToTray })
 $miStart.add_Click({ Do-StartServer })
 $miStop.add_Click({ Do-StopServer $false })
 $miAdmin.add_Click({ Do-OpenAdmin })
@@ -4014,17 +4226,18 @@ $tray.add_MouseClick({
   if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) { Show-MainWindow }
 })
 
-# 关闭（X）= 最小化到托盘驻留；「退出程序」是唯一真正退出入口
+# ★ 关闭（X）= 退出控制台（带确认）。旧行为是「静默最小化到托盘」，
+#   在托盘图标被折叠时表现为"窗口关不掉、进程退不掉"，是"卡死"观感的主要来源之一。
+#   退出只结束控制台本身：账号后台与公网通道是独立进程，不受影响。
 $form.add_FormClosing({
   param($s, $e)
-  if (-not $script:allowExit) {
-    $e.Cancel = $true
-    Hide-ToTray
-  }
-})
-
-$form.add_Resize({
-  if ($form.WindowState -eq 'Minimized') { Hide-ToTray }
+  if ($script:allowExit) { return }
+  $e.Cancel = $true
+  $ans = [System.Windows.Forms.MessageBox]::Show(
+    ('退出控制台？' + "`n`n" + '账号后台与公网通道会继续在后台运行，不受影响。' + "`n" +
+     '下次双击「启动Papilot后台.bat」即可重新打开控制台。'),
+    '退出控制台', 'YesNo', 'Question')
+  if ($ans -eq 'Yes') { Exit-App }
 })
 
 $form.add_Shown({
@@ -4060,7 +4273,19 @@ $script:bootTimer.Add_Tick({
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 3000
 $script:lastRefreshErr = ''
+# 慢刷新留痕：没有这份日志，下一次"卡死"仍然只能靠猜。
+$script:SlowLog = Join-Path $env:TEMP 'papilot-launcher-slow.log'
+function Write-SlowLog([string]$msg) {
+  try {
+    $line = '[' + (Get-Date).ToString('HH:mm:ss.fff') + '] ' + $msg + "`r`n"
+    [System.IO.File]::AppendAllText($script:SlowLog, $line, (New-Object System.Text.UTF8Encoding($false)))
+  } catch { }
+}
 $timer.Add_Tick({
+  # ★ 单飞：一次刷新没跑完就不允许重入（旧版无此保护，慢一拍会和下一拍叠起来）
+  if ($script:tickBusy) { return }
+  $script:tickBusy = $true
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
   try {
     Update-All
     $script:lastRefreshErr = ''
@@ -4071,6 +4296,13 @@ $timer.Add_Tick({
       Write-Boot ('refresh failed: ' + $msg + ' @ ' + $_.ScriptStackTrace)
     }
     $lblMsg.Text = '界面刷新失败：' + $msg
+  } finally {
+    $script:tickBusy = $false
+    $sw.Stop()
+    if ($sw.ElapsedMilliseconds -gt 800) {
+      Write-SlowLog ('refresh ' + $sw.ElapsedMilliseconds + 'ms page=' + $script:activePage +
+                     ' svc=' + $script:svcState + ' healthFail=' + $script:healthHardFail)
+    }
   }
 })
 $timer.Start()

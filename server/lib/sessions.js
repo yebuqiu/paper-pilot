@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 'use strict';
 /**
  * 登录设备与会话可观测（服务端 1.4.7）
@@ -317,7 +320,7 @@ function buildMail(info, platform) {
   const rows = (info.users || []).map((u) => '· ' + (u.nickname ? u.nickname + ' ' : '') + u.email
     + ' —— 活跃设备 ' + u.count + ' 台').join('\n');
   return {
-    subject: '【PaperPilot】有 ' + info.count + ' 个账号的活跃设备超过 ' + info.threshold + ' 台',
+    subject: '【Papilot】有 ' + info.count + ' 个账号的活跃设备超过 ' + info.threshold + ' 台',
     text: '以下账号在最近 ' + info.activeDays + ' 天内的活跃登录设备超过阈值（' + info.threshold + ' 台）：\n\n'
       + rows + '\n\n'
       + '**这只提示可能存在的账号共享，不自动处罚。**同一个人多台机器很正常；\n'

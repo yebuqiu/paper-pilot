@@ -1,4 +1,7 @@
-/* PaperPilot 星标评级（0-5 星）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 星标评级（0-5 星）
  * 存储：单个「★」×n 标签（如 "★★★" = 3 星），简单可靠且标签页可直接筛选。
  * 与阅读状态的互斥标签同构：设置前先清掉所有纯星标签，n=0 表示仅清除。
  * 右键「评级 1-5 星」子菜单由主线在 menus.js 接入，本模块只提供 helper。

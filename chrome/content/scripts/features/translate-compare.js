@@ -1,4 +1,7 @@
-/* PaperPilot 多引擎同屏对比（C2，0.40.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 多引擎同屏对比（C2，0.40.0）
  *
  * 为什么要有它：13 个翻译引擎质量/速度差异很大，用户选引擎只能靠「感觉」——
  * 想知道「同一段话 Google / Edge / DeepL 谁译得好、谁更快」得逐一切换引擎重译，
@@ -18,9 +21,9 @@
 /* global Zotero, Services, TranslateSvc, I18n */
 
 var TranslateCompare = {
-  WINDOW_TYPE: "paperpilot:translate-compare",
-  WINDOW_URL: "chrome://paperpilot/content/translate-compare.xhtml",
-  WINDOW_NAME: "paperpilot-translate-compare",
+  WINDOW_TYPE: "papilot:translate-compare",
+  WINDOW_URL: "chrome://papilot/content/translate-compare.xhtml",
+  WINDOW_NAME: "papilot-translate-compare",
 
   _win: null,
 
@@ -152,7 +155,7 @@ var TranslateCompare = {
       this._win = w;
       return w;
     } catch (e) {
-      Zotero.logError(new Error("PaperPilot: 打开多引擎对比窗口失败"));
+      Zotero.logError(new Error("Papilot: 打开多引擎对比窗口失败"));
       Zotero.logError(e);
       return null;
     }

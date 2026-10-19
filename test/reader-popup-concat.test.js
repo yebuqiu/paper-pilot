@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 划词浮窗 · B1 Ctrl 拼接模式 + B2 批注标记写入 测试
  *
  * 为什么要有它：拼接模式横跨「键监听 → 缓冲 → 多次浮窗事件 → 合并触发」，
@@ -88,7 +91,7 @@ function makeDoc() {
 /* ---------------- 桩环境 ---------------- */
 
 const PrefStore = new Map();
-const PREFIX = 'extensions.zotero.paperpilot.';
+const PREFIX = 'extensions.zotero.papilot.';
 const setPref = (k, v) => PrefStore.set(PREFIX + k, v);
 const clearPrefs = () => PrefStore.clear();
 
@@ -123,7 +126,7 @@ const Zotero = {
     getByLibraryAndKey: (lib, key) => (lib === 1 && key === 'ANNO1' ? anno : null),
   },
   Utilities: { Internal: { copyText: () => {}, openPreferences: () => {} } },
-  PaperPilot: { _paneID: 'paperpilot-prefs' },
+  Papilot: { _paneID: 'papilot-prefs' },
   logError() {},
 };
 
@@ -197,7 +200,7 @@ const btnByText = (t) => box.byTag('button').find((b) => b.textContent === t);
 setPref('readerPopupAutoTranslate', true);
 
 async function main() {
-RP.register('paperpilot@dev.local');
+RP.register('papilot@dev.local');
 ok(!!popupHandler, '0 renderTextSelectionPopup 已注册');
 
 /* ---------------- ① Ctrl 划词：累加缓冲 + 徽标，不触发 ---------------- */

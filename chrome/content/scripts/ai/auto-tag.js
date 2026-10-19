@@ -1,4 +1,7 @@
-/* PaperPilot AI 自动打标签 v2（0.46.0 重构增强）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot AI 自动打标签 v2（0.46.0 重构增强）
  *
  * 参考的成熟开源方案：
  *  - Karakeep(Hoarder)：受控词表（把库内已有标签注入提示词"优先复用"）+
@@ -481,7 +484,7 @@ var AutoTag = {
         { role: "system", content: String(Prefs.get("aiSystemPrompt", "") || "") },
         { role: "user", content: this.buildPrompt(ctx) },
       ]);
-      try { Zotero.debug("[PaperPilot] AutoTag AI raw reply: " + String(reply).slice(0, 500)); } catch (e) { /* ignore */ }
+      try { Zotero.debug("[Papilot] AutoTag AI raw reply: " + String(reply).slice(0, 500)); } catch (e) { /* ignore */ }
       const r = this._processReply(reply, ctx);
       if (!r.items.length) {
         throw new Error((I18n.isZh ? "AI 未返回有效标签（原始回复：" : "No valid tags (raw: ")
@@ -526,8 +529,8 @@ var AutoTag = {
       selected: null,
     };
     win.openDialog(
-      "chrome://paperpilot/content/tag-preview.xhtml",
-      "paperpilot-tag-preview",
+      "chrome://papilot/content/tag-preview.xhtml",
+      "papilot-tag-preview",
       "chrome,modal,centerscreen,resizable",
       io
     );
@@ -544,14 +547,14 @@ var AutoTag = {
       return;
     }
     if (!AIClient.hasKey()) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot", I18n.t("chatNoKey"));
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot", I18n.t("chatNoKey"));
       return;
     }
 
     const zh = I18n.isZh;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
-    const bootProgress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    pw.changeHeadline("Papilot");
+    const bootProgress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       zh ? "正在准备库内标签词表…" : "Preparing tag vocabulary…");
     pw.show();
     try { await this._collectVocabulary(); } catch (e) { /* 词表失败不影响打标 */ }
@@ -561,7 +564,7 @@ var AutoTag = {
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(30);
         const r = await this.suggestDetailed(item);

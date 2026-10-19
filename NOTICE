@@ -1,14 +1,53 @@
-PaperPilot 文献副驾
-Copyright 2026 Cassiuschen
+Papilot 文献副驾
+Copyright (c) 2026 Cassiuschen. All rights reserved.
 
 This product includes software developed by Cassiuschen
-(https://gitee.com/cassiuschen9261/paper-pilot).
+(https://gitee.com/cassiuschen9261/zotero-papilot).
 
-"PaperPilot" and "文献副驾" are product names of the copyright holder.
-This NOTICE does not grant any trademark rights.
+------------------------------------------------------------------
+许可范围 / Licensing scope
+------------------------------------------------------------------
+1. 客户端（本仓库：bootstrap.js、chrome/、locale/、prefs.js 及相关脚本）
+   以 Apache License 2.0 发布，全文见 LICENSE。允许商业使用、修改与再分发，
+   但须保留本 NOTICE 与许可证副本。
 
-数据源说明 / Data sources:
-- Semantic Scholar API (https://www.semanticscholar.org/product/api) — 公开学术数据接口
-- easyScholar (https://www.easyscholar.cn) — 期刊等级数据查询
-- Unpaywall (https://unpaywall.org) — 开放获取文献定位
+2. 账号与计费服务端（papilot-server：注册登录、会员、订单、余额、官方模型网关）
+   为独立商业许可，不包含在本仓库的 Apache-2.0 授权范围内。
+   商业合作与授权请联系：<在此填写商务邮箱>。
+
+3. 文档与技能包内容（docs/、community-packs/、技能商店目录）
+   除另有标注外，以 CC BY 4.0 授权（署名即可商用）。
+
+------------------------------------------------------------------
+第三方组件 / Third-party components
+------------------------------------------------------------------
+- sm-crypto 0.3.10（MIT）— chrome/content/scripts/vendor/sm2.js
+- Nord 色板（MIT）— 仅配色数值
+完整清单、许可证全文与修改说明见 THIRD-PARTY-NOTICES.md。
+
+运行时从 l0o0/translators_CN 下载的中文转换器（AGPL-3.0）由各自作者授权，
+下载目标为用户本机的 Zotero 数据目录，本项目不内置、不再分发其代码。
+
+------------------------------------------------------------------
+商标 / Trademarks
+------------------------------------------------------------------
+"Papilot" 与 "文献副驾" 是版权人的产品名称。本 NOTICE 不授予任何商标权：
+允许在指明来源的前提下做事实性引用，但不得用于衍生版本的命名、图标或
+暗示官方关联的宣传。
+
+"Zotero" 是 Corporation for Digital Scholarship 的注册商标。
+Papilot 是独立第三方插件，与 Zotero 官方无隶属关系，也未获其背书。
+
+------------------------------------------------------------------
+数据源 / Data providers
+------------------------------------------------------------------
+- OpenAlex (https://openalex.org) — 文献元数据与被引关系，数据以 CC0 发布
+- Crossref (https://www.crossref.org) — DOI 元数据，按其公开 API 条款调用
+- Semantic Scholar (https://www.semanticscholar.org/product/api) — 被引量、相关文献、
+  引文上下文；其 API License 限内部/非商业研究用途，商用需向 AI2 申请扩展许可。
+  本插件不随包提供任何 API Key，仅使用用户自备的 Key
+- Unpaywall (https://unpaywall.org) — 开放获取全文定位
+- easyScholar (https://www.easyscholar.cn) — 期刊等级数据；用户自备 SecretKey，
+  插件不含任何内置 Key
+
 以上服务均为独立第三方，本项目仅按其公开 API 调用，不包含其数据副本。

@@ -1,4 +1,7 @@
-/* PaperPilot 嵌套标签视图（窗口脚本，E3，纯只读）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 嵌套标签视图（窗口脚本，E3，纯只读）
  * 树数据与条目清单由插件作用域经 window.arguments[0] 注入（窗口访问不到 TagCurator）。
  * 只渲染与导航：折叠/展开、点击节点列出命中条目、点击条目回主窗口选中 —— 不改数据。
  */
@@ -153,7 +156,7 @@
     $("pp-tn-close").addEventListener("click", () => { try { window.close(); } catch (e) { /* ignore */ } });
     if (!zh()) {
       $("pp-tn-close").textContent = "Close";
-      document.title = "PaperPilot · Nested Tags";
+      document.title = "Papilot · Nested Tags";
     }
   }
 

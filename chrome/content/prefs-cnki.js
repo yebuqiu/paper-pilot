@@ -1,19 +1,22 @@
-/* PaperPilot 设置面板 · 知网账号卡片（0.43.1）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置面板 · 知网账号卡片（0.43.1）
  * 登录类入口收敛于此：账号登录 / IP 权限检测 / 风控验证 / 转换器更新。
- * 面板脚本运行在设置窗口作用域，经 Zotero.PaperPilot.cnAuth / cnVerify / cnTranslators
+ * 面板脚本运行在设置窗口作用域，经 Zotero.Papilot.cnAuth / cnVerify / cnTranslators
  * 访问主模块（main.js 暴露）。
  * 加载时序与 prefs-pane.js 同：Zotero 先跑脚本后插 DOM → init 探测节点、延迟重试。
  */
 /* global Zotero, window, document */
 
 (function () {
-  const PREFIX = "extensions.zotero.paperpilot.";
+  const PREFIX = "extensions.zotero.papilot.";
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const $ = (id) => document.getElementById(id);
 
-  const cnAuth = () => Zotero.PaperPilot && Zotero.PaperPilot.cnAuth;
-  const cnVerify = () => Zotero.PaperPilot && Zotero.PaperPilot.cnVerify;
-  const cnTranslators = () => Zotero.PaperPilot && Zotero.PaperPilot.cnTranslators;
+  const cnAuth = () => Zotero.Papilot && Zotero.Papilot.cnAuth;
+  const cnVerify = () => Zotero.Papilot && Zotero.Papilot.cnVerify;
+  const cnTranslators = () => Zotero.Papilot && Zotero.Papilot.cnTranslators;
 
   function setText(id, msg, color) {
     const el = $(id);
@@ -107,7 +110,7 @@
   /* ---------- 初始化（DOM 就绪探测，同 prefs-pane.js 模式） ---------- */
 
   function init() {
-    if (typeof Zotero === "undefined" || !Zotero.PaperPilot || !cnAuth()) {
+    if (typeof Zotero === "undefined" || !Zotero.Papilot || !cnAuth()) {
       window.setTimeout(init, 400);
       return;
     }

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 插件侧 arXiv 核心（0.25.0）：生成物等价性 + ArxivFetch 适配层
  *
  * 运行：node test/arxiv-core.test.js

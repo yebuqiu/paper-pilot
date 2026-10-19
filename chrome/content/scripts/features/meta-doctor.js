@@ -1,4 +1,7 @@
-/* PaperPilot 元数据医生（0.52.0）——「检测 → 反查 → 预览 → 确认 → 应用 → 可撤销」
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 元数据医生（0.52.0）——「检测 → 反查 → 预览 → 确认 → 应用 → 可撤销」
  *
  * 与既有模块的分工（不重复实现检查）：
  *   meta-lint  = 格式规范化（DOI 去前缀 / 日期补零 / 标题去尾点 / URL 去参），命中即静默修；
@@ -195,7 +198,7 @@ var MetaDoctor = {
           Zotero.HTTP.request("GET", url, {
             headers: {
               "Accept": "application/json",
-              "User-Agent": "PaperPilot MetaDoctor (Zotero)",
+              "User-Agent": "Papilot MetaDoctor (Zotero)",
             },
             responseType: "json",
             timeout: this.TIMEOUT,
@@ -501,7 +504,7 @@ var MetaDoctor = {
       } catch (e) { flags = 0; }
       if (!isFinite(flags)) flags = 0;
       const choice = P.confirmEx(win,
-        "PaperPilot · " + (zh ? "元数据医生" : "Metadata Doctor"),
+        "Papilot · " + (zh ? "元数据医生" : "Metadata Doctor"),
         msg, flags,
         zh ? "应用补全" : "Apply", zh ? "取消" : "Cancel", null, null, {});
       return choice === 0;
@@ -520,8 +523,8 @@ var MetaDoctor = {
     try {
       if (typeof Zotero.ProgressWindow === "function") {
         const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-        pw.changeHeadline("PaperPilot · " + (zh ? "元数据医生" : "Metadata Doctor"));
-        const row = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", text);
+        pw.changeHeadline("Papilot · " + (zh ? "元数据医生" : "Metadata Doctor"));
+        const row = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", text);
         if (failed) { try { row.setError(); } catch (e) { /* ignore */ } }
         else row.setProgress(100);
         pw.show();
@@ -529,8 +532,8 @@ var MetaDoctor = {
         return text;
       }
     } catch (e) { /* 无 UI：静默 */ }
-    try { Zotero.debug("PaperPilot meta-doctor: " + text); } catch (e) { /* ignore */ }
-    if (failed) { try { Zotero.logError("PaperPilot meta-doctor: " + text); } catch (e) { /* ignore */ } }
+    try { Zotero.debug("Papilot meta-doctor: " + text); } catch (e) { /* ignore */ }
+    if (failed) { try { Zotero.logError("Papilot meta-doctor: " + text); } catch (e) { /* ignore */ } }
     return text;
   },
 

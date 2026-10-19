@@ -1,9 +1,12 @@
-/* PaperPilot 主入口：装配各模块
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 主入口：装配各模块
  * 由 bootstrap.js 通过 Services.scriptloader 加载，共享 bootstrap 作用域
  */
-/* global Zotero, Services, Prefs, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, SkillPacks, _ppDiag */
+/* global Zotero, Services, Prefs, IOUtils, PathUtils, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, SkillPacks, CloudSync, WebDAV, _ppDiag */
 
-Zotero.PaperPilot = {
+Zotero.Papilot = {
   id: null,
   version: null,
   rootURI: null,
@@ -31,15 +34,59 @@ Zotero.PaperPilot = {
       Prefs.set("renewPromptShownFor", rem.key);
       const when = new Date(rem.expiresAt).toLocaleDateString();
       const msg = rem.expired
-        ? "你的 PaperPilot 专业版已于 " + when + " 到期，已回落为免费版。\n\n"
-          + "打开「设置 → PaperPilot」可立即续费（时长叠加，不浪费剩余时间）。"
-        : "你的 PaperPilot 专业版仅剩 " + rem.daysLeft + " 天（" + when + " 到期）。\n\n"
-          + "打开「设置 → PaperPilot」可提前续费（时长叠加，不浪费剩余时间）。";
-      Services.prompt.alert(win, "PaperPilot 会员提醒", msg);
+        ? "你的 Papilot 专业版已于 " + when + " 到期，已回落为免费版。\n\n"
+          + "打开「设置 → Papilot」可立即续费（时长叠加，不浪费剩余时间）。"
+        : "你的 Papilot 专业版仅剩 " + rem.daysLeft + " 天（" + when + " 到期）。\n\n"
+          + "打开「设置 → Papilot」可提前续费（时长叠加，不浪费剩余时间）。";
+      Services.prompt.alert(win, "Papilot 会员提醒", msg);
       this._diag("renewal reminder shown (daysLeft=" + rem.daysLeft + ")");
     } catch (e) {
       this._diag("renewal reminder FAILED: " + (e && (e.stack || e.message) || e));
     }
+  },
+
+  /**
+   * 0.55.0 品牌迁移：把 DataDirectory / ProfD 两个落点里**旧名**的数据文件
+   * 复制成新名（会话 / 聊天记录 / 期刊缓存 / 阅读统计缓存）。
+   *
+   * 只复制不删除：目标已存在就跳过（幂等），旧文件留在原处便于回滚。
+   * 单个文件失败不影响其余；整体失败由调用方兜住，不挡启动。
+   * @returns {Promise<number>} 实际复制的文件数
+   */
+  async _migrateLegacyDataFiles() {
+    const pairs = [
+      ["paperpilot-account.json", "papilot-account.json"],
+      ["paperpilot-account.1.json", "papilot-account.1.json"],
+      ["paperpilot-account.2.json", "papilot-account.2.json"],
+      ["paperpilot-chat-sessions.json", "papilot-chat-sessions.json"],
+      ["paperpilot-easyscholar.json", "papilot-easyscholar.json"],
+      ["paperpilot-rank-config.json", "papilot-rank-config.json"],
+      ["paperpilot-s2-citations.json", "papilot-s2-citations.json"],
+    ];
+    const dirs = [];
+    try {
+      const d = Zotero.DataDirectory && Zotero.DataDirectory.dir;
+      if (d) dirs.push(String(d));
+    } catch (e) { /* 数据目录未就绪：仅用 profile 落点 */ }
+    try {
+      const prof = Services.dirsvc.get("ProfD", Components.interfaces.nsIFile);
+      if (prof && prof.path) dirs.push(String(prof.path));
+    } catch (e) { /* ignore */ }
+
+    let copied = 0;
+    for (const dir of dirs) {
+      for (const [oldName, newName] of pairs) {
+        try {
+          const src = PathUtils.join(dir, oldName);
+          const dst = PathUtils.join(dir, newName);
+          if (await IOUtils.exists(dst)) continue;
+          if (!(await IOUtils.exists(src))) continue;
+          await IOUtils.copy(src, dst);
+          copied++;
+        } catch (e) { /* 单文件失败不影响其余 */ }
+      }
+    }
+    return copied;
   },
 
   async init({ id, version, rootURI }) {
@@ -51,6 +98,8 @@ Zotero.PaperPilot = {
     // 按依赖顺序加载子模块（共享同一全局作用域，var 声明互相可见）
     const files = [
       "core/utils.js",
+      // 0.56.0 云同步协议层（坚果云 WebDAV）：纯协议、无业务，cloud-sync.js 消费它
+      "core/webdav.js",
       "ai/providers.js",
       "ai/account.js",
       "ai/channels.js",
@@ -75,9 +124,12 @@ Zotero.PaperPilot = {
       "ai/command-tags.js",
       // 0.48.x 技能包商店（Skills Hub）核心域：提示词标签/术语/模板/Agent 预设的
       // 安装记账与目录检索。依赖 CommandTags/NoteTemplates/TranslateSvc 均为惰性
-      // 调用（运行期经 Zotero.PaperPilot.* 访问），只需排在 command-tags.js 之后
+      // 调用（运行期经 Zotero.Papilot.* 访问），只需排在 command-tags.js 之后
       // 加载即可；panels/chat-float.js 不依赖它，位置无碍。
       "features/skill-packs.js",
+      // 0.56.0 坚果云统一云同步（设置/对话/技能包/安装包）：依赖 core/webdav.js；
+      // 对 SkillPacks 只在 stageSkillPacks() 里惰性调用，位置无碍
+      "features/cloud-sync.js",
       "ai/slash-commands.js",
       "ai/auto-tag.js",
       "ai/matrix.js",
@@ -219,6 +271,23 @@ Zotero.PaperPilot = {
     }
     await this._diag("subscripts loaded");
 
+    // 0.54.1（审查 P0-1）：把历史版本误写到双前缀孤儿键的值搬回规范命名空间。
+    // 必须在任何模块 register/渲染（会读这些 pref）之前完成；幂等，失败不影响启动。
+    try {
+      const moved = Prefs.migrateLegacyNamespace();
+      if (moved) await this._diag("pref namespace migrated: " + moved);
+    } catch (e) { /* 迁移失败不影响启动 */ }
+
+    // 0.55.0 品牌迁移（PaperPilot → Papilot）：旧 pref 分支与旧数据文件搬到新名。
+    // 同样必须早于模块初始化（Account 读会话文件、各模块读 pref）；幂等。
+    try {
+      const movedPrefs = Prefs.migrateLegacyBrand();
+      const movedFiles = await this._migrateLegacyDataFiles();
+      if (movedPrefs || movedFiles) {
+        await this._diag("brand migrated prefs=" + movedPrefs + " files=" + movedFiles);
+      }
+    } catch (e) { /* 迁移失败不影响启动 */ }
+
     // 暴露给设置窗口脚本（prefs-pane.js / prefs-account.js 运行在设置窗口作用域，
     // 访问不到 bootstrap 作用域，但能访问 Zotero 全局）
     this.providers = AIProviders;
@@ -264,6 +333,9 @@ Zotero.PaperPilot = {
     this.chatFloat = ChatFloat;
     // 0.48.x 技能包商店（Skills Hub）：设置面板 / 商店窗口经此访问 SkillPacks 核心域
     this.skillPacks = SkillPacks;
+    // 0.56.0 坚果云统一云同步（设置面板 prefs-cloud.js 经此访问；测试/排障同入口）
+    // 防御式赋值：模块加载失败时置 null，避免一行 ReferenceError 把整个 init 带崩
+    this.cloudSync = (typeof CloudSync !== "undefined") ? CloudSync : null;
     // 0.49.0 浮窗会话持久化 + 定时任务（设置面板 prefs-schedule.js 经此访问 Scheduler）
     this.chatSessions = ChatSessions;
     this.scheduler = Scheduler;
@@ -407,6 +479,15 @@ Zotero.PaperPilot = {
       await this._diag("account restore schedule FAILED: " + (e && (e.stack || e.message) || e));
     }
 
+    // 0.56.0 云同步：配置了自动同步间隔就在启动后恢复定时器（未登录/关闭时内部自会跳过）
+    try {
+      if (this.cloudSync && this.cloudSync.startAutoSync()) {
+        await this._diag("cloud auto sync scheduled");
+      }
+    } catch (e) {
+      await this._diag("cloud auto sync FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
     // 注册设置面板（prefs.xhtml 为 fragment，配套脚本处理测试连接/文件选择）
     // 显式给稳定 id：openPreferences(paneID) 导航需要它（自动生成的 id 带随机串，
     // 且传 pluginID 给 openPreferences 无法定位面板——Z10 preferences.js 实证）
@@ -435,7 +516,7 @@ Zotero.PaperPilot = {
     try {
       this._paneID = await Zotero.PreferencePanes.register({
         pluginID: id,
-        id: "paperpilot-prefs",
+        id: "papilot-prefs",
         src: rootURI + "chrome/content/prefs.xhtml",
         scripts: [
           rootURI + "chrome/content/prefs-fold.js",
@@ -460,12 +541,14 @@ Zotero.PaperPilot = {
           rootURI + "chrome/content/prefs-memory.js",
           // 0.53.0 检索订阅列表（新建/立即运行/删除）
           rootURI + "chrome/content/prefs-subs.js",
+          // 0.56.0 坚果云云同步（登录/策略/数据集/进度/日志）
+          rootURI + "chrome/content/prefs-cloud.js",
         ],
         stylesheets: [
           rootURI + "chrome/content/prefs.css",
         ],
-        label: "PaperPilot",
-        image: "chrome://paperpilot/content/icons/icon.png",
+        label: "Papilot",
+        image: "chrome://papilot/content/icons/icon.png",
       });
       await this._diag("PreferencePanes registered paneID=" + this._paneID);
     } catch (e) {
@@ -708,7 +791,7 @@ Zotero.PaperPilot = {
       await this._diag("reading progress FAILED: " + (e && (e.stack || e.message) || e));
     }
 
-    // 0.24.0 MCP 对外供给：注册 Zotero 本地端点 /paperpilot/mcp
+    // 0.24.0 MCP 对外供给：注册 Zotero 本地端点 /papilot/mcp
     // （端点常驻注册，是否真正对外服务由 pref mcpEnabled 决定，未启用时返回 503）
     try {
       const ok = MCP.register();
@@ -849,14 +932,14 @@ Zotero.PaperPilot = {
     }
 
     this._initialized = true;
-    Zotero.debug(`PaperPilot ${version} initialized`);
+    Zotero.debug(`Papilot ${version} initialized`);
   },
 
   /** 工作台独立窗口（0.9.0）：单实例——已开则聚焦，未开则新开 */
   openWorkbench() {
     try {
       const wm = Services.wm;
-      const en = wm.getEnumerator("paperpilot:workbench");
+      const en = wm.getEnumerator("papilot:workbench");
       if (en.hasMoreElements()) {
         const win = en.getNext();
         try { win.focus(); } catch (e) { /* ignore */ }
@@ -869,13 +952,13 @@ Zotero.PaperPilot = {
       // Services.sys.mjs 会失败（0.9.0 实证）——Zotero/Services 一律经
       // window.arguments 传对象引用，这是唯一可靠通道。
       return win.openDialog(
-        "chrome://paperpilot/content/workbench.xhtml",
-        "paperpilot-workbench",
+        "chrome://papilot/content/workbench.xhtml",
+        "papilot-workbench",
         "chrome,extracz,resizable,dialog=no,centerscreen",
         { Zotero, Services }
       );
     } catch (e) {
-      Zotero.logError(new Error("PaperPilot: 打开工作台失败"));
+      Zotero.logError(new Error("Papilot: 打开工作台失败"));
       Zotero.logError(e);
       return null;
     }
@@ -885,7 +968,7 @@ Zotero.PaperPilot = {
   openHub() {
     try {
       const wm = Services.wm;
-      const en = wm.getEnumerator("paperpilot:hub");
+      const en = wm.getEnumerator("papilot:hub");
       if (en.hasMoreElements()) {
         const win = en.getNext();
         try { win.focus(); } catch (e) { /* ignore */ }
@@ -894,13 +977,13 @@ Zotero.PaperPilot = {
       const win = Zotero.getMainWindow();
       if (!win) return null;
       return win.openDialog(
-        "chrome://paperpilot/content/hub.xhtml",
-        "paperpilot-hub",
+        "chrome://papilot/content/hub.xhtml",
+        "papilot-hub",
         "chrome,extracz,resizable,dialog=no,centerscreen",
         { Zotero, Services }
       );
     } catch (e) {
-      Zotero.logError(new Error("PaperPilot: 打开功能中心失败"));
+      Zotero.logError(new Error("Papilot: 打开功能中心失败"));
       Zotero.logError(e);
       return null;
     }
@@ -909,15 +992,15 @@ Zotero.PaperPilot = {
   /** 0.48.x 打开技能商店窗口（单例：已开则聚焦） */
   openSkillStore() {
     try {
-      const en = Services.wm.getEnumerator("paperpilot:skillstore");
+      const en = Services.wm.getEnumerator("papilot:skillstore");
       if (en.hasMoreElements()) { const w = en.getNext(); w.focus(); return w; }
     } catch (e) { /* ignore */ }
     const win = Zotero.getMainWindow();
     if (!win) return null;
     try {
       return win.openDialog(
-        "chrome://paperpilot/content/skill-store.xhtml",
-        "paperpilot-skill-store",
+        "chrome://papilot/content/skill-store.xhtml",
+        "papilot-skill-store",
         "chrome,centerscreen,resizable,dialog=no",
         { Zotero, Services }
       );
@@ -1063,6 +1146,9 @@ Zotero.PaperPilot = {
     try { Menus.destroy(); } catch (e) { Zotero.logError(e); }
     try { ThemeToggle.unregister(); } catch (e) { Zotero.logError(e); }
     try { ToolbarQuick.unregister(); } catch (e) { Zotero.logError(e); }
+    // 0.54.1（审查 P1-8）：双栏窗口持有 _win/_rightReader 强引用，且右栏 reader 是预览实例、
+    // 收不到 tab close，必须在这里显式收口（PdfInline.unregister 内部再兜底清全部 state）。
+    try { PdfDual.dispose(); } catch (e) { Zotero.logError(e); }
     try { PdfInline.unregister(); } catch (e) { Zotero.logError(e); }
     try { UpdateNotice.unregister(); } catch (e) { Zotero.logError(e); }
     try { UiTheme.unregister(); } catch (e) { Zotero.logError(e); }
@@ -1076,10 +1162,14 @@ Zotero.PaperPilot = {
     try { Discovery.stop(); } catch (e) { Zotero.logError(e); }
     try { Scheduler.stop(); } catch (e) { Zotero.logError(e); }
     try { SearchSubs.stop(); } catch (e) { Zotero.logError(e); }
+    // 0.56.0 云同步：清自动同步定时器与订阅者（否则关机前还可能触发一轮网络请求）
+    try { CloudSync.destroy(); } catch (e) { Zotero.logError(e); }
     try { MCP.unregister(); } catch (e) { Zotero.logError(e); }
     try { ReadingState.unregister(); } catch (e) { Zotero.logError(e); }
     try { ReaderPopup.unregister(); } catch (e) { Zotero.logError(e); }
     try { ChatFloat.unregister(); } catch (e) { Zotero.logError(e); }
+    // 0.54.1（审查 P2-13）：卸载时把 1.5s 防抖中的会话写盘刷掉，否则最后一轮问答丢存档
+    try { ChatSessions.dispose(); } catch (e) { Zotero.logError(e); }
     try { AIChatPane.unregister(); } catch (e) { Zotero.logError(e); }
     try { GlancePane.unregister(); } catch (e) { Zotero.logError(e); }
     try { TranslatePane.unregister(); } catch (e) { Zotero.logError(e); }

@@ -1,16 +1,19 @@
-/* PaperPilot 粘贴文献列表核验对话框（非模态）
- * 从 window.opener 取 Zotero → Zotero.PaperPilot.fakeCheck.checkEntry 逐条核验。
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 粘贴文献列表核验对话框（非模态）
+ * 从 window.opener 取 Zotero → Zotero.Papilot.fakeCheck.checkEntry 逐条核验。
  * 解析：DOI 正则优先；标题按 引号 / APA(年份). / Vancouver「. 」分段 启发式提取。
  */
 /* global window, document */
 
 (function () {
   const Zotero = window.opener && window.opener.Zotero;
-  if (!Zotero || !Zotero.PaperPilot || !Zotero.PaperPilot.fakeCheck) {
-    document.getElementById("pp-pc-status").textContent = "错误：无法访问 PaperPilot 模块";
+  if (!Zotero || !Zotero.Papilot || !Zotero.Papilot.fakeCheck) {
+    document.getElementById("pp-pc-status").textContent = "错误：无法访问 Papilot 模块";
     return;
   }
-  const fakeCheck = Zotero.PaperPilot.fakeCheck;
+  const fakeCheck = Zotero.Papilot.fakeCheck;
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const XHTML = "http://www.w3.org/1999/xhtml";
 

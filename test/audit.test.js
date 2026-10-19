@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 管理操作审计测试（服务端 1.4.4）
  *
  * 运行：node test/audit.test.js
@@ -236,7 +239,7 @@ const readAuditFile = () => {
 
     /* ---- health ---- */
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.8.4', 'B23 服务端版本');
+    eq(h.version, '1.8.5', 'B23 服务端版本');
     ok(typeof h.auditBytes === 'number' && h.auditBytes > 0, 'B24 health 暴露审计日志体积', h.auditBytes);
   } catch (e) {
     fails.push('异常中断：' + ((e && e.stack) || e));

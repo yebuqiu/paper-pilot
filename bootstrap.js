@@ -1,11 +1,14 @@
-/* PaperPilot bootstrap — Zotero 7/10 插件入口
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot bootstrap — Zotero 7/10 插件入口
  * 参考官方 Make It Red / zotero-plugin-template / zoterostyle 的结构
  */
 /* global Zotero, Services, Components, IOUtils, PathUtils */
 
 var chromeHandle;
 
-// ---- 启动诊断：写 数据目录 + profile 目录 两处 paperpilot-boot.log，并镜像到 Zotero.debug ----
+// ---- 启动诊断：写 数据目录 + profile 目录 两处 papilot-boot.log，并镜像到 Zotero.debug ----
 var _ppBootLines = [];
 
 function _ppLogPaths() {
@@ -14,11 +17,11 @@ function _ppLogPaths() {
   // NS_ERROR_FILE_UNRECOGNIZED_PATH 拒绝（FF140 实证），导致静默写失败
   try {
     var d = Zotero.DataDirectory && Zotero.DataDirectory.dir;
-    if (d) paths.push(PathUtils.join(d, "paperpilot-boot.log"));
+    if (d) paths.push(PathUtils.join(d, "papilot-boot.log"));
   } catch (e) { /* 数据目录未初始化时忽略 */ }
   try {
     var prof = Services.dirsvc.get("ProfD", Components.interfaces.nsIFile);
-    var p = PathUtils.join(prof.path, "paperpilot-boot.log");
+    var p = PathUtils.join(prof.path, "papilot-boot.log");
     if (paths.indexOf(p) < 0) paths.push(p);
   } catch (e) { /* ignore */ }
   return paths;
@@ -27,7 +30,7 @@ function _ppLogPaths() {
 async function _ppDiag(msg) {
   try {
     _ppBootLines.push(new Date().toISOString() + " " + msg);
-    try { Zotero.debug("[paperpilot-boot] " + msg); } catch (e) { /* ignore */ }
+    try { Zotero.debug("[papilot-boot] " + msg); } catch (e) { /* ignore */ }
     var text = _ppBootLines.join("\n") + "\n";
     var paths = _ppLogPaths();
     for (var i = 0; i < paths.length; i++) {
@@ -62,16 +65,16 @@ async function startup({ id, version, resourceURI, rootURI }, reason) {
     // 兜底必须判空，否则 resourceURI.spec 抛 TypeError 直接搞死 startup
     if (!rootURI) rootURI = resourceURI ? resourceURI.spec : "";
 
-    // 注册 chrome://paperpilot/ 内容协议（locale 由 Zotero 的 ftl 自动扫描负责，不在此注册）
+    // 注册 chrome://papilot/ 内容协议（locale 由 Zotero 的 ftl 自动扫描负责，不在此注册）
     var aomStartup = Components.classes["@mozilla.org/addons/addon-manager-startup;1"]
       .getService(Components.interfaces.amIAddonManagerStartup);
     var manifestURI = Services.io.newURI(rootURI + "manifest.json");
     chromeHandle = aomStartup.registerChrome(manifestURI, [
-      ["content", "paperpilot", "chrome/content/"],
+      ["content", "papilot", "chrome/content/"],
     ]);
     await _ppDiag("chrome registered rootURI=" + rootURI);
 
-    // 加载主逻辑脚本（脚本内部把对象挂到 Zotero.PaperPilot）
+    // 加载主逻辑脚本（脚本内部把对象挂到 Zotero.Papilot）
     // ⚠️ 必须带 ?v= 缓存破坏：热升级（同 id 换版本）时 jar URL 不变，
     // scriptloader 的内存/启动缓存会返回旧编译产物——实证 0.5.1→0.6.0 热装后
     // 执行的是旧 main.js（诊断日志一切"正常"但新模块从未加载）。
@@ -80,7 +83,7 @@ async function startup({ id, version, resourceURI, rootURI }, reason) {
     );
     await _ppDiag("main.js loaded");
 
-    await Zotero.PaperPilot.init({ id, version, rootURI });
+    await Zotero.Papilot.init({ id, version, rootURI });
     await _ppDiag("init complete");
   } catch (e) {
     await _ppDiag("STARTUP FAILED: " + (e && (e.stack || e.message) || e));
@@ -93,9 +96,9 @@ function shutdown(data, reason) {
   // Zotero 退出（APP_SHUTDOWN）时 UI 已销毁，跳过清理
   if (reason === APP_SHUTDOWN) return;
   try {
-    if (typeof Zotero !== "undefined" && Zotero.PaperPilot) {
-      Zotero.PaperPilot.destroy();
-      delete Zotero.PaperPilot;
+    if (typeof Zotero !== "undefined" && Zotero.Papilot) {
+      Zotero.Papilot.destroy();
+      delete Zotero.Papilot;
     }
   } catch (e) {
     try { Zotero.logError(e); } catch (_) { /* ignore */ }
@@ -111,7 +114,7 @@ function install(data, reason) {
 }
 
 function uninstall(data, reason) {
-  // 0.15.1 起：不再删除账号会话文件（数据目录 + ProfD 的 paperpilot-account*.json）。
+  // 0.15.1 起：不再删除账号会话文件（数据目录 + ProfD 的 papilot-account*.json）。
   // 此前版本在卸载钩子里删文件，而更新/重装路径可能触发 uninstall（平台实现差异，
   // 手工重装 xpi 测试亦必经）——用户登录态被直接物理清除，表现为「每次更新都要重新登录」。
   // 0.23.0 起会话为「2 落点 × 3 代」共最多 6 份副本，任何一份被删都还能从其余副本恢复。

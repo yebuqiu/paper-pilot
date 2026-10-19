@@ -1,4 +1,7 @@
-/* PaperPilot 附件管理（0.11.0，Attanger/ZotFile 品类的轻量路线：重命名）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 附件管理（0.11.0，Attanger/ZotFile 品类的轻量路线：重命名）
  * 按命名模板批量重命名选中条目的 PDF 附件（文件名 + 附件标题同步）。
  * 模板变量：{author} {year} {title}（pref attachNamePattern）。
  * 注：「移动到自定义目录（链接附件）」涉及库结构变更，本版不做——
@@ -64,14 +67,14 @@ var AttachManager = {
     const pattern = Prefs.get("attachNamePattern", "{author} - {year} - {title}");
     const zh = I18n.isZh;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + I18n.t("menuAttachRename"));
+    pw.changeHeadline("Papilot · " + I18n.t("menuAttachRename"));
     pw.show();
     let nRenamed = 0, nSkip = 0;
 
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(40);
         const newBase = this.buildName(item, pattern);
@@ -96,7 +99,7 @@ var AttachManager = {
         Zotero.logError(e);
       }
     }
-    const summary = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    const summary = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       (zh ? "合计：重命名 " : "Done: renamed ") + nRenamed + (zh ? "，跳过 " : ", skipped ") + nSkip);
     summary.setProgress(100);
     pw.startCloseTimer(3500);

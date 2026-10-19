@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 网关 AI 计量端到端测试（服务端 1.5.0）
  *
  * 运行：node test/metering.test.js
@@ -124,8 +127,9 @@ function req(method, p, body, token) {
   });
 }
 
-/** 取某账号当前落盘的 usage */
+/** 取某账号当前落盘的 usage（1.8.6：计量走异步合并写，读盘前先同步 flush） */
 function usageOf(email) {
+  try { mod.flushStores(); } catch (e) { /* mod 未就绪时忽略 */ }
   const doc = JSON.parse(fs.readFileSync(path.join(WORK, 'users.json'), 'utf8'));
   const u = doc.users.find((x) => x.email === email);
   return (u && u.usage) || {};
@@ -297,7 +301,7 @@ const todayKey = () => mod.isoDay(Date.now());
 
     /* ---------- I. health 暴露计量状态 ---------- */
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.8.4', 'I1 服务端版本 1.8.0');
+    eq(h.version, '1.8.5', 'I1 服务端版本 1.8.0');
     eq(h.pricedModels, 1, 'I2 health 报告已配价模型数');
     eq(h.meteringGaps, 2, 'I3 health 报告计量盲区累计');
   } catch (e) {

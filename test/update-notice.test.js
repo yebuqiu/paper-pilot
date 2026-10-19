@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot 更新提示 测试（插件 0.37.1）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 更新提示 测试（插件 0.37.1）
  *
  * 背景：Zotero 对第三方插件的更新是**静默后台替换**（不弹提示），用户完全感知不到
  * 「已经有新版本了」。本模块补一次可见反馈，而它的成败全在三个分支上：
@@ -31,7 +34,7 @@ function eq(a, b, label) { return ok(a === b, label, { got: a, want: b }); }
 /* ==================== 桩 ==================== */
 
 const PrefStore = new Map();
-const PFX = "extensions.zotero.paperpilot.";   // 真实 Prefs 包装会自动加前缀（utils.js）
+const PFX = "extensions.zotero.papilot.";   // 真实 Prefs 包装会自动加前缀（utils.js）
 const Prefs = {
   get(k, d) { const key = PFX + k; return PrefStore.has(key) ? PrefStore.get(key) : d; },
   set(k, v) { PrefStore.set(PFX + k, v); },
@@ -73,7 +76,7 @@ function mkSandbox() {
 
 const LIST = (versions) => ({
   addons: {
-    "paperpilot@dev.local": {
+    "papilot@dev.local": {
       updates: versions.map((v) => ({ version: v, update_link: "https://example.invalid/" + v + ".xpi" })),
     },
   },
@@ -114,11 +117,11 @@ async function main() {
   eq(r.newer, true, "3.3 判定「有更新」");
   eq(r.notified, true, "3.4 弹提示");
   eq(notices.length, 1, "3.5 只弹一个提示窗");
-  ok(notices[0].headline === "PaperPilot", "3.6 提示窗标题为插件名");
+  ok(notices[0].headline === "Papilot", "3.6 提示窗标题为插件名");
   ok(notices[0].shown === true, "3.7 提示窗已显示");
   ok(notices[0].lines.some((l) => l.indexOf("0.37.1") >= 0), "3.8 文案含新版本号");
   ok(notices[0].lines.some((l) => l.indexOf("重启") >= 0), "3.9 文案说明「重启生效」");
-  eq(PrefStore.get("extensions.zotero.paperpilot.updateNoticeLastVersion"), "0.37.1",
+  eq(PrefStore.get("extensions.zotero.papilot.updateNoticeLastVersion"), "0.37.1",
     "3.10 记录已提示版本");
 
   /* ---- 4. 同一版本第二次检查 → 不再提示（不骚扰） ---- */
@@ -167,14 +170,14 @@ async function main() {
   reset();
   Prefs.set("updateNoticeEnabled", true);
   httpReply = { ok: LIST(["0.37.1"]) };
-  ok(UN.register("paperpilot@dev.local", "0.37.0") === true, "9.1 register 返回 true（已排程）");
+  ok(UN.register("papilot@dev.local", "0.37.0") === true, "9.1 register 返回 true（已排程）");
   eq(httpCalls.length, 0, "9.2 register 不同步发请求（延迟 15s，不拖慢启动）");
   UN.unregister();
   eq(UN._timer, null, "9.3 unregister 清掉定时器");
 
   /* ---- 11. 0.44.1：whatsNew 摘要 + 「已更新到」提示（静默更新完成场景） ---- */
   const LIST2 = {
-    addons: { "paperpilot@dev.local": { updates: [
+    addons: { "papilot@dev.local": { updates: [
       { version: "0.44.0", update_link: "https://example.invalid/a.xpi", whatsNew: "第一条说明\n第二条说明" },
       { version: "0.44.1", update_link: "https://example.invalid/b.xpi" },
     ] } },
@@ -202,7 +205,7 @@ async function main() {
   // 升级且有 whatsNew：提示里带「本次更新内容」+ 摘要行
   reset();
   Prefs.set("updateNoticeLastSeen", "0.44.1");
-  httpReply = { ok: { addons: { "paperpilot@dev.local": { updates: [
+  httpReply = { ok: { addons: { "papilot@dev.local": { updates: [
     { version: "0.44.2", update_link: "z", whatsNew: "升级说明X\n修复Y" },
   ] } } } };
   r = await UN.check("0.44.2");
@@ -228,7 +231,7 @@ async function main() {
 
   // 有新版且清单带 whatsNew：发现新版本提示里带摘要
   reset();
-  httpReply = { ok: { addons: { "paperpilot@dev.local": { updates: [
+  httpReply = { ok: { addons: { "papilot@dev.local": { updates: [
     { version: "0.44.1", update_link: "x" },
     { version: "0.44.2", update_link: "y", whatsNew: "新功能A\n修复B" },
   ] } } } };

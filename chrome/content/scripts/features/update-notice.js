@@ -1,4 +1,7 @@
-/* PaperPilot 更新提示（0.37.1）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 更新提示（0.37.1）
  *
  * 为什么需要它：Zotero 对第三方插件的更新是**静默后台替换**（启动时查 update_url、
  * 下载、替换 profile 里的 xpi、下次启动生效），**不弹任何提示**。用户视角就是
@@ -24,8 +27,8 @@
 
 var UpdateNotice = {
   /** 与 manifest.json 的 applications.zotero.update_url 保持一致（门禁有断言） */
-  UPDATE_URL: "https://gitee.com/cassiuschen9261/paper-pilot/raw/main/paperpilot-update.json",
-  ADDON_ID: "paperpilot@dev.local",
+  UPDATE_URL: "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/papilot-update.json",
+  ADDON_ID: "papilot@dev.local",
   PREF_ENABLED: "updateNoticeEnabled",
   PREF_LAST: "updateNoticeLastVersion",
   // 0.44.1：上次「运行过」的版本（识别静默更新完成 → 弹「已更新到 vX」；每版只提示一次）
@@ -59,7 +62,7 @@ var UpdateNotice = {
 
   /**
    * 从更新清单里取最高版本（纯函数）。
-   * 清单结构：{addons: {"paperpilot@dev.local": {updates: [{version, update_link, ...}]}}}
+   * 清单结构：{addons: {"papilot@dev.local": {updates: [{version, update_link, ...}]}}}
    * @returns {string} 最高版本号（清单不可用时返回 ""）
    */
   latestVersion(json) {
@@ -139,7 +142,7 @@ var UpdateNotice = {
       if (typeof json === "string") json = JSON.parse(json);
     } catch (e) {
       out.skipped = "network: " + String((e && e.message) || e);
-      try { Zotero.debug("PaperPilot UpdateNotice: 检查失败（静默）：" + out.skipped); } catch (_) { /* ignore */ }
+      try { Zotero.debug("Papilot UpdateNotice: 检查失败（静默）：" + out.skipped); } catch (_) { /* ignore */ }
       return out;
     }
     out.checked = true;
@@ -179,7 +182,7 @@ var UpdateNotice = {
     try {
       const zh = !!(I18n && I18n.isZh);
       const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-      pw.changeHeadline("PaperPilot");
+      pw.changeHeadline("Papilot");
       pw.addDescription(zh
         ? "发现新版本 v" + latest + "（当前 v" + current + "）"
         : "New version v" + latest + " available (current v" + current + ")");
@@ -199,7 +202,7 @@ var UpdateNotice = {
     try {
       const zh = !!(I18n && I18n.isZh);
       const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-      pw.changeHeadline("PaperPilot");
+      pw.changeHeadline("Papilot");
       pw.addDescription(zh ? "✓ 已更新到 v" + version : "✓ Updated to v" + version);
       const lines = this._whatsNewLines(whatsNew);
       if (lines.length) {

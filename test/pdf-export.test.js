@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot 对照翻译导出 测试（插件 0.39.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 对照翻译导出 测试（插件 0.39.0）
  *
  * 为什么要有它：导出是「用户唯一能把译文拿走」的通道，坏在半路最恼人。其中自建 PDF
  * 生成器（零依赖往 PDF 里嵌 JPEG）最容易出结构性错误——CSS 页面尺寸换算、xref 字节

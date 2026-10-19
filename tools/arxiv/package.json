@@ -1,8 +1,8 @@
 {
-  "name": "paperpilot-arxiv",
+  "name": "papilot-arxiv",
   "version": "1.0.0",
   "private": true,
-  "description": "PaperPilot arXiv 工具包：检索、元数据抓取、信息提取、增量更新与双通道输出（零第三方依赖）",
+  "description": "Papilot arXiv 工具包：检索、元数据抓取、信息提取、增量更新与双通道输出（零第三方依赖）",
   "main": "src/index.js",
   "bin": {
     "arxiv": "bin/arxiv.js"
@@ -17,7 +17,7 @@
   },
   "keywords": [
     "arxiv",
-    "paperpilot",
+    "papilot",
     "literature",
     "metadata"
   ],

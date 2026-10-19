@@ -1,4 +1,7 @@
-/* PaperPilot 中文文献 AI 增强（0.42.0，jasminum 分析落地方案 P1/P2/P3）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 中文文献 AI 增强（0.42.0，jasminum 分析落地方案 P1/P2/P3）
  *
  * 设计总原则：协议层保持确定性代码，语义层交给大模型。
  *   - 签名 / Cookie / 检索接口参数：LLM 一概不碰（留在 cn-fetch.js 的确定性实现里）；
@@ -524,7 +527,7 @@ var CNAI = {
       if (!worker || typeof worker._enqueue !== "function") return null;
       return await worker._enqueue(async () => {
         const source = await IOUtils.read(path);
-        const renderer = new Worker("chrome://paperpilot/content/scripts/pdf-render-worker.js");
+        const renderer = new Worker("chrome://papilot/content/scripts/pdf-render-worker.js");
         let timer = null;
         try {
           return await new Promise((resolve, reject) => {

@@ -1,4 +1,7 @@
-/* PaperPilot 「/」命令面板（H1）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 「/」命令面板（H1）
  *
  * 通用斜杠命令弹层：输入框以 "/" 开头时在输入框上方弹出可搜索命令列表，
  * ↑↓ 导航、Enter 执行、Esc 关闭，继续输入实时过滤；点选也可执行。

@@ -1,7 +1,10 @@
-/* PaperPilot 浮窗会话持久化（chat-sessions.js）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 浮窗会话持久化（chat-sessions.js）
  *
  * 目的：浮窗会话（history + 上下文 chip）跨窗口关闭 / 插件重载不丢。
- * 存储：pref `extensions.zotero.paperpilot.chatSessions`，JSON 数组，最新在前。
+ * 存储：pref `extensions.zotero.papilot.chatSessions`，JSON 数组，最新在前。
  *   · LRU 上限 50 条（超出裁掉最旧）
  *   · 单条只留最近 40 条消息（长会话不无限膨胀 pref）
  *   · 空 history 不落盘（清空后不该留下空壳会话）
@@ -25,7 +28,7 @@ var ChatSessions = {
    *  · 每轮问答不再同步写大 JSON（1.5s 防抖合并）
    *  · 没有 IOUtils/DataDirectory 的环境（测试桩/旧版本）自动退回纯 pref 全量，行为不变
    */
-  FILE_NAME: "paperpilot-chat-sessions.json",
+  FILE_NAME: "papilot-chat-sessions.json",
   PREF_TAIL: 5,
   WRITE_DEBOUNCE_MS: 1500,
   _cache: null,
@@ -271,5 +274,19 @@ var ChatSessions = {
       if (this._ok(e)) return e;
     }
     return null;
+  },
+
+  /* ==================== 生命周期 ==================== */
+
+  /**
+   * 0.54.x（审查 P2-13）：禁用 / 卸载插件时收口——取消防抖写定时器，
+   * 并把内存里尚未落盘的全量立即刷一次文件（失败静默，pref 尾部本就同步写）。
+   */
+  dispose() {
+    if (this._writeTimer) {
+      try { clearTimeout(this._writeTimer); } catch (e) { /* ignore */ }
+      this._writeTimer = null;
+    }
+    try { this._flushFile(); } catch (e) { /* ignore */ }
   },
 };

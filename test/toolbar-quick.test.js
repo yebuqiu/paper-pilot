@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 顶部快捷按钮 · 菜单装配测试（插件 0.38.0）
  *
  * 为什么要有它：快捷按钮的菜单是「高频直达项（右键菜单同一份 menuQuickItems pref）
@@ -68,7 +71,7 @@ function makeEnv(opts) {
   const PrefStore = new Map(Object.entries(opts.prefs || {}));
   const calls = [];
   const sandbox = {
-    Zotero: { PaperPilot: { openHub: () => calls.push('hub') } },
+    Zotero: { Papilot: { openHub: () => calls.push('hub') } },
     Services: {},
     Prefs: {
       get: (k, d) => (PrefStore.has(k) ? PrefStore.get(k) : d),

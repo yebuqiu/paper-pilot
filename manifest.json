@@ -1,17 +1,18 @@
 {
   "manifest_version": 2,
-  "name": "PaperPilot 文献副驾",
-  "version": "0.54.0",
-  "description": "PaperPilot 文献副驾 · 文献管理增强套件：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.54.0 更新：代码审查修复 10 项——笔记检索改服务端过滤（大库不再漏检/卡顿）、AI 记忆与工具结果加防注入围栏（写记忆拒绝指令型内容）、流式回答渲染节流、晨报/体检分批读取（大库内存可控）、相关文献面板防抖、会话存档改文件存储、引用链接单次写盘等。",
-  "author": "you",
+  "name": "Papilot 文献副驾",
+  "version": "0.56.0",
+  "description": "Papilot 文献副驾 · Zotero 的 AI 文献副驾：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、参考文献一键入库、阅读进度与题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.56.0 更新：商业合规改造——移除内置 easyScholar 密钥（改为用户自备，未填时回落离线数据）；补齐 SPDX 版权头、第三方声明与贡献者授权条款；客户端 Apache-2.0 / 服务端商业许可的边界写入 NOTICE。",
+  "author": "Cassiuschen",
+  "homepage_url": "https://gitee.com/cassiuschen9261/zotero-papilot",
   "icons": {
     "48": "chrome/content/icons/icon.png",
     "96": "chrome/content/icons/icon.png"
   },
   "applications": {
     "zotero": {
-      "id": "paperpilot@dev.local",
-      "update_url": "https://gitee.com/cassiuschen9261/paper-pilot/raw/main/paperpilot-update.json",
+      "id": "papilot@dev.local",
+      "update_url": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/papilot-update.json",
       "strict_min_version": "6.999",
       "strict_max_version": "99.*"
     }

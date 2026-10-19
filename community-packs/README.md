@@ -1,10 +1,10 @@
 # 社区技能包贡献指南
 
-欢迎为 PaperPilot 技能商店贡献技能包！你的技能包经审核合并后，**所有用户在技能商店点「刷新目录」即可看到并安装**（无需升级插件）。
+欢迎为 Papilot 技能商店贡献技能包！你的技能包经审核合并后，**所有用户在技能商店点「刷新目录」即可看到并安装**（无需升级插件）。
 
 ## 技能包是什么
 
-一份 JSON 清单（manifest），把四类内容打包进 PaperPilot：
+一份 JSON 清单（manifest），把四类内容打包进 Papilot：
 
 ```json
 {
@@ -33,11 +33,11 @@
 
 ### 方式 A：Pull Request（推荐）
 
-1. **制作**：最简单的方式——在 PaperPilot 技能商店点「＋ 制作技能包」，勾选你的 Prompt 标签、填好信息，点「生成技能包」→ 复制 JSON（也可以手写，对照 `_TEMPLATE.json`）。
+1. **制作**：最简单的方式——在 Papilot 技能商店点「＋ 制作技能包」，勾选你的 Prompt 标签、填好信息，点「生成技能包」→ 复制 JSON（也可以手写，对照 `_TEMPLATE.json`）。
 2. **自检**（可选但强烈建议）：
    ```bash
-   git clone https://github.com/yebuqiu/paper-pilot.git
-   cd paper-pilot
+   git clone https://github.com/yebuqiu/zotero-papilot.git
+   cd zotero-papilot
    # 把你的 JSON 存为 community-packs/<你的id>.json，然后：
    node scripts/validate-pack.js community-packs/<你的id>.json
    ```
@@ -46,7 +46,7 @@
 
 ### 方式 B：Issue 投稿（不会 Git 也能投）
 
-[点此开一个「技能包投稿」Issue](https://github.com/yebuqiu/paper-pilot/issues/new?template=skill-pack.md)，把制作器生成的 JSON 粘贴进去即可，维护者审核后代为添加。
+[点此开一个「技能包投稿」Issue](https://github.com/yebuqiu/zotero-papilot/issues/new?template=skill-pack.md)，把制作器生成的 JSON 粘贴进去即可，维护者审核后代为添加。
 
 ## 审核标准
 
@@ -57,7 +57,7 @@
 | 原创性 | 不与现有技能包功能重复；借鉴需注明 |
 | 术语合规 | 术语表只收**自编或已获授权**的高置信译法，禁止搬运版权受限词库（微软术语集、商业词典等） |
 | 安全 | 仅声明式内容（manifest 四槽），不接受任何可执行代码；agentPreset 工具白名单只能是插件已注册的六个工具 |
-| 署名 | `author` 填你自己（`PaperPilot` 保留给官方内置包） |
+| 署名 | `author` 填你自己（`Papilot` 保留给官方内置包） |
 | 无敏感内容 | 无违法违规、无竞品推广、无恶意提示注入（诱导用户泄露隐私/破坏数据的 prompt 会被拒绝） |
 
 ## 版本与更新
@@ -78,4 +78,5 @@
 
 ---
 
-许可：向本仓库提交的贡献遵循仓库根目录的 Apache-2.0 许可。
+许可：技能包**内容**（提示词 / 术语表 / 模板 / 预设）默认以 **CC BY 4.0** 授权——他人可署名后自由使用与商用；技能包若包含第三方内容，请在清单的 `license` 或 `credit` 字段注明来源。
+仓库内的**代码**仍遵循根目录的 Apache-2.0 许可。

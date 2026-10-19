@@ -1,4 +1,7 @@
-/* PaperPilot 可编辑 #命令标签体系（参考 zotero-gpt Command Tags）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 可编辑 #命令标签体系（参考 zotero-gpt Command Tags）
  *
  * 数据模型：标签 = {id, label, prompt, color, trigger}
  *   · id      稳定标识（内置默认沿用 Prompts 内置条目 id）
@@ -7,7 +10,7 @@
  *   · color   标签描边/文字色（CSS 颜色，可空）
  *   · trigger 触发正则（可空）：用户输入命中该正则 → 自动套用该标签 prompt
  *
- * 存储：pref extensions.paperpilot.chatTags（JSON 数组，全量）。
+ * 存储：pref extensions.papilot.chatTags（JSON 数组，全量）。
  *   启动时与内置默认标签（从 chat-float 原硬编码 Prompt 标签迁移，即 Prompts
  *   内置前 8 条）合并：pref 中同 id 条目覆盖默认；pref 缺失的内置默认补齐
  *   （升级新增内置标签能自动出现）；删除内置默认打 {id, deleted:true} 墓碑，
@@ -19,7 +22,7 @@
 /* global Zotero, Prompts */
 
 var CommandTags = {
-  PREF_KEY: "extensions.paperpilot.chatTags",
+  PREF_KEY: "extensions.papilot.chatTags",
 
   _tags: null,        // 合并后的生效视图 [{id,label,prompt,color,trigger}]
   _tombstones: null,  // Set<string> 已删除的内置默认 id

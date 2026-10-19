@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 第三方文献源（实验性 · Pro 试用）测试（0.44.0 草案）
  * 覆盖：站点清单 / URL 纯函数、凭据混淆往返、登录响应解析、cookie 判定、
  *       Pro 门控矩阵（含「判定不出时放行」纪律）、面板 id 接线与三端装配静态检查。
@@ -120,8 +123,8 @@ eq(runTS('ThirdSource.pickCookieUser([{name:"fmdqbmlauth",value:"a"}], "fmdqbml"
 eq(runTS('(function(){ ThirdSource.saveCreds("55977251118","968200"); var c=ThirdSource.creds(); return c && c.u; })()'),
   '55977251118', '⑤ saveCreds → creds 用户名');
 eq(runTS('ThirdSource.creds().p'), '968200', '⑤ 密码往返正确');
-ok(PrefStore.has('extensions.zotero.paperpilot.thirdSourceUsername')
-  && PrefStore.get('extensions.zotero.paperpilot.thirdSourcePassword') !== '',
+ok(PrefStore.has('extensions.zotero.papilot.thirdSourceUsername')
+  && PrefStore.get('extensions.zotero.papilot.thirdSourcePassword') !== '',
   '⑤ 写入的 pref 键为 PREFIX + thirdSource*');
 eq(runTS('ThirdSource.clearCreds() && ThirdSource.creds()'), null, '⑤ clearCreds 后为空');
 
@@ -211,9 +214,9 @@ for (const id of ['pp-ts-enabled', 'pp-ts-endpoints', 'pp-ts-ping-btn', 'pp-ts-q
   ok(missing.length === 0, '⑦ 面板脚本引用的元素 id 都存在 → 缺失: ' + (missing.join(',') || '无'));
 }
 for (const k of ['thirdSourceEnabled', 'thirdSourceSite', 'thirdSourceUsername', 'thirdSourcePassword']) {
-  ok(prefsdef.indexOf('paperpilot.' + k) >= 0, '⑦ prefs.js 含 ' + k + ' 默认值');
+  ok(prefsdef.indexOf('papilot.' + k) >= 0, '⑦ prefs.js 含 ' + k + ' 默认值');
 }
-ok(prefsdef.indexOf('pref("extensions.zotero.paperpilot.thirdSourceEnabled", false);') >= 0,
+ok(prefsdef.indexOf('pref("extensions.zotero.papilot.thirdSourceEnabled", false);') >= 0,
   '⑦ 默认关闭（实验功能纪律）');
 ok(runTS('typeof ThirdSource.openPortal') === 'function' && runTS('typeof ThirdSource.login') === 'function',
   '⑦ 公开动作存在（openPortal / login）');
@@ -390,7 +393,7 @@ async function asyncTests() {
       return this._check.list;
     },
   };
-  const pZotero = { locale: 'zh-CN', PaperPilot: { thirdSource: TSStub, _paneID: 'paperpilot-prefs' } };
+  const pZotero = { locale: 'zh-CN', Papilot: { thirdSource: TSStub, _paneID: 'papilot-prefs' } };
   const pSandbox = {
     Zotero: pZotero,
     document: {

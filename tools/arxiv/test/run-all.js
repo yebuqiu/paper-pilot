@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 "use strict";
 
 /**
@@ -47,7 +50,7 @@ if (!files.length) {
 const t0 = Date.now();
 const results = [];
 
-console.log("PaperPilot arXiv 工具包 · 测试" + (includeNetwork ? "（含联网用例）" : "（离线）"));
+console.log("Papilot arXiv 工具包 · 测试" + (includeNetwork ? "（含联网用例）" : "（离线）"));
 console.log("");
 
 for (const f of files) {

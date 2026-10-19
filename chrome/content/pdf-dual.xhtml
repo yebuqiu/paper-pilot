@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
-<!-- PaperPilot PDF 对照翻译 · 左原右译双栏窗口（0.36.0）
+<!-- Papilot PDF 对照翻译 · 左原右译双栏窗口（0.36.0）
 
      布局：**左栏 = 原版 PDF 页面**（pdf.js 正常渲染，一个 reader 预览实例）；
            **右栏 = 同一 PDF 的译文版页面**（同一个 PDF、同一缩放；原文文字被译文卡
@@ -23,11 +25,11 @@
        ③ `reader._open()` 吞异常后 return false → 必须判返回值，否则失败与空白无法区分。 -->
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot PDF 对照翻译（左原右译）"
-        windowtype="paperpilot:pdf-dual"
+        title="Papilot PDF 对照翻译（左原右译）"
+        windowtype="papilot:pdf-dual"
         width="1440" height="900"
         persist="screenX screenY width height sizemode">
-  <script src="chrome://paperpilot/content/pdf-dual-view.js"/>
+  <script src="chrome://papilot/content/pdf-dual-view.js"/>
 
   <vbox flex="1" style="min-height:0;">
     <!-- 工具栏 -->

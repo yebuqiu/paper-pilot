@@ -1,20 +1,23 @@
-/* PaperPilot MCP 状态与配置对话框（0.24.0） */
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot MCP 状态与配置对话框（0.24.0） */
 /* global window, document */
 
 (function () {
   const XHTML = "http://www.w3.org/1999/xhtml";
   const args = (window.arguments && window.arguments[0]) || {};
   const Z = args.Zotero || (window.opener && window.opener.Zotero);
-  const PP = Z && Z.PaperPilot;
+  const PP = Z && Z.Papilot;
   const zh = !!(Z && (Z.locale || "").toLowerCase().startsWith("zh"));
-  const PREFIX = "extensions.zotero.paperpilot.";
+  const PREFIX = "extensions.zotero.papilot.";
 
   const $ = (id) => document.getElementById(id);
   const badgeEl = $("pp-mc-badge");
   const statusEl = $("pp-mc-status");
 
   if (!PP || !PP.mcp) {
-    if (statusEl) statusEl.textContent = zh ? "错误：无法访问 PaperPilot 模块" : "Error: PaperPilot unavailable";
+    if (statusEl) statusEl.textContent = zh ? "错误：无法访问 Papilot 模块" : "Error: Papilot unavailable";
     return;
   }
   const M = PP.mcp;
@@ -63,7 +66,7 @@
     eye.addEventListener("click", () => { showToken = !showToken; render(); });
     tokLine.appendChild(eye);
     line(info, zh ? "协议版本" : "Protocol", M.DEFAULT_PROTOCOL);
-    line(info, zh ? "签名" : "Signature", "Bearer <token> / X-PaperPilot-Token / ?token=");
+    line(info, zh ? "签名" : "Signature", "Bearer <token> / X-Papilot-Token / ?token=");
     line(info, zh ? "监听" : "Bind", "127.0.0.1（仅本机；公网不可达）");
 
     // Zotero 本地 HTTP 服务状态：端点由它承载，未运行时外部客户端一定连不上

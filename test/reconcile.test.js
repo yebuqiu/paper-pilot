@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 永久会员 + 唯一尾数 + 收款流水对账（服务端 1.4.5）
  *
  * 运行：node test/reconcile.test.js

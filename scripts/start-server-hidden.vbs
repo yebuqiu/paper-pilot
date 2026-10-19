@@ -1,4 +1,4 @@
-' PaperPilot account backend server - hidden starter (no console window)
+' Papilot account backend server - hidden starter (no console window)
 ' starts node server\account-server.js with WorkingDirectory=server, logs to data\server-console.log
 ' note: cmd /c needs the whole command wrapped in an extra pair of quotes (same form as launcher.ps1 Start-Server)
 ' ASCII only. Used by launcher.ps1 auto-start (HKCU Run key) and can be double-clicked directly.
@@ -42,7 +42,9 @@ If Not fso.FileExists(nodeExe) Then
     nodeExe = FindLatestNode("C:\Users\Administrator\.workbuddy\binaries\node\versions")
 End If
 If nodeExe = "" Then nodeExe = "node"
-logFile = logDir & "\server-console.log"
+' stdout/stderr must NOT share server-console.log: cmd's >> holds an exclusive write
+' handle there and Node's log() (appendFileSync) then fails silently (1.8.0 实测).
+logFile = logDir & "\server-stdout.log"
 cmdLine = "cmd /c " & """" & """" & nodeExe & """" & " account-server.js >> " & """" & logFile & """" & " 2>&1" & """"
 Set shell = CreateObject("WScript.Shell")
 shell.CurrentDirectory = serverDir

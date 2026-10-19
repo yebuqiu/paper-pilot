@@ -1,4 +1,7 @@
-/* PaperPilot Prompt 技能库：内置模板 + 用户自定义
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot Prompt 技能库：内置模板 + 用户自定义
  * 自定义格式（pref customPrompts，每行一条）：名称=提示词内容
  * 0.38.0 提示词深度优化：内置模板统一遵循「结构契约 + 证据纪律 + 具体化要求」
  * （落到具体证据/数字/对照基准，区分论文原文与推断），并新增两个高价值技能。

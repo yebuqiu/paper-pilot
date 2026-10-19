@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 参考文献一键入库（0.33.0 重写）测试
  *
  * 覆盖四层：
@@ -63,7 +66,7 @@ function makeSandbox(extra) {
   }, extra || {});
   // utils.js 的 Prefs 不在加载列表里，这里直接给同名桩（RefSources 读 refImport* 两个键）
   sandbox.Prefs = {
-    PREFIX: 'extensions.zotero.paperpilot.',
+    PREFIX: 'extensions.zotero.papilot.',
     get(k, d) { return PrefStore.has(k) ? PrefStore.get(k) : d; },
     set(k, v) { PrefStore.set(k, v); },
   };

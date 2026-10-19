@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 综述工作台（ReviewWorkbench，0.53.0）测试
  *
  * 覆盖：
@@ -512,7 +515,7 @@ function mkEnv(o) {
       'pp-rw-status', 'pp-rw-hint', 'pp-rw-count', 'pp-rw-doctitle']) {
       has(xhtml, 'id="' + id + '"', 'xhtml 含关键 id：' + id);
     }
-    has(xhtml, 'windowtype="paperpilot:review-workbench"', 'xhtml windowtype 与 WINDOW_TYPE 一致');
+    has(xhtml, 'windowtype="papilot:review-workbench"', 'xhtml windowtype 与 WINDOW_TYPE 一致');
     has(xhtml, 'no-native="true"', 'xhtml textarea 带 no-native（win 皮肤三保险）');
   }
 

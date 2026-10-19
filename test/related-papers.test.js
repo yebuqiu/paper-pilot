@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 相关文献推荐（S2 recommendations + 一键入库）测试（0.51.0）
  *
  * 无人环境点不了 ItemPane section，也连不上 Semantic Scholar；这里用
@@ -155,7 +158,7 @@ const Zotero = {
     this.search = async () => (calls.searchIds || []);
   },
   ItemPaneManager: {
-    registerSection(opts) { calls.registered++; calls.section = opts; return 'paperpilot@dev.local-related-' + calls.registered; },
+    registerSection(opts) { calls.registered++; calls.section = opts; return 'papilot@dev.local-related-' + calls.registered; },
     unregisterSection(id) { calls.unregistered = id; },
   },
   HTTP: {
@@ -168,7 +171,7 @@ const Zotero = {
   },
   launchURL(url) { calls.launched = url; },
   logError() {},
-  PaperPilot: {},
+  Papilot: {},
 };
 
 /* ---------------- 沙箱：真实 semantic-scholar.js + s2-client.js + related-papers.js ---------------- */
@@ -349,19 +352,19 @@ eq(r4.reason, 'invalid', '④ 空推荐项：reason=invalid');
 
 /* ================= ⑤ register / unregister ================= */
 
-const handle1 = RP.register('paperpilot@dev.local');
-eq(handle1, 'paperpilot@dev.local-related-1', '⑤ register 返回注册句柄');
+const handle1 = RP.register('papilot@dev.local');
+eq(handle1, 'papilot@dev.local-related-1', '⑤ register 返回注册句柄');
 eq(calls.registered, 1, '⑤ registerSection 被调用一次');
 
 const sec = calls.section;
-eq(sec.paneID, 'paperpilot-related', '⑤ paneID 正确');
-eq(sec.header.l10nID, 'paperpilot-related-section-header', '⑤ header l10nID 与 ftl 命名一致');
-eq(sec.sidenav.l10nID, 'paperpilot-related-section-sidenav', '⑤ sidenav l10nID 与 ftl 命名一致');
+eq(sec.paneID, 'papilot-related', '⑤ paneID 正确');
+eq(sec.header.l10nID, 'papilot-related-section-header', '⑤ header l10nID 与 ftl 命名一致');
+eq(sec.sidenav.l10nID, 'papilot-related-section-sidenav', '⑤ sidenav l10nID 与 ftl 命名一致');
 eq(typeof sec.onRender, 'function', '⑤ onRender 必填（Z10 缺了会静默返回 false）');
 eq(typeof sec.onItemChange, 'function', '⑤ onItemChange 存在');
 eq(typeof sec.onDestroy, 'function', '⑤ onDestroy 存在');
 
-const handleAgain = RP.register('paperpilot@dev.local');
+const handleAgain = RP.register('papilot@dev.local');
 eq(handleAgain, handle1, '⑤ 幂等：重复 register 返回同一句柄');
 eq(calls.registered, 1, '⑤ 幂等：不重复调用 registerSection');
 
@@ -369,15 +372,15 @@ RP.unregister();
 eq(calls.unregistered, handle1, '⑤ 注销用 registerSection 的返回值（不是 paneID）');
 eq(RP._registered, false, '⑤ 注销后状态复位');
 
-const handle2 = RP.register('paperpilot@dev.local');
-eq(handle2, 'paperpilot@dev.local-related-2', '⑤ 注销后可重新注册');
+const handle2 = RP.register('papilot@dev.local');
+eq(handle2, 'papilot@dev.local-related-2', '⑤ 注销后可重新注册');
 RP.unregister();
 
 const savedIPM = Zotero.ItemPaneManager;
 Zotero.ItemPaneManager = undefined;
 let threw = false;
 let noPane = null;
-try { noPane = RP.register('paperpilot@dev.local'); } catch (e) { threw = true; }
+try { noPane = RP.register('papilot@dev.local'); } catch (e) { threw = true; }
 eq(threw, false, '⑤ pane 不可用：register 不抛');
 eq(noPane, false, '⑤ pane 不可用：register 返回 false');
 eq(typeof RP.openDialog, 'function', '⑤ pane 不可用时仍有 openDialog 降级入口');
@@ -385,7 +388,7 @@ Zotero.ItemPaneManager = savedIPM;
 
 /* ================= ⑥ 面板渲染（pane 路径） ================= */
 
-const handle3 = RP.register('paperpilot@dev.local');
+const handle3 = RP.register('papilot@dev.local');
 ok(!!handle3, '⑥ 重新注册成功');
 
 const doc = makeDoc();

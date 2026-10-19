@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 视图组（列组合预设）· 数据模型与菜单测试（插件 0.43.0）
  *
  * 为什么要有它：视图组的核心是「pref JSON 序列化 + 快照/应用/删除」的纯逻辑，
@@ -68,7 +71,7 @@ function makeEnv(opts) {
   const win = itemsView ? { ZoteroPane: { itemsView } } : null;
   const sandbox = {
     Zotero: {
-      PaperPilot: { openHub: () => {} },
+      Papilot: { openHub: () => {} },
       getMainWindows: () => (win ? [win] : []),
       getMainWindow: () => win,
       ItemTreeManager: { refreshColumns: () => {} },

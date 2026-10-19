@@ -1,4 +1,7 @@
-/* PaperPilot 元数据规范清洗（0.11.0，Linter for Zotero 品类的轻量路线）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 元数据规范清洗（0.11.0，Linter for Zotero 品类的轻量路线）
  * 安全规则（只规范化格式，不改语义，不产生信息丢失）：
  *   1. DOI：去 https://doi.org/、doi: 前缀，转小写
  *   2. 日期：2024/3/5、2024.3.5 → 2024-03-05；仅年份保持不变
@@ -99,7 +102,7 @@ var MetaLint = {
 
     const zh = I18n.isZh;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + I18n.t("menuMetaLint"));
+    pw.changeHeadline("Papilot · " + I18n.t("menuMetaLint"));
     pw.show();
     const counts = {};
     let nItems = 0;
@@ -107,7 +110,7 @@ var MetaLint = {
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(50);
         const hits = this.scan(item);
@@ -117,7 +120,7 @@ var MetaLint = {
           for (const hit of hits) {
             await this.applyHit(item, hit);
             counts[hit.rule] = (counts[hit.rule] || 0) + 1;
-            Zotero.debug(`PaperPilot lint [${hit.rule}] ${hit.from} -> ${hit.to}`);
+            Zotero.debug(`Papilot lint [${hit.rule}] ${hit.from} -> ${hit.to}`);
           }
           nItems++;
           progress.setText((zh ? "已修复 " : "Fixed ") + hits.length +
@@ -131,7 +134,7 @@ var MetaLint = {
     }
     const detail = this.RULES.filter((r) => counts[r.id])
       .map((r) => `${r.label}×${counts[r.id]}`).join("、");
-    const summary = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    const summary = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       (zh ? "完成：" : "Done: ") + (detail || (zh ? "全部规范" : "all clean")));
     summary.setProgress(100);
     pw.startCloseTimer(4000);

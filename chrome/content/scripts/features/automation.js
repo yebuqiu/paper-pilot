@@ -1,4 +1,7 @@
-/* PaperPilot 自动化引擎（0.23.0，路线图阶段 2）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 自动化引擎（0.23.0，路线图阶段 2）
  * 把原来只能「打标签」的规则打标，升级成通用的「触发 → 条件 → 动作」自动化：
  *   触发 trigger：newItem（新条目入库）/ readerOpen（打开 PDF）/ manual（手动对选中条目）
  *   条件 conditions：字段 + 操作 + 值，可多条件（match: "all" 全满足 / "any" 任一满足）
@@ -467,8 +470,8 @@ var Automation = {
     const win = Zotero.getMainWindow();
     if (!win) return null;
     return win.openDialog(
-      "chrome://paperpilot/content/automation.xhtml",
-      "paperpilot-automation",
+      "chrome://papilot/content/automation.xhtml",
+      "papilot-automation",
       "chrome,centerscreen,resizable,dialog=no",
       { Zotero, Services }
     );
@@ -482,7 +485,7 @@ var Automation = {
     const zh = I18n.isZh;
     const pv = await this.preview(rules, items);
     if (!pv.hits.length) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         zh ? `选中 ${items.length} 篇，没有规则命中，未做任何改动。` : `No rule matched among ${items.length} items.`);
       return false;
     }
@@ -492,13 +495,13 @@ var Automation = {
       : `${items.length} selected, ${pv.hits.length} matches, ${pv.changeCount} changes:\n\n` + lines + "\n\nProceed?");
     const flags = Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING +
       Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING;
-    const choice = Services.prompt.confirmEx(Zotero.getMainWindow(), "PaperPilot · " + (zh ? "自动化预览" : "Automation preview"),
+    const choice = Services.prompt.confirmEx(Zotero.getMainWindow(), "Papilot · " + (zh ? "自动化预览" : "Automation preview"),
       msg, flags, zh ? "执行" : "Run", zh ? "取消" : "Cancel", null, null, {});
     if (choice !== 0) return false;
     const r = await this.apply(rules, items, false);
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + (zh ? "自动化" : "Automation"));
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    pw.changeHeadline("Papilot · " + (zh ? "自动化" : "Automation"));
+    const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       (zh ? "已执行 " : "Applied ") + r.applied + (zh ? " 项变更" : " changes") +
       (r.skipped.length ? (zh ? "，跳过 " : ", skipped ") + r.skipped.length : ""));
     if (r.errors.length) progress.setError();
@@ -517,7 +520,7 @@ var Automation = {
     if (!items.length) { ItemSel.alertEmpty(); return; }
     const rules = this.activeRules().filter((r) => r.trigger === "manual" || r.trigger === "newItem");
     if (!rules.length) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         zh ? "没有可用的自动化规则。请在「自动化规则」对话框中创建并启用。" : "No enabled automation rules.");
       return;
     }
@@ -534,13 +537,13 @@ var Automation = {
     const zh = I18n.isZh;
     const rule = this.load().find((r) => r && r.id === ruleId);
     if (!rule) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         zh ? "这条自动化规则已不存在（可能被删除）。" : "Rule no longer exists.");
       return false;
     }
     const errs = this.validate(rule);
     if (errs.length) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         (zh ? "规则配置有误，未执行：" : "Rule invalid, not run: ") + errs[0]);
       return false;
     }
@@ -608,7 +611,7 @@ var Automation = {
     }
     if (!items.length) return;
     const r = await this.apply(rules, items, false);
-    Zotero.debug("PaperPilot automation(newItem): " + items.length + " items, " + r.applied + " changes, " + r.skipped.length + " skipped");
+    Zotero.debug("Papilot automation(newItem): " + items.length + " items, " + r.applied + " changes, " + r.skipped.length + " skipped");
   },
 
   register() {
@@ -619,13 +622,13 @@ var Automation = {
           if (type === "item") this._onItemNotify(event, ids);
         } catch (e) { Zotero.logError(e); }
       },
-    }, ["item"], "paperpilot-automation");
+    }, ["item"], "papilot-automation");
     try {
       this._tabNotifierID = Zotero.Notifier.registerObserver({
         notify: (event, type, ids) => {
           try { if (type === "tab") this._onTabNotify(event, ids); } catch (e) { /* ignore */ }
         },
-      }, ["tab"], "paperpilot-automation-tab");
+      }, ["tab"], "papilot-automation-tab");
     } catch (e) { this._tabNotifierID = null; }
   },
 

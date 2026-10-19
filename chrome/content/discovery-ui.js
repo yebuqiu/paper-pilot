@@ -1,4 +1,7 @@
-/* PaperPilot 文献发现对话框（0.24.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 文献发现对话框（0.24.0）
  * 列表直接读 Discovery 的按天缓存；只有点「刷新推荐」才发网络请求。
  */
 /* global window, document */
@@ -7,9 +10,9 @@
   const XHTML = "http://www.w3.org/1999/xhtml";
   const args = (window.arguments && window.arguments[0]) || {};
   const Z = args.Zotero || (window.opener && window.opener.Zotero);
-  const PP = Z && Z.PaperPilot;
+  const PP = Z && Z.Papilot;
   const zh = !!(Z && (Z.locale || "").toLowerCase().startsWith("zh"));
-  const PREFIX = "extensions.zotero.paperpilot.";
+  const PREFIX = "extensions.zotero.papilot.";
 
   const $ = (id) => document.getElementById(id);
   const listEl = $("pp-dc-list");
@@ -17,7 +20,7 @@
   const sumEl = $("pp-dc-sum");
 
   if (!PP || !PP.discovery) {
-    if (statusEl) statusEl.textContent = zh ? "错误：无法访问 PaperPilot 模块" : "Error: PaperPilot unavailable";
+    if (statusEl) statusEl.textContent = zh ? "错误：无法访问 Papilot 模块" : "Error: Papilot unavailable";
     return;
   }
   const D = PP.discovery;

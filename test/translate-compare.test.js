@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 多引擎同屏对比 · 编排测试（C2，0.40.0）
  *
  * 为什么要有它：对比小窗的核心价值是「并行 + 失败隔离 + 按序聚合」——

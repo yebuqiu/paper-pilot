@@ -1,4 +1,7 @@
-/* PaperPilot 真假文献识别（0.7.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 真假文献识别（0.7.0 新增）
  * 检测 AI 生成的幻觉文献：逐条核验 Semantic Scholar / Crossref 是否存在该记录。
  * 判定逻辑：
  *  - 有 DOI：S2 单查 → 命中且标题/年份一致 = 真实；S2 查无 → Crossref works/{doi}
@@ -88,7 +91,7 @@ var FakeCheck = {
         const req = await Zotero.HTTP.request("GET", this.CROSSREF + encodeURIComponent(doi), {
           responseType: "json",
           timeout: 15000,
-          headers: { "User-Agent": "PaperPilot/0.8 (mailto:paperpilot@dev.local)" },
+          headers: { "User-Agent": "Papilot/0.8 (mailto:papilot@dev.local)" },
         });
         const m = req.response && req.response.message;
         if (m && (m.DOI || m.title)) {
@@ -134,8 +137,8 @@ var FakeCheck = {
     const win = Zotero.getMainWindow();
     if (!win) return;
     win.openDialog(
-      "chrome://paperpilot/content/paste-check.xhtml",
-      "paperpilot-paste-check",
+      "chrome://papilot/content/paste-check.xhtml",
+      "papilot-paste-check",
       "chrome,centerscreen,resizable"
     );
   },
@@ -160,7 +163,7 @@ var FakeCheck = {
     }
     const zh = I18n.isZh;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
+    pw.changeHeadline("Papilot");
     pw.show();
     const lines = [];
     let nReal = 0, nSus = 0, nUnk = 0;
@@ -168,7 +171,7 @@ var FakeCheck = {
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(30);
         const r = await this.checkItem(item);

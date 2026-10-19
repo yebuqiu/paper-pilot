@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 嵌套标签视图 · 树构建测试（E3，0.40.0）
  *
  * 为什么要有它：嵌套视图是只读 UI，但「#a/b/c → 树」的解析与计数是全功能的

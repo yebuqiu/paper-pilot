@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 菜单注册表测试（0.29.0 菜单瘦身）：
  * 覆盖「重组不减功能」的静态口径——
  *   ① 注册表恰好 40 条（0.28 的 40 个右键命令一条不少、一条不多）；
@@ -40,7 +43,7 @@ const ZoteroStub = new Proxy(deepProxy("Zotero"), {
     return deepProxy("Zotero." + String(k));
   },
 });
-const setPref = (k, v) => PrefStore.set("extensions.zotero.paperpilot." + k, v);
+const setPref = (k, v) => PrefStore.set("extensions.zotero.papilot." + k, v);
 
 const sandbox = {
   console,

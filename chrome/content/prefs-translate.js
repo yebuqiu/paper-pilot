@@ -1,5 +1,8 @@
-/* PaperPilot 设置窗格脚本·翻译引擎（0.28.0 新增）
- * 与 prefs-pane.js / prefs-account.js 同窗格运行；经 Zotero.PaperPilot.translateSvc
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格脚本·翻译引擎（0.28.0 新增）
+ * 与 prefs-pane.js / prefs-account.js 同窗格运行；经 Zotero.Papilot.translateSvc
  * 访问 bootstrap 作用域的 TranslateSvc 模块（设置窗口访问不到 bootstrap 作用域）。
  *
  * 渲染内容：状态行 + 当前引擎/源语言/目标语言 + 回退链 + 超时/重试/缓存
@@ -19,8 +22,18 @@
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const $ = (id) => document.getElementById(id);
-  const PP = () => Zotero.PaperPilot || {};
+  const PP = () => Zotero.Papilot || {};
   const T = () => PP().translateSvc;
+
+  /**
+   * 写扩展 pref。
+   * ★ 第三参 `true`（global）绝不能省：省略时 Zotero 会再补一次 `extensions.zotero.`，
+   *   值落到 `extensions.zotero.extensions.zotero.papilot.*` 孤儿键——读取端读的是
+   *   正确键，于是「保存成功但从不生效」（0.54.1 修复，回归见 test/pref-namespace.test.js）。
+   */
+  const setPref = (key, value) => {
+    Zotero.Prefs.set("extensions.zotero.papilot." + key, value, true);
+  };
 
   const el = (tag, attrs, text) => {
     const node = document.createElementNS(HTML_NS, tag);
@@ -141,7 +154,7 @@
     const gl = $("pp-tr-glossary");
     if (gl) {
       gl.value = String((function () {
-        try { return Zotero.Prefs.get("extensions.zotero.paperpilot.translateGlossary", true) || ""; }
+        try { return Zotero.Prefs.get("extensions.zotero.papilot.translateGlossary", true) || ""; }
         catch (e) { return ""; }
       })());
       renderGlossaryMsg(gl.value);
@@ -171,7 +184,7 @@
   /** 读取扩展字符串 pref（默认值在 prefs.js 声明，这里只兜 undefined） */
   function prefStr(key, dflt) {
     try {
-      const v = Zotero.Prefs.get("extensions.zotero.paperpilot." + key, true);
+      const v = Zotero.Prefs.get("extensions.zotero.papilot." + key, true);
       return v === undefined || v === null ? dflt : String(v);
     } catch (e) { return dflt; }
   }
@@ -179,7 +192,7 @@
   /** 读取扩展布尔 pref（默认值在 prefs.js 声明，这里只兜 undefined） */
   function prefBool(key, dflt) {
     try {
-      const v = Zotero.Prefs.get("extensions.zotero.paperpilot." + key, true);
+      const v = Zotero.Prefs.get("extensions.zotero.papilot." + key, true);
       return v === undefined || v === null ? dflt : !!v;
     } catch (e) { return dflt; }
   }
@@ -274,7 +287,7 @@
       else active.push(domain);                // 未选 → 增选
     }
     const v = active.join(";");
-    try { Zotero.Prefs.set("extensions.zotero.paperpilot.translateGlossaryDomains", v); } catch (e) { /* ignore */ }
+    try { setPref("translateGlossaryDomains", v); } catch (e) { /* ignore */ }
     // 不清缓存：域启停改变 glossary() 过滤结果 → 术语表指纹变 → 缓存键自然失效
     renderGlossaryDomains();
     setMsg(v
@@ -283,7 +296,7 @@
       "var(--pp-success)");
   }
 
-  /** 领域种子词包下拉（数据来自 Zotero.PaperPilot.glossaryPacks，插件未就绪时留空） */
+  /** 领域种子词包下拉（数据来自 Zotero.Papilot.glossaryPacks，插件未就绪时留空） */
   function renderGlossaryPacks() {
     const sel = $("pp-tr-glossary-pack");
     if (!sel) return;
@@ -302,7 +315,7 @@
 
   /** 术语表落盘公共路径：写 pref + 清缓存 + 刷新三个反馈区 */
   function persistGlossary(raw) {
-    try { Zotero.Prefs.set("extensions.zotero.paperpilot.translateGlossary", raw); } catch (e) { /* ignore */ }
+    try { setPref("translateGlossary", raw); } catch (e) { /* ignore */ }
     const S = T();
     try { if (S && S.clearCache) S.clearCache(); } catch (e) { /* ignore */ }
     if ($("pp-tr-glossary")) $("pp-tr-glossary").value = raw;
@@ -360,7 +373,7 @@
       const csv = S.glossaryToCsv(list);
       const fp = new Zotero.FilePicker();
       fp.init(window, zh ? "导出术语表为 CSV" : "Export glossary as CSV", fp.modeSave);
-      fp.defaultString = "paperpilot-glossary.csv";
+      fp.defaultString = "papilot-glossary.csv";
       const rv = await fp.show();
       if (rv !== fp.returnOK && rv !== fp.returnReplace) return;
       // BOM 头让 Excel 直接打开中文不乱码（UTF-8 CSV 的通行做法）
@@ -402,13 +415,13 @@
 
   function readPackState() {
     try {
-      const v = Zotero.Prefs.get("extensions.zotero.paperpilot.translateGlossaryPackState", true);
+      const v = Zotero.Prefs.get("extensions.zotero.papilot.translateGlossaryPackState", true);
       return v ? JSON.parse(String(v)) : {};
     } catch (e) { return {}; }
   }
   function writePackState(st) {
     try {
-      Zotero.Prefs.set("extensions.zotero.paperpilot.translateGlossaryPackState", JSON.stringify(st));
+      setPref("translateGlossaryPackState", JSON.stringify(st));
     } catch (e) { /* ignore */ }
   }
 
@@ -790,7 +803,7 @@
 
   /* ---------- 初始化（DOM 就绪探测） ---------- */
   function init() {
-    if (typeof Zotero === "undefined" || !Zotero.PaperPilot || !T()) {
+    if (typeof Zotero === "undefined" || !Zotero.Papilot || !T()) {
       window.setTimeout(init, 400);
       return;
     }
@@ -863,7 +876,7 @@
     bind("pp-tr-glossary", "change", () => {
       const v = String($("pp-tr-glossary").value || "");
       try {
-        Zotero.Prefs.set("extensions.zotero.paperpilot.translateGlossary", v);
+        setPref("translateGlossary", v);
       } catch (e) { /* ignore */ }
       try { if (T() && T().clearCache) T().clearCache(); } catch (e) { /* ignore */ }
       renderGlossaryMsg(v);
@@ -879,20 +892,17 @@
     bind("pp-tr-glossary-online-fetch", "click", onOnlineFetch);
     bind("pp-tr-bl-struct", "change", () => {
       try {
-        Zotero.Prefs.set("extensions.zotero.paperpilot.bilingualStructExtract",
-          !!$("pp-tr-bl-struct").checked);
+        setPref("bilingualStructExtract", !!$("pp-tr-bl-struct").checked);
       } catch (e) { /* ignore */ }
     });
     bind("pp-tr-bl-context", "change", () => {
       try {
-        Zotero.Prefs.set("extensions.zotero.paperpilot.bilingualContext",
-          !!$("pp-tr-bl-context").checked);
+        setPref("bilingualContext", !!$("pp-tr-bl-context").checked);
       } catch (e) { /* ignore */ }
     });
     bind("pp-tr-formula", "change", () => {
       try {
-        Zotero.Prefs.set("extensions.zotero.paperpilot.translateFormulaProtect",
-          !!$("pp-tr-formula").checked);
+        setPref("translateFormulaProtect", !!$("pp-tr-formula").checked);
       } catch (e) { /* ignore */ }
     });
 
@@ -906,7 +916,7 @@
     bind("pp-pd-rightmode", "change", () => {
       let v = String($("pp-pd-rightmode").value || "mono");
       if (["mono", "overlay"].indexOf(v) < 0) v = "mono";
-      try { Zotero.Prefs.set("extensions.zotero.paperpilot.pdfDualRightMode", v); } catch (e) { /* ignore */ }
+      try { setPref("pdfDualRightMode", v); } catch (e) { /* ignore */ }
       piRefresh();
       setMsg(v === "mono"
         ? (zh ? "右栏：译文替换原文（图表与公式保留）" : "Right pane: translation replaces text")
@@ -917,21 +927,19 @@
       const n = Number($("pp-pd-scale").value);
       const v = isFinite(n) && n > 0 ? Math.min(1.6, Math.max(0.7, n)) : 1;
       try {
-        Zotero.Prefs.set("extensions.zotero.paperpilot.pdfInlineFontScale", String(v));
+        setPref("pdfInlineFontScale", String(v));
       } catch (e) { /* ignore */ }
       if ($("pp-pd-scale")) $("pp-pd-scale").value = String(v);
       piRefresh();
     });
     bind("pp-pd-sync", "change", () => {
       try {
-        Zotero.Prefs.set("extensions.zotero.paperpilot.pdfDualSyncScroll",
-          !!$("pp-pd-sync").checked);
+        setPref("pdfDualSyncScroll", !!$("pp-pd-sync").checked);
       } catch (e) { /* ignore */ }
     });
     bind("pp-pd-zoom", "change", () => {
       try {
-        Zotero.Prefs.set("extensions.zotero.paperpilot.pdfDualSyncZoom",
-          !!$("pp-pd-zoom").checked);
+        setPref("pdfDualSyncZoom", !!$("pp-pd-zoom").checked);
       } catch (e) { /* ignore */ }
     });
 

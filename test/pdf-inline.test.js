@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot PDF 原位对照翻译 测试（插件 0.34.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 原位对照翻译 测试（插件 0.34.0）
  *
  * 为什么要有它：原位对照的成败全在「段落坐标」与「叠加时机」两件事上——
  * ① 段落切错 = 译文卡错位、一句话被拆成两张卡（版面观感直接崩）；
@@ -136,7 +139,6 @@ function mkPage(doc, num, spans) {
   doc.documentElement.appendChild(page);
   return page;
 }
-
 /* ==================== 桩环境 ==================== */
 
 const PrefStore = new Map();
@@ -144,13 +146,31 @@ const Prefs = {
   get(k, d) { return PrefStore.has(k) ? PrefStore.get(k) : d; },
   set(k, v) { PrefStore.set(k, v); },
 };
+const notifierObservers = [];
 
 const Zotero = {
   logError() {},
   Items: { get: () => null },
-  Reader: { _readers: [] },
+  Reader: {
+    _readers: [],
+    getByTabID(id) { return this._readers.find((r) => r && r.tabID === id) || null; },
+  },
+  // P1-8：tab close 观察者（pdf-inline 关一个标签释放一份 state）
+  Notifier: {
+    registerObserver(obs, types, id) { notifierObservers.push({ obs, types, id }); return id; },
+    unregisterObserver(id) {
+      const i = notifierObservers.findIndex((o) => o.id === id);
+      if (i >= 0) notifierObservers.splice(i, 1);
+    },
+  },
   getMainWindow: () => ({}),
 };
+/** 合成一次 Notifier 通知（模拟关标签） */
+function fireNotifier(event, type, ids) {
+  for (const o of notifierObservers.slice()) {
+    try { o.obs.notify(event, type, ids); } catch (e) { /* ignore */ }
+  }
+}
 const Services = { prompt: { alert() {} } };
 const I18n = { isZh: true, t: (k) => k };
 const translated = [];
@@ -330,9 +350,9 @@ async function main() {
 
   /* ---- 4.17 计数文本挂到按钮上（按钮由 renderToolbar 注入，这里手工造一个验证） ---- */
   const btn = doc.createElementNS('', 'button');
-  btn.id = 'paperpilot-inline-reader-button';
+  btn.id = 'papilot-inline-reader-button';
   const cnt = doc.createElementNS('', 'span');
-  cnt.id = 'paperpilot-inline-reader-button-count';
+  cnt.id = 'papilot-inline-reader-button-count';
   btn.appendChild(cnt);
   doc.documentElement.appendChild(btn);
   PI.refresh(); // 触发一次重绘/计数刷新
@@ -398,6 +418,10 @@ async function main() {
   mkPage(doc, 3, [
     { text: 'Gamma paragraph.', left: 50, top: 100, width: 200, height: 12, fontSize: 10 },
   ]);
+  // 第 3 页排在文档 800px 处 → 整篇翻译期间容器真的会被滚下去（否则 scrollTop 断言
+  // 恒为 0，测不出「结束后还原」）
+  doc.querySelector('.page[data-page-number="3"]')._rect =
+    { left: 0, top: 800, width: 612, height: 792 };
   const container = doc.createElementNS('', 'div');
   container.id = 'viewerContainer';
   container.getBoundingClientRect = () => ({ left: 0, top: 0, width: 600, height: 400 });
@@ -420,6 +444,7 @@ async function main() {
   eq(progressCalls.length, 3, '⑨ 每页一次进度回调（含跳过页）');
   ok(progressCalls.some((p) => p.phase === 'skip' && p.page === 2), '⑨ 跳过页的进度带 phase=skip');
   eq(container.scrollTop, 0, '⑨ ★ 结束后滚回原位置（不打扰用户当前阅读位置）');
+  eq(viewer.currentPageNumber, 1, '⑨ ★ 结束后 currentPageNumber 也还原（P2-10：不被拖到末页）');
   const cards = doc.querySelectorAll('.pp-pit-card');
   eq(cards.length, 3, '⑨ 三页各段落都注入了译文卡（整篇一次铺好）');
   PI.stop(reader, { keepPref: true });
@@ -731,6 +756,52 @@ async function main() {
     eq(fetches, fetchesAfterFirst, '⑬.5 ★ 缩放重铺复用 chars 缓存（零新增 worker 往返）');
     PI.stop(reader, { keepPref: true });
     clearInterval(st.pollTimer);
+  }
+
+  /* ==================== ⑭ 生命周期：state 释放 / 队列清理（P1-8） ==================== */
+{
+    PrefStore.clear();
+    PrefStore.set('pdfInlineMode', 'overlay');
+    PrefStore.set('pdfInlineGapMs', 0);
+    const doc = mkDoc();
+    mkPage(doc, 1, [
+      { text: 'Lifecycle paragraph one.', left: 50, top: 100, width: 200, height: 12, fontSize: 10 },
+      { text: 'Lifecycle paragraph two.', left: 50, top: 160, width: 200, height: 12, fontSize: 10 },
+    ]);
+    // 引擎挂起（永不返回）→ 任务真的留在队列里，才能验证「stop 会清队列」
+    const origTranslate = TranslateSvc.translate;
+    TranslateSvc.translate = () => new Promise(() => {});
+    const app = { pdfDocument: {}, pdfViewer: { pagesCount: 1 }, eventBus: { on() {}, off() {} } };
+    const reader = {
+      itemID: 31, tabID: 'pp-tab-31',
+      _internalReader: { _primaryView: { _iframeWindow: { document: doc, PDFViewerApplication: app } } },
+    };
+    Zotero.Reader._readers.push(reader);
+    const baseSize = PI._states.size;
+    PI.register('papilot@test');
+    ok(PI.start(reader), '⑭.1 start 建立 state');
+    const st = PI._states.get(reader);
+    ok(st && st.queue && st.queue.items.length > 0, '⑭.2 引擎挂起时任务仍在队列（前置）', st && st.queue && st.queue.items.length);
+
+    PI.stop(reader, { keepPref: true });
+    eq(st.queue.items.length, 0, '⑭.3 ★ stop() 清空待办队列（旧版本残留 → 重开会把旧任务重跑）');
+    eq(st.queue.running, false, '⑭.4 stop() 复位 running');
+    PI._enqueue(st, async () => { throw new Error('dropped'); });
+    eq(st.queue.items.length, 0, '⑭.5 ★ stopped 状态下 enqueue 直接丢弃（不重复计费）');
+    eq(PI._states.size, baseSize + 1, '⑭.6 stop() 不摘 state（语义未变：仍可 start 重开）');
+
+    // 关标签 → 自动释放（旧版本只在插件 unregister 时清理 → 开一篇关一篇泄漏一份）
+    fireNotifier('close', 'tab', ['pp-tab-31']);
+    eq(PI._states.has(reader), false, '⑭.7 ★ 关闭标签 → state 被释放（含 charsByPage/页块）');
+    eq(PI._states.size, baseSize, '⑭.8 _states 回到基线（无泄漏）');
+    eq(PI.disposeState(reader), false, '⑭.9 disposeState 幂等（重复调用不抛、返回 false）');
+
+    const observersBefore = notifierObservers.length;
+    PI.unregister();
+    eq(notifierObservers.length, observersBefore - 1, '⑭.10 unregister 注销 tab 观察者');
+
+    TranslateSvc.translate = origTranslate;
+    Zotero.Reader._readers = Zotero.Reader._readers.filter((r) => r !== reader);
   }
 
 /* ---------------- 输出 ---------------- */

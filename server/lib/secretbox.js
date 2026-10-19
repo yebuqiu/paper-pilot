@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · 对称加密盒子（AES-256-GCM）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · 对称加密盒子（AES-256-GCM）
  *
  * 用途：加密落盘「不该明文躺着」的配置项。当前唯一使用方是支付商户密钥
  * （server/lib/pay.js 的 keyEnc / privateKeyEnc）。

@@ -1,5 +1,7 @@
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
-<!-- PaperPilot · 综述工作台（Review Workbench）独立窗口
+<!-- Papilot · 综述工作台（Review Workbench）独立窗口
      纪律（同 skill-store.xhtml，本项目真机踩坑实录）：
        ① 不写 XML 声明；禁用命名实体（nbsp/copy/mdash…），占位一律 &#160;。
        ② 顶部 <script> 先于后续 DOM 执行 → review-workbench.js 用 boot() +
@@ -12,11 +14,11 @@
      单例由打开方 ReviewWorkbench.openDialog 负责。 -->
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot · 综述工作台"
-        windowtype="paperpilot:review-workbench"
+        title="Papilot · 综述工作台"
+        windowtype="papilot:review-workbench"
         width="1120" height="700"
         persist="screenX screenY width height sizemode">
-  <script src="chrome://paperpilot/content/review-workbench.js"></script>
+  <script src="chrome://papilot/content/review-workbench.js"></script>
   <html:style><![CDATA[
     /* ===== 主题变量（与 skill-store 同一套；浅色 = GitHub Primer Light） ===== */
     #pp-rw-root {

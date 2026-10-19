@@ -1,8 +1,11 @@
-/* PaperPilot 核心工具：pref 读写 + 简易 i18n + Markdown→笔记 HTML + 笔记助手 + 选中归一化 */
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 核心工具：pref 读写 + 简易 i18n + Markdown→笔记 HTML + 笔记助手 + 选中归一化 */
 /* global Zotero, Services */
 
 var Prefs = {
-  PREFIX: "extensions.zotero.paperpilot.",
+  PREFIX: "extensions.zotero.papilot.",
 
   get(key, fallback) {
     try {
@@ -16,14 +19,100 @@ var Prefs = {
   set(key, value) {
     Zotero.Prefs.set(this.PREFIX + key, value, true);
   },
+
+  /**
+   * 0.54.1（审查 P0-1）：修「设置看似保存、实际不生效」留下的历史脏数据。
+   *
+   * 成因：调用方把**完整键**交给 `Zotero.Prefs.set(key, v)` 且漏了第三参 `true`，
+   *  Zotero 会再补一次 `extensions.zotero.` → 值落到：
+   *    · `extensions.zotero.extensions.zotero.papilot.X`（完整键重复）
+   *    · `extensions.zotero.extensions.papilot.X`（少写一级 zotero）
+   *  读取端用的是规范键，所以这些值从未被读到。
+   *
+   * 行为：只搬「规范键没有用户值」的项；搬完删旧键。幂等，可每次启动调用。
+   * @returns {number} 实际搬迁条数
+   */
+  migrateLegacyNamespace() {
+    let moved = 0;
+    try {
+      const S = Services.prefs;
+      const canonical = this.PREFIX; // extensions.zotero.papilot.
+      const legacyRoots = [
+        "extensions.zotero.extensions.zotero.papilot.",
+        "extensions.zotero.extensions.papilot.",
+      ];
+      for (const root of legacyRoots) {
+        let kids = [];
+        try { kids = S.getChildList(root) || []; } catch (e) { kids = []; }
+        for (const full of kids) {
+          const leaf = String(full).slice(root.length);
+          if (!leaf) continue;
+          const target = canonical + leaf;
+          try {
+            // 规范键已有用户值 → 以规范键为准，旧键只清理
+            if (!S.prefHasUserValue(target)) {
+              const type = S.getPrefType(full);
+              if (type === S.PREF_STRING) S.setStringPref(target, S.getStringPref(full));
+              else if (type === S.PREF_BOOL) S.setBoolPref(target, S.getBoolPref(full));
+              else if (type === S.PREF_INT) S.setIntPref(target, S.getIntPref(full));
+              else continue;
+              moved++;
+            }
+            S.clearUserPref(full);
+          } catch (e) { /* 单条失败不影响其余 */ }
+        }
+      }
+    } catch (e) { /* 迁移是修补，不是前置条件 */ }
+    return moved;
+  },
+
+  /**
+   * 0.55.0 品牌迁移：PaperPilot → Papilot。
+   *
+   * 改名把 pref 分支从 `extensions.zotero.paperpilot.*` 换成了
+   * `extensions.zotero.papilot.*`。老用户 profile 里的**用户值**（AI Key、
+   * 接口地址、菜单定制、自动化规则等）仍挂在旧分支上，不搬就会表现为
+   * 「升级后设置全没了」。这里只搬旧分支里真实存在的键，规范键已有用户值时
+   * 以规范键为准（便于用户在新版里先改过一次再回滚）。
+   *
+   * 幂等：`brandMigrated` 为 true 直接返回；异常一律吞掉（迁移失败不能挡启动）。
+   * @returns {number} 实际搬迁条数
+   */
+  migrateLegacyBrand() {
+    if (this.get("brandMigrated", false)) return 0;
+    let moved = 0;
+    try {
+      const S = Services.prefs;
+      const legacy = "extensions.zotero.paperpilot.";
+      let kids = [];
+      try { kids = S.getChildList(legacy) || []; } catch (e) { kids = []; }
+      for (const full of kids) {
+        const leaf = String(full).slice(legacy.length);
+        if (!leaf) continue;
+        const target = this.PREFIX + leaf;
+        try {
+          if (!S.prefHasUserValue(target)) {
+            const type = S.getPrefType(full);
+            if (type === S.PREF_STRING) S.setStringPref(target, S.getStringPref(full));
+            else if (type === S.PREF_BOOL) S.setBoolPref(target, S.getBoolPref(full));
+            else if (type === S.PREF_INT) S.setIntPref(target, S.getIntPref(full));
+            else continue;
+            moved++;
+          }
+        } catch (e) { /* 单条失败不影响其余 */ }
+      }
+    } catch (e) { /* 迁移是修补，不是前置条件 */ }
+    try { this.set("brandMigrated", true); } catch (e) { /* 无法落标记时下次再跑，幂等无害 */ }
+    return moved;
+  },
 };
 
 // 轻量 i18n：按 Zotero 界面语言选择文案（菜单等无法走 ftl 的地方用）
 var I18n = (() => {
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const table = {
-    menuSettings: zh ? "PaperPilot 设置" : "PaperPilot Settings",
-    menuConnTest: zh ? "PaperPilot 接口连通性测试" : "PaperPilot Connection Test",
+    menuSettings: zh ? "Papilot 设置" : "Papilot Settings",
+    menuConnTest: zh ? "Papilot 接口连通性测试" : "Papilot Connection Test",
     menuAiNote: zh ? "AI 深度解读所选文献（生成笔记）" : "AI Deep Interpretation (note)",
     menuAiSummary: zh ? "AI 总结（生成笔记）" : "AI Summary (note)",
     menuAiTranslate: zh ? "AI 翻译标题与摘要（生成笔记）" : "AI Translate Title & Abstract (note)",
@@ -37,7 +126,7 @@ var I18n = (() => {
     menuMatrix: zh ? "AI 文献矩阵（对比表格笔记）" : "AI Literature Matrix (note)",
     menuCollectAnnot: zh ? "收集批注为笔记" : "Collect Annotations to Note",
     menuAiAnnot: zh ? "AI 解读我的批注（生成笔记）" : "AI Interpret My Annotations (note)",
-    menuCollStat: zh ? "PaperPilot 分类条目统计" : "PaperPilot Collection Stats",
+    menuCollStat: zh ? "Papilot 分类条目统计" : "Papilot Collection Stats",
     noteAnnotTitle: zh ? "批注收集" : "Annotations",
     noteAnnotAiTitle: zh ? "AI 批注解读" : "AI Annotation Insights",
     noteMatrixTitle: zh ? "AI 文献矩阵" : "AI Literature Matrix",
@@ -82,8 +171,8 @@ var I18n = (() => {
     chatSaved: zh ? "已保存为笔记" : "Saved as note",
     chatEmptyHistory: zh ? "还没有可保存的对话" : "Nothing to save yet",
     chatNoKey: zh
-      ? "请先在 编辑 → 设置 → PaperPilot 中登录账号（官方模型按 AI 额度扣费），或在「AI 模型通道」中配置自己的接口"
-      : "Log in under Edit → Settings → PaperPilot (official model is free), or configure your own channel",
+      ? "请先在 编辑 → 设置 → Papilot 中登录账号（官方模型按 AI 额度扣费），或在「AI 模型通道」中配置自己的接口"
+      : "Log in under Edit → Settings → Papilot (official model is free), or configure your own channel",
     chatNoPdf: zh
       ? "该条目没有可读取的 PDF 全文（扫描件请先 OCR）"
       : "No readable PDF full text (OCR scanned PDFs first)",
@@ -101,7 +190,7 @@ var I18n = (() => {
     chatFloatUndock: zh ? "取消停靠（恢复浮动）" : "Undock (float freely)",
     chatFloatOpacity: zh ? "透明度" : "Opacity",
     chatFloatPopout: zh ? "分屏独立窗口" : "Open in split window",
-    chatFloatWindowTitle: zh ? "PaperPilot · AI 问答（分屏窗口）" : "PaperPilot · AI Chat (split window)",
+    chatFloatWindowTitle: zh ? "Papilot · AI 问答（分屏窗口）" : "Papilot · AI Chat (split window)",
     chatFloatStop: zh ? "停止" : "Stop",
     chatFloatOpenHint: zh ? "Enter 发送 · Shift+Enter 换行 · ↑↓ 翻提问记录 · Esc 关闭" : "Enter to send · Shift+Enter newline · ↑↓ history · Esc to close",
     popupContinueFloat: zh ? "在浮窗继续" : "Continue in floating chat",
@@ -127,8 +216,8 @@ var I18n = (() => {
     agentModeOn: zh ? "✓ 智能体模式已开启（AI 可调用工具检索/读写文献库）" : "Agent mode ON (tools enabled)",
     agentModeOff: zh ? "✓ 智能体模式已关闭（恢复纯文献问答）" : "Agent mode OFF (plain Q&A)",
     agentNoTools: zh
-      ? "当前没有启用的工具（设置 → PaperPilot → AI 参数 → 智能体）"
-      : "No tools enabled (Settings → PaperPilot → AI params → Agent)",
+      ? "当前没有启用的工具（设置 → Papilot → AI 参数 → 智能体）"
+      : "No tools enabled (Settings → Papilot → AI params → Agent)",
     noteTitle: zh ? "AI 文献解读" : "AI Interpretation",
     noteChatTitle: zh ? "AI 问答记录" : "AI Q&A",
     noteDone: zh ? "已生成解读笔记" : "Note created",
@@ -157,14 +246,14 @@ var I18n = (() => {
     menuMetaEnrich: zh ? "元数据补全（S2/Crossref 回写缺失字段）" : "Fill Missing Metadata (S2)",
     menuRefImport: zh ? "参考文献一键入库…" : "Import References…",
     menuPasteCheck: zh ? "粘贴文献列表核验（AI 幻觉检测）…" : "Verify Pasted References…",
-    menuWorkbench: zh ? "PaperPilot 工作台（独立窗口）" : "PaperPilot Workbench (standalone window)",
-    menuChannels: zh ? "PaperPilot AI 模型通道" : "PaperPilot AI Channels",
+    menuWorkbench: zh ? "Papilot 工作台（独立窗口）" : "Papilot Workbench (standalone window)",
+    menuChannels: zh ? "Papilot AI 模型通道" : "Papilot AI Channels",
     menuChannelsEmpty: zh ? "（暂无通道，在设置中新增）" : "(No channels — add in Settings)",
     channelSwitched: zh ? "已切换 AI 通道" : "AI channel switched",
     channelSwitchBlocked: zh ? "无法切换" : "Cannot switch",
     errPrefix: zh ? "出错：" : "Error: ",
     // ---- 0.11.0 新增 ----
-    menuHub: zh ? "PaperPilot 功能中心" : "PaperPilot Feature Hub",
+    menuHub: zh ? "Papilot 功能中心" : "Papilot Feature Hub",
     menuBilingual: zh ? "全文对照翻译（AI 双语笔记）" : "Bilingual Full-text Translation (note)",
     noteBilingualTitle: zh ? "全文对照翻译" : "Bilingual Translation",
     // ---- 0.25.2 全文对照翻译 · 双栏对照窗口 ----
@@ -243,7 +332,7 @@ var I18n = (() => {
     menuOaFetch: zh ? "开放获取 / Sci-Hub 补全文" : "Find Full Text (OA / Sci-Hub)",
     menuThirdSource: zh ? "第三方文献源（实验 · Pro 试用）" : "Third-party Source (Experimental · Pro)",
     menuAnki: zh ? "AI 制卡导出 Anki…" : "AI Cards to Anki…",
-    menuLibGraph: zh ? "PaperPilot 文献统计图谱（HTML 报告）" : "PaperPilot Library Report (HTML)",
+    menuLibGraph: zh ? "Papilot 文献统计图谱（HTML 报告）" : "Papilot Library Report (HTML)",
     // 0.16.0 外观主题
     menuThemes: zh ? "外观主题" : "Appearance Themes",
     menuUiTheme: zh ? "界面主题" : "UI Theme",
@@ -256,16 +345,16 @@ var I18n = (() => {
     themeCustom: zh ? "自定义主题" : "Custom theme",
     themeGroupGiant: zh ? "巨物风" : "Giant",
     // ---- 0.25.1 主题切换按钮：界面主题（主窗口）/ PDF 阅读主题（阅读器）两个按钮分开 ----
-    themeUiButtonTip: zh ? "PaperPilot 界面主题" : "PaperPilot UI theme",
-    quickBarTip: zh ? "PaperPilot 快捷菜单（高频功能 / 功能中心 / 设置）"
-      : "PaperPilot quick menu (frequent actions / hub / settings)",
-    themePdfButtonTip: zh ? "PaperPilot PDF 阅读主题" : "PaperPilot PDF reading theme",
+    themeUiButtonTip: zh ? "Papilot 界面主题" : "Papilot UI theme",
+    quickBarTip: zh ? "Papilot 快捷菜单（高频功能 / 功能中心 / 设置）"
+      : "Papilot quick menu (frequent actions / hub / settings)",
+    themePdfButtonTip: zh ? "Papilot PDF 阅读主题" : "Papilot PDF reading theme",
     themeOpenSettings: zh
       ? "外观主题设置…（自定义配色 / 壁纸）"
       : "Appearance theme settings… (custom colors / wallpaper)",
     // ---- 0.21.0 多篇 PDF 并排对比 ----
     menuPdfCompare: zh ? "多篇 PDF 并排对比…" : "Compare PDFs Side by Side…",
-    compareWindowTitle: zh ? "PaperPilot 多篇 PDF 对比" : "PaperPilot PDF Comparison",
+    compareWindowTitle: zh ? "Papilot 多篇 PDF 对比" : "Papilot PDF Comparison",
     compareNoPdf: zh
       ? "选中的条目里没有可用的 PDF 附件。\n请选中带 PDF 的文献，或直接选中 PDF 附件。"
       : "No usable PDF attachments in the selection.",
@@ -273,7 +362,7 @@ var I18n = (() => {
       ? "对比至少需要两篇带 PDF 的文献。\n请按住 Ctrl/⌘ 多选后再试。"
       : "Select at least two papers with PDFs (Ctrl/⌘-click).",
     compareTrimmed: zh
-      ? "已选 %n 篇，超过同时打开的 %m 篇上限，只打开前 %m 篇。\n（上限可在设置 → PaperPilot 中调整）"
+      ? "已选 %n 篇，超过同时打开的 %m 篇上限，只打开前 %m 篇。\n（上限可在设置 → Papilot 中调整）"
       : "Selected %n; the limit is %m, so the first %m were opened.",
     compareCount: zh ? "对比面板：%n / %m" : "Panes: %n / %m",
     compareLayout: zh ? "布局" : "Layout",
@@ -350,7 +439,7 @@ var I18n = (() => {
     popupNoEngine: zh
       ? "翻译不可用：当前没有可用的翻译引擎（AI 未登录/未配置，且无免费引擎兜底）。"
       : "Translation unavailable: no usable engine (AI not logged in/configured, no free fallback).",
-    menuTranslateEngine: zh ? "PaperPilot 翻译引擎" : "PaperPilot Translation Engine",
+    menuTranslateEngine: zh ? "Papilot 翻译引擎" : "Papilot Translation Engine",
     translateTest: zh ? "测试" : "Test",
     translateTesting: zh ? "测试中…" : "Testing…",
     // ---- 0.30.0 阅读器右侧栏 · 翻译面板（TranslatePane）----
@@ -378,11 +467,11 @@ var I18n = (() => {
     tpNoText: zh ? "请先划词或粘贴要翻译的文本" : "Select or paste text first",
     tpNoPairs: zh ? "还没有全文译文，请先点「开始」" : "No full-text result yet — click Start first",
     chatNotLoggedIn: zh
-      ? "官方模型需要登录：请在 设置 → PaperPilot 登录账号（调用从 AI 额度扣费），或在「AI 模型通道」中配置自己的接口"
-      : "The official model requires login: open Settings → PaperPilot to log in, or configure your own channel",
+      ? "官方模型需要登录：请在 设置 → Papilot 登录账号（调用从 AI 额度扣费），或在「AI 模型通道」中配置自己的接口"
+      : "The official model requires login: open Settings → Papilot to log in, or configure your own channel",
     chatNoKeyConfigured: zh
-      ? "当前模型通道缺少 API Key：请在 设置 → PaperPilot → AI 模型通道 中补全"
-      : "The active channel has no API key — fill it in under Settings → PaperPilot → AI Channels",
+      ? "当前模型通道缺少 API Key：请在 设置 → Papilot → AI 模型通道 中补全"
+      : "The active channel has no API key — fill it in under Settings → Papilot → AI Channels",
     // ---- 0.22.0 库内问答 / 标签治理 / 附件体检 ----
     menuLibAsk: zh ? "库内问答（问整个文献库）…" : "Ask the Library (whole library)…",
     menuAttachDoctor: zh ? "附件体检（断链/重复/扫描件/孤儿文件）" : "Attachment Doctor (broken/dup/scanned)",
@@ -567,7 +656,7 @@ var ItemSel = {
     try {
       Services.prompt.alert(
         Zotero.getMainWindow(),
-        "PaperPilot",
+        "Papilot",
         I18n.isZh
           ? "没有可处理的条目。\n请先在条目列表中选中至少一篇文献（选 PDF 附件也可以，会自动定位到其父条目）。"
           : "No processable items. Select at least one item first (selecting a PDF attachment works too — its parent item is used)."

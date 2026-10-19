@@ -1,6 +1,9 @@
-/* PaperPilot 设置窗格脚本（0.14.0 重构）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格脚本（0.14.0 重构）
  * 由 Zotero.PreferencePanes.register({scripts:[...]}) 注入设置窗口执行。
- * 运行上下文是设置窗口：访问不到 bootstrap 作用域，但可经 Zotero.PaperPilot
+ * 运行上下文是设置窗口：访问不到 bootstrap 作用域，但可经 Zotero.Papilot
  * 访问主模块暴露的 rankColumn / citationColumn。
  * 账号与 AI 模型通道的 UI 逻辑在 prefs-account.js（同一窗格的第二个脚本）。
  *
@@ -10,7 +13,7 @@
 /* global Zotero, Components, window, document */
 
 (function () {
-  const PREFIX = "extensions.zotero.paperpilot.";
+  const PREFIX = "extensions.zotero.papilot.";
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const txt = {
     pickJson: zh ? "选择分区数据 JSON" : "Select rank data JSON",
@@ -18,7 +21,7 @@
   };
 
   const $ = (id) => document.getElementById(id);
-  const rankColumn = () => Zotero.PaperPilot && Zotero.PaperPilot.rankColumn;
+  const rankColumn = () => Zotero.Papilot && Zotero.Papilot.rankColumn;
 
   const getPref = (key, fallback) => {
     try {
@@ -38,12 +41,12 @@
     try {
       const rc = rankColumn();
       let msg = (zh ? "缓存条目：" : "Cached: ") + rc.esCacheSize();
-      // 0.41.0：内置官方 Key 仅「专业版 / 新用户试用期」可用。把「为什么没有在线数据」
-      // 直接写在状态行里，否则免费版用户只会看到分区列空白，误判成插件坏了。
+      // 0.56.0：内置官方 Key 已移除（第三方 Key 无商用授权）。把「为什么没有在线数据」
+      // 直接写在状态行里，否则未填 Key 的用户只会看到分区列空白，误判成插件坏了。
       const st = (typeof rc.esStatus === "function") ? rc.esStatus() : "ok";
       if (st === "need_key") {
-        setText("pp-es-stats", msg + (zh ? " · 在线查询需专业版，或填写自己的 Key"
-                                         : " · Online lookup needs Pro or your own key"),
+        setText("pp-es-stats", msg + (zh ? " · 在线查询需填写自己的 easyScholar Key（easyscholar.cn 免费注册）"
+                                         : " · Online lookup needs your own easyScholar key (free at easyscholar.cn)"),
           "var(--pp-warn)");
         return;
       }
@@ -59,7 +62,7 @@
 
   /* ---------- Semantic Scholar 被引量 ---------- */
 
-  const citationColumn = () => Zotero.PaperPilot && Zotero.PaperPilot.citationColumn;
+  const citationColumn = () => Zotero.Papilot && Zotero.Papilot.citationColumn;
 
   function refreshS2Stats() {
     try {
@@ -209,7 +212,7 @@
       const nsIFilePicker = Components.interfaces.nsIFilePicker;
       const fp = Components.classes["@mozilla.org/filepicker;1"].createInstance(nsIFilePicker);
       fp.init(window, "导出分区配置", nsIFilePicker.modeSave);
-      fp.defaultString = "paperpilot-rank-config.json";
+      fp.defaultString = "papilot-rank-config.json";
       fp.appendFilter("JSON", "*.json");
       fp.open((rv) => {
         if (rv !== nsIFilePicker.returnOK && rv !== nsIFilePicker.returnReplace) return;
@@ -275,7 +278,7 @@
   /* ---------- 初始化（DOM 就绪探测） ---------- */
 
   function init() {
-    if (typeof Zotero === "undefined" || !Zotero.PaperPilot || !rankColumn()) {
+    if (typeof Zotero === "undefined" || !Zotero.Papilot || !rankColumn()) {
       window.setTimeout(init, 400);
       return;
     }

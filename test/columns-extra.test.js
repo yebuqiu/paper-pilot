@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot 条目列表三能力测试（Node vm 桩，无 Zotero 环境）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 条目列表三能力测试（Node vm 桩，无 Zotero 环境）
  *
  * 覆盖：
  *   ① extra 译文写回：upsertLine 替换语义（不动其他 extra 行 / CRLF /
@@ -34,7 +37,7 @@ function eq(a, b, label) { return ok(a === b, label, { got: a, want: b }); }
 
 const PrefStore = new Map();
 const Prefs = {
-  PREFIX: 'extensions.zotero.paperpilot.',
+  PREFIX: 'extensions.zotero.papilot.',
   get(k, d) { return PrefStore.has(k) ? PrefStore.get(k) : d; },
   set(k, v) { PrefStore.set(k, v); },
 };

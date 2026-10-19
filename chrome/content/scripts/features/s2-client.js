@@ -1,4 +1,7 @@
-/* PaperPilot · Semantic Scholar 推荐端点扩展（0.51.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot · Semantic Scholar 推荐端点扩展（0.51.0 新增）
  *
  * ⚠️ 本文件**不是** S2Client 的定义处。S2Client 的正文在
  *    chrome/content/scripts/ai/semantic-scholar.js（graph/v1 的单查 / 批量 / 标题检索）。

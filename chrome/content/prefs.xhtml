@@ -1,4 +1,6 @@
-<!-- PaperPilot 设置窗格（Zotero 设置内的 XUL fragment，非完整文档） -->
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
+<!-- Papilot 设置窗格（Zotero 设置内的 XUL fragment，非完整文档） -->
 <!-- ⚠️ 不能写 <?xml ?> 声明：Zotero 用 MozXULElement.parseXULToFragment 把本文件
      内容嵌进模板解析，XML 声明只能出现在文档开头，嵌在中间会报 "not well-formed XML"
      导致整个面板空白（Z10.0.3 实证）。注释节点无碍，可保留。 -->
@@ -32,10 +34,10 @@
   <!-- ============ 分类 · 账号 ============ -->
   <html:div class="pp-cat-label">账号</html:div>
 
-  <!-- ============ 1 · PaperPilot 账号 ============ -->
+  <!-- ============ 1 · Papilot 账号 ============ -->
   <html:div class="pp-card pp-fold" data-fold="account" data-search-strings-raw="账号 登录 注册 会员 余额 订单 激活码 设备 account login register membership balance order redeem">
     <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">👤</html:span><html:span class="pp-card-title">PaperPilot 账号</html:span>
+      <html:span class="pp-card-icon">👤</html:span><html:span class="pp-card-title">Papilot 账号</html:span>
       <html:span class="pp-card-desc">登录后使用官方 AI 模型（按 AI 额度扣费）；登录状态本地持久化，会话过期自动提醒</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
@@ -390,7 +392,7 @@
         </html:div>
         <html:div class="pp-field">
           <html:label class="pp-label">源语言</html:label>
-          <html:select preference="extensions.zotero.paperpilot.translateFromLang" id="pp-tr-from" class="pp-select">
+          <html:select preference="extensions.zotero.papilot.translateFromLang" id="pp-tr-from" class="pp-select">
             <html:option value="auto">自动检测</html:option>
             <html:option value="zh-CN">中文（简体）</html:option>
             <html:option value="zh-TW">中文（繁體）</html:option>
@@ -408,7 +410,7 @@
         </html:div>
         <html:div class="pp-field">
           <html:label class="pp-label">目标语言</html:label>
-          <html:select preference="extensions.zotero.paperpilot.readerPopupTargetLang" id="pp-tr-to" class="pp-select">
+          <html:select preference="extensions.zotero.papilot.readerPopupTargetLang" id="pp-tr-to" class="pp-select">
             <html:option value="zh-CN">中文（简体）</html:option>
             <html:option value="zh-TW">中文（繁體）</html:option>
             <html:option value="en">English</html:option>
@@ -551,16 +553,16 @@
       <html:div class="pp-grid3">
         <html:div class="pp-field">
           <html:label class="pp-label">最大输出 tokens</html:label>
-          <html:input type="number" preference="extensions.zotero.paperpilot.aiMaxTokens" class="pp-input"/>
+          <html:input type="number" preference="extensions.zotero.papilot.aiMaxTokens" class="pp-input"/>
         </html:div>
         <html:div class="pp-field">
           <html:label class="pp-label">温度（0-2，越低越稳定）</html:label>
-          <html:input type="number" preference="extensions.zotero.paperpilot.aiTemperature" class="pp-input"
+          <html:input type="number" preference="extensions.zotero.papilot.aiTemperature" class="pp-input"
                       min="0" max="2" step="0.1"/>
         </html:div>
         <html:div class="pp-field">
           <html:label class="pp-label">送入 AI 的全文最大字符数</html:label>
-          <html:input type="number" preference="extensions.zotero.paperpilot.aiFullTextMaxChars" class="pp-input"/>
+          <html:input type="number" preference="extensions.zotero.papilot.aiFullTextMaxChars" class="pp-input"/>
         </html:div>
       </html:div>
       <html:div class="pp-hint" style="margin-top:4px;">超长全文在送入前截断，避免撑爆上下文窗口</html:div>
@@ -572,12 +574,12 @@
         <html:div class="pp-grid2">
           <html:div class="pp-field">
             <html:label class="pp-label">对话历史轮数（1-30，默认 6）</html:label>
-            <html:input type="number" preference="extensions.zotero.paperpilot.aiHistoryRounds" class="pp-input"
+            <html:input type="number" preference="extensions.zotero.papilot.aiHistoryRounds" class="pp-input"
                         min="1" max="30" step="1"/>
           </html:div>
           <html:div class="pp-field">
             <html:label class="pp-label">top_p 核采样（0-1，留空 = 不传）</html:label>
-            <html:input type="number" preference="extensions.zotero.paperpilot.aiTopP" class="pp-input"
+            <html:input type="number" preference="extensions.zotero.papilot.aiTopP" class="pp-input"
                         min="0" max="1" step="0.05" placeholder="留空 = 不传该参数"/>
           </html:div>
         </html:div>
@@ -589,19 +591,19 @@
         <html:div class="pp-sub-title">智能体（Agent 模式）</html:div>
         <html:div class="pp-sub-desc">开启后 AI 问答浮窗升级为智能体：对复杂任务先规划步骤，再按需调用工具（检索文献库 / 读全文 / 加笔记 / 打标签），多轮工具结果自动汇入上下文</html:div>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.chatAgentMode" id="pp-agent-mode"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.chatAgentMode" id="pp-agent-mode"/>
           <html:span>启用智能体模式（默认关；关闭时保持纯文献问答，行为与旧版一致）</html:span>
         </html:label>
         <html:div class="pp-grid2">
           <html:div class="pp-field">
             <html:label class="pp-label">单次问答工具调用轮数上限（1-12）</html:label>
-            <html:input type="number" preference="extensions.zotero.paperpilot.aiAgentMaxSteps" class="pp-input"
+            <html:input type="number" preference="extensions.zotero.papilot.aiAgentMaxSteps" class="pp-input"
                         min="1" max="12" step="1"/>
           </html:div>
           <html:div class="pp-field">
             <html:label class="pp-label">写操作保护</html:label>
             <html:label class="pp-check">
-              <html:input type="checkbox" preference="extensions.zotero.paperpilot.aiAgentConfirmWrite" id="pp-agent-confirm"/>
+              <html:input type="checkbox" preference="extensions.zotero.papilot.aiAgentConfirmWrite" id="pp-agent-confirm"/>
               <html:span>写操作（加笔记 / 打标签）执行前逐次弹确认</html:span>
             </html:label>
           </html:div>
@@ -626,7 +628,7 @@
         </html:div>
         <html:div class="pp-field" style="margin-top:8px;">
           <html:label class="pp-label">System Prompt</html:label>
-          <html:textarea preference="extensions.zotero.paperpilot.aiSystemPrompt" id="pp-sysprompt" class="pp-textarea" rows="4"/>
+          <html:textarea preference="extensions.zotero.papilot.aiSystemPrompt" id="pp-sysprompt" class="pp-textarea" rows="4"/>
         </html:div>
       </html:div>
 
@@ -635,7 +637,7 @@
         <html:div class="pp-sub-title">研究者画像</html:div>
         <html:div class="pp-sub-desc">写下你的研究方向、关注问题、写作与术语偏好——每轮 AI 回答都会带上这段画像（对所有 AI 功能生效）；留空则不注入</html:div>
         <html:div class="pp-field" style="margin-top:6px;">
-          <html:textarea preference="extensions.zotero.paperpilot.researcherProfile" id="pp-profile" class="pp-textarea" rows="3"
+          <html:textarea preference="extensions.zotero.papilot.researcherProfile" id="pp-profile" class="pp-textarea" rows="3"
             placeholder="例：我研究图神经网络在药物发现中的应用，关注可解释性与分布外泛化；写作偏好简洁陈述、术语保留英文原词；审稿场景请严格按证据分级。"/>
         </html:div>
       </html:div>
@@ -645,7 +647,7 @@
         <html:div class="pp-sub-title">智能体决策模型</html:div>
         <html:div class="pp-sub-desc">可选：填一个模型名（如 gpt-4o-mini / claude-haiku），智能体的工具决策轮用它、最终回答仍走主通道——降低官方通道成本。留空 = 全用主通道模型</html:div>
         <html:div class="pp-field" style="margin-top:6px;">
-          <html:input type="text" preference="extensions.zotero.paperpilot.aiAgentDecisionModel" id="pp-agent-decision-model" class="pp-input" placeholder="留空 = 不路由"/>
+          <html:input type="text" preference="extensions.zotero.papilot.aiAgentDecisionModel" id="pp-agent-decision-model" class="pp-input" placeholder="留空 = 不路由"/>
         </html:div>
       </html:div>
 
@@ -664,19 +666,19 @@
       <html:div class="pp-sub" style="margin-top:12px;">
         <html:div class="pp-row" style="flex-wrap:wrap;gap:16px;">
           <html:label class="pp-check">
-            <html:input type="checkbox" preference="extensions.zotero.paperpilot.citeLinksEnabled"/>
+            <html:input type="checkbox" preference="extensions.zotero.papilot.citeLinksEnabled"/>
             <html:span>AI 回答内「文献 n」可点击定位</html:span>
           </html:label>
           <html:label class="pp-check">
-            <html:input type="checkbox" preference="extensions.zotero.paperpilot.relatedPapersEnabled"/>
+            <html:input type="checkbox" preference="extensions.zotero.papilot.relatedPapersEnabled"/>
             <html:span>条目详情面板显示「相关文献」（S2 推荐）</html:span>
           </html:label>
           <html:label class="pp-check">
-            <html:input type="checkbox" preference="extensions.zotero.paperpilot.citationContextEnabled"/>
+            <html:input type="checkbox" preference="extensions.zotero.papilot.citationContextEnabled"/>
             <html:span>条目详情面板显示「引文上下文」（引用句倾向）</html:span>
           </html:label>
           <html:label class="pp-check">
-            <html:input type="checkbox" preference="extensions.zotero.paperpilot.annotationDigestEnabled"/>
+            <html:input type="checkbox" preference="extensions.zotero.papilot.annotationDigestEnabled"/>
             <html:span>启用「标注→论点速记」菜单</html:span>
           </html:label>
         </html:div>
@@ -737,7 +739,7 @@
         <html:div class="pp-sub-title">目录源（可选）</html:div>
         <html:div class="pp-field">
           <html:label class="pp-label">在线目录 JSON 地址</html:label>
-          <html:input type="text" preference="extensions.zotero.paperpilot.skillStoreSource" id="pp-sk-source" class="pp-input pp-grow" placeholder="https://…/skill-catalog.json（默认官方源；清空 = 仅用内置目录，离线可用）"/>
+          <html:input type="text" preference="extensions.zotero.papilot.skillStoreSource" id="pp-sk-source" class="pp-input pp-grow" placeholder="https://…/skill-catalog.json（默认官方源；清空 = 仅用内置目录，离线可用）"/>
         </html:div>
         <html:div class="pp-hint">默认已配置官方目录（Gitee），点商店「刷新目录」即可拉取最新技能包；也可换第三方目录地址；清空则只用插件内置目录（离线可用）。</html:div>
       </html:div>
@@ -796,28 +798,28 @@
     </html:div>
     <html:div class="pp-card-body">
       <html:label class="pp-check">
-        <html:input type="checkbox" preference="extensions.zotero.paperpilot.readerPopupEnabled" id="pp-popup-enabled"/>
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupEnabled" id="pp-popup-enabled"/>
         <html:span>启用划词浮窗</html:span>
       </html:label>
       <html:label class="pp-check">
-        <html:input type="checkbox" preference="extensions.zotero.paperpilot.readerPopupAutoTranslate" id="pp-popup-auto"/>
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupAutoTranslate" id="pp-popup-auto"/>
         <html:span>划词即自动翻译（无需点击，带限流与去重）</html:span>
       </html:label>
       <html:label class="pp-check">
-        <html:input type="checkbox" preference="extensions.zotero.paperpilot.readerPopupStream" id="pp-popup-stream"/>
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupStream" id="pp-popup-stream"/>
         <html:span>流式输出（逐字显示；网关不支持时自动降级）</html:span>
       </html:label>
       <html:label class="pp-check">
-        <html:input type="checkbox" preference="extensions.zotero.paperpilot.readerPopupWriteBack" id="pp-popup-writeback"/>
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupWriteBack" id="pp-popup-writeback"/>
         <html:span>允许把译文/解读写入高亮批注（在批注上划词时显示按钮）</html:span>
       </html:label>
       <html:label class="pp-check">
-        <html:input type="checkbox" preference="extensions.zotero.paperpilot.readerPopupConcat" id="pp-popup-concat"/>
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupConcat" id="pp-popup-concat"/>
         <html:span>拼接模式：按住 Ctrl/Cmd 划词可多段累加，松开后合并翻译（读双栏排版文献好用）</html:span>
       </html:label>
       <html:div class="pp-row">
         <html:span class="pp-label">翻译目标语言</html:span>
-        <html:select preference="extensions.zotero.paperpilot.readerPopupTargetLang" id="pp-popup-lang" class="pp-select">
+        <html:select preference="extensions.zotero.papilot.readerPopupTargetLang" id="pp-popup-lang" class="pp-select">
           <html:option value="zh-CN">中文（简体）</html:option>
           <html:option value="zh-TW">中文（繁體）</html:option>
           <html:option value="en">English</html:option>
@@ -854,23 +856,23 @@
         <html:div class="pp-sub-title">期刊分区（easyScholar 在线 + 离线数据兜底）</html:div>
         <html:div class="pp-sub-desc">优先级：自定义 JSON &gt; easyScholar 在线查询 &gt; 内置示例数据（仅作兜底）</html:div>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.rankColumnEnabled" id="pp-rank-enabled"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.rankColumnEnabled" id="pp-rank-enabled"/>
           <html:span>启用期刊分区列（即时生效）</html:span>
         </html:label>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.easyScholarEnabled" id="pp-es-enabled"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.easyScholarEnabled" id="pp-es-enabled"/>
           <html:span>启用 easyScholar 在线查询（JCR 分区 / 影响因子 / 中科院分区）</html:span>
         </html:label>
         <html:div class="pp-field" style="margin-top:10px;">
           <html:label class="pp-label">自定义 SecretKey（可选）</html:label>
           <html:div class="pp-row" style="margin-top:0;">
-            <html:input type="password" preference="extensions.zotero.paperpilot.easyScholarKey" id="pp-es-key"
-                        class="pp-input pp-grow" placeholder="留空则专业版用内置官方 Key；免费版请填写自己的 Key"/>
+            <html:input type="password" preference="extensions.zotero.papilot.easyScholarKey" id="pp-es-key"
+                        class="pp-input pp-grow" placeholder="填写你自己的 SecretKey（easyscholar.cn 免费注册后获取）"/>
             <html:button id="pp-es-key-eye" class="pp-btn pp-btn-eye" title="显示/隐藏密钥">👁</html:button>
             <html:button id="pp-es-clear" class="pp-btn pp-btn-sm">清空查询缓存</html:button>
             <html:span id="pp-es-stats" class="pp-hint"></html:span>
           </html:div>
-          <html:div class="pp-hint">专业版与新用户试用期内可直接使用内置官方 SecretKey（无需申请）；免费版（试用结束后）需填写自己的 Key —— 在 easyscholar.cn 免费注册即可获取。填入自己的 Key 时始终优先，且不受套餐限制。</html:div>
+          <html:div class="pp-hint">在线分区数据需要你自己的 easyScholar SecretKey —— 在 easyscholar.cn 免费注册即可获取，额度归你自己所有。未填写时分区列只显示插件内置的离线数据（覆盖常见期刊，不会联网）。</html:div>
         </html:div>
         <html:div class="pp-field" style="margin-top:12px;">
           <html:label class="pp-label">显示哪些分区数据（勾选即展示；一篇文章的全部命中分区以徽章完整展示）</html:label>
@@ -879,12 +881,12 @@
         </html:div>
         <html:div class="pp-row">
           <html:span class="pp-label">徽章配色风格</html:span>
-          <html:select preference="extensions.zotero.paperpilot.rankBadgeStyle" id="pp-rank-style" class="pp-select">
+          <html:select preference="extensions.zotero.papilot.rankBadgeStyle" id="pp-rank-style" class="pp-select">
             <html:option value="color">分区色阶（Q1 红 / Q2 橙 / Q3 蓝 / CCF 绿 / TOP 金描边）</html:option>
             <html:option value="mono">单色（跟随界面主题强调色）</html:option>
           </html:select>
           <html:span class="pp-label">每行最多显示</html:span>
-          <html:input type="number" preference="extensions.zotero.paperpilot.rankMaxBadges" id="pp-rank-max" class="pp-input" min="1" max="12" style="width:64px;"/>
+          <html:input type="number" preference="extensions.zotero.papilot.rankMaxBadges" id="pp-rank-max" class="pp-input" min="1" max="12" style="width:64px;"/>
           <html:span class="pp-hint">个徽章（超出显示 +N）</html:span>
         </html:div>
         <html:div id="pp-rank-preview" class="pp-rank-preview"></html:div>
@@ -896,7 +898,7 @@
         <html:div class="pp-field" style="margin-top:10px;">
           <html:label class="pp-label">自定义分区数据 JSON 路径</html:label>
           <html:div class="pp-row" style="margin-top:0;">
-            <html:input type="text" preference="extensions.zotero.paperpilot.rankDataPath" id="pp-rank-path-input"
+            <html:input type="text" preference="extensions.zotero.papilot.rankDataPath" id="pp-rank-path-input"
                         class="pp-input pp-grow" placeholder="留空则走 easyScholar 在线查询；内置示例数据仅在无在线数据时兜底"/>
             <html:button id="pp-rank-browse" class="pp-btn pp-btn-sm">浏览…</html:button>
           </html:div>
@@ -909,17 +911,17 @@
         <html:div class="pp-sub-title">被引量（Semantic Scholar）</html:div>
         <html:div class="pp-sub-desc">数据缓存 24 小时；右键菜单「重新抓取被引量」可手动刷新所选条目</html:div>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.citationColumnEnabled" id="pp-cite-enabled"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.citationColumnEnabled" id="pp-cite-enabled"/>
           <html:span>启用被引量列（即时生效，右键条目列表表头勾选显示）</html:span>
         </html:label>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.s2TitleSearch" id="pp-s2-title"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.s2TitleSearch" id="pp-s2-title"/>
           <html:span>无 DOI 的条目按标题检索兜底（较慢，可能误匹配）</html:span>
         </html:label>
         <html:div class="pp-field" style="margin-top:10px;">
           <html:label class="pp-label">Semantic Scholar API Key（可留空）</html:label>
           <html:div class="pp-row" style="margin-top:0;">
-            <html:input type="password" preference="extensions.zotero.paperpilot.s2ApiKey" id="pp-s2-key"
+            <html:input type="password" preference="extensions.zotero.papilot.s2ApiKey" id="pp-s2-key"
                         class="pp-input pp-grow" placeholder="默认掩码显示，防窥屏"/>
             <html:button id="pp-s2-key-eye" class="pp-btn pp-btn-eye" title="显示/隐藏密钥">👁</html:button>
             <html:button id="pp-s2-clear" class="pp-btn pp-btn-sm">清空查询缓存</html:button>
@@ -934,11 +936,11 @@
         <html:div class="pp-sub-title">更多数据列（0.42.0 新增）</html:div>
         <html:div class="pp-sub-desc">译文列显示「AI 翻译标题与摘要」写回的译文；评级列显示 ★（右键条目 → 评级 设置）</html:div>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.titleTranslationColumnEnabled" id="pp-ttcol-enabled"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.titleTranslationColumnEnabled" id="pp-ttcol-enabled"/>
           <html:span>启用标题译文列（即时生效）</html:span>
         </html:label>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.ratingColumnEnabled" id="pp-ratingcol-enabled"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.ratingColumnEnabled" id="pp-ratingcol-enabled"/>
           <html:span>启用评级列（★，可在标签页按星筛选）</html:span>
         </html:label>
       </html:div>
@@ -948,20 +950,20 @@
         <html:div class="pp-sub-title">阅读进度（画在标题列背景）</html:div>
         <html:div class="pp-sub-desc">进度直接显示在每条文献的标题背后，装完即见、不用勾选任何列：进度 = 读到哪一页 ÷ 总页数（自动融合阅读器实时页码、Zotero 原生「上次读到」与标注所在页），都没有时按阅读时长估算。数据只存本机（位置随 Zotero 账号同步的部分除外），不上传</html:div>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.progressRowEnabled" id="pp-progrow-enabled"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.progressRowEnabled" id="pp-progrow-enabled"/>
           <html:span>在标题列显示阅读进度（推荐；装完插件即见）</html:span>
         </html:label>
         <html:div class="pp-grid2">
           <html:div class="pp-field">
             <html:label class="pp-label">标题内样式</html:label>
-            <html:select preference="extensions.zotero.paperpilot.progressRowStyle" id="pp-progrow-style" class="pp-select">
+            <html:select preference="extensions.zotero.papilot.progressRowStyle" id="pp-progrow-style" class="pp-select">
               <html:option value="heat">高能进度条（每页一格，读得越久颜色越深；还没有每页数据时自动整体填充）</html:option>
               <html:option value="fill">整体填充（标题背景按进度百分比铺色）</html:option>
             </html:select>
           </html:div>
           <html:div class="pp-field">
             <html:label class="pp-label">进度口径</html:label>
-            <html:select preference="extensions.zotero.paperpilot.progressBasis" id="pp-progcol-basis" class="pp-select">
+            <html:select preference="extensions.zotero.papilot.progressBasis" id="pp-progcol-basis" class="pp-select">
               <html:option value="auto">自动（位置优先，无位置按时长估算）</html:option>
               <html:option value="position">仅阅读位置（读到第几页）</html:option>
               <html:option value="time">仅阅读时长（0.42.0 行为）</html:option>
@@ -969,13 +971,13 @@
           </html:div>
         </html:div>
         <html:label class="pp-check" style="margin-top:6px;">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.progressAutoFinish" id="pp-progcol-autofinish"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.progressAutoFinish" id="pp-progcol-autofinish"/>
           <html:span>进度反向驱动阅读状态（有进度：未读 → 在读；位置进度达到阈值：自动标记已读；时长口径不触发「已读」）</html:span>
         </html:label>
         <html:div class="pp-grid2">
           <html:div class="pp-field">
             <html:label class="pp-label">自动「已读」阈值（%，80-100）</html:label>
-            <html:input type="number" preference="extensions.zotero.paperpilot.progressAutoFinishPct" id="pp-progcol-finishpct" class="pp-input" min="80" max="100" step="5"/>
+            <html:input type="number" preference="extensions.zotero.papilot.progressAutoFinishPct" id="pp-progcol-finishpct" class="pp-input" min="80" max="100" step="5"/>
           </html:div>
           <html:div class="pp-field" style="align-self:end;">
             <html:div class="pp-hint">悬停标题可看「读到第几页 / 累计分钟」；某篇想从头读：右键条目 → 阅读状态 → 重置阅读进度（标注不受影响）</html:div>
@@ -988,17 +990,17 @@
         <html:div class="pp-sub-title">「阅读进度」数据列（可选）</html:div>
         <html:div class="pp-sub-desc">标题内嵌进度已覆盖日常查看；这个列是给想「点列头按进度排序」的用户的可选位——右键条目列表表头勾选「阅读进度」后生效</html:div>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.progressColumnEnabled" id="pp-progcol-enabled"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.progressColumnEnabled" id="pp-progcol-enabled"/>
           <html:span>注册「阅读进度」列（即时生效；列可见性仍在表头右键菜单里控制）</html:span>
         </html:label>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.progressColorByState" id="pp-progcol-colorstate"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.progressColorByState" id="pp-progcol-colorstate"/>
           <html:span>列内进度条按阅读状态着色（已读绿色 / 在读跟随主题强调色 / 未读中性灰）</html:span>
         </html:label>
         <html:div class="pp-grid2">
           <html:div class="pp-field">
             <html:label class="pp-label">列内进度条样式</html:label>
-            <html:select preference="extensions.zotero.paperpilot.progressBarStyle" id="pp-progcol-style" class="pp-select">
+            <html:select preference="extensions.zotero.papilot.progressBarStyle" id="pp-progcol-style" class="pp-select">
               <html:option value="bar">线性填充条 + 百分比（默认）</html:option>
               <html:option value="gradient">渐变填充条（蓝 → 绿）</html:option>
               <html:option value="percent">仅百分比标注（最紧凑）</html:option>
@@ -1027,11 +1029,11 @@
         <html:div class="pp-sub-title">规则打标（按条件自动打标签）</html:div>
         <html:div class="pp-sub-desc">每行一条规则：标签 | 字段 | 操作 | 值（// 开头为注释）</html:div>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.ruleTagAutoOnNew" id="pp-ruletag-auto"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.ruleTagAutoOnNew" id="pp-ruletag-auto"/>
           <html:span>新条目入库时自动应用规则（右键菜单「规则打标」可随时手动应用）</html:span>
         </html:label>
         <html:div class="pp-field" style="margin-top:8px;">
-          <html:textarea preference="extensions.zotero.paperpilot.ruleTagRules" class="pp-textarea" rows="6"
+          <html:textarea preference="extensions.zotero.papilot.ruleTagRules" class="pp-textarea" rows="6"
                          placeholder="例：#方法/机器学习 | abstractNote | contains | machine learning"/>
         </html:div>
       </html:div>
@@ -1042,33 +1044,33 @@
         <html:div class="pp-sub-desc">自定义 Prompt 供 AI 问答侧栏与工作台使用</html:div>
         <html:div class="pp-field" style="margin-top:6px;">
           <html:label class="pp-label">自定义 Prompt（每行一条，格式：名称=提示词）</html:label>
-          <html:textarea preference="extensions.zotero.paperpilot.customPrompts" class="pp-textarea" rows="3"
+          <html:textarea preference="extensions.zotero.papilot.customPrompts" class="pp-textarea" rows="3"
                          placeholder="周报生成=请把这篇论文的要点整理成周报条目"/>
         </html:div>
         <html:div class="pp-grid2">
           <html:div class="pp-field">
             <html:label class="pp-label">文献矩阵一次最多处理篇数</html:label>
-            <html:input type="number" preference="extensions.zotero.paperpilot.matrixMaxItems" class="pp-input"/>
+            <html:input type="number" preference="extensions.zotero.papilot.matrixMaxItems" class="pp-input"/>
           </html:div>
           <html:div class="pp-field">
             <html:label class="pp-label">AI 打标签每次建议个数</html:label>
-            <html:input type="number" preference="extensions.zotero.paperpilot.autoTagMax" class="pp-input"/>
+            <html:input type="number" preference="extensions.zotero.papilot.autoTagMax" class="pp-input"/>
           </html:div>
         </html:div>
         <html:div class="pp-field" style="margin-top:8px;">
           <html:label class="pp-check">
-            <html:input type="checkbox" preference="extensions.zotero.paperpilot.autoTagUseVocab" id="pp-autotag-vocab"/>
+            <html:input type="checkbox" preference="extensions.zotero.papilot.autoTagUseVocab" id="pp-autotag-vocab"/>
             <html:span>AI 打标签优先复用库内已有标签（把全库高频标签喂给 AI，从源头减少同义变体，建议开启）</html:span>
           </html:label>
           <html:label class="pp-check" style="margin-top:4px;">
-            <html:input type="checkbox" preference="extensions.zotero.paperpilot.autoTagCache" id="pp-autotag-cache"/>
+            <html:input type="checkbox" preference="extensions.zotero.papilot.autoTagCache" id="pp-autotag-cache"/>
             <html:span>缓存 AI 标签建议（标题/摘要等未变化时命中缓存，不重复消耗 AI 额度）</html:span>
           </html:label>
         </html:div>
         <html:div class="pp-grid2">
           <html:div class="pp-field">
             <html:label class="pp-label">AI 标签语言</html:label>
-            <html:select preference="extensions.zotero.paperpilot.autoTagLang" id="pp-autotag-lang" class="pp-select">
+            <html:select preference="extensions.zotero.papilot.autoTagLang" id="pp-autotag-lang" class="pp-select">
               <html:option value="auto">跟随界面语言</html:option>
               <html:option value="zh">中文</html:option>
               <html:option value="en">English</html:option>
@@ -1076,7 +1078,7 @@
           </html:div>
           <html:div class="pp-field">
             <html:label class="pp-label">建议默认勾选的置信度（0 到 1）</html:label>
-            <html:input type="number" preference="extensions.zotero.paperpilot.autoTagConfidenceThreshold" id="pp-autotag-threshold" class="pp-input" min="0" max="1" step="0.1"/>
+            <html:input type="number" preference="extensions.zotero.papilot.autoTagConfidenceThreshold" id="pp-autotag-threshold" class="pp-input" min="0" max="1" step="0.1"/>
           </html:div>
         </html:div>
       </html:div>
@@ -1093,66 +1095,66 @@
     </html:div>
     <html:div class="pp-card-body">
       <html:label class="pp-check" style="margin-top:6px;">
-        <html:input type="checkbox" preference="extensions.zotero.paperpilot.readingStateAutoUnread" id="pp-rs-auto"/>
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readingStateAutoUnread" id="pp-rs-auto"/>
         <html:span>新条目入库自动标记「未读」（打开 PDF 自动转为「在读」）</html:span>
       </html:label>
       <html:label class="pp-check" style="margin-top:6px;">
-        <html:input type="checkbox" preference="extensions.zotero.paperpilot.updateNoticeEnabled" id="pp-upd-notice"/>
+        <html:input type="checkbox" preference="extensions.zotero.papilot.updateNoticeEnabled" id="pp-upd-notice"/>
         <html:span>有新版本时提示我（Zotero 自身的插件更新是静默后台替换、不会弹提示；本项默认开，同一版本只提示一次）</html:span>
       </html:label>
       <html:label class="pp-check" style="margin-top:6px;">
-        <html:input type="checkbox" preference="extensions.zotero.paperpilot.quickBarButtonEnabled" id="pp-quickbar-enabled"/>
+        <html:input type="checkbox" preference="extensions.zotero.papilot.quickBarButtonEnabled" id="pp-quickbar-enabled"/>
         <html:span>顶部快捷按钮（条目列表上方的一键菜单：高频直达项 + 功能中心 + 设置；直达项内容与右键菜单共用「菜单定制」的配置）</html:span>
       </html:label>
       <html:div class="pp-field" style="margin-top:10px;">
         <html:label class="pp-label">附件命名模板</html:label>
-        <html:input type="text" preference="extensions.zotero.paperpilot.attachNamePattern" class="pp-input"
+        <html:input type="text" preference="extensions.zotero.papilot.attachNamePattern" class="pp-input"
                     placeholder="{author} - {year} - {title}"/>
         <html:div class="pp-hint">可用变量：{author} {year} {title}；右键菜单「附件按规则重命名」执行</html:div>
       </html:div>
       <html:div class="pp-grid2">
         <html:div class="pp-field">
           <html:label class="pp-label">全文对照翻译分段字符数</html:label>
-          <html:input type="number" preference="extensions.zotero.paperpilot.bilingualChunkChars" class="pp-input"/>
+          <html:input type="number" preference="extensions.zotero.papilot.bilingualChunkChars" class="pp-input"/>
         </html:div>
         <html:div class="pp-field">
           <html:label class="pp-label">Anki 制卡张数</html:label>
-          <html:input type="number" preference="extensions.zotero.paperpilot.ankiCardCount" class="pp-input"/>
+          <html:input type="number" preference="extensions.zotero.papilot.ankiCardCount" class="pp-input"/>
         </html:div>
       </html:div>
       <html:div class="pp-field" style="margin-top:10px;">
         <html:label class="pp-label">双栏对照窗口字号（px，11–28）</html:label>
-        <html:input type="number" preference="extensions.zotero.paperpilot.bilingualViewFontSize" class="pp-input"/>
+        <html:input type="number" preference="extensions.zotero.papilot.bilingualViewFontSize" class="pp-input"/>
         <html:div class="pp-hint">「全文对照翻译」打开左右双栏窗口（左原文 / 右译文，窄屏自动单栏）；窗口工具栏也可随时 A− / A+ 调字号、切换布局，均即时保存</html:div>
       </html:div>
       <html:div class="pp-field" style="margin-top:10px;">
         <html:label class="pp-label">Unpaywall 邮箱（开放获取补全文用，可留空）</html:label>
-        <html:input type="text" preference="extensions.zotero.paperpilot.unpaywallEmail" class="pp-input"
+        <html:input type="text" preference="extensions.zotero.papilot.unpaywallEmail" class="pp-input"
                     placeholder="you@example.com"/>
       </html:div>
       <html:div class="pp-field" style="margin-top:10px;">
         <html:label class="pp-label">补全文补充渠道：Sci-Hub / Sci-Net（Unpaywall 未命中时）</html:label>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.scihubEnabled" id="pp-scihub-enabled"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.scihubEnabled" id="pp-scihub-enabled"/>
           <html:span>启用 Sci-Hub 补全文（按镜像顺序探测；要求人机验证时在 Zotero 中打开验证页，完成后重跑即可）</html:span>
         </html:label>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.scinetEnabled" id="pp-scinet-enabled"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.scinetEnabled" id="pp-scinet-enabled"/>
           <html:span>Sci-Hub 未收录（2021 年后新文献居多）时尝试 Sci-Net</html:span>
         </html:label>
         <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.paperpilot.publisherDirectEnabled" id="pp-pubdirect-enabled"/>
+          <html:input type="checkbox" preference="extensions.zotero.papilot.publisherDirectEnabled" id="pp-pubdirect-enabled"/>
           <html:span>出版商直连兜底（doi.org → 出版商页提取 PDF；连校园 VPN / 机构订阅时可补到新文献，无订阅时自动跳过）</html:span>
         </html:label>
         <html:div class="pp-grid2" style="margin-top:8px;">
           <html:div class="pp-field">
             <html:label class="pp-label">Sci-Hub 镜像（逗号分隔，按序尝试）</html:label>
-            <html:input type="text" preference="extensions.zotero.paperpilot.scihubMirrors" class="pp-input"
+            <html:input type="text" preference="extensions.zotero.papilot.scihubMirrors" class="pp-input"
                         placeholder="sci-hub.ru, sci-hub.se, sci-hub.st, sci-hub.ren, sci-hub.ee, sci-hub.hkvisa.net, sci-hub.mksa.top"/>
           </html:div>
           <html:div class="pp-field">
             <html:label class="pp-label">Sci-Net 地址（新文献兜底）</html:label>
-            <html:input type="text" preference="extensions.zotero.paperpilot.scinetUrl" class="pp-input"
+            <html:input type="text" preference="extensions.zotero.papilot.scinetUrl" class="pp-input"
                         placeholder="https://sci-net.xyz"/>
           </html:div>
         </html:div>
@@ -1160,7 +1162,7 @@
       </html:div>
       <html:div class="pp-field" style="margin-top:10px;">
         <html:label class="pp-label">自定义笔记模板（每行一条：名称=模板正文，换行用 \n）</html:label>
-        <html:textarea preference="extensions.zotero.paperpilot.noteTemplatesCustom" class="pp-textarea" rows="3"
+        <html:textarea preference="extensions.zotero.papilot.noteTemplatesCustom" class="pp-textarea" rows="3"
                        placeholder="周报卡=## {{title}}\n本周进展：\n{{aiSummary}}"/>
         <html:div class="pp-hint">占位符：{{title}} {{creators}} {{year}} {{pub}} {{abstract}} {{annotations}} {{aiSummary}}</html:div>
         <html:div class="pp-row" style="margin-top:8px;">
@@ -1340,12 +1342,12 @@
     <html:div class="pp-card-body">
       <html:div class="pp-row" style="margin-top:6px;">
         <html:span class="pp-label">菜单结构</html:span>
-        <html:select preference="extensions.zotero.paperpilot.menuMode" id="pp-menu-mode" class="pp-select">
+        <html:select preference="extensions.zotero.papilot.menuMode" id="pp-menu-mode" class="pp-select">
           <html:option value="grouped">分组两层（推荐：高频直达 + 语义分组）</html:option>
           <html:option value="classic">经典平铺（0.28 及以前的单层结构）</html:option>
         </html:select>
       </html:div>
-      <html:div class="pp-hint" style="margin-top:4px;">分组模式下，条目右键菜单从 40 项平铺收拢为「直达 + 分组」；被折叠的功能仍可从功能中心与「工具 → PaperPilot」到达。</html:div>
+      <html:div class="pp-hint" style="margin-top:4px;">分组模式下，条目右键菜单从 40 项平铺收拢为「直达 + 分组」；被折叠的功能仍可从功能中心与「工具 → Papilot」到达。</html:div>
       <html:div class="pp-field" style="margin-top:10px;">
         <html:label class="pp-label">右键菜单中隐藏的分组（取消勾选即从右键菜单移除）</html:label>
         <html:div id="pp-menu-groups" class="pp-menu-groups" style="display:flex;flex-wrap:wrap;gap:4px 18px;"></html:div>
@@ -1378,6 +1380,117 @@
       <html:div id="pp-hotkeys-list"></html:div>
       <html:div class="pp-hint" style="margin-top:8px;">录制时按 Esc 取消；「重置」恢复默认组合。自动化规则里配的快捷键也会出现在此列表（标签前缀「自动化：」）。</html:div>
       <html:div id="pp-hotkeys-result" class="pp-msg"></html:div>
+    </html:div>
+  </html:div>
+
+  <!-- ============ 13 · 云同步（0.56.0：坚果云 WebDAV 统一同步） ============ -->
+  <html:div class="pp-card pp-fold" data-fold="cloud" data-search-strings-raw="云同步 坚果云 webdav 备份 同步 技能包 安装包 冲突 应用密码 断点续传 nutstore sync backup">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">☁️</html:span><html:span class="pp-card-title">云同步（坚果云）</html:span>
+      <html:span class="pp-card-desc">设置项、AI 对话、技能包与安装包统一走坚果云 WebDAV：增量同步、冲突不丢数据、大文件分卷、断网自动重试</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
+    <html:div class="pp-card-body">
+      <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;">
+        <html:span id="pp-cloud-dot" class="pp-msg">●</html:span>
+        <html:span id="pp-cloud-state" class="pp-msg">未连接</html:span>
+        <html:span id="pp-cloud-last" class="pp-hint"></html:span>
+      </html:div>
+      <html:div class="pp-hint" style="margin-top:4px;">
+        坚果云 WebDAV <strong>不接受登录密码</strong>：请到「账户信息 → 安全选项 → 添加应用密码」生成一个专用密码，填在下面。
+        登录密码直连会返回 401（已实测）。
+      </html:div>
+      <html:div class="pp-row" style="margin-top:6px;">
+        <html:button id="pp-cloud-apppw" class="pp-btn pp-btn-sm">打开应用密码页面</html:button>
+        <html:span class="pp-hint">浏览器打开后回到这里填密码即可</html:span>
+      </html:div>
+
+      <html:div class="pp-grid2" style="margin-top:10px;">
+        <html:div class="pp-field">
+          <html:label class="pp-label">坚果云账号（邮箱）</html:label>
+          <html:input type="text" id="pp-cloud-email" class="pp-input" placeholder="you@example.com"/>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">应用密码</html:label>
+          <html:input type="password" id="pp-cloud-token" class="pp-input" placeholder="在坚果云安全设置里生成的应用密码"/>
+        </html:div>
+      </html:div>
+      <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+        <html:label class="pp-check"><html:input type="checkbox" id="pp-cloud-remember"/> 在本机记住应用密码</html:label>
+        <html:button id="pp-cloud-save" class="pp-btn pp-btn-primary">保存并测试</html:button>
+        <html:span id="pp-cloud-msg" class="pp-msg"></html:span>
+      </html:div>
+
+      <html:div class="pp-sub" style="margin-top:14px;">
+        <html:div class="pp-sub-title">同步范围</html:div>
+        <html:div class="pp-sub-desc">勾选即参与同步；密钥类设置（API Key / 各类密码）永远不会离开本机</html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:14px;margin-top:6px;">
+          <html:label class="pp-check"><html:input type="checkbox" id="pp-cloud-ds-settings"/> 设置项</html:label>
+          <html:label class="pp-check"><html:input type="checkbox" id="pp-cloud-ds-chat"/> AI 对话记录</html:label>
+          <html:label class="pp-check"><html:input type="checkbox" id="pp-cloud-ds-packs"/> 技能包与安装包</html:label>
+        </html:div>
+      </html:div>
+
+      <html:div class="pp-grid2" style="margin-top:10px;">
+        <html:div class="pp-field">
+          <html:label class="pp-label">云端同步目录</html:label>
+          <html:input type="text" id="pp-cloud-root" class="pp-input" placeholder="/Papilot"/>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">冲突策略</html:label>
+          <html:select id="pp-cloud-policy" class="pp-input">
+            <html:option value="keepBoth">两份都留（推荐）</html:option>
+            <html:option value="local">本机覆盖云端</html:option>
+            <html:option value="remote">云端覆盖本机</html:option>
+          </html:select>
+        </html:div>
+      </html:div>
+
+      <html:div class="pp-grid2" style="margin-top:8px;">
+        <html:div class="pp-field">
+          <html:label class="pp-label">同步方向</html:label>
+          <html:select id="pp-cloud-direction" class="pp-input">
+            <html:option value="both">双向（推荐）</html:option>
+            <html:option value="up">仅上传</html:option>
+            <html:option value="down">仅下载</html:option>
+          </html:select>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">自动同步间隔（分钟，0 = 关闭）</html:label>
+          <html:input type="text" id="pp-cloud-auto" class="pp-input" placeholder="0"/>
+        </html:div>
+      </html:div>
+
+      <html:div class="pp-grid2" style="margin-top:8px;">
+        <html:div class="pp-field">
+          <html:label class="pp-label">单文件上限（MB）</html:label>
+          <html:input type="text" id="pp-cloud-maxmb" class="pp-input" placeholder="512"/>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">大文件阈值 / 分片（MB）</html:label>
+          <html:div class="pp-row" style="gap:6px;">
+            <html:input type="text" id="pp-cloud-large" class="pp-input" placeholder="64" style="width:70px;"/>
+            <html:input type="text" id="pp-cloud-part" class="pp-input" placeholder="32" style="width:70px;"/>
+          </html:div>
+        </html:div>
+      </html:div>
+
+      <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:12px;">
+        <html:button id="pp-cloud-sync" class="pp-btn pp-btn-primary">立即同步</html:button>
+        <html:button id="pp-cloud-up" class="pp-btn pp-btn-sm">仅上传</html:button>
+        <html:button id="pp-cloud-down" class="pp-btn pp-btn-sm">仅下载</html:button>
+        <html:button id="pp-cloud-cancel" class="pp-btn pp-btn-sm">取消</html:button>
+        <html:button id="pp-cloud-stage" class="pp-btn pp-btn-sm">收集技能包</html:button>
+        <html:button id="pp-cloud-open" class="pp-btn pp-btn-sm">打开本地同步目录</html:button>
+        <html:button id="pp-cloud-logout" class="pp-btn pp-btn-sm">退出登录</html:button>
+      </html:div>
+
+      <html:div id="pp-cloud-track" style="margin-top:10px;height:8px;border-radius:4px;background:rgba(127,127,127,0.18);overflow:hidden;">
+        <html:div id="pp-cloud-bar" style="height:100%;width:0%;background:var(--pp-accent,#4b7bec);transition:width .2s;"></html:div>
+      </html:div>
+      <html:div id="pp-cloud-progress" class="pp-hint" style="margin-top:4px;"></html:div>
+      <html:div id="pp-cloud-log" class="pp-hint" style="margin-top:6px;max-height:150px;overflow:auto;white-space:pre-wrap;"></html:div>
+      <html:div class="pp-hint" style="margin-top:6px;">本功能与 Zotero 自带的附件同步互不干扰（独立目录 /Papilot）；两者可同时使用。</html:div>
     </html:div>
   </html:div>
 

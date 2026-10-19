@@ -1,4 +1,7 @@
-/* PaperPilot AI 制卡导出 Anki（0.11.0，zotcard 品类的轻量路线）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot AI 制卡导出 Anki（0.11.0，zotcard 品类的轻量路线）
  * 对选中单篇：AI 基于摘要/全文生成问答卡片 → 解析 → 导出 Anki 导入格式
  * （.txt，每行：正面<TAB>背面，Anki 导入向导选「制表符分隔」即可）。
  */
@@ -46,12 +49,12 @@ var AnkiExport = {
     const items = ItemSel.regularOnly(zp.getSelectedItems() || []);
     if (!items.length) { ItemSel.alertEmpty(); return; }
     if (items.length > 1) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         I18n.isZh ? "制卡一次请只选一篇" : "Select only one item at a time");
       return;
     }
     if (!AIClient.hasKey()) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot", I18n.t("chatNoKey"));
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot", I18n.t("chatNoKey"));
       return;
     }
 
@@ -63,8 +66,8 @@ var AnkiExport = {
     const count = Number(Prefs.get("ankiCardCount", 10)) || 10;
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + I18n.t("menuAnki"));
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+    pw.changeHeadline("Papilot · " + I18n.t("menuAnki"));
+    const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
     pw.show();
 
     let cards;

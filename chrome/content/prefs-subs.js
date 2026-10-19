@@ -1,4 +1,7 @@
-/* PaperPilot 设置窗格脚本 · 检索订阅（Saved query → 定时检索 → 自动入库 + 速递笔记）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格脚本 · 检索订阅（Saved query → 定时检索 → 自动入库 + 速递笔记）
  *
  * 集成方在 prefs.xhtml 里提供的节点（缺任何一个都不会炸，只是那块不渲染）：
  *   列表容器   <html:div id="pp-subs-list"></html:div>
@@ -8,7 +11,7 @@
  *
  * 行为：
  *   - 列表最多渲染 20 条（超出的在底部提示「仅显示前 20 条」）；
- *   - 「立即运行」走 Zotero.PaperPilot.searchSubs.run(id)，完成后在行内显示 `+N 新入库 / M 跳过`；
+ *   - 「立即运行」走 Zotero.Papilot.searchSubs.run(id)，完成后在行内显示 `+N 新入库 / M 跳过`；
  *   - 「删除」优先 Services.prompt.confirm，不可用则直接删；
  *   - 新建成功清空表单并重渲染；失败只在提示位说明（不弹窗、不打断）。
  *
@@ -22,7 +25,7 @@
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const MAX_ROWS = 20;
   const $ = (id) => document.getElementById(id);
-  const S = () => ((typeof Zotero !== "undefined" && Zotero.PaperPilot && Zotero.PaperPilot.searchSubs) || null);
+  const S = () => ((typeof Zotero !== "undefined" && Zotero.Papilot && Zotero.Papilot.searchSubs) || null);
 
   const el = (tag, attrs, text) => {
     const node = document.createElementNS(HTML_NS, tag);

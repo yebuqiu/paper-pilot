@@ -1,9 +1,12 @@
-/* PaperPilot 设置窗格脚本 · 定时任务卡片（研究晨报 / 阅读周报 / 库体检）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格脚本 · 定时任务卡片（研究晨报 / 阅读周报 / 库体检）
  *
  * 由集成方在 prefs.xhtml 里放一个空容器 `<html:div id="pp-sch-rows"></html:div>`，
  * 本脚本按 Scheduler.JOBS 动态生成三行（时间输入 + 启用状态 + 「立即运行」）：
  *   - 时间输入直接读写 pref（不从 preference= 声明式绑定：动态节点无法声明）；
- *   - 运行入口走 Zotero.PaperPilot.scheduler.runJob(id)（模块未就绪时给明确提示）；
+ *   - 运行入口走 Zotero.Papilot.scheduler.runJob(id)（模块未就绪时给明确提示）；
  *   - 上次运行日期读 scheduleLastRun（JSON {jobId:"YYYY-MM-DD"}）。
  *
  * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测 pp-sch-rows，
@@ -13,10 +16,10 @@
 /* global Zotero, window, document */
 
 (function () {
-  const PREFIX = "extensions.zotero.paperpilot.";
+  const PREFIX = "extensions.zotero.papilot.";
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const $ = (id) => document.getElementById(id);
-  const S = () => (Zotero.PaperPilot && Zotero.PaperPilot.scheduler) || null;
+  const S = () => (Zotero.Papilot && Zotero.Papilot.scheduler) || null;
 
   /* 模块未就绪时的展示副本：时间仍可先设置（pref 直连），只有「立即运行」不可用 */
   const FALLBACK_JOBS = [

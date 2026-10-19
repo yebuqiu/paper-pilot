@@ -1,4 +1,7 @@
-/* PaperPilot · 综述工作台（Review Workbench，0.53.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot · 综述工作台（Review Workbench，0.53.0）
  *
  * 定位：ReviewGen（多篇 → 一次性整篇综述）的升级版——把「大纲 → 分节草稿 →
  * 真实引用 → 导出」拆成可人工干预的三步，解决单轮整篇「结构不可控、某节不合意
@@ -24,9 +27,9 @@
 var ReviewWorkbench = {
   /** 集成方接菜单用的稳定 id */
   MENU_ID: "review-workbench",
-  WINDOW_URL: "chrome://paperpilot/content/review-workbench.xhtml",
-  WINDOW_NAME: "paperpilot-review-workbench",
-  WINDOW_TYPE: "paperpilot:review-workbench",
+  WINDOW_URL: "chrome://papilot/content/review-workbench.xhtml",
+  WINDOW_NAME: "papilot-review-workbench",
+  WINDOW_TYPE: "papilot:review-workbench",
   /** 一次最多处理的文献篇数（超出截断，窗口顶部提示） */
   MAX_ITEMS: 30,
   /** 大纲提示词里每篇摘要截断长度（大纲只需要主题，不需要细节） */
@@ -312,7 +315,7 @@ var ReviewWorkbench = {
         if (t) return t;
       }
     } catch (e) { /* ignore */ }
-    return "请先在 设置 → PaperPilot 登录账号，或在「AI 模型通道」中配置自己的接口";
+    return "请先在 设置 → Papilot 登录账号，或在「AI 模型通道」中配置自己的接口";
   },
 
   /** AI 就绪状态（窗口打开时据此禁用按钮） */
@@ -525,7 +528,7 @@ var ReviewWorkbench = {
   _alert(text) {
     try {
       if (typeof Services !== "undefined" && Services && Services.prompt) {
-        Services.prompt.alert(this._zotero().getMainWindow(), "PaperPilot · 综述工作台", text);
+        Services.prompt.alert(this._zotero().getMainWindow(), "Papilot · 综述工作台", text);
         return;
       }
     } catch (e) { /* ignore */ }
@@ -589,8 +592,8 @@ var ReviewWorkbench = {
             const w = en.getNext();
             try { w.focus(); } catch (e) { /* ignore */ }
             try {
-              if (typeof w.PaperPilotSetPayload === "function") {
-                w.PaperPilotSetPayload({ metas: metas, trimmed: trimmed });
+              if (typeof w.PapilotSetPayload === "function") {
+                w.PapilotSetPayload({ metas: metas, trimmed: trimmed });
               }
             } catch (e) { /* ignore */ }
             return w;

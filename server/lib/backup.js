@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · 数据快照与回滚（1.4.2）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · 数据快照与回滚（1.4.2）
  *
  * 为什么需要：客户端会话仓库有「2 落点 × 3 代」的冗余，服务端反而是一份孤本——
  * users.json / membership.json / channels.json 被误改、写坏、误删就没有退路。

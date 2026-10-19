@@ -1,4 +1,7 @@
-/* PaperPilot 批注收集：把 PDF 高亮/批注聚合为笔记，或交给 AI 解读 */
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 批注收集：把 PDF 高亮/批注聚合为笔记，或交给 AI 解读 */
 /* global Zotero, Prefs, AIClient, Notes, I18n */
 
 var Annotations = {

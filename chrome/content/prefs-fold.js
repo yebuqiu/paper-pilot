@@ -1,4 +1,7 @@
-/* PaperPilot 设置窗格 · 折叠分组脚本（0.38.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格 · 折叠分组脚本（0.38.0 新增）
  * 由 Zotero.PreferencePanes.register({scripts:[...]}) 注入设置窗口执行，
  * 与 prefs-pane / prefs-account / prefs-translate / prefs-menu / prefs-theme 并列。
  *
@@ -6,7 +9,7 @@
  *   ① 按 prefsFoldOpen pref（CSV，存「已展开」的 data-fold 键）恢复/切换折叠态；
  *   ② 工具条「全部展开 / 全部收起」；
  *   ③ 深链定位：其他入口（如划词浮窗「未就绪」）打开设置时，先在
- *      Zotero.PaperPilot._prefsFocus 放一个分组键，这里负责展开并滚动到该分组，
+ *      Zotero.Papilot._prefsFocus 放一个分组键，这里负责展开并滚动到该分组，
  *      消费后立即清掉（一次性）。
  *
  * ⚠️ 兼容性铁律：折叠 = 只在分组卡片上切 .pp-fold-closed 类（CSS display:none），
@@ -18,7 +21,7 @@
 /* global Zotero, window, document */
 
 (function () {
-  const PREF_KEY = "extensions.zotero.paperpilot.prefsFoldOpen";
+  const PREF_KEY = "extensions.zotero.papilot.prefsFoldOpen";
   const $ = (id) => document.getElementById(id);
 
   const getOpen = () => {
@@ -67,8 +70,8 @@
     // 深链定位：读一次性焦点键（reader-popup 等入口在 openPreferences 前放上）
     let focusKey = "";
     try {
-      focusKey = String((Zotero.PaperPilot && Zotero.PaperPilot._prefsFocus) || "");
-      if (Zotero.PaperPilot) Zotero.PaperPilot._prefsFocus = "";
+      focusKey = String((Zotero.Papilot && Zotero.Papilot._prefsFocus) || "");
+      if (Zotero.Papilot) Zotero.Papilot._prefsFocus = "";
     } catch (e) { /* ignore */ }
 
     const open = getOpen();

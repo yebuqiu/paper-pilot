@@ -1,5 +1,5 @@
 ﻿# start-account-server.ps1
-# Orphan-spawn the PaperPilot account backend (node account-server.js) via raw
+# Orphan-spawn the Papilot account backend (node account-server.js) via raw
 # System.Diagnostics.Process so the server survives this launcher and any
 # sandbox session (sandbox-hosted background processes get silently reaped).
 # Equivalent to start-server-hidden.vbs but usable from automation contexts
@@ -23,7 +23,7 @@ if (!(Test-Path $serverJs)) { Write-Output "FATAL: account-server.js missing at 
 if (!(Test-Path $logDir))   { New-Item -ItemType Directory -Path $logDir | Out-Null }
 
 # clear the manual-stop marker: invoking this script means the user wants the server up
-# (PaperPilotGuard honors the marker and would otherwise resurrect a stopped server)
+# (PapilotGuard honors the marker and would otherwise resurrect a stopped server)
 Remove-Item (Join-Path $logDir "stopped-account.flag") -Force -ErrorAction SilentlyContinue
 
 # locate node.exe: project-local runtime first (portable), then newest

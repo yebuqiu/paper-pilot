@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 全模块加载冒烟测试：按 main.js 的顺序在共享作用域里加载全部子模块，
  * 用深 Proxy 顶替 Zotero/Services，只验证「加载期不抛异常 + 关键全局已定义」。
  * 目的是抓出跨模块的加载期回归（本次改动动过 utils.js / menus.js / hub.js）。 */
@@ -28,7 +31,7 @@ const sandbox = {
   IOUtils: deepProxy("IOUtils"),
   PathUtils: deepProxy("PathUtils"),
   Prefs: {
-    PREFIX: "extensions.zotero.paperpilot.",
+    PREFIX: "extensions.zotero.papilot.",
     get(k, d) { return PrefStore.has(k) ? PrefStore.get(k) : d; },
     set(k, v) { PrefStore.set(k, v); },
   },
@@ -79,7 +82,7 @@ console.log("TranslateSvc.normalizeLang 可用:",
 // 0.30.0 阅读器右侧栏翻译面板
 const tp = sandbox.TranslatePane;
 console.log("TranslatePane 就绪:",
-  tp && tp.PANE_ID === "paperpilot-translate" &&
+  tp && tp.PANE_ID === "papilot-translate" &&
   typeof tp.captureSelection === "function" && typeof tp._build === "function" ? "✓" : "✗");
 // 0.25.0 起解析不再由 Discovery 自带，改为生成出来的 ArxivAtom（单一真源 tools/arxiv/src）
 const atom = sandbox.ArxivAtom.parseAtom('<entry><id>http://arxiv.org/abs/2401.00001v1</id><title>T</title><summary>S</summary><author><name>A B</name></author></entry>');

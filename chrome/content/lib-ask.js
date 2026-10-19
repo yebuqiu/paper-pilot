@@ -1,6 +1,9 @@
-/* PaperPilot 库内问答对话框（0.22.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 库内问答对话框（0.22.0）
  * 数据通道与 hub/workbench 一致：Zotero/Services 经 window.arguments 传入，
- * 功能调用一律走 Zotero.PaperPilot.libSearch（窗口作用域访问不到 bootstrap 作用域）。
+ * 功能调用一律走 Zotero.Papilot.libSearch（窗口作用域访问不到 bootstrap 作用域）。
  */
 /* global window, document, Zotero */
 
@@ -8,7 +11,7 @@
   const XHTML = "http://www.w3.org/1999/xhtml";
   const args = (window.arguments && window.arguments[0]) || {};
   const Z = args.Zotero || (window.opener && window.opener.Zotero);
-  const PP = Z && Z.PaperPilot;
+  const PP = Z && Z.Papilot;
   const zh = Z && (Z.locale || "").toLowerCase().startsWith("zh");
 
   const $ = (id) => document.getElementById(id);
@@ -18,7 +21,7 @@
   const resultEl = $("pp-lq-result");
 
   if (!PP || !PP.libSearch) {
-    statusEl.textContent = zh ? "错误：无法访问 PaperPilot 模块" : "Error: PaperPilot module unavailable";
+    statusEl.textContent = zh ? "错误：无法访问 Papilot 模块" : "Error: Papilot module unavailable";
     return;
   }
   const LS = PP.libSearch;

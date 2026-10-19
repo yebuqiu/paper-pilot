@@ -1,5 +1,5 @@
 /**
- * PaperPilot arXiv 工具包 · 类型声明
+ * Papilot arXiv 工具包 · 类型声明
  *
  * 实现是 CommonJS / JavaScript，这里用 `.d.ts` 给 IDE 与 TS 调用方提供
  * 「清晰的类型定义」——尤其是 ArxivEntry / SearchSpec / Config 这三个到处流转的结构。

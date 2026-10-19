@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot 收款流水对账 CLI（服务端 1.4.5）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 收款流水对账 CLI（服务端 1.4.5）
  *
  * 用法：
  *   node scripts/reconcile.js payments.txt             # 预览（不改任何数据）

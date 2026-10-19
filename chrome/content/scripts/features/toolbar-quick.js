@@ -1,4 +1,7 @@
-/* PaperPilot 顶部快捷按钮（0.38.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 顶部快捷按钮（0.38.0 新增）
  *
  * 背景：功能大多埋在右键菜单 / 功能中心里，「方便直接使用」缺一个常驻一键入口。
  * 位置：主窗口**顶部条目工具栏** #zotero-items-toolbar（条目列表正上方），
@@ -29,7 +32,7 @@
  * 条目列表「列组合」预设：保存当前列启用状态为快照，菜单一键切换
  * （参考 zotero-style 的 View Group，但只走 pref，不改 XUL 持久化）。
  *
- * 数据模型：pref `columnViews`（完整 key = extensions.zotero.paperpilot.columnViews）
+ * 数据模型：pref `columnViews`（完整 key = extensions.zotero.papilot.columnViews）
  *   JSON 数组 [{ id, name, columns: {插件列id: bool}, native: {原生列dataKey: bool(是否隐藏)} }]
  *
  * 插件列（5 个，均有 *ColumnEnabled pref 门控，main.js 的 pref 观察者
@@ -206,8 +209,8 @@ var ColumnViews = {
 };
 
 var ToolbarQuick = {
-  BTN_ID: "paperpilot-quick-toolbar-button",
-  POPUP_ID: "paperpilot-quick-popup",
+  BTN_ID: "papilot-quick-toolbar-button",
+  POPUP_ID: "papilot-quick-popup",
   PREF_ENABLED: "quickBarButtonEnabled",
 
   XUL: "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
@@ -241,7 +244,7 @@ var ToolbarQuick = {
     return [
       { id: "ai-chat", labelKey: "menuAiChat", run: () => Menus.openChatFloat() },
       { id: "bilingual-view", labelKey: "menuPdfDual", run: () => PdfDual.openForSelected() },
-      { id: "hub", labelKey: "menuHub", run: () => Zotero.PaperPilot.openHub() },
+      { id: "hub", labelKey: "menuHub", run: () => Zotero.Papilot.openHub() },
     ];
   },
 
@@ -303,14 +306,14 @@ var ToolbarQuick = {
     const input = { value: "" };
     let ok = false;
     try {
-      ok = Services.prompt.prompt(win, "PaperPilot 视图组",
+      ok = Services.prompt.prompt(win, "Papilot 视图组",
         "为当前列组合取个名字：", input, null, {});
     } catch (e) { this._err(e); return; }
     if (!ok) return;
     const view = ColumnViews.save(input.value);
     if (!view) return;
     try {
-      Services.prompt.alert(win, "PaperPilot", "已保存视图「" + view.name + "」");
+      Services.prompt.alert(win, "Papilot", "已保存视图「" + view.name + "」");
     } catch (e) { /* ignore */ }
   },
 
@@ -362,7 +365,7 @@ var ToolbarQuick = {
     btn.setAttribute("tooltiptext", I18n.t("quickBarTip"));
     // 图标：16px 单色 SVG（context-fill + currentColor，同 theme.svg 规格）——
     // 与原生按钮一致；不要用 icon.png（48px 位图会按原始尺寸撑大按钮）
-    btn.style.listStyleImage = 'url("chrome://paperpilot/content/icons/quick.svg")';
+    btn.style.listStyleImage = 'url("chrome://papilot/content/icons/quick.svg")';
     btn.style.MozContextProperties = "fill"; // eslint-disable-line
     btn.style.fill = "currentColor";
 

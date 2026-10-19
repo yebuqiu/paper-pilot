@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · 账号级登录风控（1.4.2）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · 账号级登录风控（1.4.2）
  *
  * 为什么需要：原来只有「每 IP 每分钟 10 次」的限速——换个 IP 就能对着某个邮箱
  * 无限撞密码。IP 限速防的是扫描，账号级锁定防的是定向爆破，两者缺一不可。

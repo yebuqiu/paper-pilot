@@ -1,4 +1,7 @@
-/* PaperPilot 标注 → 论点速记（0.52.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 标注 → 论点速记（0.52.0）
  *
  * 选中条目 → 读其 PDF 全部标注（高亮/下划线/笔记，上限 60 条）
  * → 交给 AI 整理成「论点-证据-页码」结构化速记 → 存为父条目下的笔记。

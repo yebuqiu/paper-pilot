@@ -1,6 +1,9 @@
-/* PaperPilot 设置窗格脚本·技能商店卡片（0.48.x 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格脚本·技能商店卡片（0.48.x 新增）
  * 与 prefs-pane 等同窗格运行。渲染内容：
- *   ① 「打开技能商店」按钮（经 Zotero.PaperPilot.openSkillStore 调起独立窗口）；
+ *   ① 「打开技能商店」按钮（经 Zotero.Papilot.openSkillStore 调起独立窗口）；
  *   ② 已安装技能包 chips（SkillPacks.listInstalled，防御式：核心域未就绪时提示）；
  *   ③ 从剪贴板导入技能包 JSON（读剪贴板 → SkillPacks.install，装完刷新列表）。
  *
@@ -15,7 +18,7 @@
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const $ = (id) => document.getElementById(id);
   const HTML_NS = "http://www.w3.org/1999/xhtml";
-  const SP = () => (Zotero.PaperPilot && Zotero.PaperPilot.skillPacks) || null;
+  const SP = () => (Zotero.Papilot && Zotero.Papilot.skillPacks) || null;
 
   const el = (tag, attrs, text) => {
     const node = document.createElementNS(HTML_NS, tag);
@@ -41,7 +44,7 @@
     btn.addEventListener("click", () => {
       setMsg($("pp-sk-msg"), "");
       try {
-        const r = Zotero.PaperPilot.openSkillStore();
+        const r = Zotero.Papilot.openSkillStore();
         if (!r) setMsg($("pp-sk-msg"),
           zh ? "窗口打开失败（主窗口未就绪？）" : "Failed to open store window",
           "var(--pp-danger)");
@@ -108,7 +111,7 @@
     try {
       if (typeof Zotero.Prefs.registerObserver !== "function") return;
       _prefObserverSym = Zotero.Prefs.registerObserver(
-        "extensions.zotero.paperpilot.skillPacksInstalled",
+        "extensions.zotero.papilot.skillPacksInstalled",
         () => { try { renderInstalled(); } catch (e) { /* 渲染失败不影响面板 */ } },
         true // global pref（第三参含义与 main.js _watchPrefs 调用一致）
       );

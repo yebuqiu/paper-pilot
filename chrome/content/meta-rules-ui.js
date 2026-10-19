@@ -1,7 +1,10 @@
-/* PaperPilot 元数据体检对话框（0.24.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 元数据体检对话框（0.24.0）
  * 与标签治理同纪律：**先出问题清单 → 用户勾选 → 才写库**。
  * 数据通道与 hub/workbench 一致：Zotero 经 window.arguments 传入，
- * 功能调用一律走 Zotero.PaperPilot.metaRules。
+ * 功能调用一律走 Zotero.Papilot.metaRules。
  */
 /* global window, document */
 
@@ -9,9 +12,9 @@
   const XHTML = "http://www.w3.org/1999/xhtml";
   const args = (window.arguments && window.arguments[0]) || {};
   const Z = args.Zotero || (window.opener && window.opener.Zotero);
-  const PP = Z && Z.PaperPilot;
+  const PP = Z && Z.Papilot;
   const zh = !!(Z && (Z.locale || "").toLowerCase().startsWith("zh"));
-  const PREFIX = "extensions.zotero.paperpilot.";
+  const PREFIX = "extensions.zotero.papilot.";
 
   const $ = (id) => document.getElementById(id);
   const listEl = $("pp-mr-list");
@@ -19,7 +22,7 @@
   const sumEl = $("pp-mr-sum");
 
   if (!PP || !PP.metaRules) {
-    if (statusEl) statusEl.textContent = zh ? "错误：无法访问 PaperPilot 模块" : "Error: PaperPilot unavailable";
+    if (statusEl) statusEl.textContent = zh ? "错误：无法访问 Papilot 模块" : "Error: Papilot unavailable";
     return;
   }
   const MR = PP.metaRules;

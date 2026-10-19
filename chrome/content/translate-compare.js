@@ -1,4 +1,7 @@
-/* PaperPilot 多引擎同屏对比小窗（窗口脚本，C2）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 多引擎同屏对比小窗（窗口脚本，C2）
  * 只做 UI：预填文本、引擎勾选、分栏渲染结果与耗时。
  * 翻译编排回插件作用域（window.arguments[0].compare）—— 窗口作用域访问不到 TranslateSvc。
  * 单引擎失败只渲染自己那一栏的错误占位，不影响其他栏。
@@ -186,7 +189,7 @@
       $("pp-tc-eng-label").textContent = "Engines:";
       $("pp-tc-run").textContent = "Compare";
       $("pp-tc-close").textContent = "Close";
-      document.title = "PaperPilot · Engine Compare";
+      document.title = "Papilot · Engine Compare";
     }
   }
 

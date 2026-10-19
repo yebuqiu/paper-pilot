@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 套餐 AI 能力：高级模型白名单 + 新用户全模型试用（服务端 1.4.9）
  *
  * 运行：node test/ai-tier.test.js
@@ -339,7 +342,7 @@ async function chat(token, model) {
 
     // health
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.8.4', 'H5 服务端版本 1.8.0');
+    eq(h.version, '1.8.5', 'H5 服务端版本 1.8.0');
     eq(h.highTierModels, 3, 'H6 health 给出高级模型数量（auto 也配了 → 3 条配置）');
     eq(h.publishedModels, ALL_PUBLISHED.length, 'H7 上线清单数量不受影响');
 

@@ -1,4 +1,7 @@
-/* PaperPilot AI 客户端：OpenAI 兼容接口（/chat/completions）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot AI 客户端：OpenAI 兼容接口（/chat/completions）
  * 兼容 OpenAI / DeepSeek / 通义 / 月之暗面 / SiliconFlow / 本地网关等
  * 0.14.0：配置改由「AI 模型通道」体系提供（Channels.getActiveConfig），
  * 官方通道需登录账号（未登录给出明确指引）；通道 extraBody 并入请求；
@@ -74,7 +77,7 @@ var AIClient = {
 
   /** 官方通道未登录的统一提示（34 项功能的 catch 链都能直接展示这条消息） */
   _notLoggedInError() {
-    return new Error("官方模型需要登录：请在 设置 → PaperPilot 登录账号（调用从 AI 额度扣费），或在「AI 模型通道」中配置自己的接口");
+    return new Error("官方模型需要登录：请在 设置 → Papilot 登录账号（调用从 AI 额度扣费），或在「AI 模型通道」中配置自己的接口");
   },
 
   /** 官方通道鉴权失败：异步失效会话 + 弹窗，不阻塞当前错误返回。

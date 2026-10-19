@@ -1,13 +1,13 @@
-# PaperPilot 真机验证报告
+# Papilot 真机验证报告
 
 > 环境：Zotero **10.0.5**（Windows）｜ 实装包：本地强制升级（profile 内 xpi 覆盖 + 删 `addonStartup.json.lz4`）
-> 验证人：PaperPilot 开发会话 ｜ 时间：2026-10-03 02:43–03:10
+> 验证人：Papilot 开发会话 ｜ 时间：2026-10-03 02:43–03:10
 > 验证对象：0.21.3（起点）→ 0.24.0 → **0.24.1 → 0.24.2**
 
 ## 一、为什么必须做这一步
 
 0.22.0 / 0.23.0 / 0.24.0 三个版本连续发布，但**从未在 Zotero 里跑过**——本机 profile 内一直是 0.21.3
-（`paperpilot-boot.log` 末行 `startup begin v0.21.3` + profile xpi 的 sha1 与 0.21.3 包一致）。
+（`papilot-boot.log` 末行 `startup begin v0.21.3` + profile xpi 的 sha1 与 0.21.3 包一致）。
 离线单测（370+ 断言）与静态接线扫描能证明「代码自洽」，**证明不了「接口在真实 Zotero 上存在」**。
 本次验证**一次就抓出 4 个真 bug**，其中 2 个会造成「对外输出错误结论」，另 2 个会让功能「看起来做了但没用」。
 
@@ -16,7 +16,7 @@
 | 手段 | 覆盖什么 |
 |---|---|
 | 本地强制升级 + 启动日志 | 插件能否加载、版本是否正确、各模块注册是否成功、有无加载期异常 |
-| **MCP 端点端到端 HTTP 调用** | 这是唯一能在无人点击的情况下**真实驱动插件内部逻辑**的通道：`curl` 打 `127.0.0.1:23119/paperpilot/mcp`，用真实库数据跑 8 个工具 |
+| **MCP 端点端到端 HTTP 调用** | 这是唯一能在无人点击的情况下**真实驱动插件内部逻辑**的通道：`curl` 打 `127.0.0.1:23119/papilot/mcp`，用真实库数据跑 8 个工具 |
 | **arXiv 真实响应喂解析器** | 解析器此前只对自造样例测过；用线上真实 Atom 响应验证字段是否齐备 |
 | **真实 zotero.sqlite 离线复算** | 从库里读出 1000 条真实条目的标题/摘要/期刊/DOI/作者/标签，直接喂 Discovery 画像与 MetaRules 规则，看它们**在真实数据上**的表现 |
 | 强制触发每日定时 | 把 `discoveryEnabled=true` + `discoveryLastRun=""` 写进 prefs 再启动，让每日定时**在真机上自己跑一遍**，关闭后读 `prefs.js` 里的缓存验证结果 |
@@ -27,9 +27,9 @@
 
 ```
 startup begin v0.24.1 reason=1
-chrome registered rootURI=...paperpilot@dev.local.xpi!/
+chrome registered rootURI=...papilot@dev.local.xpi!/
 main.js loaded → subscripts loaded
-PreferencePanes registered paneID=paperpilot-prefs
+PreferencePanes registered paneID=papilot-prefs
 rank/citation column, chat pane, glance pane, reading state, menus,
 ui theme, pdf theme, reader popup, rule tag, automation, auto read → 全部 registered
 reading stats heartbeat started
@@ -45,9 +45,9 @@ account store: dirs=2 copies=0 newest=- loggedIn=false
 | 检查 | 结果 |
 |---|---|
 | Zotero 本地服务 | `127.0.0.1:23119/connector/ping` → **200** |
-| 未注册路径（对照） | `/paperpilot/nope` → **404**（证明路由表生效） |
+| 未注册路径（对照） | `/papilot/nope` → **404**（证明路由表生效） |
 | 无令牌 / 错令牌 | → **403** + `{"error":{"code":-32001,"message":"Unauthorized…"}}` |
-| `GET /paperpilot/mcp` 带令牌 | → **200**，返回 server/version/endpoint/tools + `zoteroServer{enabled:true,running:true,port:23119}` |
+| `GET /papilot/mcp` 带令牌 | → **200**，返回 server/version/endpoint/tools + `zoteroServer{enabled:true,running:true,port:23119}` |
 | 纯通知（`notifications/initialized`） | → **204** 无内容 |
 | `initialize` | → `protocolVersion` 按客户端请求协商为 `2025-06-18`；`serverInfo.version = 0.24.x` |
 | `tools/list` | → 8 个工具 |

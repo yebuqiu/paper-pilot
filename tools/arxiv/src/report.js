@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 "use strict";
 
 /**
@@ -182,7 +185,7 @@ function toMarkdown(result, opts) {
   }
   L.push("---");
   L.push("");
-  L.push("<sub>由 PaperPilot arXiv 工具包生成 · 数据来源 arXiv API（导出/使用请遵守 arXiv 使用条款）</sub>");
+  L.push("<sub>由 Papilot arXiv 工具包生成 · 数据来源 arXiv API（导出/使用请遵守 arXiv 使用条款）</sub>");
   return L.join("\n");
 }
 

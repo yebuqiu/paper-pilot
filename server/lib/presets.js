@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · 厂商预设目录
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · 厂商预设目录
  * 与插件端 chrome/content/scripts/ai/channels.js 的 PROVIDERS 同源维护：
  * 新增厂商时两处同步。keyHint.unique = true 表示密钥格式特异，
  * 命中即唯一候选；models 为兜底建议，以实时 /models 为准。

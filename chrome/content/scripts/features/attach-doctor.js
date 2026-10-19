@@ -1,10 +1,13 @@
-/* PaperPilot 附件体检（0.22.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 附件体检（0.22.0）
  * 库健康栏目原有「智能清理」查的是条目层面（重复/无附件/缺元数据）。
  * 本模块补的是**附件层面**的五类问题，全部只读扫描 + 报告，绝不删除任何文件：
  *  1. 无附件条目（区分「完全没附件」与「有附件但没有 PDF」）
  *  2. 断链/丢失：linked_file 链接失效，或 imported 附件在存储目录里找不到文件
  *  3. 同父重复附件：同一父条目下文件名相同或体积相同的多个 PDF
- *  4. 无文本层 PDF：全文索引取不到文字（扫描件）→ 这类文献在 PaperPilot 的
+ *  4. 无文本层 PDF：全文索引取不到文字（扫描件）→ 这类文献在 Papilot 的
  *     AI 问答/翻译/综述里等于「全瞎」，是最容易踩的隐性坑
  *  5. 存储目录孤儿文件：storage/<key>/ 下存在、但库里没有任何附件引用的文件
  *
@@ -265,7 +268,7 @@ var AttachDoctor = {
       md += "\n> " + (zh ? "本次跳过：" : "Skipped: ") + r.skipped.join("；") + "\n";
     }
     if (r.noText.length) {
-      md += "\n## " + (zh ? "无文本层 PDF（PaperPilot 的 AI 问答/翻译/综述对它们无效，建议先 OCR）" : "No text layer") + "\n" +
+      md += "\n## " + (zh ? "无文本层 PDF（Papilot 的 AI 问答/翻译/综述对它们无效，建议先 OCR）" : "No text layer") + "\n" +
         r.noText.slice(0, 80).map((x) => "- " + this._title(x.parent || x.att)).join("\n") + "\n";
     }
     if (r.broken.length) {
@@ -298,8 +301,8 @@ var AttachDoctor = {
   async run() {
     const zh = I18n.isZh;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + (zh ? "附件体检" : "Attachment Doctor"));
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    pw.changeHeadline("Papilot · " + (zh ? "附件体检" : "Attachment Doctor"));
+    const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       zh ? "正在检查附件…" : "Checking attachments…");
     progress.setProgress(10);
     pw.show();

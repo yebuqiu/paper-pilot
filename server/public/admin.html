@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>PaperPilot 后台管理</title>
+<title>Papilot 后台管理</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root {
@@ -99,7 +99,7 @@
 <header>
   <div class="logo">P</div>
   <div>
-    <h1>PaperPilot 后台管理</h1>
+    <h1>Papilot 后台管理</h1>
     <div class="sub">账号后台 · 模型通道（官方网关上游）· 仅本机访问</div>
   </div>
 </header>
@@ -941,7 +941,7 @@ function exportAuditCSV() {
     var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'paperpilot-audit-' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.download = 'papilot-audit-' + new Date().toISOString().slice(0, 10) + '.csv';
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { try { URL.revokeObjectURL(a.href); a.remove(); } catch (e) { /* ignore */ } }, 0);
@@ -1706,7 +1706,7 @@ function exportUsageCSV() {
     var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'paperpilot-usage-' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.download = 'papilot-usage-' + new Date().toISOString().slice(0, 10) + '.csv';
     document.body.appendChild(a);
     a.click();
     setTimeout(function () { try { URL.revokeObjectURL(a.href); a.remove(); } catch (e) { /* ignore */ } }, 0);

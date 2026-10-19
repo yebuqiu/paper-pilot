@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · 余额域（服务端 1.6.0，配合插件 0.26.x）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · 余额域（服务端 1.6.0，配合插件 0.26.x）
  *
  * 职责：AI 额度余额 —— 注册赠送 / 充值 / 消耗 / 流水。
  * 数据落在 user.balance（users.json，随既有快照/回滚体系走，无需新文件）：
@@ -6,6 +9,8 @@
  *     grantedMicro: n,       // 赠送余额（微元）——注册礼包；有有效期
  *     grantedExpiresAt: ISO, // 赠送额度过期时间（null = 不过期，不建议）
  *     paidMicro: n,          // 充值余额（微元）——**永不过期**；管理员充值/调账也进这里
+ *     heldMicro: n,          // 进行中请求的**预占**总额（微元，恒等于 holds 之和）
+ *     holds: [ { id, micro, at, highTier } ],   // 预占明细（最多 HOLDS_MAX 条）
  *     ledger: [ ... ]        // 最近 BALANCE_LEDGER_KEEP 条流水
  *   }
  *
@@ -16,6 +21,14 @@
  *   实际扣减（响应结束才知道成本）之间存在并发窗口：同账号并发 N 个请求时，
  *   全部可能通过 pre-check。此时余额可能为负——流水必须如实记录，
  *   由下一次 pre-check 拦截后续请求。绝不能"扣不到就当 0"。
+ *
+ * ★ 铁律二补充（1.8.6 审查 P1-3）：**发出请求前先「预占」额度**。
+ *   pre-check 只读余额，N 个并发请求会同时通过，结束后各自扣费 → 余额被透支。
+ *   因此网关在放行后先 hold() 预占一笔估算额（只占 availableMicro，不动真实余额），
+ *   响应结束后 settleHold() 按**实际成本**结算（移除预占 + 走原有扣减顺序，仍允许透支），
+ *   任何不扣费的出口（客户端断开 / 上游 4xx5xx / 超时 / 写响应失败）必须 releaseHold()。
+ *   预占只是"并发阀门"，不是账：它不进流水、不影响 totalMicro/paidMicro，
+ *   且 5 分钟后由 sweep() 自动释放（防客户端或进程异常导致永久占款）。
  *
  * ★ 铁律三：**高级模型不吃赠送额度**（用户决策：赠送限基础模型）。
  *   highTier 模型的消耗只从 paidMicro 扣；赠送额度只能用于基础模型。
@@ -38,6 +51,16 @@ const pricing = require('./pricing');
 
 /** 流水保留条数（每账号；users.json 是全量读写的 JSON，不能无限长） */
 const LEDGER_KEEP = 50;
+
+/**
+ * 预占（hold）上限：
+ *   HOLDS_MAX    —— 每账号同时进行中的请求数上限。超出即拒（宁可 402，
+ *                   也不静默丢弃旧预占——那等于把别人的钱偷偷放回去）。
+ *   HOLD_TTL_MS  —— 预占最长存活 5 分钟。正常请求远短于此；超时即视为
+ *                   客户端/进程异常，由 sweep() 自动释放，防止永久占款。
+ */
+const HOLDS_MAX = 8;
+const HOLD_TTL_MS = 5 * 60 * 1000;
 
 /** 充值档位默认值：到账额度 creditCents ≥ 付款 cents（差额即「充值赠送」） */
 const DEFAULT_RECHARGE_OPTIONS = [
@@ -112,6 +135,35 @@ function cfgOf(pricingDoc) {
 
 /* ---------------- 用户余额对象 ---------------- */
 
+/**
+ * 预占明细消毒（幂等）：
+ *   - 非法项（无 id / micro ≤ 0 / at 非数字）丢弃；
+ *   - id 重复只留最后一条（同一 id 重复 append 说明上游写坏了）；
+ *   - 裁剪到最近 HOLDS_MAX 条。
+ */
+function sanitizeHolds(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const h of raw) {
+    if (!h || typeof h !== 'object' || Array.isArray(h)) continue;
+    const id = String(h.id == null ? '' : h.id).slice(0, 64);
+    const amount = micro(h.micro, 0);
+    const at = Math.round(Number(h.at));
+    if (!id || seen.has(id) || !(amount > 0) || !Number.isFinite(at) || at <= 0) continue;
+    seen.add(id);
+    out.push({ id, micro: amount, at, highTier: h.highTier === true });
+  }
+  return out.slice(-HOLDS_MAX);
+}
+
+/** 预占总额 = 明细之和（唯一口径，杜绝 heldMicro 与 holds 对不上） */
+function heldTotal(holds) {
+  let sum = 0;
+  for (const h of holds) sum += micro(h.micro, 0);
+  return sum;
+}
+
 /** 确保余额结构存在（幂等；老账号现场补，零迁移） */
 function ensure(user) {
   if (!user.balance || typeof user.balance !== 'object' || Array.isArray(user.balance)) {
@@ -127,6 +179,11 @@ function ensure(user) {
   b.paidMicro = signedMicro(b.paidMicro);
   b.grantedExpiresAt = b.grantedExpiresAt || null;
   if (!Array.isArray(b.ledger)) b.ledger = [];
+  // ★ 预占：heldMicro 一律由 holds 之和重算（天然 ≥ 0）。
+  //   只做 clamp 修不了「明细已丢、总额还在」的脏数据——那会让可用余额凭空变少
+  //   且永远无法自愈（sweep 是按明细里的 at 逐条过期的）。
+  b.holds = sanitizeHolds(b.holds);
+  b.heldMicro = heldTotal(b.holds);
   return b;
 }
 
@@ -148,6 +205,20 @@ function sweep(b, now) {
     });
     b.planMicro = 0;
   }
+  // ★ 预占超时释放（P1-3）：正常请求远短于 5 分钟；留下的都是客户端/进程异常。
+  //   不释放就会永久占款——用户余额还在，可用额度却永远为 0，且无法自愈。
+  if (Array.isArray(b.holds) && b.holds.length) {
+    const keep = [];
+    for (const h of b.holds) {
+      // at 在未来（时钟回拨 / 跨进程写入）时 t - at 为负，不算过期
+      if (h && Number.isFinite(h.at) && t - h.at > HOLD_TTL_MS) continue;
+      keep.push(h);
+    }
+    if (keep.length !== b.holds.length) {
+      b.holds = keep;
+      b.heldMicro = heldTotal(keep);
+    }
+  }
   return b;
 }
 
@@ -157,8 +228,27 @@ function push(b, entry) {
   return b;
 }
 
-/** 注册赠送部分当前可用（过期 = 0） */
-function grantedAvailable(b, now) {
+/**
+ * 1.8.5（审查 P0-3）：这笔外部单据是否已经入过账。
+ * 订单履约改成「先入账、后置订单状态」后，崩溃窗口会留下「钱到了、单还 pending」；
+ * 网关重试时靠这个判据避免二次入账。只认 recharge + refId 精确匹配。
+ * 注意：流水只保留 LEDGER_KEEP(50) 条，极端高频下早期记录可能已滚出——届时改用订单侧
+ * 幂等字段（见 P2-11 的流水扩容建议），但那已超出「崩溃后立刻重试」的窗口。
+ */
+function hasRef(user, refId, kind) {
+  const b = user && user.balance;
+  const list = b && Array.isArray(b.ledger) ? b.ledger : [];
+  const k = String(kind || 'recharge');
+  const id = String(refId || '');
+  if (!id) return false;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const e = list[i];
+    if (e && e.kind === k && String(e.refId || '') === id) return true;
+  }
+  return false;
+}
+
+/** 注册赠送部分当前可用（过期 = 0） */function grantedAvailable(b, now) {
   const t = Number.isFinite(now) ? now : Date.now();
   if (!b.grantedExpiresAt) return b.grantedMicro;
   return t >= Date.parse(b.grantedExpiresAt) ? 0 : b.grantedMicro;
@@ -184,6 +274,20 @@ function totalMicro(b, now) {
 function payableMicro(b, { highTier } = {}, now) {
   const t = Number.isFinite(now) ? now : Date.now();
   return highTier ? (planAvailable(b, t) + b.paidMicro) : totalMicro(b, t);
+}
+
+/**
+ * **可用**额度 = payableMicro − 进行中请求的预占（heldMicro），下限 0。
+ *
+ * 与 payableMicro 的分工：payableMicro 是「账上有多少钱」（用于展示/结算），
+ * availableMicro 是「现在还能开多少新请求」（用于并发阀门）。两者只差预占部分，
+ * 因此 viewOf 同时下发，前端零回归。
+ */
+function availableMicro(b, { highTier } = {}, now) {
+  const t = Number.isFinite(now) ? now : Date.now();
+  const held = micro(b.heldMicro, 0);
+  const left = payableMicro(b, { highTier }, t) - held;
+  return left > 0 ? left : 0;
 }
 
 /* ---------------- 写操作 ---------------- */
@@ -315,6 +419,100 @@ function consume(user, amount, { highTier, reason, refId } = {}, now) {
   return out;
 }
 
+/* ---------------- 预占（hold）：并发阀门 ---------------- */
+
+/** 预占 id 生成：进程内单调 + 随机后缀（不引入新依赖，且天然跨进程不撞） */
+let holdSeq = 0;
+function newHoldId(t) {
+  holdSeq = (holdSeq + 1) % 1e9;
+  return 'h-' + Math.round(t).toString(36) + '-' + holdSeq.toString(36)
+    + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+/** 按 id 摘掉一条预占（内部用；找不到返回 null，不动 heldMicro） */
+function dropHold(b, id) {
+  if (!Array.isArray(b.holds) || !b.holds.length) return null;
+  const key = String(id == null ? '' : id);
+  if (!key) return null;
+  const idx = b.holds.findIndex((h) => h && h.id === key);
+  if (idx < 0) return null;
+  const h = b.holds.splice(idx, 1)[0];
+  b.heldMicro = heldTotal(b.holds);
+  return h;
+}
+
+/**
+ * 预占一笔额度（网关在发起上游请求前调用）。
+ * 语义：只占 availableMicro，**不动真实余额**（paidMicro/grantedMicro/planMicro 全不变），
+ *      因此中途看 /api/auth/me 的 totalMicro 仍是真实余额，只有 availableMicro 变小。
+ *
+ * @param {object} user 用户文档（原位修改）
+ * @param {number} amount 预占微元；≤ 0 时直接返回 ok 且不记录（免费模型/无估算额）
+ * @param {{highTier?:boolean, id?:string}} opts
+ * @returns {{ok:boolean, id?:string|null, micro:number, avail:number, code?:string}}
+ *   ok=false 表示「抢不到」（并发已把可用额占满）——调用方应答 402。
+ */
+function hold(user, amount, { highTier, id } = {}, now) {
+  const amt = Math.max(0, Math.round(Number(amount) || 0));
+  const t = Number.isFinite(now) ? now : Date.now();
+  const b = sweep(ensure(user), t);
+  if (!amt) return { ok: true, id: null, micro: 0, avail: availableMicro(b, { highTier }, t) };
+  const avail = availableMicro(b, { highTier }, t);
+  if (amt > avail) return { ok: false, id: null, micro: 0, avail, code: 'INSUFFICIENT_BALANCE' };
+  if (b.holds.length >= HOLDS_MAX) {
+    return { ok: false, id: null, micro: 0, avail, code: 'TOO_MANY_HOLDS' };
+  }
+  const hid = String(id || newHoldId(t)).slice(0, 64);
+  b.holds.push({ id: hid, micro: amt, at: t, highTier: highTier === true });
+  b.heldMicro = heldTotal(b.holds);
+  return { ok: true, id: hid, micro: amt, avail: avail - amt };
+}
+
+/**
+ * 结算：移除预留并按**实际成本**扣费（唯一扣费出口）。
+ *
+ * ★ 铁律二仍然成立：扣减走 consume() 的同一顺序（赠送 → 订阅 → 充值），允许透支；
+ *   实际成本大于预留额时不报错、不截断——预留只是并发阀门，绝不是账单上限。
+ * ★ 预留已被 sweep 释放（请求跑超过 5 分钟）时**照样扣费**：钱是花掉的，
+ *   不能因为预占没了就免费。此时 holdFound=false，调用方可据此留日志。
+ *
+ * @param {number} actualMicro 实际成本（上游 usage 算出来的）
+ * @param {{reason?:string, refId?:string, highTier?:boolean}} opts highTier 缺省沿用预留上的档位
+ * @returns {{ok:true, holdId:string, holdFound:boolean, holdMicro:number,
+ *            fromGranted:number, fromPlan:number, fromPaid:number, overdraft:number}}
+ */
+function settleHold(user, id, actualMicro, { reason, refId, highTier } = {}, now) {
+  const t = Number.isFinite(now) ? now : Date.now();
+  const b = sweep(ensure(user), t);
+  const h = dropHold(b, id);
+  const tier = (highTier === undefined || highTier === null) ? !!(h && h.highTier) : !!highTier;
+  const out = consume(user, actualMicro, { highTier: tier, reason, refId }, t);
+  return Object.assign({
+    ok: true,
+    holdId: String(id == null ? '' : id),
+    holdFound: !!h,
+    holdMicro: h ? h.micro : 0,
+  }, out);
+}
+
+/**
+ * 释放预留（不扣费）。用于所有「上游/客户端没跑完、不计费」的出口。
+ * **幂等**：id 不存在（已结算/已过期/重复调用）时返回 released=0，不抛错。
+ * @returns {{ok:true, id:string, released:number, holdFound:boolean, heldMicro:number}}
+ */
+function releaseHold(user, id, now) {
+  const t = Number.isFinite(now) ? now : Date.now();
+  const b = sweep(ensure(user), t);
+  const h = dropHold(b, id);
+  return {
+    ok: true,
+    id: String(id == null ? '' : id),
+    released: h ? h.micro : 0,
+    holdFound: !!h,
+    heldMicro: b.heldMicro,
+  };
+}
+
 /**
  * 请求前判定：是否放行。只在 enforce=true 时拦截（观察模式恒放行）。
  * 成本是响应之后才知道的，所以 pre-check 用「阈值」而不是预估单次成本。
@@ -361,6 +559,8 @@ function viewOf(b, now) {
   const t = Number.isFinite(now) ? now : Date.now();
   const g = grantedAvailable(b, t);
   const pl = planAvailable(b, t);
+  const held = micro(b.heldMicro, 0);
+  const total = g + pl + b.paidMicro;
   return {
     grantedMicro: b.grantedMicro,
     grantedAvailableMicro: g,
@@ -370,8 +570,12 @@ function viewOf(b, now) {
     planExpiresAt: b.planExpiresAt,
     planPeriodKey: b.planPeriodKey || null,
     paidMicro: b.paidMicro,
-    totalMicro: g + pl + b.paidMicro,
-    text: pricing.microText(g + pl + b.paidMicro),
+    totalMicro: total,
+    // ★ 1.8.6（P1-3）：进行中请求的预占，以及「扣掉预占后还能开多少新请求」。
+    //   旧字段一个不动（前端零回归）；heldMicro=0 时 availableMicro === totalMicro。
+    heldMicro: held,
+    availableMicro: (total - held) > 0 ? (total - held) : 0,
+    text: pricing.microText(total),
     grantedText: pricing.microText(g),
     planText: pricing.microText(pl),
     paidText: pricing.microText(b.paidMicro),
@@ -424,9 +628,13 @@ function rechargeOptionsForClient(cfg) {
 
 module.exports = {
   LEDGER_KEEP, DEFAULT_CFG, DEFAULT_RECHARGE_OPTIONS, MICRO_PER_YUAN: pricing.MICRO_PER_YUAN,
+  HOLDS_MAX, HOLD_TTL_MS,
   newCfg, normalizeCfg, cfgOf, sanitizeRechargeOptions,
-  ensure, sweep, grantedAvailable, planAvailable, totalMicro, payableMicro,
+  ensure, sweep, grantedAvailable, planAvailable, totalMicro, payableMicro, availableMicro,
+  sanitizeHolds, heldTotal, newHoldId,
+  hold, settleHold, releaseHold,
   grantSignup, grantPlan, creditTopUp, adminAdjust, consume, precheck,
+  hasRef,
   viewOf, userView, adminView,
   rechargeOptionOf, rechargeOptionsForClient,
 };

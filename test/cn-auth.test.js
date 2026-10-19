@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 知网账号登录（0.43.0，CNAuth）测试 —— 全部离线、无网络、无 Zotero
  *
  * 覆盖：
@@ -63,7 +66,7 @@ const sandbox = {
   _ppDiag: () => {},
 };
 sandbox.Prefs = {
-  PREFIX: 'extensions.zotero.paperpilot.',
+  PREFIX: 'extensions.zotero.papilot.',
   get(k, d) { return PrefStore.has(k) ? PrefStore.get(k) : d; },
   set(k, v) { PrefStore.set(k, v); },
 };

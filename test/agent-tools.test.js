@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* Agent 工具层（AgentTools，0.48.0）测试 —— 交互设计参考 Hermes Agent
  *
  * 覆盖：

@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot · 库内问答（问自己的文献库）"
-        windowtype="paperpilot:libask"
+        title="Papilot · 库内问答（问自己的文献库）"
+        windowtype="papilot:libask"
         width="1080" height="720">
-  <script src="chrome://paperpilot/content/lib-ask.js"></script>
+  <script src="chrome://papilot/content/lib-ask.js"></script>
   <vbox flex="1" style="padding:12px;">
     <label value="用一句话问整个文献库，例如「我这个库里有没有讲过图神经网络在推荐系统上的应用？」"/>
     <html:textarea id="pp-lq-query" rows="2"

@@ -1,6 +1,9 @@
-/* PaperPilot 自动化规则对话框（0.23.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 自动化规则对话框（0.23.0）
  * 左侧规则列表（启用勾选 / 编辑 / 删除），右侧表单（名称 / 触发 / 条件 / 动作）。
- * 全部读写经 Zotero.PaperPilot.automation（窗口作用域访问不到 bootstrap 作用域）。
+ * 全部读写经 Zotero.Papilot.automation（窗口作用域访问不到 bootstrap 作用域）。
  * 「试跑预览」只统计命中与变更数，不落库 —— 与菜单入口共用同一套 preview()。
  */
 /* global window, document */
@@ -9,7 +12,7 @@
   const XHTML = "http://www.w3.org/1999/xhtml";
   const args = (window.arguments && window.arguments[0]) || {};
   const Z = args.Zotero || (window.opener && window.opener.Zotero);
-  const PP = Z && Z.PaperPilot;
+  const PP = Z && Z.Papilot;
   const zh = Z && (Z.locale || "").toLowerCase().startsWith("zh");
 
   const $ = (id) => document.getElementById(id);
@@ -18,7 +21,7 @@
   const statusEl = $("pp-au-status");
 
   if (!PP || !PP.automation) {
-    statusEl.textContent = zh ? "错误：无法访问 PaperPilot 模块" : "Error: module unavailable";
+    statusEl.textContent = zh ? "错误：无法访问 Papilot 模块" : "Error: module unavailable";
     return;
   }
   const AU = PP.automation;
@@ -96,8 +99,8 @@
   /* ---------------- 全局开关 ---------------- */
 
   const P = {
-    get: (k, d) => { try { return Z.Prefs.get("extensions.zotero.paperpilot." + k, true); } catch (e) { return d; } },
-    set: (k, v) => { try { Z.Prefs.set("extensions.zotero.paperpilot." + k, v, true); } catch (e) { /* ignore */ } },
+    get: (k, d) => { try { return Z.Prefs.get("extensions.zotero.papilot." + k, true); } catch (e) { return d; } },
+    set: (k, v) => { try { Z.Prefs.set("extensions.zotero.papilot." + k, v, true); } catch (e) { /* ignore */ } },
   };
 
   function renderSwitches() {

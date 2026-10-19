@@ -1,4 +1,7 @@
-/* PaperPilot 中文元数据识别（0.11.0，Jasminum 品类的轻量路线）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 中文元数据识别（0.11.0，Jasminum 品类的轻量路线）
  * 知网/万方/维普下载的中文 PDF 常见文件名格式：
  *   标题_作者.pdf            （知网最常见）
  *   标题_作者_期刊.pdf
@@ -137,13 +140,13 @@ var CNMeta = {
 
     const zh = I18n.isZh;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + I18n.t("menuCnMeta"));
+    pw.changeHeadline("Papilot · " + I18n.t("menuCnMeta"));
     pw.show();
     let nFilled = 0, nSkip = 0;
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(40);
         const r = await this.enrich(item);
@@ -165,7 +168,7 @@ var CNMeta = {
         Zotero.logError(e);
       }
     }
-    const summary = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    const summary = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       (zh ? "合计：识别 " : "Done: filled ") + nFilled + (zh ? "，跳过 " : ", skipped ") + nSkip);
     summary.setProgress(100);
     pw.startCloseTimer(3500);

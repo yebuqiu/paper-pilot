@@ -1,4 +1,7 @@
-/* PaperPilot 元数据补全（0.8.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 元数据补全（0.8.0 新增）
  * 对选中条目：用 S2（DOI 优先、标题检索兜底，带标题一致性校验）查记录，
  * 只回写【空缺】字段（绝不覆盖已有值）：DOI / 摘要 / 日期 / 期刊名 /
  * 卷 / 期 / 页码 / 作者。智能清理报告的「缺元数据」配套修复工具。
@@ -99,14 +102,14 @@ var MetaEnrich = {
     }
     const zh = I18n.isZh;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
+    pw.changeHeadline("Papilot");
     pw.show();
     let nFilled = 0, nSkip = 0, nMiss = 0;
     let first = true;
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(30);
         const filled = await this.enrich(item);
@@ -126,7 +129,7 @@ var MetaEnrich = {
       if (!first) await new Promise((r) => setTimeout(r, 1100)); // S2 限速
       first = false;
     }
-    const summary = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    const summary = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       (zh ? "合计：补全 " : "Done: enriched ") + nFilled +
       (zh ? "，跳过 " : ", skipped ") + nSkip +
       (zh ? "，未命中 " : ", not found ") + nMiss);

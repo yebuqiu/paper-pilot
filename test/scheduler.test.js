@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 定时任务模块测试（研究晨报 / 阅读周报 / 库体检）
  *
  * 为什么要有它：定时任务最容易坏在「静默」——时间解析错了、当天重复跑、
@@ -15,7 +18,7 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'chrome', 'content', 'scripts', 'features', 'scheduler.js');
-const PREFIX = 'extensions.zotero.paperpilot.';
+const PREFIX = 'extensions.zotero.papilot.';
 
 let pass = 0;
 const fails = [];
@@ -89,9 +92,9 @@ function makeEnv(opts) {
       },
     },
     Item: Note,
-    PaperPilot: {
+    Papilot: {
       diags: [],
-      _diag(msg) { Zotero.PaperPilot.diags.push(String(msg)); return Promise.resolve(); },
+      _diag(msg) { Zotero.Papilot.diags.push(String(msg)); return Promise.resolve(); },
     },
     logError(e) { errors.push(e); },
     debug() {},
@@ -158,7 +161,7 @@ function makeEnv(opts) {
     intervals: intervals,
     errors: errors,
     calls: calls,
-    diags: Zotero.PaperPilot.diags,
+    diags: Zotero.Papilot.diags,
     prefs: (k) => store.get(PREFIX + k),
     lastRun: () => {
       const raw = store.get(PREFIX + 'scheduleLastRun');

@@ -1,4 +1,7 @@
-/* PaperPilot 标签治理（0.22.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 标签治理（0.22.0）
  * 背景：AI 打标 + 手动打标并用后，标签必然出现「同一含义多种写法」——
  * 大小写（DNN/dnn）、全半角（机器学习／机器学习）、空格与连字符
  * （deep learning / deep-learning）、尾随标点等。标签一乱，按标签筛选
@@ -229,8 +232,8 @@ var TagCurator = {
   async run(apply) {
     const zh = I18n.isZh;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + (zh ? "标签治理" : "Tag Curator"));
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    pw.changeHeadline("Papilot · " + (zh ? "标签治理" : "Tag Curator"));
+    const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       zh ? "正在统计标签使用情况…" : "Counting tags…");
     progress.setProgress(20);
     pw.show();
@@ -253,7 +256,7 @@ var TagCurator = {
         const win = Zotero.getMainWindow();
         const flags = Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING +
           Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING;
-        const choice = Services.prompt.confirmEx(win, "PaperPilot · " + (zh ? "标签归一" : "Normalize tags"), msg, flags,
+        const choice = Services.prompt.confirmEx(win, "Papilot · " + (zh ? "标签归一" : "Normalize tags"), msg, flags,
           zh ? "执行合并" : "Merge", zh ? "取消" : "Cancel", null, null, {});
         if (choice === 0) {
           progress.setText(zh ? "正在合并标签…" : "Merging tags…");
@@ -292,9 +295,9 @@ var TagCurator = {
    * （chrome/content/tag-nested.xhtml），入口由 TagCurator.openNestedView() 提供。
    */
 
-  NESTED_WINDOW_TYPE: "paperpilot:tag-nested",
-  NESTED_WINDOW_URL: "chrome://paperpilot/content/tag-nested.xhtml",
-  NESTED_WINDOW_NAME: "paperpilot-tag-nested",
+  NESTED_WINDOW_TYPE: "papilot:tag-nested",
+  NESTED_WINDOW_URL: "chrome://papilot/content/tag-nested.xhtml",
+  NESTED_WINDOW_NAME: "papilot-tag-nested",
 
   /** 标签名 → 层级段（全角斜杠/反斜杠统一为 "/"，各段去空白，空段丢弃） */
   _splitPath(name) {
@@ -413,8 +416,8 @@ var TagCurator = {
   async openNestedView() {
     const zh = I18n.isZh;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + (zh ? "嵌套标签视图" : "Nested Tags"));
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    pw.changeHeadline("Papilot · " + (zh ? "嵌套标签视图" : "Nested Tags"));
+    const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       zh ? "正在扫描标签层级…" : "Scanning tag hierarchy…");
     progress.setProgress(30);
     pw.show();

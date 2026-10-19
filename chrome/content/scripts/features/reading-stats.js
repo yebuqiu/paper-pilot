@@ -1,5 +1,8 @@
-/* PaperPilot 阅读行为统计（0.23.0，路线图阶段 2 第二批）
- * PaperPilot 有「阅读状态」（未读/在读/已读），但没有任何「阅读行为」数据。
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 阅读行为统计（0.23.0，路线图阶段 2 第二批）
+ * Papilot 有「阅读状态」（未读/在读/已读），但没有任何「阅读行为」数据。
  * 本模块补这一块：阅读时长 → 日历热力图 → 阅读报告，既是粘性功能，也能反过来
  * 支撑 AI（「我最近读的这几篇有什么共同点」）。
  *
@@ -38,10 +41,73 @@ var ReadingStats = {
     try { return JSON.stringify(store || this._empty()); } catch (e) { return JSON.stringify(this._empty()); }
   },
 
-  load() { return this.parse(Prefs.get("readingStats", "")); },
+  load() { return this._ensureMem(); },
+
+  /** 0.54.1（审查 P1-5）：内存副本 + 防抖落盘，见 reading-progress.js 的说明 */
+  FLUSH_MS: 300000,
+  _mem: null,
+  _dirty: false,
+  _flushTimer: null,
+  _minMap: null,
+  _prefObs: null,
+
+  reloadFromPref() {
+    this._mem = this.parse(Prefs.get("readingStats", ""));
+    this._minMap = null;
+    return this._mem;
+  },
+
+  _ensureMem() {
+    if (!this._mem) this._mem = this.parse(Prefs.get("readingStats", ""));
+    return this._mem;
+  },
 
   save(store) {
-    try { Prefs.set("readingStats", this.stringify(store)); } catch (e) { Zotero.logError(e); }
+    this._mem = (store && store.days) ? store : this._empty();
+    this._minMap = null;
+    this._dirty = true;
+    if (this._flushTimer) return;
+    const self = this;
+    this._flushTimer = setTimeout(function () {
+      self._flushTimer = null;
+      self.flush();
+    }, this.FLUSH_MS);
+    if (this._flushTimer && typeof this._flushTimer.unref === "function") this._flushTimer.unref();
+  },
+
+  /** 立即落盘（卸载 / 测试用）。返回是否真的写了 */
+  flush() {
+    if (this._flushTimer) {
+      try { clearTimeout(this._flushTimer); } catch (e) { /* ignore */ }
+      this._flushTimer = null;
+    }
+    if (!this._dirty || !this._mem) return false;
+    try {
+      Prefs.set("readingStats", this.stringify(this._mem));
+      this._dirty = false;
+      return true;
+    } catch (e) {
+      Zotero.logError(e);
+      return false;
+    }
+  },
+
+  /**
+   * 条目 key → 累计分钟（渲染路径专用：一次聚合，长期缓存，save/reload 时失效）。
+   * 列渲染每行调用它，不再读整串 pref。
+   */
+  minutesByKey() {
+    if (this._minMap) return this._minMap;
+    const store = this._ensureMem();
+    const map = new Map();
+    for (const day of Object.keys(store.days || {})) {
+      const rec = store.days[day] || {};
+      for (const k of Object.keys(rec)) {
+        map.set(k, (map.get(k) || 0) + (Number(rec[k]) || 0));
+      }
+    }
+    this._minMap = map;
+    return map;
   },
 
   /** 累加某天某条目的阅读分钟（纯函数，返回新 store） */
@@ -234,6 +300,20 @@ var ReadingStats = {
 
   start() {
     if (this._timer) return;
+    // 外部改了 pref → 内存副本刷新（自己的脏数据优先）
+    if (!this._prefObs && typeof Services !== "undefined" && Services.prefs
+      && typeof Services.prefs.addObserver === "function") {
+      const self = this;
+      this._prefObs = {
+        observe() {
+          if (self._dirty) return;
+          try { self.reloadFromPref(); } catch (e) { /* ignore */ }
+        },
+      };
+      try {
+        Services.prefs.addObserver("extensions.zotero.papilot.readingStats", this._prefObs);
+      } catch (e) { this._prefObs = null; }
+    }
     // 60s 一次；未开启统计或没有阅读器焦点时开销几乎为零
     this._timer = setInterval(() => {
       try { this.tick(); } catch (e) { Zotero.logError(e); }
@@ -242,6 +322,13 @@ var ReadingStats = {
 
   stop() {
     if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    if (this._prefObs) {
+      try {
+        Services.prefs.removeObserver("extensions.zotero.papilot.readingStats", this._prefObs);
+      } catch (e) { /* ignore */ }
+      this._prefObs = null;
+    }
+    try { this.flush(); } catch (e) { /* ignore */ }
   },
 
   /* ================== 报告 ================== */
@@ -313,8 +400,8 @@ var ReadingStats = {
     note.setNote(this.reportHtml(agg, heat, zh));
     await note.saveTx();
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + (zh ? "阅读报告" : "Reading report"));
-    const p = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    pw.changeHeadline("Papilot · " + (zh ? "阅读报告" : "Reading report"));
+    const p = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       (zh ? "近 30 天共 " : "30d total ") + this.human(agg.totalMin) +
       (zh ? "，有记录 " : ", active days ") + agg.activeDays + (zh ? " 天" : ""));
     p.setProgress(100);

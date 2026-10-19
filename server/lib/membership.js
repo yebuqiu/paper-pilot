@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · 会员域（0.23.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · 会员域（0.23.0）
  *
  * 职责：套餐目录 / 价格档位 / 订单生命周期 / 激活码（兑换码）/ 有效期管理。
  * 数据：{DATA_DIR}/membership.json（JsonStore 原子写）
@@ -698,6 +701,23 @@ function membershipOf(doc, user) {
 }
 
 /**
+ * 1.8.5（审查 P0-3）：该单据是否已经给这个用户开通过。
+ * 履约改成「先开通（users.json）、后置订单/码状态（membership.json）」后，崩溃窗口
+ * 会留下「会员已到账、订单/码还在 pending」；重试靠这个判据避免重复叠加时长。
+ */
+function hasGrantRef(user, refId) {
+  const id = String(refId || '');
+  if (!id) return false;
+  const cur = (user && user.membership) || {};
+  if (String(cur.refId || '') === id) return true;
+  const hist = Array.isArray(cur.history) ? cur.history : [];
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (hist[i] && String(hist[i].refId || '') === id) return true;
+  }
+  return false;
+}
+
+/**
  * 开通/续期会员（唯一写入口）。续期 = max(现在, 现有到期) + 时长 —— 剩余时长不吞。
  * 同时同步兼容镜像 user.plan / user.expiresAt（旧客户端与旧管理接口都读它们）。
  */
@@ -1095,11 +1115,19 @@ function redeem(doc, code, user, now) {
   const t = now || Date.now();
   const rec = findCode(doc, code);
   if (!rec) return { error: '激活码不存在，请核对后重试（形如 PP-XXXX-XXXX-XXXX）' };
+  if (rec.expiresAt && t > Date.parse(rec.expiresAt)) return { error: '该激活码已过期' };
+  if (rec.boundTo && rec.boundTo !== user.id) return { error: '该激活码已绑定其他账号，无法在本账号使用' };
+  // 1.8.5（审查 P0-3）：先判「码已落盘为已用」——同进程内重复兑换仍要给明确报错；
+  // 只有「码没落盘、但会员已经到账」（两次写之间崩溃后重启）才走幂等补标记。
   if (rec.usedAt) {
     return { error: '该激活码已于 ' + new Date(rec.usedAt).toLocaleDateString() + ' 被使用' };
   }
-  if (rec.expiresAt && t > Date.parse(rec.expiresAt)) return { error: '该激活码已过期' };
-  if (rec.boundTo && rec.boundTo !== user.id) return { error: '该激活码已绑定其他账号，无法在本账号使用' };
+  if (hasGrantRef(user, rec.id)) {
+    rec.usedAt = new Date(t).toISOString();
+    rec.usedBy = user.id;
+    if (!rec.boundTo) rec.boundTo = user.id;
+    return { membership: membershipOf(doc, user), code: codeOut(rec), already: true };
+  }
   rec.usedAt = new Date(t).toISOString();
   rec.usedBy = user.id;
   if (!rec.boundTo) rec.boundTo = user.id;
@@ -1122,7 +1150,7 @@ module.exports = {
   migratePriceOptions, derivePriceOptions, priceItemOut,
   priceRank, pickPriceWinner, activeWinnerMap, findPriceOverlaps, coverageGapAfter,
   upsertPriceItem, removePriceItem, hasActivePrice, effectivePrice, rangesOverlap,
-  membershipOf, grantMembership,
+  membershipOf, grantMembership, hasGrantRef,
   orderOut, reapOrders, createOrder, createCreditOrder, findOrder, findOrderByTradeNo, claimOrder, cancelOrder, fulfillOrder,
   PERPETUAL, isPerpetual, monthsLabel, TAIL_MIN, TAIL_MAX,
   tailActive, baseCentsOf, amountCentsOf, originalCentsOf, assignTail,

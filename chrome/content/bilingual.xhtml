@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
-<!-- PaperPilot 全文对照翻译 · 双栏对照窗口（0.25.2）
+<!-- Papilot 全文对照翻译 · 双栏对照窗口（0.25.2）
 
      布局：左栏原文 / 右栏译文，两栏等宽（grid 1fr 1fr）随窗口自适应宽度；
      长段落滚动时保持行级同步 —— 「段落成对」网格让左右两栏处在同一行，
@@ -11,11 +13,11 @@
      window.arguments 回传到插件作用域执行（窗口脚本访问不到 bootstrap 作用域）。 -->
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot 全文对照翻译"
-        windowtype="paperpilot:bilingual"
+        title="Papilot 全文对照翻译"
+        windowtype="papilot:bilingual"
         width="1180" height="860"
         persist="screenX screenY width height sizemode">
-  <script src="chrome://paperpilot/content/bilingual-view.js"/>
+  <script src="chrome://papilot/content/bilingual-view.js"/>
 
   <vbox flex="1" style="min-height:0;">
     <!-- 工具栏 -->

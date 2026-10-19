@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 import os, sys, zipfile, json
 
 # ★ 0.41.1：根路径改为**脚本自身位置推导**（原为写死的绝对路径）。
@@ -7,9 +10,9 @@ import os, sys, zipfile, json
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
 VER = sys.argv[1] if len(sys.argv) > 1 else "0.18.1"
-OUT = "dist/paper-pilot-%s.xpi" % VER
+OUT = "dist/papilot-%s.xpi" % VER
 
-TOP = ["bootstrap.js", "LICENSE", "NOTICE", "prefs.js", "README.md", "manifest.json"]
+TOP = ["bootstrap.js", "LICENSE", "NOTICE", "THIRD-PARTY-NOTICES.md", "prefs.js", "README.md", "README.en.md", "manifest.json"]
 inc = [p for p in TOP if os.path.exists(p)]
 for root in ["chrome", "locale"]:
     for dp, dn, fn in os.walk(root):

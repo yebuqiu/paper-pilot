@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 根因取证探针：用同一个 mock 跑「0.14.0 初版 account.js」，证明
  * 「登录成功 → 磁盘上什么都没有 → 更新 xpi 后掉登录」这条链。
  *
@@ -75,7 +78,7 @@ const sandbox = {
     dirsvc: { get: (k) => (k === 'ProfD' ? { path: PROF_DIR } : null) },
     prompt: { alert() {} },
   },
-  Prefs: { PREFIX: 'extensions.zotero.paperpilot.', get: (k, d) => d, set() {} },
+  Prefs: { PREFIX: 'extensions.zotero.papilot.', get: (k, d) => d, set() {} },
 };
 sandbox.Zotero = {
   DataDirectory: { dir: DATA_DIR },
@@ -109,7 +112,7 @@ vm.runInContext(legacySrc, sandbox, { filename: REF + ':account.js' });
   ok(sandbox.Account.isLoggedIn(), '旧版本次运行内确实处于已登录态（内存会话有效）');
   ok(rejectedMode > 0, '旧版确实向 IOUtils.writeUTF8 传了非字符串 mode（' + rejectedMode + ' 次）');
 
-  const files = (dir) => fs.readdirSync(dir).filter((n) => /^paperpilot-account.*\.json$/.test(n));
+  const files = (dir) => fs.readdirSync(dir).filter((n) => /^papilot-account.*\.json$/.test(n));
   ok(files(DATA_DIR).length === 0, '数据目录里没有任何会话文件（写入被吞）', files(DATA_DIR));
   ok(files(PROF_DIR).length === 0, '配置目录里也没有任何会话文件', files(PROF_DIR));
 
@@ -119,7 +122,7 @@ vm.runInContext(legacySrc, sandbox, { filename: REF + ':account.js' });
   await new Promise((r) => setTimeout(r, 400));
   const hasDiag = /_diag\s*\(/.test(legacySrc);
   const hasPersist = /persistStatus/.test(legacySrc);
-  const logPath = path.join(DATA_DIR, 'paperpilot-account.log');
+  const logPath = path.join(DATA_DIR, 'papilot-account.log');
   const logText = fs.existsSync(logPath) ? fs.readFileSync(logPath, 'utf8') : '';
   if (hasDiag) {
     ok(/save FAILED/.test(logText), '该版本有诊断日志，且记录了「save FAILED」', logText.split('\n')[0]);

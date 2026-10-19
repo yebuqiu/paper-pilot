@@ -1,4 +1,7 @@
-/* PaperPilot 工作台 2.0（0.13.0 重写）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 工作台 2.0（0.13.0 重写）
  * 新增：三模式（本文/深度研读/全库）、流式输出+停止、消息操作（复制/重答/存笔记）、
  *       多会话管理（pref 持久化）、Prompt 技能库、AI 配置快照切换、导出 .md、双主题。
  * 数据通道不变：Zotero/Services 经 window.arguments 传入；AI 走 PP.aiClient/PP.aiChat。
@@ -7,8 +10,8 @@
 
 (function () {
   const XHTML = "http://www.w3.org/1999/xhtml";
-  const SESSIONS_PREF = "extensions.zotero.paperpilot.workbenchSessions";
-  const THEME_PREF = "extensions.zotero.paperpilot.wbTheme";
+  const SESSIONS_PREF = "extensions.zotero.papilot.workbenchSessions";
+  const THEME_PREF = "extensions.zotero.papilot.wbTheme";
   const SESSION_CAP = 20;
   const TRANSCRIPT_CAP = 60;
 
@@ -159,8 +162,8 @@
       Services = (args && args.Services) || window.Services;
       Zotero = (args && args.Zotero) || (window.opener && window.opener.Zotero);
       opener = window.opener;
-      if (!Services || !Zotero || !Zotero.PaperPilot) { showError("无法获取依赖"); return; }
-      PP = Zotero.PaperPilot;
+      if (!Services || !Zotero || !Zotero.Papilot) { showError("无法获取依赖"); return; }
+      PP = Zotero.Papilot;
       zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
     } catch (e) {
       showError("初始化异常：" + (e && (e.message || e)));
@@ -446,7 +449,7 @@
     }
     async function pickItem() {
       const input = { value: "" };
-      if (!Services.prompt.prompt(window, "PaperPilot",
+      if (!Services.prompt.prompt(window, "Papilot",
         zh ? "输入标题关键词检索文献：" : "Search items by title keyword:", input)) return;
       const kw = (input.value || "").trim();
       if (!kw) return;
@@ -457,7 +460,7 @@
         s.addCondition("itemType", "isNot", "attachment");
         const ids = await s.search();
         if (!ids.length) {
-          Services.prompt.alert(window, "PaperPilot", zh ? "没有匹配的条目" : "No matching items");
+          Services.prompt.alert(window, "Papilot", zh ? "没有匹配的条目" : "No matching items");
           return;
         }
         if (ids.length === 1) { setItem(await Zotero.Items.getAsync(ids[0])); return; }
@@ -469,13 +472,13 @@
           return t.length > 70 ? t.slice(0, 70) + "…" : t;
         });
         const out = { value: 0 };
-        if (Services.prompt.select(window, "PaperPilot",
+        if (Services.prompt.select(window, "Papilot",
           zh ? `找到 ${ids.length} 篇，选择：` : `Found ${ids.length}, pick one:`,
           titles.length, titles, out)) {
           setItem(items[out.value]);
         }
       } catch (e) {
-        Services.prompt.alert(window, "PaperPilot", String(e && e.message || e));
+        Services.prompt.alert(window, "Papilot", String(e && e.message || e));
       }
     }
 
@@ -613,7 +616,7 @@
 
     async function buildMessages(question) {
       const messages = [];
-      let sys = getPref("extensions.zotero.paperpilot.aiSystemPrompt", "") || "";
+      let sys = getPref("extensions.zotero.papilot.aiSystemPrompt", "") || "";
       sys += modeSystemSuffix(mode, zh);
       if (sys.trim()) messages.push({ role: "system", content: sys });
       // 0.44.0：chip 上下文优先于「当前条目」——组合变化时重建注入
@@ -728,8 +731,8 @@
       if (!text) return;
       if (!PP.aiClient.hasKey()) {
         addNotice(zh
-          ? "请先在 设置 → PaperPilot 登录账号（官方模型按 AI 额度扣费），或在「AI 模型通道」配置自己的接口"
-          : "Log in under Settings → PaperPilot, or configure your own AI channel", true);
+          ? "请先在 设置 → Papilot 登录账号（官方模型按 AI 额度扣费），或在「AI 模型通道」配置自己的接口"
+          : "Log in under Settings → Papilot, or configure your own AI channel", true);
         return;
       }
       $("pp-wb-input").value = "";
@@ -741,7 +744,7 @@
     async function quickAction(act) {
       if (busy) return;
       if (!currentItem) {
-        Services.prompt.alert(window, "PaperPilot",
+        Services.prompt.alert(window, "Papilot",
           zh ? "请先选择条目" : "Select an item first");
         return;
       }
@@ -859,7 +862,7 @@
     /* ---------- 存笔记 / 导出 / 清空 ---------- */
     async function saveNote() {
       if (!transcript.some((t) => t.role === "ai")) {
-        Services.prompt.alert(window, "PaperPilot", zh ? "还没有可保存的对话" : "Nothing to save yet");
+        Services.prompt.alert(window, "Papilot", zh ? "还没有可保存的对话" : "Nothing to save yet");
         return;
       }
       try {
@@ -877,7 +880,7 @@
         }
         setStatus(zh ? "✓ 已保存为笔记" : "✓ Saved as note");
       } catch (e) {
-        Services.prompt.alert(window, "PaperPilot", String(e && e.message || e));
+        Services.prompt.alert(window, "Papilot", String(e && e.message || e));
       }
     }
     function exportMd() {
@@ -891,7 +894,7 @@
         const nsIFilePicker = Components.interfaces.nsIFilePicker;
         const fp = Components.classes["@mozilla.org/filepicker;1"].createInstance(nsIFilePicker);
         fp.init(window, zh ? "导出对话" : "Export chat", nsIFilePicker.modeSave);
-        fp.defaultString = "paperpilot-chat-" + new Date().toISOString().slice(0, 10) + ".md";
+        fp.defaultString = "papilot-chat-" + new Date().toISOString().slice(0, 10) + ".md";
         fp.appendFilter("Markdown", "*.md");
         fp.open((rv) => {
           if (rv !== nsIFilePicker.returnOK && rv !== nsIFilePicker.returnReplace) return;
@@ -1001,7 +1004,7 @@
       }
     }
     if (!transcript.length) {
-      addNotice(zh ? "PaperPilot 工作台 · 流式对话 / 多会话 / Prompt 技能库" : "PaperPilot Workbench");
+      addNotice(zh ? "Papilot 工作台 · 流式对话 / 多会话 / Prompt 技能库" : "Papilot Workbench");
     }
 
     try { opener.addEventListener("unload", () => window.close(), { once: true }); } catch (e) { /* ignore */ }

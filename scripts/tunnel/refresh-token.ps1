@@ -1,5 +1,5 @@
 ﻿# ============================================================
-#  refresh-token.ps1 — 从 _brain vault 取回 paperpilot 隧道令牌
+#  refresh-token.ps1 — 从 _brain vault 取回 papilot 隧道令牌
 #
 #  维护用：换机器 / 令牌轮换后运行一次。日常启动不需要它。
 #  写入 runtime\cloudflared\token.txt（已被 .gitignore 排除）。
@@ -47,7 +47,7 @@ if (Test-Path $outFile) {
   Write-Host "已备份旧令牌 -> $(Split-Path -Leaf $bak)"
 }
 
-& $node $printToken --config $cfgFile --section tunnel_paperpilot --out $outFile
+& $node $printToken --config $cfgFile --section tunnel_papilot --out $outFile
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $outFile)) {
   Write-Host '提取失败：见上面的错误输出（vault 私钥不全？section 名变了？）'
   exit 1

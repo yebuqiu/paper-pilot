@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Papilot 隐私政策</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --line:#e3e6ea; --text:#1f2329; --muted:#6b7280; --brand:#2563eb; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.8 "Microsoft YaHei","PingFang SC",system-ui,sans-serif; }
+  header { background:#0d1526; color:#fff; padding:16px 24px; }
+  header .inner { max-width:820px; margin:0 auto; display:flex; align-items:center; gap:12px; }
+  header .logo { width:32px; height:32px; border-radius:8px; background:var(--brand);
+    display:flex; align-items:center; justify-content:center; font-weight:700; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  main { max-width:820px; margin:0 auto; padding:26px 24px 80px; }
+  article { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:28px 30px; }
+  h2 { font-size:15px; margin:26px 0 8px; }
+  h2:first-of-type { margin-top:0; }
+  p, li { color:#33383f; }
+  table { width:100%; border-collapse:collapse; margin:10px 0 4px; font-size:13px; }
+  th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:#fafbfc; font-weight:600; }
+  .meta { color:var(--muted); font-size:12.5px; }
+  .fill { background:#fff7e6; border-bottom:1px dashed #d48806; padding:0 2px; }
+  .back { display:inline-block; margin-top:22px; color:var(--brand); text-decoration:none; }
+</style>
+</head>
+<body>
+<header><div class="inner"><div class="logo">P</div><h1>Papilot 隐私政策</h1></div></header>
+<main>
+<article>
+<p class="meta">生效日期：<span class="fill">2026-10-19</span>　｜　版本：v1.0</p>
+
+<p><span class="fill">Papilot 文献副驾运营方</span>（以下简称“我们”）是 Papilot 文献副驾账号服务与付费服务的信息处理者。本政策说明我们收集哪些信息、为什么收集、如何保存与共享，以及你可以行使哪些权利。</p>
+
+<p><b>一句话概括</b>：插件默认在本地工作，只有你主动发起的 AI 请求、账号登录与付费会联网；我们不读取你的文献库，也不在后台批量上传。</p>
+
+<h2>一、我们收集的信息</h2>
+<table>
+<tr><th>场景</th><th>收集内容</th><th>目的</th></tr>
+<tr><td>注册与登录</td><td>邮箱、密码（哈希存储）、昵称（可选）</td><td>识别账号、找回密码</td></tr>
+<tr><td>设备管理</td><td>安装标识（随机生成，非硬件指纹）、登录时间、客户端版本</td><td>展示登录设备、识别异常共享</td></tr>
+<tr><td>AI 调用</td><td>你提交的提示词、所附文献文本片段、模型与 token 用量</td><td>转发给模型服务商并计费</td></tr>
+<tr><td>付费</td><td>订单号、套餐/金额、支付渠道返回的交易号与状态</td><td>履约、对账、退款</td></tr>
+<tr><td>运行日志</td><td>IP、请求时间、接口路径、错误信息</td><td>安全防护与故障排查</td></tr>
+</table>
+<p>我们<b>不会</b>收集：你的整个 Zotero 文献库、笔记正文（除非你在 AI 请求中主动附上）、本地浏览历史、通讯录。</p>
+
+<h2>二、AI 请求的数据流向（重要）</h2>
+<ul>
+  <li>当你使用官方 AI 通道时，请求经我们的服务端转发至<b>第三方大模型服务商</b>；转发内容为你当次提交的提示词与文本片段。</li>
+  <li>部分模型服务商的服务器位于<b>境外</b>，这意味着该次请求可能构成个人信息/数据的<b>跨境传输</b>。若你不接受，请在设置中改用本地模型（Ollama / LM Studio）或自备境内服务商 Key，此时请求不经过我们的服务端。</li>
+  <li>我们不会将你的请求内容用于训练模型，也不会向第三方出售。</li>
+  <li>上游服务商可能按其自身条款保留请求日志，保留期限以其政策为准（见下方“第三方清单”）。</li>
+</ul>
+
+<h2>三、共享与委托处理</h2>
+<table>
+<tr><th>接收方类型</th><th>共享内容</th><th>说明</th></tr>
+<tr><td>大模型服务商</td><td>提示词与文本片段</td><td>为完成你发起的推理请求</td></tr>
+<tr><td>支付网关</td><td>订单号、金额、回调状态</td><td>不向其提供你的邮箱与文献内容</td></tr>
+<tr><td>邮件服务商</td><td>邮箱地址、验证/通知内容</td><td>发送验证码、到期提醒、安全告警</td></tr>
+<tr><td>监管或司法机关</td><td>依法应提供的信息</td><td>仅在收到合法有效法律文书时</td></tr>
+</table>
+<p>除上述情形，我们不会向第三方提供你的个人信息。</p>
+
+<h2>四、插件本地的数据</h2>
+<ul>
+  <li>设置、登录会话、聊天记录、阅读统计等保存在<b>你自己的电脑</b>（Zotero 数据目录 / 配置文件目录下的 <code>papilot-*.json</code>）。</li>
+  <li>这些本地文件不会自动上传；卸载插件不会删除它们，你可以手动删除。</li>
+  <li>插件直连的第三方接口（如 easyScholar、Semantic Scholar、OpenAlex、Crossref、Unpaywall）会收到你的 IP 与你填写的 API Key（如有），其处理行为适用各服务商政策。</li>
+</ul>
+
+<h2>五、保存期限</h2>
+<ul>
+  <li>账号信息：账号存续期间；注销后 <span class="fill">30</span> 日内删除或匿名化。</li>
+  <li>AI 请求内容：服务端<b>不持久化</b>请求正文，仅记录 token 用量与调用时间（用于计费与排障）。</li>
+  <li>订单与交易记录：按法律法规要求的期限保存（通常不少于 3 年）。</li>
+  <li>运行日志：<span class="fill">90</span> 日滚动清理。</li>
+</ul>
+
+<h2>六、你的权利</h2>
+<p>你可以通过 <span class="fill">947250030@qq.com</span> 行使以下权利：查询、复制、更正、删除个人信息；撤回同意；注销账号；获取数据副本。我们将在 15 个工作日内答复。</p>
+
+<h2>七、未成年人</h2>
+<p>本服务面向科研与学习场景，不面向未满 14 周岁的儿童。若你是未成年人，请在监护人同意与指导下使用。</p>
+
+<h2>八、安全措施</h2>
+<ul>
+  <li>密码以不可逆哈希存储；会话令牌随机生成并可远程失效。</li>
+  <li>支付与通道密钥加密存储；管理接口限制来源。</li>
+  <li>服务仅通过 HTTPS 对外提供（<span class="fill">pp.xinglintools.top</span>）。</li>
+</ul>
+
+<h2>九、政策更新</h2>
+<p>本政策更新会在本页公示并更新版本号；涉及处理目的、共享对象等重大变更时，我们会通过邮件或产品内提示告知，并在必要时重新征得同意。</p>
+
+<h2>十、联系我们</h2>
+<p>经营主体：<span class="fill">Papilot 文献副驾运营方</span><br>
+联系邮箱：<span class="fill">947250030@qq.com</span><br>
+注册地址：<span class="fill">以支付宝商户登记地址为准</span></p>
+
+<a class="back" href="/register">← 返回注册</a>
+</article>
+</main>
+</body>
+</html>

@@ -1,9 +1,12 @@
-/* PaperPilot 设置窗格脚本·AI 参数卡片扩展（0.48.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格脚本·AI 参数卡片扩展（0.48.0 新增）
  * 与 prefs-pane 等同窗格运行。渲染内容：
  *   ① 智能体工具开关 chips（pref aiAgentTools CSV，点击切换并写回）；
  *   ② System Prompt 预设按钮（严谨学术 / 批判审稿 / 轻松讲解 / 清空）；
  *   ③ 快捷指令（命令标签）列表：查看 / 删除 / 导入导出（CommandTags 经
- *      Zotero.PaperPilot.commandTags 访问 bootstrap 作用域，删除自动打墓碑）。
+ *      Zotero.Papilot.commandTags 访问 bootstrap 作用域，删除自动打墓碑）。
  *
  * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测关键节点，
  *    不存在就延迟重试（同 prefs-pane.js 纪律）。
@@ -12,11 +15,11 @@
 /* global Zotero, Components, window, document */
 
 (function () {
-  const PREFIX = "extensions.zotero.paperpilot.";
+  const PREFIX = "extensions.zotero.papilot.";
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const $ = (id) => document.getElementById(id);
   const HTML_NS = "http://www.w3.org/1999/xhtml";
-  const CT = () => (Zotero.PaperPilot && Zotero.PaperPilot.commandTags) || null;
+  const CT = () => (Zotero.Papilot && Zotero.Papilot.commandTags) || null;
 
   const el = (tag, attrs, text) => {
     const node = document.createElementNS(HTML_NS, tag);

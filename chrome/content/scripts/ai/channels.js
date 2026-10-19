@@ -1,4 +1,7 @@
-/* PaperPilot AI 模型通道管理（0.14.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot AI 模型通道管理（0.14.0 新增）
  * 移植自「心血管科药物」项目的统一模型通道管理（model-channels.js），
  * 保持原有功能结构与交互逻辑，适配 Zotero 桌面端：
  * - 通道注册表存 pref aiChannels（JSON）：{channels:[{id,name,provider,baseUrl,apiKey,
@@ -101,7 +104,7 @@ var Channels = {
     const idx = doc.channels.findIndex((c) => c && c.id === this.OFFICIAL_ID);
     const official = {
       id: this.OFFICIAL_ID,
-      name: "PaperPilot 官方模型（按额度计费）",
+      name: "Papilot 官方模型（按额度计费）",
       provider: this.OFFICIAL_ID,
       baseUrl: "", // 运行时取 Account.gatewayUrl()，不落盘防服务器地址变更后过期
       apiKey: "",  // 运行时取登录令牌，绝不落盘
@@ -282,7 +285,7 @@ var Channels = {
     this._ensureOfficial(doc);
     if (!doc.channels.some((c) => c && c.id === id)) return { ok: false, error: "通道不存在" };
     if (id === this.OFFICIAL_ID && !Account.isLoggedIn()) {
-      return { ok: false, error: "请先登录 PaperPilot 账号后再使用官方模型（调用从 AI 额度扣费）" };
+      return { ok: false, error: "请先登录 Papilot 账号后再使用官方模型（调用从 AI 额度扣费）" };
     }
     doc.active = id;
     this._save(doc);
@@ -585,7 +588,7 @@ var Channels = {
     this._ensureOfficial(doc);
     doc.active = legacyActive || this.OFFICIAL_ID;
     this._save(doc);
-    try { Zotero.debug("PaperPilot: channels migrated, n=" + doc.channels.length + " active=" + doc.active); } catch (e) { /* ignore */ }
+    try { Zotero.debug("Papilot: channels migrated, n=" + doc.channels.length + " active=" + doc.active); } catch (e) { /* ignore */ }
   },
 
   SERVER_DEFAULT_BASE: "http://127.0.0.1:8000/v1",

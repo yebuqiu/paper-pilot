@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* AI 计费单价与成本折算测试（服务端 1.5.0）
  *
  * 运行：node test/pricing.test.js

@@ -1,4 +1,7 @@
-/* PaperPilot 阅读器右侧栏 · 参考文献面板（0.40.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 阅读器右侧栏 · 参考文献面板（0.40.0 新增）
  *
  * 解决什么：0.33.0 的「参考文献一键入库」是一个对话框流程——选条目 → 开窗口 →
  * 抓五源参考文献表 → 勾选 → 导入。功能完整，但**脱离了阅读场景**：用户在 PDF 里
@@ -17,24 +20,25 @@
  *      「已入库·关联」置灰（本次已导入或已关联）。
  *
  * 缓存（D3）：按条目 key 存「解析出的参考文献列表 + 各源命中数」到
- *   pref extensions.paperpilot.refPaneCache（JSON，LRU 上限 100 条）。
+ *   pref extensions.papilot.refPaneCache（JSON，LRU 上限 100 条）。
  *   存的是**精简记录**（去 abstract 等重字段），避免大 PDF 的解析结果挤爆 pref。
  *
  * ⚠️ registerSection 四坑（与 translate-pane 同源，务必维持）：
  *   ① onRender 必填且自己包 try（Z10 schema 缺了静默返回 false）；
- *   ② header/sidenav 的 l10nID 必须在 .ftl 有对应条目（paperpilot-refs-section-*）；
+ *   ② header/sidenav 的 l10nID 必须在 .ftl 有对应条目（papilot-refs-section-*）；
  *   ③ 注销用 registerSection 的**返回值**，不是注册时的 paneID；
  *   ④ 注册时序：本模块由 main.js 在启动阶段 loadSubScript，注册入口是
- *      PaperPilot.RefPane.register(pluginID)（同时挂同名全局，供主线直接调用）。
+ *      Papilot.RefPane.register(pluginID)（同时挂同名全局，供主线直接调用）。
  */
 /* global Zotero, RefFormat, RefSources, RefImport, I18n */
 
 var RefPane = {
-  PANE_ID: "paperpilot-refs",
-  ICON: "chrome://paperpilot/content/icons/refs.svg",
+  PANE_ID: "papilot-refs",
+  ICON: "chrome://papilot/content/icons/refs.svg",
 
-  /** 缓存 pref（完整键，非 Prefs 模块前缀）：JSON，{itemKey: {t, records, channels}} */
-  CACHE_PREF: "extensions.paperpilot.refPaneCache",
+  /** 缓存 pref（完整规范键）。★ Zotero.Prefs.get/set 必须带第三参 `true`：
+   *  省略时会被再补一次 `extensions.zotero.`，值落到孤儿键且永不命中（0.54.1 修复）。 */
+  CACHE_PREF: "extensions.zotero.papilot.refPaneCache",
   CACHE_MAX: 100,
   LONG_PRESS_MS: 500,
 
@@ -114,25 +118,80 @@ var RefPane = {
     return "id:" + String(item && item.id || "");
   },
 
-  /* ---------------- 缓存（pref JSON + LRU） ---------------- */
+  /* ---------------- 缓存（内存副本 + 防抖落盘 + LRU/字节双上限） ----------------
+   * ★ 0.54.1（审查 P1-1）：旧实现每次 _cacheGet 都要 `Prefs.get` 整串 + JSON.parse
+   *   + 立刻 `Prefs.set` 回去。实测该键已达 587KB（占 prefs.js 82%），于是「打开面板」
+   *   = 587KB 解析 + 587KB 序列化 + 一次 prefs.js 全量重写。
+   *   现在：首次读入内存，读路径只更新内存里的 LRU 时间；写路径标脏 + 3s 防抖合并；
+   *   另加 512KB 字节上限（按 t 淘汰），防止长尾条目把 pref 撑爆。
+   */
+  CACHE_MAX_BYTES: 512 * 1024,
+  CACHE_FLUSH_MS: 3000,
+  _cacheMem: null,
+  _cacheDirty: false,
+  _cacheTimer: null,
 
   _cacheReadAll() {
+    if (this._cacheMem) return this._cacheMem;
+    let data = {};
     try {
-      const raw = Zotero.Prefs.get(this.CACHE_PREF);
-      if (!raw) return {};
-      const data = JSON.parse(String(raw));
-      return (data && typeof data === "object" && !Array.isArray(data)) ? data : {};
-    } catch (e) { return {}; }
+      const raw = Zotero.Prefs.get(this.CACHE_PREF, true);
+      if (raw) {
+        const o = JSON.parse(String(raw));
+        if (o && typeof o === "object" && !Array.isArray(o)) data = o;
+      }
+    } catch (e) { data = {}; }
+    this._cacheMem = data;
+    return data;
+  },
+
+  /** 条数上限（同步、便宜）：每次写入即裁剪，保证内存里不会无限增长 */
+  _cacheEvictCount(map) {
+    const keys = Object.keys(map);
+    if (keys.length <= this.CACHE_MAX) return;
+    keys.sort((a, b) => (map[a].t || 0) - (map[b].t || 0));
+    for (const k of keys.slice(0, keys.length - this.CACHE_MAX)) delete map[k];
+  },
+
+  /** 按条数 + 字节双上限裁剪；返回最终要落盘的字符串 */
+  _cacheTrim(map) {
+    this._cacheEvictCount(map);
+    let text = JSON.stringify(map);
+    if (text.length > this.CACHE_MAX_BYTES) {
+      // 一次删 5% 再重算，避免 O(n²) 序列化；删到限额以内为止
+      const byAge = Object.keys(map).sort((a, b) => (map[a].t || 0) - (map[b].t || 0));
+      const batch = Math.max(1, Math.ceil(byAge.length * 0.05));
+      for (let i = 0; i < byAge.length && text.length > this.CACHE_MAX_BYTES; i += batch) {
+        for (const k of byAge.slice(i, i + batch)) delete map[k];
+        text = JSON.stringify(map);
+      }
+    }
+    return text;
   },
 
   _cacheWriteAll(map) {
-    const keys = Object.keys(map);
-    if (keys.length > this.CACHE_MAX) {
-      // LRU：按最近访问时间淘汰最旧的（t 在 get/set 时都会刷新）
-      keys.sort((a, b) => (map[a].t || 0) - (map[b].t || 0));
-      for (const k of keys.slice(0, keys.length - this.CACHE_MAX)) delete map[k];
+    this._cacheMem = map;
+    this._cacheDirty = true;
+    if (this._cacheTimer) return;
+    const self = this;
+    this._cacheTimer = setTimeout(function () {
+      self._cacheTimer = null;
+      self.flushCache();
+    }, this.CACHE_FLUSH_MS);
+    if (this._cacheTimer && typeof this._cacheTimer.unref === "function") this._cacheTimer.unref();
+  },
+
+  /** 立即落盘（注销/测试用）。返回是否真的写了 */
+  flushCache() {
+    if (this._cacheTimer) {
+      try { clearTimeout(this._cacheTimer); } catch (e) { /* ignore */ }
+      this._cacheTimer = null;
     }
-    try { Zotero.Prefs.set(this.CACHE_PREF, JSON.stringify(map)); } catch (e) { /* pref 写失败不致命 */ }
+    if (!this._cacheDirty || !this._cacheMem) return false;
+    const text = this._cacheTrim(this._cacheMem);
+    try { Zotero.Prefs.set(this.CACHE_PREF, text, true); } catch (e) { return false; }
+    this._cacheDirty = false;
+    return true;
   },
 
   _cacheGet(key) {
@@ -140,9 +199,7 @@ var RefPane = {
     const map = this._cacheReadAll();
     const v = map[key];
     if (!v || !Array.isArray(v.records)) return null;
-    v.t = Date.now();
-    map[key] = v;
-    this._cacheWriteAll(map);
+    v.t = Date.now();      // 只刷新内存 LRU 时间：读路径不写 pref
     return v;
   },
 
@@ -151,6 +208,7 @@ var RefPane = {
     const map = this._cacheReadAll();
     // value.t 可由调用方显式指定（测试用）；缺省为当前时间
     map[key] = Object.assign({ t: Date.now() }, value);
+    this._cacheEvictCount(map);
     this._cacheWriteAll(map);
   },
 
@@ -178,11 +236,11 @@ var RefPane = {
       paneID: this.PANE_ID,
       pluginID,
       header: {
-        l10nID: "paperpilot-refs-section-header",
+        l10nID: "papilot-refs-section-header",
         icon: this.ICON,
       },
       sidenav: {
-        l10nID: "paperpilot-refs-section-sidenav",
+        l10nID: "papilot-refs-section-sidenav",
         icon: this.ICON,
       },
       // 坑①：onRender 必填，且自己包 try（渲染异常不能拖垮整个 section 宿主）
@@ -220,6 +278,8 @@ var RefPane = {
   },
 
   unregister() {
+    // 防抖中的缓存必须在卸载前落盘，否则最后几次抓取结果丢掉（重新打开要重抓）
+    try { this.flushCache(); } catch (e) { /* ignore */ }
     if (this._registered) {
       try {
         // 坑③：用 registerSection 的返回值注销
@@ -611,10 +671,10 @@ var RefPane = {
   },
 };
 
-// 坑④：注册入口留给主线。main.js 完成装配后可直接 PaperPilot.RefPane.register(id)；
-// 这里在 Zotero.PaperPilot 已存在时先挂上引用（不主动注册，注册时机由主线控制）。
+// 坑④：注册入口留给主线。main.js 完成装配后可直接 Papilot.RefPane.register(id)；
+// 这里在 Zotero.Papilot 已存在时先挂上引用（不主动注册，注册时机由主线控制）。
 try {
-  if (typeof Zotero !== "undefined" && Zotero.PaperPilot && !Zotero.PaperPilot.RefPane) {
-    Zotero.PaperPilot.RefPane = RefPane;
+  if (typeof Zotero !== "undefined" && Zotero.Papilot && !Zotero.Papilot.RefPane) {
+    Zotero.Papilot.RefPane = RefPane;
   }
 } catch (e) { /* ignore */ }

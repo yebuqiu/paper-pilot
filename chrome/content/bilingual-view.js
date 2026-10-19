@@ -1,4 +1,7 @@
-/* PaperPilot 全文对照翻译 · 双栏对照窗口逻辑（0.25.2）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 全文对照翻译 · 双栏对照窗口逻辑（0.25.2）
  *
  * 职责边界：本脚本**只做渲染与交互**。翻译、取全文、写笔记一律经
  * window.arguments[0] 里的回调回传到插件作用域执行

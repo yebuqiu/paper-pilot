@@ -1,4 +1,4 @@
-# PaperPilot arXiv 工具包
+# Papilot arXiv 工具包
 
 零依赖的 arXiv 检索 / 元数据抓取 / 信息提取工具，**可独立运行**（CLI），也可作为 Node 库被调用。
 

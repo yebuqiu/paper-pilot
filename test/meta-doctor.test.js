@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 元数据医生（MetaDoctor，0.52.0）测试 —— 检测 → 反查 → 预览 → 确认 → 应用 → 撤销
  *
  * 覆盖：

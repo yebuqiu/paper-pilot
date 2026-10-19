@@ -1,4 +1,7 @@
-/* PaperPilot 全文对照翻译（0.11.0，PDF2zh 品类的轻量路线）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 全文对照翻译（0.11.0，PDF2zh 品类的轻量路线）
  * 不做排版保留（那是 Python/Docker 方案），按段落分段送 LLM。
  *
  * 两个出口（0.25.2）：
@@ -24,9 +27,9 @@
 /* global Zotero, Services, Prefs, AIChat, AIClient, Notes, I18n, ItemSel, TranslateSvc, PdfText */
 
 var BilingualTranslate = {
-  WINDOW_TYPE: "paperpilot:bilingual",
-  WINDOW_URL: "chrome://paperpilot/content/bilingual.xhtml",
-  WINDOW_NAME: "paperpilot-bilingual",
+  WINDOW_TYPE: "papilot:bilingual",
+  WINDOW_URL: "chrome://papilot/content/bilingual.xhtml",
+  WINDOW_NAME: "papilot-bilingual",
 
   /**
    * 全文 → 段落块（尽量在段落边界切分，单块不超 maxChars）
@@ -108,14 +111,14 @@ var BilingualTranslate = {
     const items = ItemSel.regularOnly(zp.getSelectedItems() || []);
     if (!items.length) { ItemSel.alertEmpty(); return null; }
     if (items.length > 1) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         I18n.isZh ? "全文对照翻译一次请只选一篇" : "Select only one item at a time");
       return null;
     }
     // 0.28.0：不再要求「必须登录 AI」——只要有可用翻译引擎即可
     // （免费引擎开箱即用；引擎为 AI 大模型时这一条等价于旧的 hasKey 判定）
     if (!TranslateSvc.available()) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         TranslateSvc.unavailableHint() || I18n.t("chatNoKey"));
       return null;
     }
@@ -195,8 +198,8 @@ var BilingualTranslate = {
     const lang = this._targetLang();
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + I18n.t("noteBilingualTitle"));
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+    pw.changeHeadline("Papilot · " + I18n.t("noteBilingualTitle"));
+    const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
     pw.show();
 
     try {
@@ -285,7 +288,7 @@ var BilingualTranslate = {
         payload
       );
     } catch (e) {
-      Zotero.logError(new Error("PaperPilot: 打开双栏对照窗口失败"));
+      Zotero.logError(new Error("Papilot: 打开双栏对照窗口失败"));
       Zotero.logError(e);
       return null;
     }

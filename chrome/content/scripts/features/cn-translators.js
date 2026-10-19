@@ -1,4 +1,7 @@
-/* PaperPilot 中文转换器管理（0.14.5，茉莉花同等能力）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 中文转换器管理（0.14.5，茉莉花同等能力）
  * 从 Zotero 中文社区 translators_CN（https://github.com/l0o0/translators_CN）
  * 拉取最新中文转换器（知网/万方/维普等 99 个），写入 Zotero 数据目录 translators/，
  * 修复「浏览器 Connector 抓取知网失败/无法下载中文 PDF」最常见的根因——转换器过期。
@@ -139,11 +142,11 @@ var CNTranslators = {
 
       if (force) {
         pw = new Zotero.ProgressWindow({ closeOnClick: true });
-        pw.changeHeadline("PaperPilot · " + (zh ? "更新中文转换器" : "Update CN translators"));
+        pw.changeHeadline("Papilot · " + (zh ? "更新中文转换器" : "Update CN translators"));
         pw.show();
       }
       const line = pw
-        ? new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+        ? new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
             zh ? "检查 99 个中文转换器…" : "Checking CN translators…")
         : null;
 
@@ -192,9 +195,9 @@ var CNTranslators = {
       } else if (success || fail) {
         // 静默模式但有实际变更/失败 → 简短提示一下
         const note = new Zotero.ProgressWindow({ closeOnClick: true });
-        note.changeHeadline("PaperPilot · " + (zh ? "中文转换器已更新" : "CN translators updated"));
+        note.changeHeadline("Papilot · " + (zh ? "中文转换器已更新" : "CN translators updated"));
         note.show();
-        const l2 = new note.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+        const l2 = new note.ItemProgress("chrome://papilot/content/icons/chat.svg",
           (zh ? "更新 " : "Updated ") + success + (zh ? " 个" : "") +
           (fail ? (zh ? "，失败 " : ", failed ") + fail : ""));
         l2.setProgress(100);
@@ -204,7 +207,7 @@ var CNTranslators = {
     } catch (e) {
       this._diag("update FAILED: " + (e && (e.stack || e.message)));
       if (pw) {
-        const errLine = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+        const errLine = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
           (zh ? "更新失败：" : "Update failed: ") + (e && e.message || e));
         errLine.setError();
         pw.startCloseTimer(6000);

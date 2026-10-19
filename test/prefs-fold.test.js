@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 设置面板 · 折叠分组 界面测试（插件 0.38.0）
  *
  * 为什么要有它：设置面板从「一整页 12 张卡片」改成折叠式——折叠逻辑出问题的
@@ -91,7 +94,7 @@ class El {
 }
 
 const FOLD_KEYS = ['account', 'cnki', 'thirdsrc', 'channels', 'translate', 'aiparams', 'skills', 'subscriptions', 'schedule', 'popup',
-  'columns', 'tagging', 'enhance', 'uitheme', 'pdftheme', 'menu', 'hotkeys'];
+  'columns', 'tagging', 'enhance', 'uitheme', 'pdftheme', 'menu', 'hotkeys', 'cloud'];
 
 /** 从 prefs.xhtml 的真实结构建卡（每卡 = card > head + body），外加工具条按钮 */
 function makeDom() {
@@ -143,7 +146,7 @@ function runFoldScript(dom, opts) {
       get: (k) => (PrefStore.has(k) ? PrefStore.get(k) : undefined),
       set: (k, v) => { PrefStore.set(k, v); },
     },
-    PaperPilot: { _prefsFocus: opts.focus || '' },
+    Papilot: { _prefsFocus: opts.focus || '' },
   };
   const window = {
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
@@ -164,7 +167,7 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
 /* ---------------- ⑤ 结构体检（纯文本） ---------------- */
 {
   const dom = makeDom();
-  ok(dom.byKey.size === 17, '⑤ 17 张分组卡都建出来了（0.49.0 定时任务 + 0.53.0 检索订阅）', dom.byKey.size);
+  ok(dom.byKey.size === 18, '⑤ 18 张分组卡都建出来了（0.49.0 定时任务 + 0.53.0 检索订阅 + 0.56.0 云同步）', dom.byKey.size);
   ok(/id="pp-fold-expand"/.test(dom.xhtml) && /id="pp-fold-collapse"/.test(dom.xhtml),
     '⑤ 工具条按钮 #pp-fold-expand / #pp-fold-collapse 存在');
   // 每张卡：pp-fold-head 必须在 pp-card-body 之前（点击区不能包住表单）
@@ -175,8 +178,8 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
       'class="pp-card pp-fold" data-fold="' + key + '"[\\s\\S]*?class="pp-fold-head"[\\s\\S]*?class="pp-card-body"');
     ok(re.test(dom.xhtml), '⑤ 卡 ' + key + '：head 在 body 之前');
   }
-  ok((dom.xhtml.match(/class="pp-card pp-fold"/g) || []).length === 17,
-    '⑤ pp-fold 卡恰好 17 张（无裸 pp-card 漏包）');
+  ok((dom.xhtml.match(/class="pp-card pp-fold"/g) || []).length === 18,
+    '⑤ pp-fold 卡恰好 18 张（无裸 pp-card 漏包）');
 }
 
 /* ---------------- ① 初始：默认全收起 ---------------- */
@@ -184,7 +187,7 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
   const dom = makeDom();
   const { PrefStore } = runFoldScript(dom);
   eq(openCount(dom), 0, '① pref 为空 → 14 张卡全部收起');
-  eq(PrefStore.get('extensions.zotero.paperpilot.prefsFoldOpen'), undefined,
+  eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen'), undefined,
     '① 初始不写 pref');
 }
 
@@ -194,16 +197,16 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
   const { PrefStore } = runFoldScript(dom);
   dom.byKey.get('channels').head.click();
   ok(isOpen(dom, 'channels'), '② 点 channels 标题 → 展开');
-  eq(PrefStore.get('extensions.zotero.paperpilot.prefsFoldOpen'), 'channels',
+  eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen'), 'channels',
     '② 展开写回 pref');
   ok(!isOpen(dom, 'account') && !isOpen(dom, 'translate'),
     '② 点 channels 不影响其他卡');
   dom.byKey.get('translate').head.click();
-  eq(PrefStore.get('extensions.zotero.paperpilot.prefsFoldOpen'), 'channels,translate',
+  eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen'), 'channels,translate',
     '② 再展开 translate → pref 追加（保持顺序）');
   dom.byKey.get('channels').head.click();
   ok(!isOpen(dom, 'channels'), '② 再点 channels → 收起');
-  eq(PrefStore.get('extensions.zotero.paperpilot.prefsFoldOpen'), 'translate',
+  eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen'), 'translate',
     '② 收起后 pref 移除该键');
 }
 
@@ -212,12 +215,12 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
   const dom = makeDom();
   const { PrefStore } = runFoldScript(dom);
   dom.expandBtn.click();
-  eq(openCount(dom), 17, '③ 全部展开 → 17 张卡全开');
-  eq(PrefStore.get('extensions.zotero.paperpilot.prefsFoldOpen').split(',').length, 17,
-    '③ pref 记满 16 键');
+  eq(openCount(dom), 18, '③ 全部展开 → 18 张卡全开');
+  eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen').split(',').length, 18,
+    '③ pref 记满 18 键');
   dom.collapseBtn.click();
-  eq(openCount(dom), 0, '③ 全部收起 → 17 张卡全闭');
-  eq(PrefStore.get('extensions.zotero.paperpilot.prefsFoldOpen'), '', '③ pref 清空');
+  eq(openCount(dom), 0, '③ 全部收起 → 18 张卡全闭');
+  eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen'), '', '③ pref 清空');
 }
 
 /* ---------------- ④ 深链定位：_prefsFocus ---------------- */
@@ -225,7 +228,7 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
   const dom = makeDom();
   const { Zotero, flush } = runFoldScript(dom, { focus: 'channels' });
   ok(isOpen(dom, 'channels'), '④ _prefsFocus=channels → 该卡自动展开');
-  eq(Zotero.PaperPilot._prefsFocus, '', '④ 焦点键消费后清空（一次性）');
+  eq(Zotero.Papilot._prefsFocus, '', '④ 焦点键消费后清空（一次性）');
   flush(); // 60ms 滚动定位定时器
   ok(dom.byKey.get('channels').card.scrolled, '④ 滚动定位到目标卡');
 }
@@ -233,7 +236,7 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
 /* ---------------- ⑥ 状态恢复：pref 里有键 → 打开时恢复 ---------------- */
 {
   const dom = makeDom();
-  runFoldScript(dom, { prefs: { 'extensions.zotero.paperpilot.prefsFoldOpen': 'uitheme,pdftheme' } });
+  runFoldScript(dom, { prefs: { 'extensions.zotero.papilot.prefsFoldOpen': 'uitheme,pdftheme' } });
   ok(isOpen(dom, 'uitheme') && isOpen(dom, 'pdftheme'), '⑥ pref 记住的卡恢复展开');
   eq(openCount(dom), 2, '⑥ 其余保持收起');
 }

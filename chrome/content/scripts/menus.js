@@ -1,9 +1,12 @@
-/* PaperPilot 菜单：工具菜单 + 条目右键子菜单 + 分类右键
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 菜单：工具菜单 + 条目右键子菜单 + 分类右键
  * 0.29.0 菜单瘦身：
  *   - 注册表驱动：条目右键命令集中在 ITEM_REGISTRY（id/group/labelKey/run），
  *     新增功能不再手改菜单结构，分组归属即一行；
  *   - menuMode=grouped（默认）：右键 = 高频直达（≤3 项）+ 8 个语义分组两层结构；
- *     「工具」菜单收拢为单一「PaperPilot ▸」入口 + 独立「设置」项；
+ *     「工具」菜单收拢为单一「Papilot ▸」入口 + 独立「设置」项；
  *   - menuMode=classic：完整保留 0.28 及以前的平铺结构（设置窗格可一键切回）；
  *   - menuMode / menuHiddenGroups / menuQuickItems 三个 pref 变更即时重建菜单。
  * 设计口径：只做「重组」不做「删减」——被折叠的功能仍可从功能中心（Hub）、
@@ -21,7 +24,7 @@ var Menus = {
   ITEM_REGISTRY: [
     // 顶层直达（不进分组、不受隐藏分组影响）
     { id: "pdf-compare", group: null, labelKey: "menuPdfCompare", run: () => PdfCompare.runForSelected() },
-    { id: "hub", group: null, labelKey: "menuHub", run: () => Zotero.PaperPilot.openHub() },
+    { id: "hub", group: null, labelKey: "menuHub", run: () => Zotero.Papilot.openHub() },
     // 0.31.0 AI 问答悬浮窗：锁定为右键选中的条目并唤起（Ctrl+Shift+K）
     { id: "ai-chat", group: null, labelKey: "menuAiChat", run: () => Menus.openChatFloat() },
     // AI 阅读助手
@@ -142,7 +145,7 @@ var Menus = {
       else this._buildClassicTools(doc, toolsPopup);
     }
 
-    // ---- 条目右键：PaperPilot 子菜单 ----
+    // ---- 条目右键：Papilot 子菜单 ----
     const itemMenu = doc.getElementById("zotero-itemmenu");
     if (itemMenu) {
       const sep = this._xul(doc, "menuseparator");
@@ -150,8 +153,8 @@ var Menus = {
       this._track(sep);
 
       const menu = this._xul(doc, "menu");
-      menu.id = "paperpilot-itemmenu";
-      menu.setAttribute("label", "PaperPilot");
+      menu.id = "papilot-itemmenu";
+      menu.setAttribute("label", "Papilot");
       const popup = this._xul(doc, "menupopup");
       menu.appendChild(popup);
       itemMenu.appendChild(menu);
@@ -164,9 +167,9 @@ var Menus = {
     // ---- 分类右键：条目统计 + 统计图谱 ----
     const collMenu = doc.getElementById("zotero-collectionmenu");
     if (collMenu) {
-      const mi = this._menuItem(doc, collMenu, "paperpilot-collmenu-stats", "menuCollStat",
+      const mi = this._menuItem(doc, collMenu, "papilot-collmenu-stats", "menuCollStat",
         () => CollectionStats.showForSelectedCollection());
-      const mi2 = this._menuItem(doc, collMenu, "paperpilot-collmenu-libgraph", "menuLibGraph",
+      const mi2 = this._menuItem(doc, collMenu, "papilot-collmenu-libgraph", "menuLibGraph",
         () => LibGraph.run());
       this._track(mi);
       this._track(mi2);
@@ -184,7 +187,7 @@ var Menus = {
     // 高频直达（与分组内条目是同一功能的两处入口，不算重复）
     const quick = this._quickItems();
     for (const q of quick) {
-      this._menuItem(doc, popup, "paperpilot-itemmenu-quick-" + q.id, q.labelKey, q.run);
+      this._menuItem(doc, popup, "papilot-itemmenu-quick-" + q.id, q.labelKey, q.run);
     }
     if (quick.length) popup.appendChild(this._xul(doc, "menuseparator"));
     // 语义分组
@@ -205,7 +208,7 @@ var Menus = {
       const subPopup = this._xul(doc, "menupopup");
       sub.appendChild(subPopup);
       for (const it of items) {
-        this._menuItem(doc, subPopup, "paperpilot-itemmenu-" + it.id, it.labelKey, it.run);
+        this._menuItem(doc, subPopup, "papilot-itemmenu-" + it.id, it.labelKey, it.run);
       }
       // 0.42.0 自动化组尾部追加「出现在右键菜单」的用户规则（动态，随规则 pref 重建）
       if (g.id === "automation") this._automationRuleItems(doc, subPopup);
@@ -214,7 +217,7 @@ var Menus = {
     // 顶层直达（恒显，不受隐藏分组影响）
     popup.appendChild(this._xul(doc, "menuseparator"));
     for (const it of this.ITEM_REGISTRY.filter((i) => i.group === null)) {
-      this._menuItem(doc, popup, "paperpilot-itemmenu-" + it.id, it.labelKey, it.run);
+      this._menuItem(doc, popup, "papilot-itemmenu-" + it.id, it.labelKey, it.run);
     }
   },
 
@@ -228,7 +231,7 @@ var Menus = {
       .filter((i) => i.group === "state")
       .map((it) => {
         const mi = this._xul(doc, "menuitem");
-        mi.id = "paperpilot-itemmenu-" + it.id;
+        mi.id = "papilot-itemmenu-" + it.id;
         mi.setAttribute("label", I18n.t(it.labelKey));
         mi.setAttribute("type", "radio");
         mi.addEventListener("command", it.run);
@@ -255,7 +258,7 @@ var Menus = {
     // 不进 ITEM_REGISTRY，radio 打点逻辑保持只认三种状态）
     subPopup.appendChild(this._xul(doc, "menuseparator"));
     const reset = this._xul(doc, "menuitem");
-    reset.id = "paperpilot-itemmenu-progress-reset";
+    reset.id = "papilot-itemmenu-progress-reset";
     reset.setAttribute("label", I18n.t("menuResetProgress"));
     reset.addEventListener("command", () => Menus.resetProgressForSelected());
     subPopup.appendChild(reset);
@@ -267,8 +270,8 @@ var Menus = {
     try {
       const n = await ReadingProgress.resetForSelected();
       const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-      pw.changeHeadline("PaperPilot · " + I18n.t("menuResetProgress"));
-      const p = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+      pw.changeHeadline("Papilot · " + I18n.t("menuResetProgress"));
+      const p = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
         n > 0 ? I18n.t("progressResetDone") : I18n.t("progressResetNone"));
       p.setProgress(100);
       pw.show();
@@ -288,7 +291,7 @@ var Menus = {
       .filter((i) => i.group === "rating")
       .map((it) => {
         const mi = this._xul(doc, "menuitem");
-        mi.id = "paperpilot-itemmenu-" + it.id;
+        mi.id = "papilot-itemmenu-" + it.id;
         mi.setAttribute("label", I18n.t(it.labelKey));
         mi.setAttribute("type", "radio");
         mi.addEventListener("command", it.run);
@@ -330,7 +333,7 @@ var Menus = {
     try { rules = Automation.getMenuRules ? Automation.getMenuRules() : []; } catch (e) { rules = []; }
     for (const r of rules) {
       const mi = this._xul(doc, "menuitem");
-      mi.id = "paperpilot-itemmenu-autorule-" + r.id;
+      mi.id = "papilot-itemmenu-autorule-" + r.id;
       mi.setAttribute("label", r.name);
       mi.addEventListener("command", () => {
         try { Automation.runRule(r.id); } catch (e) { Zotero.logError(e); }
@@ -339,11 +342,11 @@ var Menus = {
     }
   },
 
-  /** 工具菜单：单一「PaperPilot ▸」入口 + 独立「设置」项 */
+  /** 工具菜单：单一「Papilot ▸」入口 + 独立「设置」项 */
   _buildGroupedTools(doc, toolsPopup) {
     const sub = this._xul(doc, "menu");
-    sub.id = "paperpilot-tools-menu";
-    sub.setAttribute("label", "PaperPilot");
+    sub.id = "papilot-tools-menu";
+    sub.setAttribute("label", "Papilot");
     const pop = this._xul(doc, "menupopup");
     sub.appendChild(pop);
     toolsPopup.appendChild(sub);
@@ -354,9 +357,9 @@ var Menus = {
     hubMenu.setAttribute("label", I18n.t("menuGroupHub"));
     const hubPop = this._xul(doc, "menupopup");
     hubMenu.appendChild(hubPop);
-    this._menuItem(doc, hubPop, "paperpilot-menu-hub", "menuHub", () => Zotero.PaperPilot.openHub());
-    this._menuItem(doc, hubPop, "paperpilot-menu-workbench", "menuWorkbench", () => Zotero.PaperPilot.openWorkbench());
-    this._menuItem(doc, hubPop, "paperpilot-menu-lib-ask", "menuLibAsk", () => LibSearch.openDialog());
+    this._menuItem(doc, hubPop, "papilot-menu-hub", "menuHub", () => Zotero.Papilot.openHub());
+    this._menuItem(doc, hubPop, "papilot-menu-workbench", "menuWorkbench", () => Zotero.Papilot.openWorkbench());
+    this._menuItem(doc, hubPop, "papilot-menu-lib-ask", "menuLibAsk", () => LibSearch.openDialog());
     pop.appendChild(hubMenu);
 
     // 发现与报告
@@ -364,9 +367,9 @@ var Menus = {
     discMenu.setAttribute("label", I18n.t("menuGroupDiscovery"));
     const discPop = this._xul(doc, "menupopup");
     discMenu.appendChild(discPop);
-    this._menuItem(doc, discPop, "paperpilot-menu-discovery", "menuDiscovery", () => Discovery.openDialog());
-    this._menuItem(doc, discPop, "paperpilot-menu-note-graph", "menuNoteGraph", () => NoteGraph.openDialog());
-    this._menuItem(doc, discPop, "paperpilot-menu-reading-report", "menuReadingReport", () => ReadingStats.run());
+    this._menuItem(doc, discPop, "papilot-menu-discovery", "menuDiscovery", () => Discovery.openDialog());
+    this._menuItem(doc, discPop, "papilot-menu-note-graph", "menuNoteGraph", () => NoteGraph.openDialog());
+    this._menuItem(doc, discPop, "papilot-menu-reading-report", "menuReadingReport", () => ReadingStats.run());
     pop.appendChild(discMenu);
 
     // 治理与维护（自动化 / 体检 / 转换器 / 校验 / MCP / 连通测试 / 模型通道）
@@ -374,14 +377,14 @@ var Menus = {
     govMenu.setAttribute("label", I18n.t("menuGroupGovernance"));
     const govPop = this._xul(doc, "menupopup");
     govMenu.appendChild(govPop);
-    this._menuItem(doc, govPop, "paperpilot-menu-automation", "menuAutomation", () => Automation.openDialog());
-    this._menuItem(doc, govPop, "paperpilot-menu-meta-rules", "menuMetaRules", () => MetaRules.openDialog());
+    this._menuItem(doc, govPop, "papilot-menu-automation", "menuAutomation", () => Automation.openDialog());
+    this._menuItem(doc, govPop, "papilot-menu-meta-rules", "menuMetaRules", () => MetaRules.openDialog());
     // 0.43.1：知网账号登录/验证/转换器更新 → 设置面板「知网账号」卡片（登录类入口不在菜单）
-    this._menuItem(doc, govPop, "paperpilot-menu-mcp", "menuMcp", () => MCP.openDialog());
-    this._menuItem(doc, govPop, "paperpilot-menu-conn-test", "menuConnTest", () => this.testConnection());
+    this._menuItem(doc, govPop, "papilot-menu-mcp", "menuMcp", () => MCP.openDialog());
+    this._menuItem(doc, govPop, "papilot-menu-conn-test", "menuConnTest", () => this.testConnection());
     // AI 模型通道快速切换（popupshowing 时动态填充；0.14.0 取代配置快照菜单）
     const pmenu = this._xul(doc, "menu");
-    pmenu.id = "paperpilot-menu-channels";
+    pmenu.id = "papilot-menu-channels";
     pmenu.setAttribute("label", I18n.t("menuChannels"));
     const ppopup = this._xul(doc, "menupopup");
     pmenu.appendChild(ppopup);
@@ -390,51 +393,51 @@ var Menus = {
     pop.appendChild(govMenu);
 
     // 设置独立于总入口（配置操作高频直达，与 0.28 习惯一致）
-    this._menuItem(doc, toolsPopup, "paperpilot-menu-settings", "menuSettings", () => this.openSettings());
+    this._menuItem(doc, toolsPopup, "papilot-menu-settings", "menuSettings", () => this.openSettings());
   },
 
   /* ---------- classic 模式构建（0.28 及以前的平铺结构，完整保留） ---------- */
 
   _buildClassicTools(doc, toolsPopup) {
-    const t0 = this._menuItem(doc, toolsPopup, "paperpilot-menu-hub", "menuHub",
-      () => Zotero.PaperPilot.openHub());
+    const t0 = this._menuItem(doc, toolsPopup, "papilot-menu-hub", "menuHub",
+      () => Zotero.Papilot.openHub());
     // 0.22.0：库内问答——问整个文献库（library-wide，与条目选中无关）
-    const t0b = this._menuItem(doc, toolsPopup, "paperpilot-menu-lib-ask", "menuLibAsk",
+    const t0b = this._menuItem(doc, toolsPopup, "papilot-menu-lib-ask", "menuLibAsk",
       () => LibSearch.openDialog());
     // 0.23.0：自动化规则（触发-条件-动作 + 入库自动精读的开关都在这一个窗口里）
-    const t0c = this._menuItem(doc, toolsPopup, "paperpilot-menu-automation", "menuAutomation",
+    const t0c = this._menuItem(doc, toolsPopup, "papilot-menu-automation", "menuAutomation",
       () => Automation.openDialog());
     // 0.23.0：笔记关系图谱 + 阅读报告
-    const t0d = this._menuItem(doc, toolsPopup, "paperpilot-menu-note-graph", "menuNoteGraph",
+    const t0d = this._menuItem(doc, toolsPopup, "papilot-menu-note-graph", "menuNoteGraph",
       () => NoteGraph.openDialog());
-    const t0e = this._menuItem(doc, toolsPopup, "paperpilot-menu-reading-report", "menuReadingReport",
+    const t0e = this._menuItem(doc, toolsPopup, "papilot-menu-reading-report", "menuReadingReport",
       () => ReadingStats.run());
     // 0.24.0：文献发现（arXiv 日推）/ 元数据体检 / MCP 对外供给
-    const t0f = this._menuItem(doc, toolsPopup, "paperpilot-menu-discovery", "menuDiscovery",
+    const t0f = this._menuItem(doc, toolsPopup, "papilot-menu-discovery", "menuDiscovery",
       () => Discovery.openDialog());
-    const t0g = this._menuItem(doc, toolsPopup, "paperpilot-menu-meta-rules", "menuMetaRules",
+    const t0g = this._menuItem(doc, toolsPopup, "papilot-menu-meta-rules", "menuMetaRules",
       () => MetaRules.openDialog());
-    const t0h = this._menuItem(doc, toolsPopup, "paperpilot-menu-mcp", "menuMcp",
+    const t0h = this._menuItem(doc, toolsPopup, "papilot-menu-mcp", "menuMcp",
       () => MCP.openDialog());
-    const t1 = this._menuItem(doc, toolsPopup, "paperpilot-menu-conn-test", "menuConnTest",
+    const t1 = this._menuItem(doc, toolsPopup, "papilot-menu-conn-test", "menuConnTest",
       () => this.testConnection());
     // AI 模型通道快速切换（popupshowing 时动态填充；0.14.0 取代配置快照菜单）
     const pmenu = this._xul(doc, "menu");
-    pmenu.id = "paperpilot-menu-channels";
+    pmenu.id = "papilot-menu-channels";
     pmenu.setAttribute("label", I18n.t("menuChannels"));
     const ppopup = this._xul(doc, "menupopup");
     pmenu.appendChild(ppopup);
     ppopup.addEventListener("popupshowing", () => this._fillChannelsMenu(doc, ppopup));
     toolsPopup.appendChild(pmenu);
-    const t2 = this._menuItem(doc, toolsPopup, "paperpilot-menu-settings", "menuSettings",
+    const t2 = this._menuItem(doc, toolsPopup, "papilot-menu-settings", "menuSettings",
       () => this.openSettings());
-    const t3 = this._menuItem(doc, toolsPopup, "paperpilot-menu-workbench", "menuWorkbench",
-      () => Zotero.PaperPilot.openWorkbench());
+    const t3 = this._menuItem(doc, toolsPopup, "papilot-menu-workbench", "menuWorkbench",
+      () => Zotero.Papilot.openWorkbench());
     // 0.43.1：cn-translators / cn-verify / cn-login 迁设置面板「知网账号」卡片
     // 0.16.0 外观主题：界面主题 / PDF 阅读主题 两组 radio（popupshowing 动态填充，
     // 交互模式与上面的模型通道菜单一致）
     const themeMenu = this._xul(doc, "menu");
-    themeMenu.id = "paperpilot-menu-themes";
+    themeMenu.id = "papilot-menu-themes";
     themeMenu.setAttribute("label", I18n.t("menuThemes"));
     const themePopup = this._xul(doc, "menupopup");
     themeMenu.appendChild(themePopup);
@@ -459,142 +462,142 @@ var Menus = {
   },
 
   _buildClassicItemMenu(doc, popup) {
-    this._menuItem(doc, popup, "paperpilot-itemmenu-hub", "menuHub",
-      () => Zotero.PaperPilot.openHub());
+    this._menuItem(doc, popup, "papilot-itemmenu-hub", "menuHub",
+      () => Zotero.Papilot.openHub());
     // 0.31.0 AI 问答悬浮窗（与 grouped 模式顶层直达同一功能的两处入口）
-    this._menuItem(doc, popup, "paperpilot-itemmenu-ai-chat", "menuAiChat",
+    this._menuItem(doc, popup, "papilot-itemmenu-ai-chat", "menuAiChat",
       () => Menus.openChatFloat());
     // 0.21.0 多篇 PDF 并排对比（需选中 ≥2 篇带 PDF 的文献）
-    this._menuItem(doc, popup, "paperpilot-itemmenu-pdf-compare", "menuPdfCompare",
+    this._menuItem(doc, popup, "papilot-itemmenu-pdf-compare", "menuPdfCompare",
       () => PdfCompare.runForSelected());
     popup.appendChild(this._xul(doc, "menuseparator"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-ai-summary", "menuAiSummary",
+    this._menuItem(doc, popup, "papilot-itemmenu-ai-summary", "menuAiSummary",
       () => this.aiTaskForSelected((it) => AIChat.summarize(it), "noteSummaryTitle"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-ai-translate", "menuAiTranslate",
+    this._menuItem(doc, popup, "papilot-itemmenu-ai-translate", "menuAiTranslate",
       () => this.aiTaskForSelected((it) => AIChat.translateTitleAbstract(it), "noteTranslateTitle"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-ai-note", "menuAiNote",
+    this._menuItem(doc, popup, "papilot-itemmenu-ai-note", "menuAiNote",
       () => this.aiTaskForSelected((it) => AIChat.interpret(it), "noteTitle"));
     popup.appendChild(this._xul(doc, "menuseparator"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-collect-annot", "menuCollectAnnot",
+    this._menuItem(doc, popup, "papilot-itemmenu-collect-annot", "menuCollectAnnot",
       () => this.annotationTask(false));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-ai-annot", "menuAiAnnot",
+    this._menuItem(doc, popup, "papilot-itemmenu-ai-annot", "menuAiAnnot",
       () => this.annotationTask(true));
     popup.appendChild(this._xul(doc, "menuseparator"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-ai-tag", "menuAiTag",
+    this._menuItem(doc, popup, "papilot-itemmenu-ai-tag", "menuAiTag",
       () => AutoTag.runForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-rule-tag", "menuRuleTag",
+    this._menuItem(doc, popup, "papilot-itemmenu-rule-tag", "menuRuleTag",
       () => RuleTag.runForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-matrix", "menuMatrix",
+    this._menuItem(doc, popup, "papilot-itemmenu-matrix", "menuMatrix",
       () => Matrix.forSelected());
     popup.appendChild(this._xul(doc, "menuseparator"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-s2-refresh", "menuS2Refresh",
+    this._menuItem(doc, popup, "papilot-itemmenu-s2-refresh", "menuS2Refresh",
       () => CitationColumn.refreshForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-cite-trace", "menuCiteTrace",
+    this._menuItem(doc, popup, "papilot-itemmenu-cite-trace", "menuCiteTrace",
       () => CitationTrace.runForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-ref-import", "menuRefImport",
+    this._menuItem(doc, popup, "papilot-itemmenu-ref-import", "menuRefImport",
       () => RefImport.openDialog());
     popup.appendChild(this._xul(doc, "menuseparator"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-meta-enrich", "menuMetaEnrich",
+    this._menuItem(doc, popup, "papilot-itemmenu-meta-enrich", "menuMetaEnrich",
       () => MetaEnrich.runForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-fake-check", "menuFakeCheck",
+    this._menuItem(doc, popup, "papilot-itemmenu-fake-check", "menuFakeCheck",
       () => FakeCheck.runForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-paste-check", "menuPasteCheck",
+    this._menuItem(doc, popup, "papilot-itemmenu-paste-check", "menuPasteCheck",
       () => FakeCheck.openPasteDialog());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-smart-cleanup", "menuSmartCleanup",
+    this._menuItem(doc, popup, "papilot-itemmenu-smart-cleanup", "menuSmartCleanup",
       () => SmartCleanup.run());
     // ---- 0.11.0 新增 ----
     popup.appendChild(this._xul(doc, "menuseparator"));
     // 0.25.2 引入双栏出口；0.36.0 主入口改为「左原 PDF / 右译文」的对照窗口；
     // 0.42.0 旧「文本双栏窗口」入口下线（功能中心仍可达）
-    this._menuItem(doc, popup, "paperpilot-itemmenu-bilingual-view", "menuPdfDual",
+    this._menuItem(doc, popup, "papilot-itemmenu-bilingual-view", "menuPdfDual",
       () => PdfDual.openForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-review", "menuReview",
+    this._menuItem(doc, popup, "papilot-itemmenu-review", "menuReview",
       () => ReviewGen.forSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-mindmap", "menuMindmap",
+    this._menuItem(doc, popup, "papilot-itemmenu-mindmap", "menuMindmap",
       () => MindMap.runForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-note-template", "menuNoteTemplate",
+    this._menuItem(doc, popup, "papilot-itemmenu-note-template", "menuNoteTemplate",
       () => NoteTemplates.runForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-anki", "menuAnki",
+    this._menuItem(doc, popup, "papilot-itemmenu-anki", "menuAnki",
       () => AnkiExport.runForSelected());
     popup.appendChild(this._xul(doc, "menuseparator"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-cn-meta", "menuCnMeta",
+    this._menuItem(doc, popup, "papilot-itemmenu-cn-meta", "menuCnMeta",
       () => CNMeta.runForSelected());
     // ---- 0.14.5 中文工具组（茉莉花同等能力）----
-    this._menuItem(doc, popup, "paperpilot-itemmenu-cn-fetch", "menuCnFetch",
+    this._menuItem(doc, popup, "papilot-itemmenu-cn-fetch", "menuCnFetch",
       () => CNFetch.runForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-cn-match-att", "menuCnMatchAtt",
+    this._menuItem(doc, popup, "papilot-itemmenu-cn-match-att", "menuCnMatchAtt",
       () => CNFetch.matchAttachmentsFromDownloads());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-cn-name-merge", "menuCnNameMerge",
+    this._menuItem(doc, popup, "papilot-itemmenu-cn-name-merge", "menuCnNameMerge",
       () => CNFetch.mergeNames());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-cn-name-split", "menuCnNameSplit",
+    this._menuItem(doc, popup, "papilot-itemmenu-cn-name-split", "menuCnNameSplit",
       () => CNFetch.splitNames());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-meta-lint", "menuMetaLint",
+    this._menuItem(doc, popup, "papilot-itemmenu-meta-lint", "menuMetaLint",
       () => MetaLint.runForSelected());
     // 0.52.0 元数据医生（Crossref 补全，写操作走确认 + 审计可撤销）
-    this._menuItem(doc, popup, "paperpilot-itemmenu-meta-doctor", "menuMetaDoctor",
+    this._menuItem(doc, popup, "papilot-itemmenu-meta-doctor", "menuMetaDoctor",
       () => MetaDoctor.run());
     // 0.53.0 综述工作台（多篇 → 大纲 → 分节草稿）
-    this._menuItem(doc, popup, "paperpilot-itemmenu-review-wb", "menuReviewWorkbench", () => {
+    this._menuItem(doc, popup, "papilot-itemmenu-review-wb", "menuReviewWorkbench", () => {
       if (!Prefs.get("reviewWorkbenchEnabled", true)) {
-        Services.prompt.alert(null, "PaperPilot", I18n.t("menuReviewWorkbenchDisabled"));
+        Services.prompt.alert(null, "Papilot", I18n.t("menuReviewWorkbenchDisabled"));
         return;
       }
       ReviewWorkbench.openDialog();
     });
     // 0.52.0 标注→论点速记（AI；未配置 Key 时先指引）
-    this._menuItem(doc, popup, "paperpilot-itemmenu-annot-digest", "menuAnnotDigest", () => {
+    this._menuItem(doc, popup, "papilot-itemmenu-annot-digest", "menuAnnotDigest", () => {
       if (!Prefs.get("annotationDigestEnabled", true)) {
-        Services.prompt.alert(null, "PaperPilot", I18n.t("menuAnnotDigestDisabled"));
+        Services.prompt.alert(null, "Papilot", I18n.t("menuAnnotDigestDisabled"));
         return;
       }
       if (!AIClient.hasKey()) {
-        Services.prompt.alert(null, "PaperPilot", AIClient.guidance() || I18n.t("chatNoKey"));
+        Services.prompt.alert(null, "Papilot", AIClient.guidance() || I18n.t("chatNoKey"));
         return;
       }
       AnnotationDigest.run();
     });
-    this._menuItem(doc, popup, "paperpilot-itemmenu-oa-fetch", "menuOaFetch",
+    this._menuItem(doc, popup, "papilot-itemmenu-oa-fetch", "menuOaFetch",
       () => OAFetch.runForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-attach-rename", "menuAttachRename",
+    this._menuItem(doc, popup, "papilot-itemmenu-attach-rename", "menuAttachRename",
       () => AttachManager.runForSelected());
     // ---- 0.22.0 库健康/治理增强 ----
-    this._menuItem(doc, popup, "paperpilot-itemmenu-attach-doctor", "menuAttachDoctor",
+    this._menuItem(doc, popup, "papilot-itemmenu-attach-doctor", "menuAttachDoctor",
       () => AttachDoctor.run());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-tag-curator", "menuTagCurator",
+    this._menuItem(doc, popup, "papilot-itemmenu-tag-curator", "menuTagCurator",
       () => TagCurator.run(false));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-tag-normalize", "menuTagNormalize",
+    this._menuItem(doc, popup, "papilot-itemmenu-tag-normalize", "menuTagNormalize",
       () => TagCurator.run(true));
     // 0.42.0 嵌套标签树（只读视图窗口）
-    this._menuItem(doc, popup, "paperpilot-itemmenu-tag-nested", "menuTagNested",
+    this._menuItem(doc, popup, "papilot-itemmenu-tag-nested", "menuTagNested",
       () => TagCurator.openNestedView());
     // ---- 0.24.0 元数据体检（规则补齐）----
-    this._menuItem(doc, popup, "paperpilot-itemmenu-meta-rules", "menuMetaRules",
+    this._menuItem(doc, popup, "papilot-itemmenu-meta-rules", "menuMetaRules",
       () => MetaRules.openDialog());
     // ---- 0.23.0 自动化与入库自动精读 ----
-    this._menuItem(doc, popup, "paperpilot-itemmenu-automation", "menuAutomationRun",
+    this._menuItem(doc, popup, "papilot-itemmenu-automation", "menuAutomationRun",
       () => Automation.runForSelected());
-    this._menuItem(doc, popup, "paperpilot-itemmenu-auto-read", "menuAutoReadNow",
+    this._menuItem(doc, popup, "papilot-itemmenu-auto-read", "menuAutoReadNow",
       () => AutoRead.runForSelected());
     // 0.42.0 自动化用户规则动态项（勾选「出现在条目右键菜单」的）
     this._automationRuleItems(doc, popup);
     popup.appendChild(this._xul(doc, "menuseparator"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-state-unread", "menuStateUnread",
+    this._menuItem(doc, popup, "papilot-itemmenu-state-unread", "menuStateUnread",
       () => ReadingState.markForSelected("未读"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-state-reading", "menuStateReading",
+    this._menuItem(doc, popup, "papilot-itemmenu-state-reading", "menuStateReading",
       () => ReadingState.markForSelected("在读"));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-state-done", "menuStateDone",
+    this._menuItem(doc, popup, "papilot-itemmenu-state-done", "menuStateDone",
       () => ReadingState.markForSelected("已读"));
     // 0.46.0 与 grouped 模式对齐：状态区尾部的重置入口
-    this._menuItem(doc, popup, "paperpilot-itemmenu-progress-reset", "menuResetProgress",
+    this._menuItem(doc, popup, "papilot-itemmenu-progress-reset", "menuResetProgress",
       () => Menus.resetProgressForSelected());
     popup.appendChild(this._xul(doc, "menuseparator"));
     // 0.42.0 星标评级
-    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-1", "menuRating1", () => this.setRatingForSelected(1));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-2", "menuRating2", () => this.setRatingForSelected(2));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-3", "menuRating3", () => this.setRatingForSelected(3));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-4", "menuRating4", () => this.setRatingForSelected(4));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-5", "menuRating5", () => this.setRatingForSelected(5));
-    this._menuItem(doc, popup, "paperpilot-itemmenu-rating-clear", "menuRatingClear", () => this.setRatingForSelected(0));
+    this._menuItem(doc, popup, "papilot-itemmenu-rating-1", "menuRating1", () => this.setRatingForSelected(1));
+    this._menuItem(doc, popup, "papilot-itemmenu-rating-2", "menuRating2", () => this.setRatingForSelected(2));
+    this._menuItem(doc, popup, "papilot-itemmenu-rating-3", "menuRating3", () => this.setRatingForSelected(3));
+    this._menuItem(doc, popup, "papilot-itemmenu-rating-4", "menuRating4", () => this.setRatingForSelected(4));
+    this._menuItem(doc, popup, "papilot-itemmenu-rating-5", "menuRating5", () => this.setRatingForSelected(5));
+    this._menuItem(doc, popup, "papilot-itemmenu-rating-clear", "menuRatingClear", () => this.setRatingForSelected(0));
   },
 
   /* ---------- 菜单定制 pref 的读取与观察 ---------- */
@@ -653,14 +656,14 @@ var Menus = {
         try {
           const r = Channels.setActive(c.id);
           if (!r.ok) {
-            Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+            Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
               I18n.t("channelSwitchBlocked") + "：" + r.error);
             return;
           }
           const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-          pw.changeHeadline("PaperPilot");
+          pw.changeHeadline("Papilot");
           const prog = new pw.ItemProgress(
-            "chrome://paperpilot/content/icons/chat.svg",
+            "chrome://papilot/content/icons/chat.svg",
             I18n.t("channelSwitched") + `：${c.name}（${c.model}）`
           );
           prog.setProgress(100);
@@ -746,15 +749,15 @@ var Menus = {
     }
   },
 
-  /** 打开 Zotero 设置中的 PaperPilot 窗格 */
+  /** 打开 Zotero 设置中的 Papilot 窗格 */
   openSettings() {
     try {
       // openPreferences 收 paneID 不是 pluginID（Z10 navigateToPane 按 pane id 查找，
       // 传 pluginID 会落在常规窗格）；用 register 时存的稳定 paneID
-      const paneID = (Zotero.PaperPilot && Zotero.PaperPilot._paneID) || "paperpilot-prefs";
+      const paneID = (Zotero.Papilot && Zotero.Papilot._paneID) || "papilot-prefs";
       Zotero.Utilities.Internal.openPreferences(paneID);
     } catch (e) {
-      Zotero.logError(new Error("PaperPilot: 打开设置窗格失败"));
+      Zotero.logError(new Error("Papilot: 打开设置窗格失败"));
       Zotero.logError(e);
     }
   },
@@ -763,18 +766,18 @@ var Menus = {
   async testConnection() {
     const win = Zotero.getMainWindow();
     if (!AIClient.hasKey()) {
-      Services.prompt.alert(win, "PaperPilot", AIClient.guidance() || I18n.t("chatNoKey"));
+      Services.prompt.alert(win, "Papilot", AIClient.guidance() || I18n.t("chatNoKey"));
       return;
     }
     try {
       const reply = await AIClient.chat([
         { role: "user", content: "用一句话回答：接口连通正常" },
       ]);
-      Services.prompt.alert(win, "PaperPilot",
+      Services.prompt.alert(win, "Papilot",
         `${I18n.t("connOk")}\n\nBase URL：${AIClient.baseUrl()}\n` +
         `模型：${AIClient.model()}\n回复：${String(reply).slice(0, 200)}`);
     } catch (e) {
-      Services.prompt.alert(win, "PaperPilot",
+      Services.prompt.alert(win, "Papilot",
         `${I18n.t("connFail")}\n\nBase URL：${AIClient.baseUrl()}\n` +
         `模型：${AIClient.model()}\n${I18n.t("errPrefix")}${e.message || e}`);
     }
@@ -788,19 +791,19 @@ var Menus = {
       .filter(i => (i.isRegularItem && i.isRegularItem()) || (i.isPDFAttachment && i.isPDFAttachment()));
     if (!items.length) return;
     if (withAI && !AIClient.hasKey()) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         AIClient.guidance() || I18n.t("chatNoKey"));
       return;
     }
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
+    pw.changeHeadline("Papilot");
     pw.show();
 
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(30);
         if (withAI) {
@@ -840,18 +843,18 @@ var Menus = {
 
     if (!AIClient.hasKey()) {
       // 0.21.0：精确区分未登录 / 缺 Key
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         AIClient.guidance() || I18n.t("chatNoKey"));
       return;
     }
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
+    pw.changeHeadline("Papilot");
     pw.show();
 
     for (const item of items) {
       const progress = new pw.ItemProgress(
-        "chrome://paperpilot/content/icons/chat.svg",
+        "chrome://papilot/content/icons/chat.svg",
         item.getDisplayTitle()
       );
       try {

@@ -1,4 +1,7 @@
-/* PaperPilot 多篇 PDF 并排对比（0.21.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 多篇 PDF 并排对比（0.21.0）
  * 目标：同时查看多篇论文的正文、排版与差异，方便找版本区别/图表分布/段落对应。
  *
  * 技术路线（为什么是这个）：
@@ -20,9 +23,9 @@
 /* global Zotero, Services, Prefs, I18n, ItemSel, AIClient, TranslateSvc */
 
 var PdfCompare = {
-  WINDOW_TYPE: "paperpilot:compare",
-  WINDOW_URL: "chrome://paperpilot/content/compare.xhtml",
-  WINDOW_NAME: "paperpilot-compare",
+  WINDOW_TYPE: "papilot:compare",
+  WINDOW_URL: "chrome://papilot/content/compare.xhtml",
+  WINDOW_NAME: "papilot-compare",
 
   /** 面板数量上限（pref 可调；4 是"每页仍可读"与"能横向对比"的平衡点） */
   maxPanes() {
@@ -88,7 +91,7 @@ var PdfCompare = {
       }
       return this._openWindow(list);
     } catch (e) {
-      Zotero.logError(new Error("PaperPilot: 打开 PDF 对比窗口失败"));
+      Zotero.logError(new Error("Papilot: 打开 PDF 对比窗口失败"));
       Zotero.logError(e);
       return null;
     }
@@ -103,12 +106,12 @@ var PdfCompare = {
 
     const pdfs = await this.collectPdfs(items);
     if (!pdfs.length) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         I18n.t("compareNoPdf"));
       return;
     }
     if (pdfs.length < 2) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         I18n.t("compareNeedTwo"));
       return;
     }
@@ -117,7 +120,7 @@ var PdfCompare = {
     if (pdfs.length > max) {
       const notice = I18n.t("compareTrimmed").replace("%n", String(pdfs.length)).replace("%m", String(max));
       try {
-        Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot", notice);
+        Services.prompt.alert(Zotero.getMainWindow(), "Papilot", notice);
       } catch (e) { /* ignore */ }
     }
     await this.openWith(trimmed);
@@ -185,14 +188,14 @@ var PdfCompare = {
    * 这个功能的价值全在「内嵌预览真的挂上了」这一步，而它一旦失败就是静默的
    * （面板空白）——正是本插件历史上最坑的失败模式。故留一个可复现的自检：
    * 开 pref 后下次启动自动取库里前 4 个 PDF 附件开对比窗，12 秒后把每个面板的
-   * 加载结果写进 paperpilot-boot.log。排查「面板空白」时第一时间开它。
+   * 加载结果写进 papilot-boot.log。排查「面板空白」时第一时间开它。
    */
 
   _diag(msg) {
     try {
       if (typeof _ppDiag === "function") { _ppDiag(msg); return; }
     } catch (e) { /* ignore */ }
-    try { Zotero.debug("PaperPilot compare: " + msg); } catch (e) { /* ignore */ }
+    try { Zotero.debug("Papilot compare: " + msg); } catch (e) { /* ignore */ }
   },
 
   async _firstPdfs(n) {

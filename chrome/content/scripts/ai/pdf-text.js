@@ -1,4 +1,7 @@
-/* PaperPilot PDF 文本结构化分析（0.33.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 文本结构化分析（0.33.0）
  *
  * 定位：全文对照翻译的「前置处理器」。此前对照翻译直接把 Zotero 全文索引的
  * 扁平文本按字符数切块送翻，学术论文的三类问题会原样进入译文：

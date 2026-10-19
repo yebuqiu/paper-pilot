@@ -1,4 +1,7 @@
-/* PaperPilot 第三方文献源（实验性 · Pro 试用 · 0.45.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 第三方文献源（实验性 · Pro 试用 · 0.45.0）
  * 用途：
  *   ① **公开入口导航（主线）**：按「中文库 / 英文全文 / 预印本 / 学术搜索」四组内置
  *      常用公开检索站点（知网镜像、万方、维普、PubScholar、Sci-Hub、PubMed、Europe PMC、
@@ -135,7 +138,7 @@ var ThirdSource = {
   _lastReqAt: 0,
 
   _debug(msg) {
-    try { Zotero.debug("PaperPilot thirdSource: " + msg); } catch (e) { /* ignore */ }
+    try { Zotero.debug("Papilot thirdSource: " + msg); } catch (e) { /* ignore */ }
   },
 
   _zh() {
@@ -202,8 +205,8 @@ var ThirdSource = {
     const zh = this._zh();
     if (!gate || gate.ok) return "";
     if (gate.reason === "not-logged-in") {
-      return zh ? "该实验功能面向 Pro 会员试用：请先登录 PaperPilot 账号"
-        : "Pro-only trial: sign in to your PaperPilot account first";
+      return zh ? "该实验功能面向 Pro 会员试用：请先登录 Papilot 账号"
+        : "Pro-only trial: sign in to your Papilot account first";
     }
     return zh ? "该实验功能面向 Pro 会员试用：当前账号非 Pro，可在设置面板「账号」卡片升级"
       : "Pro-only trial: current plan is not Pro (upgrade in Settings → Account)";
@@ -590,7 +593,7 @@ var ThirdSource = {
 
   openSettings() {
     try {
-      const paneID = (Zotero.PaperPilot && Zotero.PaperPilot._paneID) || "paperpilot-prefs";
+      const paneID = (Zotero.Papilot && Zotero.Papilot._paneID) || "papilot-prefs";
       Zotero.Utilities.Internal.openPreferences(paneID);
     } catch (e) { this._debug("openSettings failed: " + (e && (e.message || e))); }
   },
@@ -598,7 +601,7 @@ var ThirdSource = {
   _toast(msg) {
     try {
       const pw = new Zotero.ProgressWindow();
-      pw.changeHeadline("PaperPilot");
+      pw.changeHeadline("Papilot");
       pw.addDescription(String(msg || ""));
       pw.show();
       pw.startCloseTimer(6000);

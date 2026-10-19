@@ -1,4 +1,7 @@
-/* PaperPilot 智能清理（0.7.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 智能清理（0.7.0 新增）
  * 扫描当前选中分类（无选中分类则全库）的常规条目，找出三类问题：
  *  1. 重复条目：规范化 DOI 相同，或「规范化标题+年份+第一作者姓」相同
  *  2. 无 PDF 附件
@@ -142,9 +145,9 @@ var SmartCleanup = {
   async run() {
     const zh = I18n.isZh;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
+    pw.changeHeadline("Papilot");
     pw.show();
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       zh ? "智能清理扫描中…" : "Smart cleanup scanning…");
     progress.setProgress(30);
     try {

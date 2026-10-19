@@ -1,6 +1,9 @@
-/* PaperPilot 快捷键中央注册表（D4）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 快捷键中央注册表（D4）
  *
- * 暴露 PaperPilot.Hotkeys（init 时自挂；main.js 也可显式赋值）。
+ * 暴露 Papilot.Hotkeys（init 时自挂；main.js 也可显式赋值）。
  *
  * API：
  *   register({id, label, combo, scope, handler})
@@ -17,7 +20,7 @@
  *                            返回静默取消函数（供设置面板录制 UI）
  *   normalizeCombo(raw) / comboFromEvent(ev) / matches(ev, combo)
  *
- * 覆盖存 pref extensions.paperpilot.hotkeys（JSON {id:{combo,enabled}}），
+ * 覆盖存 pref extensions.papilot.hotkeys（JSON {id:{combo,enabled}}），
  * 仅记与默认的差异；变更即时重建主窗口 keyset（含外部改 pref，经 observer）。
  *
  * 生命周期：main.js 加载本文件后调 Hotkeys.init()（须在 ChatFloat.register 之前），
@@ -26,9 +29,9 @@
 /* global Zotero, Services */
 
 var Hotkeys = {
-  PREF_KEY: "extensions.paperpilot.hotkeys",
-  KEYSET_ID: "paperpilot-hotkeys-keyset",
-  KEY_PREFIX: "paperpilot-hotkey-",
+  PREF_KEY: "extensions.papilot.hotkeys",
+  KEYSET_ID: "papilot-hotkeys-keyset",
+  KEY_PREFIX: "papilot-hotkey-",
   XUL: "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
 
   _defs: [],        // 注册顺序 [{id,label,combo,scope,handler}]
@@ -71,7 +74,7 @@ var Hotkeys = {
         }, true);
       }
     } catch (e) { /* ignore */ }
-    try { if (Zotero.PaperPilot) Zotero.PaperPilot.Hotkeys = this; } catch (e) { /* ignore */ }
+    try { if (Zotero.Papilot) Zotero.Papilot.Hotkeys = this; } catch (e) { /* ignore */ }
   },
 
   shutdown() {

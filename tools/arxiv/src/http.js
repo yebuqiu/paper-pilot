@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 "use strict";
 
 /**
@@ -127,7 +130,7 @@ function createTransport(cfg) {
   return function transport(url, opts) {
     const o = Object.assign({}, opts);
     o.timeoutMs = o.timeoutMs || c.timeoutMs || 30000;
-    o.headers = Object.assign({ "User-Agent": c.userAgent || "PaperPilot-arXiv-Toolkit/1.0" }, c.headers || {}, o.headers || {});
+    o.headers = Object.assign({ "User-Agent": c.userAgent || "Papilot-arXiv-Toolkit/1.0" }, c.headers || {}, o.headers || {});
     return request(url, o);
   };
 }

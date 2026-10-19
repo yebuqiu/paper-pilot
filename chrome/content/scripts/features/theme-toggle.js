@@ -1,4 +1,7 @@
-/* PaperPilot 主题切换按钮（0.25.1：界面主题 / PDF 阅读主题 两个按钮分开）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 主题切换按钮（0.25.1：界面主题 / PDF 阅读主题 两个按钮分开）
  *
  * 两个按钮各司其职、各自只写自己那一份 pref：
  *   ① **主窗口左上角 = 界面主题**（uiTheme）
@@ -40,10 +43,10 @@
 /* global Zotero, Services, Prefs, I18n, UiTheme, PdfTheme, Menus */
 
 var ThemeToggle = {
-  MAIN_BTN_ID: "paperpilot-theme-toolbar-button",   // 主窗口左上角 · 界面主题
-  READER_BTN_ID: "paperpilot-theme-reader-button",  // 阅读器工具栏 · PDF 阅读主题
-  POPUP_ID: "paperpilot-theme-popup",
-  STYLE_ID: "paperpilot-theme-style",
+  MAIN_BTN_ID: "papilot-theme-toolbar-button",   // 主窗口左上角 · 界面主题
+  READER_BTN_ID: "papilot-theme-reader-button",  // 阅读器工具栏 · PDF 阅读主题
+  POPUP_ID: "papilot-theme-popup",
+  STYLE_ID: "papilot-theme-style",
   PREF_ENABLED: "themeButtonEnabled",
 
   XHTML: "http://www.w3.org/1999/xhtml",
@@ -222,7 +225,7 @@ var ThemeToggle = {
     catch (e) { return false; }
   },
 
-  /** 打开 PaperPilot 设置面板（外观主题分区：自定义配色 / 壁纸都在那里） */
+  /** 打开 Papilot 设置面板（外观主题分区：自定义配色 / 壁纸都在那里） */
   _openThemeSettings() {
     try {
       if (typeof Menus !== "undefined" && Menus.openSettings) Menus.openSettings();
@@ -463,13 +466,13 @@ var ThemeToggle = {
     btn.setAttribute("tooltiptext", this._uiTip());
     // 图标走 XUL 惯例：list-style-image + context-fill 单色图标，
     // 颜色继承 toolbarbutton 的 color:var(--fill-secondary)
-    btn.style.listStyleImage = 'url("chrome://paperpilot/content/icons/theme.svg")';
+    btn.style.listStyleImage = 'url("chrome://papilot/content/icons/theme.svg")';
     btn.style.MozContextProperties = "fill"; // eslint-disable-line
     btn.style.fill = "currentColor";
     if (!this._uiReady()) btn.setAttribute("disabled", "true");
 
     const popup = this._xul(doc, "menupopup");
-    popup.id = "paperpilot-theme-main-popup";
+    popup.id = "papilot-theme-main-popup";
     // ⚠️ 0.38.0 修复「按钮点得开但子菜单进不去」：popupshowing / popupshown / popuphidden
     // 都会**从子菜单冒泡**到本 popup（Zotero 自身 menuManager.js 同样用
     // ev.target !== ev.currentTarget 防御）。不拦的话：悬停进入分组子菜单（标准/动漫风/…）
@@ -613,7 +616,7 @@ var ThemeToggle = {
 
   register(pluginID) {
     if (this._readerHandler) return;
-    this._pluginID = pluginID || "paperpilot@dev.local";
+    this._pluginID = pluginID || "papilot@dev.local";
     if (!Prefs.get(this.PREF_ENABLED, true)) return;
 
     // ① 阅读器工具栏（PDF 阅读主题）：官方扩展位

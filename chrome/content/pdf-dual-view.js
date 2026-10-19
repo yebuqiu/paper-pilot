@@ -1,4 +1,7 @@
-/* PaperPilot PDF 对照翻译 · 左原右译双栏窗口脚本（0.36.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 对照翻译 · 左原右译双栏窗口脚本（0.36.0）
  *
  * 职责边界：**只做「两个 reader 预览 + 同步滚动/缩放 + 工具栏」**。
  *   翻译、段落提取、译文卡注入一律回插件作用域（window.arguments[0] 的回调），

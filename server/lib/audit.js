@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · 管理操作审计（服务端 1.4.4）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · 管理操作审计（服务端 1.4.4）
  *
  * 为什么需要：核销、改价、删除用户、回滚数据此前都没有留痕 —— 出了问题只能翻
  * server-console.log 里自然语言的 log() 行，既不好筛也不好导。这里记**结构化**的一条，

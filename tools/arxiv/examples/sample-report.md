@@ -189,4 +189,4 @@
 
 ---
 
-<sub>由 PaperPilot arXiv 工具包生成 · 数据来源 arXiv API（导出/使用请遵守 arXiv 使用条款）</sub>
+<sub>由 Papilot arXiv 工具包生成 · 数据来源 arXiv API（导出/使用请遵守 arXiv 使用条款）</sub>

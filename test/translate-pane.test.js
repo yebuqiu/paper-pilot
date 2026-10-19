@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 阅读器右侧栏 · 翻译面板 渲染与行为测试（插件 0.30.0）
  *
  * 为什么要有它：右侧栏面板跑在 Zotero 的 ItemPane section 里，无人环境点不了；
@@ -90,7 +93,7 @@ function makeDoc() {
 /* ---------------- 桩环境 ---------------- */
 
 const PrefStore = new Map(); // 完整 pref key → 值
-const PREFIX = 'extensions.zotero.paperpilot.';
+const PREFIX = 'extensions.zotero.papilot.';
 const setPref = (k, v) => PrefStore.set(PREFIX + k, v);
 const getPref = (k, d) => (PrefStore.has(PREFIX + k) ? PrefStore.get(PREFIX + k) : d);
 
@@ -119,7 +122,7 @@ const Zotero = {
     },
   },
   ItemPaneManager: {
-    registerSection(opts) { calls.section = opts; return 'paperpilot@dev.local-paperpilot-translate'; },
+    registerSection(opts) { calls.section = opts; return 'papilot@dev.local-papilot-translate'; },
     unregisterSection(id) { calls.unregistered = id; },
   },
   HTTP: {
@@ -136,9 +139,9 @@ const Zotero = {
       return { status: 200, response: hit.res, responseText: hit.text };
     },
   },
-  PaperPilot: {
+  Papilot: {
     openHub: () => { calls.hub = (calls.hub || 0) + 1; },
-    _paneID: 'paperpilot-prefs',
+    _paneID: 'papilot-prefs',
     // 0.36.0：侧栏「双栏窗口」按钮改走左原右译窗口（PdfDual.openForItem）
     pdfDual: { openForItem: (item) => { calls.twoCol++; calls.twoColItem = item && item.id; } },
   },
@@ -195,13 +198,13 @@ const item = { id: 101, isRegularItem: () => true, getDisplayTitle: () => '测�
 
 setPref('translateCfg', JSON.stringify({ active: 'llm', fallback: ['google'], retry: 1, cache: true }));
 
-TP.register('paperpilot@dev.local');
+TP.register('papilot@dev.local');
 const sec = calls.section;
 ok(!!sec, '① registerSection 被调用');
-eq(sec.paneID, 'paperpilot-translate', '① paneID 正确');
-ok(!!sec.sidenav && sec.sidenav.l10nID === 'paperpilot-translate-section-sidenav',
+eq(sec.paneID, 'papilot-translate', '① paneID 正确');
+ok(!!sec.sidenav && sec.sidenav.l10nID === 'papilot-translate-section-sidenav',
   '① 提供 sidenav（侧栏图标位）且 l10nID 正确');
-eq(sec.header.l10nID, 'paperpilot-translate-section-header', '① header l10nID 正确');
+eq(sec.header.l10nID, 'papilot-translate-section-header', '① header l10nID 正确');
 has(sec.header.icon, 'translate.svg', '① 使用专用翻译图标');
 eq(typeof sec.onRender, 'function', '① onRender 必须存在（Z10 schema 缺了会静默返回 false）');
 eq(typeof sec.onItemChange, 'function', '① onItemChange 存在');
@@ -349,7 +352,7 @@ async function main() {
 
   /* ---------------- ⑧ 注销 ---------------- */
   TP.unregister();
-  eq(calls.unregistered, 'paperpilot@dev.local-paperpilot-translate',
+  eq(calls.unregistered, 'papilot@dev.local-papilot-translate',
     '⑧ 注销用 registerSection 的返回值（不是注册时的 paneID）');
 
   /* ---------------- 输出 ---------------- */

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 "use strict";
 
 /**
@@ -22,7 +25,7 @@ const DEFAULTS = {
   api: {
     baseUrl: "https://export.arxiv.org/api/query",
     absBaseUrl: "https://arxiv.org/abs",
-    userAgent: "PaperPilot-arXiv-Toolkit/1.0 (+https://github.com/yebuqiu/paper-pilot)",
+    userAgent: "Papilot-arXiv-Toolkit/1.0 (+https://github.com/yebuqiu/zotero-papilot)",
   },
   request: {
     timeoutMs: 30000,

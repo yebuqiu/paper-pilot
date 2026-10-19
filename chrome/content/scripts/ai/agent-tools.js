@@ -1,4 +1,7 @@
-/* PaperPilot Agent 工具层（0.48.0，交互设计参考开源项目 Hermes Agent）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot Agent 工具层（0.48.0，交互设计参考开源项目 Hermes Agent）
  *
  * 三大能力（对齐 Hermes Agent 的核心循环）：
  *   ① 任务规划：协议提示词要求模型对复杂任务先输出 1-3 步计划再执行；
@@ -535,7 +538,7 @@ var AgentTools = {
       const win = Zotero.getMainWindow();
       if (win && typeof Services !== "undefined" && Services.prompt) {
         return Services.prompt.confirm(win,
-          "PaperPilot · AI 工具写操作确认",
+          "Papilot · AI 工具写操作确认",
           "AI 请求执行写操作：\n\n" + head + "\n\n" +
           String(detail || "").slice(0, 300) + "\n\n允许执行？");
       }

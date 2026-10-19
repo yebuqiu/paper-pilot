@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 "use strict";
 
 /**
@@ -681,7 +684,7 @@ function cmdConfig(cli, cfg, log, io) {
 
 function helpText() {
   const L = [];
-  L.push(PROG + " " + VERSION + " — PaperPilot arXiv 工具包");
+  L.push(PROG + " " + VERSION + " — Papilot arXiv 工具包");
   L.push("");
   L.push("用法：");
   L.push("  " + PROG + " <command> [options]");

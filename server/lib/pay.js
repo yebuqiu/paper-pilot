@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · 在线支付协议层（易支付 / 码支付）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · 在线支付协议层（易支付 / 码支付）
  *
  * 移植自「医疗工具平台」售卖站 `store/server/pay.js`（那套已在生产跑通），按本仓库约束做了改造：
  *   · **原生 http/https 模块**，不用全局 fetch（本仓库服务端声明支持 Node ≥14）
@@ -246,7 +249,7 @@ async function requestJson(urlStr, opts) {
 
 /**
  * 网关可用的商户订单号：**只允许字母数字**（易支付类网关普遍如此）。
- * PaperPilot 内部订单号形如 `o-05ebc5e72c3b`（带连字符，会被网关拒单），
+ * Papilot 内部订单号形如 `o-05ebc5e72c3b`（带连字符，会被网关拒单），
  * 所以支付下单时另生成一个纯字母数字号，存在订单的 outTradeNo 字段里。
  */
 function newTradeNo(prefix) {
@@ -278,7 +281,7 @@ function createPayUrl(cfg, order, channel, base) {
     out_trade_no: String(order.outTradeNo || ''),
     notify_url: root + '/api/pay/notify',
     return_url: root + '/api/pay/return',
-    name: String(order.itemName || 'PaperPilot').slice(0, 60),
+    name: String(order.itemName || 'Papilot').slice(0, 60),
     money: moneyStr(order.amountCents),
   };
   if (cfg.provider === 'epay') {

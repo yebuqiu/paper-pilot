@@ -1,4 +1,7 @@
-/* PaperPilot 标题/摘要译文写回（extra 行级存取）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 标题/摘要译文写回（extra 行级存取）
  *
  * 定位：「翻译标题与摘要」成功后，把译文以**各占一行**的形式写回条目 extra：
  *   PP Title Translation: <标题译文>
@@ -85,7 +88,7 @@ var TranslateX = {
     if (next === extra) return false;
     item.setField("extra", next);
     await item.saveTx();
-    try { Zotero.debug("PaperPilot: 标题/摘要译文已写回 extra（itemID " + item.id + "）"); } catch (e) { /* ignore */ }
+    try { Zotero.debug("Papilot: 标题/摘要译文已写回 extra（itemID " + item.id + "）"); } catch (e) { /* ignore */ }
     return true;
   },
 

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* MCP 对外供给（MCP，0.50.0）测试 —— Agent 工具桥接
  *
  * 覆盖：
@@ -54,7 +57,7 @@ const Services = {
 const Zotero = {
   Prefs,
   logError() {},
-  PaperPilot: { version: '9.9.9' },
+  Papilot: { version: '9.9.9' },
   Server: { Endpoints: {}, port: 23119 },
   Libraries: { userLibraryID: 1 },
 };

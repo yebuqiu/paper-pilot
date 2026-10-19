@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 # -*- coding: utf-8 -*-
 """把本地 git 仓库的当前 HEAD 树同步到 GitHub（REST API 通道）。
 
@@ -33,7 +36,7 @@ import sys
 import urllib.error
 import urllib.request
 
-REPO = os.environ.get("PP_GH_REPO", "yebuqiu/paper-pilot")
+REPO = os.environ.get("PP_GH_REPO", "yebuqiu/zotero-papilot")
 BRANCH = "main"
 API = "https://api.github.com"
 COMMIT_MSG_FILE = ".git/COMMIT_EDITMSG"
@@ -74,7 +77,7 @@ def api(method, path, body=None, tok=None):
         req = urllib.request.Request(url, data=data, method=method)
         req.add_header("Authorization", "Bearer " + tok)
         req.add_header("Accept", "application/vnd.github+json")
-        req.add_header("User-Agent", "PaperPilot-Sync")
+        req.add_header("User-Agent", "Papilot-Sync")
         if data:
             req.add_header("Content-Type", "application/json")
         try:

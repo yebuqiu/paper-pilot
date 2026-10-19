@@ -1,4 +1,7 @@
-/* PaperPilot 参考文献格式层（纯函数，0.33.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 参考文献格式层（纯函数，0.33.0 新增）
  *
  * 为什么单独一个文件：参考文献一键入库的**全部难点都在「格式」上**——
  *   ① 用户给的输入五花八门（DOI / 标题 / 网址 / PMID / arXiv 号 / 整段 BibTeX）；

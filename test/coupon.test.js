@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 优惠券 / 折扣码（服务端 1.4.6）
  *
  * 运行：node test/coupon.test.js
@@ -287,7 +290,7 @@ const fresh = () => membership.normalize(membership.newDoc());
   ok(!!tok, 'J1 测试账号登录成功');
 
   const h0 = await req('GET', '/api/health');
-  eq(h0.json.version, '1.8.4', 'J2 服务端版本 1.8.1');
+  eq(h0.json.version, '1.8.5', 'J2 服务端版本 1.8.1');
   ok('coupons' in h0.json && 'couponsActive' in h0.json, 'J3 health 暴露优惠券观测字段', h0.json.coupons);
 
   const jc = await req('POST', '/api/admin/coupons', { type: 'percent', percent: 30, maxUses: 2, perUser: 1, note: '上线三折优惠' });

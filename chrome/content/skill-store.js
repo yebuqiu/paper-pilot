@@ -1,6 +1,9 @@
-/* PaperPilot · AI 技能包商店（Skills Hub）窗口逻辑
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot · AI 技能包商店（Skills Hub）窗口逻辑
  * 运行在独立 XUL 窗口作用域：窗口参数 { Zotero, Services } 经 window.arguments 传入
- * （chat-window.js / workbench 同款），核心域经 Zotero.PaperPilot.skillPacks 访问
+ * （chat-window.js / workbench 同款），核心域经 Zotero.Papilot.skillPacks 访问
  * （另一模块并行实现，本文件只按接口契约调用，全程防御式——skillPacks 缺失或
  *  某方法不存在时一律显示友好状态，绝不抛错拖死 UI）。
  *
@@ -21,7 +24,7 @@
   const XHTML = "http://www.w3.org/1999/xhtml";
   const args = (window.arguments && window.arguments[0]) || {};
   const Z = args.Zotero || (window.opener && window.opener.Zotero) || null;
-  const PP = Z && Z.PaperPilot ? Z.PaperPilot : null;
+  const PP = Z && Z.Papilot ? Z.Papilot : null;
   let SP = (PP && PP.skillPacks) || null;   // 核心域（boot 时再刷新一次）
   let CT = (PP && PP.commandTags) || null;   // 制作器勾选源
   function getServices() {
@@ -271,7 +274,7 @@
       // 友好空态，不抛错；顶栏操作降级为状态提示
       try { metaEl.textContent = ""; } catch (e) { /* ignore */ }
       showEmpty("技能包核心模块未就绪",
-        "技能商店依赖 Zotero.PaperPilot.skillPacks，当前无法访问。\n请重启 Zotero 或更新 PaperPilot 后重新打开本窗口。");
+        "技能商店依赖 Zotero.Papilot.skillPacks，当前无法访问。\n请重启 Zotero 或更新 Papilot 后重新打开本窗口。");
       setStatus("技能包核心模块未就绪", "err");
       const deny = guard(() => setStatus("技能包核心模块未就绪，无法执行该操作", "err"));
       try { refreshBtn.addEventListener("click", deny); } catch (e) { /* ignore */ }
@@ -525,7 +528,7 @@
         const Sv = getServices();
         if (Sv && Sv.prompt && typeof Sv.prompt.confirm === "function") {
           promptAvailable = true;
-          confirmed = !!Sv.prompt.confirm(window, "PaperPilot · 技能商店",
+          confirmed = !!Sv.prompt.confirm(window, "Papilot · 技能商店",
             "确定要卸载「" + (m.name || m.id) + "」吗？");
         }
       } catch (e) { promptAvailable = false; confirmed = false; log(e); }
@@ -975,7 +978,7 @@
     $("pp-ss-mk-save").addEventListener("click", guard(() => saveJsonToFile()));
     // 0.48.3 投稿入口：复制 JSON + 打开 GitHub 社区贡献指南（PR/Issue 两种方式）
     $("pp-ss-mk-submit").addEventListener("click", guard(() => {
-      const guideUrl = "https://github.com/yebuqiu/paper-pilot/blob/main/community-packs/README.md";
+      const guideUrl = "https://github.com/yebuqiu/zotero-papilot/blob/main/community-packs/README.md";
       let copied = false;
       if (lastManifest) {
         copied = copyText(JSON.stringify(lastManifest, null, 2));

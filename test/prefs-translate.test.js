@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 设置面板 · 翻译引擎 界面测试（插件 0.31.0）
  *
  * 为什么要有它：设置面板的翻译卡片此前**一个测试都没有**——所以「测试按钮点了没反应」
@@ -105,7 +108,7 @@ function makeDom() {
 /* ---------------- 桩环境 ---------------- */
 
 const PrefStore = new Map();
-const PREFIX = 'extensions.zotero.paperpilot.';
+const PREFIX = 'extensions.zotero.papilot.';
 const P = (k, d) => (PrefStore.has(PREFIX + k) ? PrefStore.get(PREFIX + k) : d);
 const setP = (k, v) => PrefStore.set(PREFIX + k, v);
 
@@ -137,7 +140,7 @@ const Zotero = {
   },
   launchURL() {},
   logError() {},
-  PaperPilot: { openHub() {} },
+  Papilot: { openHub() {} },
 };
 
 const AIClient = { hasKey: () => true, guidance: () => '未登录/未配置', async chat() { return 'AI 译文'; } };
@@ -157,8 +160,8 @@ for (const f of ['chrome/content/scripts/core/utils.js', 'chrome/content/scripts
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
 }
 const T = sandbox.TranslateSvc;
-Zotero.PaperPilot.translateSvc = T; // ★ 必须在面板脚本之前挂上，否则首次 init 直接放弃
-Zotero.PaperPilot.glossaryPacks = sandbox.GlossaryPacks; // 0.4x 在线词包模块（面板经 PP() 调用）
+Zotero.Papilot.translateSvc = T; // ★ 必须在面板脚本之前挂上，否则首次 init 直接放弃
+Zotero.Papilot.glossaryPacks = sandbox.GlossaryPacks; // 0.4x 在线词包模块（面板经 PP() 调用）
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'chrome/content/prefs-translate.js'), 'utf8'),
   sandbox, { filename: 'prefs-translate.js' });
 
@@ -183,9 +186,9 @@ async function main() {
   {
     const xhtml = fs.readFileSync(XHTML, 'utf8');
     const tagOf = (id) => (new RegExp('<html:select[^>]*id="' + id + '"[^>]*>').exec(xhtml) || [''])[0];
-    includes(tagOf('pp-tr-to'), 'preference="extensions.zotero.paperpilot.readerPopupTargetLang"',
+    includes(tagOf('pp-tr-to'), 'preference="extensions.zotero.papilot.readerPopupTargetLang"',
       '① 目标语言走声明式 pref 绑定');
-    includes(tagOf('pp-tr-from'), 'preference="extensions.zotero.paperpilot.translateFromLang"',
+    includes(tagOf('pp-tr-from'), 'preference="extensions.zotero.papilot.translateFromLang"',
       '① 源语言走声明式 pref 绑定');
     ok(tagOf('pp-tr-to').indexOf('value="zh-CN"') >= 0 || /value="zh-CN"/.test(xhtml),
       '① 目标语言选项含规范码 zh-CN');

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Zotero 开源插件 Top 100 调研与 PaperPilot 复用评估</title>
+<title>Zotero 开源插件 Top 100 调研与 Papilot 复用评估</title>
 <style>
 :root{--bg:#0d1117;--panel:#161b22;--panel2:#1c2129;--line:#30363d;--fg:#e6edf3;--dim:#8b949e;--dim2:#6e7681;--accent:#58a6ff;--accent2:#7ee787}
 html[data-theme="light"]{--bg:#f6f8fa;--panel:#fff;--panel2:#f0f3f6;--line:#d0d7de;--fg:#1f2328;--dim:#59636e;--dim2:#818b98;--accent:#0969da;--accent2:#1a7f37}
@@ -77,8 +77,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 
 <div class="top">
 <div>
-<h1>Zotero 开源插件 Top 100 全面调研<br>与 PaperPilot 复用/集成评估</h1>
-<p class="sub">数据来源：GitHub Search API（7 组查询，初筛 678 个仓库）＋ zotero-chinese 社区插件索引交叉核对 ｜ 数据快照：2026-10-02 ｜ 目标项目：PaperPilot 文献副驾（Zotero 7–10，Apache-2.0）</p>
+<h1>Zotero 开源插件 Top 100 全面调研<br>与 Papilot 复用/集成评估</h1>
+<p class="sub">数据来源：GitHub Search API（7 组查询，初筛 678 个仓库）＋ zotero-chinese 社区插件索引交叉核对 ｜ 数据快照：2026-10-02 ｜ 目标项目：Papilot 文献副驾（Zotero 7–10，Apache-2.0）</p>
 </div>
 <button class="toggle" onclick="var h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'">切换明/暗</button>
 </div>
@@ -94,10 +94,10 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <div class="tldr">
 <b>核心结论</b>
 <ul>
-<li><b>可复用面比想象中窄</b>：100 个里 AGPL-3.0（39 个）＋ GPL-3.0（12 个）合计 <b>51 个</b>属强 copyleft，PaperPilot 为 Apache-2.0，<b>这些项目的代码一律不能搬</b>；另有 <b>26 个仓库无任何许可证</b>（默认保留所有权利），同样不可复用。真正能从<b>许可证层面</b>"拿来就用"的只有 23 个宽松/文件级许可项目，其中经适配性核查后我给出 A 级（建议直接复用）的是 <b>13 个</b>。</li>
-<li><b>最值得立刻采用的是 3 个</b>：<code>windingwind/zotero-plugin-toolkit</code>（MIT，插件开发底座，可大幅削减 PaperPilot 的 UI/菜单/偏好面板样板代码）、<code>volatile-static/Chartero</code>（Apache-2.0，阅读统计图表，同族许可零摩擦）、<code>cookjohn/zotero-mcp</code>（MIT，把 PaperPilot 能力以 MCP 对外开放的生态位）。</li>
-<li><b>功能重叠度很高但只能"抄思路"</b>：翻译（zotero-pdf-translate）、中文元数据（jasminum）、分区列（zotero-style / updateifsE）、阅读状态（reading-list）、AI 精读（AI-Butler / papersgpt）都与 PaperPilot 正面重合，且几乎全是 AGPL —— 建议作为功能对标清单而非代码来源。</li>
-<li><b>生态位机会</b>：PaperPilot 的差异化不在"再做一个 AI 问答"，而在于<b>账号+模型通道+账号后台</b>这套别人没有的基础设施，以及可把能力以 MCP/本地 API 形式对外供给（上游目前只有 ZotServer、zotero-mcp 等少数且多已停滞）。</li>
+<li><b>可复用面比想象中窄</b>：100 个里 AGPL-3.0（39 个）＋ GPL-3.0（12 个）合计 <b>51 个</b>属强 copyleft，Papilot 为 Apache-2.0，<b>这些项目的代码一律不能搬</b>；另有 <b>26 个仓库无任何许可证</b>（默认保留所有权利），同样不可复用。真正能从<b>许可证层面</b>"拿来就用"的只有 23 个宽松/文件级许可项目，其中经适配性核查后我给出 A 级（建议直接复用）的是 <b>13 个</b>。</li>
+<li><b>最值得立刻采用的是 3 个</b>：<code>windingwind/zotero-plugin-toolkit</code>（MIT，插件开发底座，可大幅削减 Papilot 的 UI/菜单/偏好面板样板代码）、<code>volatile-static/Chartero</code>（Apache-2.0，阅读统计图表，同族许可零摩擦）、<code>cookjohn/zotero-mcp</code>（MIT，把 Papilot 能力以 MCP 对外开放的生态位）。</li>
+<li><b>功能重叠度很高但只能"抄思路"</b>：翻译（zotero-pdf-translate）、中文元数据（jasminum）、分区列（zotero-style / updateifsE）、阅读状态（reading-list）、AI 精读（AI-Butler / papersgpt）都与 Papilot 正面重合，且几乎全是 AGPL —— 建议作为功能对标清单而非代码来源。</li>
+<li><b>生态位机会</b>：Papilot 的差异化不在"再做一个 AI 问答"，而在于<b>账号+模型通道+账号后台</b>这套别人没有的基础设施，以及可把能力以 MCP/本地 API 形式对外供给（上游目前只有 ZotServer、zotero-mcp 等少数且多已停滞）。</li>
 <li><b>关于"热门"的提醒</b>：Top 10 中有 3 个（zotfile、ai4paper、suppr）要么无许可证、要么已停滞 —— 星数不代表可复用性，务必以许可证与维护状态为准绳。</li>
 </ul>
 </div>
@@ -123,7 +123,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <div class="bar-row"><span class="bar-k">维护中</span><span class="bar-track"><i style="width:30.0%;background:#58a6ff"></i></span><span class="bar-v">30 <em>(30%)</em></span></div>
 <div class="bar-row"><span class="bar-k">低活跃</span><span class="bar-track"><i style="width:8.0%;background:#d29922"></i></span><span class="bar-v">8 <em>(8%)</em></span></div>
 <div class="bar-row"><span class="bar-k">停滞</span><span class="bar-track"><i style="width:29.0%;background:#8b949e"></i></span><span class="bar-v">29 <em>(29%)</em></span></div></div>
-<div class="panel"><h3>对 PaperPilot 的复用评级</h3><div class="bar-row"><span class="bar-k">A</span><span class="bar-track"><i style="width:13.0%;background:#3fb950"></i></span><span class="bar-v">13 <em>(13%)</em></span></div>
+<div class="panel"><h3>对 Papilot 的复用评级</h3><div class="bar-row"><span class="bar-k">A</span><span class="bar-track"><i style="width:13.0%;background:#3fb950"></i></span><span class="bar-v">13 <em>(13%)</em></span></div>
 <div class="bar-row"><span class="bar-k">B</span><span class="bar-track"><i style="width:46.0%;background:#58a6ff"></i></span><span class="bar-v">46 <em>(46%)</em></span></div>
 <div class="bar-row"><span class="bar-k">C</span><span class="bar-track"><i style="width:37.0%;background:#d29922"></i></span><span class="bar-v">37 <em>(37%)</em></span></div>
 <div class="bar-row"><span class="bar-k">D</span><span class="bar-track"><i style="width:4.0%;background:#8b949e"></i></span><span class="bar-v">4 <em>(4%)</em></span></div></div>
@@ -136,20 +136,20 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <p class="sub" style="margin-top:6px">语言分布：TypeScript 56 ｜ JavaScript 30 ｜ 其他 5 ｜ Python 4 ｜ Java 1 ｜ HTML 1（TypeScript 已成为 Zotero 7+ 插件的主流选择）</p>
 
 <h2>三、推荐清单（按采用优先级排序）</h2>
-<section class="tier t1"><h3>第一梯队 · 建议直接采用</h3><p class="tdesc">许可证与 PaperPilot（Apache-2.0）兼容或同族 —— 可以合法地直接复用代码/模块，且与现有能力互补。</p><ol class="recolist"><li><div class="rh"><span class="rn"><a href="https://github.com/windingwind/zotero-plugin-toolkit" target="_blank" rel="noopener">windingwind/zotero-plugin-toolkit</a></span><span class="rm">★ 200 ｜ MIT ｜ 维护中</span></div><p>MIT 许可、与 Apache-2.0 完全兼容、专为 Zotero 7+ 插件打造。PaperPilot 目前大量 UI/菜单/偏好面板/通知逻辑是手写样板，长期维护成本高；引入该工具包可把这块收敛为可复用层，是投入产出比最高的一项。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/volatile-static/Chartero" target="_blank" rel="noopener">volatile-static/Chartero</a></span><span class="rm">★ 519 ｜ Apache-2.0 ｜ 维护中</span></div><p>Apache-2.0 与 PaperPilot 同族许可，阅读统计与图表模块可直接复用（保留声明即可），补强「文献统计图谱」这一现有薄弱环节，且法律摩擦为零。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/cookjohn/zotero-mcp" target="_blank" rel="noopener">cookjohn/zotero-mcp</a></span><span class="rm">★ 1,201 ｜ MIT ｜ 活跃</span></div><p>MIT 许可；把 PaperPilot 的库检索、全文读取、批注写入能力以 MCP 暴露给外部 AI 客户端，是「让别人的 Agent 用你的能力」的生态位，与 PaperPilot 的 AI 定位互补而非竞争。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/dcartertod/zotero-plugins" target="_blank" rel="noopener">dcartertod/zotero-plugins</a></span><span class="rm">★ 211 ｜ Apache-2.0 ｜ 低活跃</span></div><p>Apache-2.0，一组小功能实现，可逐项甄别后直接并入「功能中心」，零许可风险地补长尾能力。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/SciImage/zotero-attachment-scanner" target="_blank" rel="noopener">SciImage/zotero-attachment-scanner</a></span><span class="rm">★ 135 ｜ MIT ｜ 活跃</span></div><p>MIT 许可，「库健康」是 PaperPilot 已有栏目，其扫描分类逻辑可直接复用或对照补齐，风险低。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/retorquere/zotero-better-bibtex" target="_blank" rel="noopener">retorquere/zotero-better-bibtex</a></span><span class="rm">★ 7,181 ｜ MIT ｜ 活跃</span></div><p>MIT 且高度成熟：导出与 citekey 逻辑是 LaTeX 用户的刚需，PaperPilot 若补「导出/引用键」可直接复用原子模块；更稳妥的做法是检测到 BBT 时走共存联动。</p></li></ol></section><section class="tier t2"><h3>第二梯队 · 值得借鉴实现</h3><p class="tdesc">多为 AGPL-3.0 / GPL-3.0 强 copyleft 项目 —— <b>代码不可复制</b>，但设计、交互、规则口径极具参考价值。</p><ol class="recolist"><li><div class="rh"><span class="rn"><a href="https://github.com/northword/zotero-format-metadata" target="_blank" rel="noopener">northword/zotero-format-metadata</a></span><span class="rm">★ 1,059 ｜ AGPL-3.0 ｜ 活跃</span></div><p>元数据规则集是「规范清洗」的事实标准，值得逐条对标补齐 PaperPilot 的规则覆盖与「问题清单 + 一键修复」交互（仅借鉴设计与规则口径，代码与数据不可复制）。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/ChenglongMa/zoplicate" target="_blank" rel="noopener">ChenglongMa/zoplicate</a></span><span class="rm">★ 1,003 ｜ AGPL-3.0 ｜ 活跃</span></div><p>查重与合并的专业实现，「智能清理」的键设计（DOI/标题归一化/作者组合）与人工确认交互值得直接对标。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/windingwind/zotero-actions-tags" target="_blank" rel="noopener">windingwind/zotero-actions-tags</a></span><span class="rm">★ 2,837 ｜ AGPL-3.0 ｜ 维护中</span></div><p>触发-条件-动作模型 + 脚本沙箱，可把 PaperPilot 的「规则打标」升级为可配置自动化，只需借鉴模型与安全边界设计。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/tefkah/zotero-night" target="_blank" rel="noopener">tefkah/zotero-night</a></span><span class="rm">★ 2,452 ｜ GPL-3.0 ｜ 维护中</span></div><p>PDF 反色时保持图片原样、跟随系统明暗的策略，可显著改善 PaperPilot 阅读主题在深色下的观感。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/MuiseDestiny/zotero-style" target="_blank" rel="noopener">MuiseDestiny/zotero-style</a></span><span class="rm">★ 5,284 ｜ AGPL-3.0 ｜ 维护中</span></div><p>列表列的信息密度与性能优化经验（大库下避免卡顿）对 PaperPilot 的分区列/被引量列有直接参考价值。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/syt2/zotero-addons" target="_blank" rel="noopener">syt2/zotero-addons</a></span><span class="rm">★ 1,760 ｜ AGPL-3.0 ｜ 活跃</span></div><p>插件索引 + 版本兼容筛选 + 一键安装机制，是「功能中心」向能力集市演进时最值得借鉴的形态（需自带供应链安全校验）。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/windingwind/zotero-pdf-preview" target="_blank" rel="noopener">windingwind/zotero-pdf-preview</a></span><span class="rm">★ 1,250 ｜ GPL-3.0 ｜ 停滞</span></div><p>缩略图异步渲染与缓存策略，可直接迁移到 PaperPilot 的列/侧栏预览。</p></li></ol></section><section class="tier t3"><h3>第三梯队 · 竞品对标与差距检查</h3><p class="tdesc">与 PaperPilot 已有功能重叠或同赛道竞争 —— 价值在于对照功能完整度、发现自身短板，而非复用代码。</p><ol class="recolist"><li><div class="rh"><span class="rn"><a href="https://github.com/l0o0/jasminum" target="_blank" rel="noopener">l0o0/jasminum</a></span><span class="rm">★ 7,267 ｜ AGPL-3.0 ｜ 活跃</span></div><p>中文元数据（知网/万方）同赛道竞品，建议对照其抓取链路与失败兜底，校验 PaperPilot 中文元数据功能的完整性。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/Dominic-DallOsto/zotero-reading-list" target="_blank" rel="noopener">Dominic-DallOsto/zotero-reading-list</a></span><span class="rm">★ 578 ｜ GPL-3.0 ｜ 活跃</span></div><p>阅读状态功能几乎重合，建议对照其状态判定边界补齐 PaperPilot 的自动流转规则。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/redleafnew/zotero-updateifsE" target="_blank" rel="noopener">redleafnew/zotero-updateifsE</a></span><span class="rm">★ 923 ｜ AGPL-3.0 ｜ 维护中</span></div><p>同为 easyScholar 使用者，可对照其字段口径与徽章定义，验证 PaperPilot 分区解析的覆盖率。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/windingwind/zotero-pdf-translate" target="_blank" rel="noopener">windingwind/zotero-pdf-translate</a></span><span class="rm">★ 11,959 ｜ AGPL-3.0 ｜ 活跃</span></div><p>翻译能力的第一竞品，作为功能与体验标杆持续跟踪，但代码不可复用。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/wdcpclover/ai4paper" target="_blank" rel="noopener">wdcpclover/ai4paper</a></span><span class="rm">★ 3,585 ｜ NOASSERTION ｜ 活跃</span></div><p>功能覆盖面最广的对标对象，建议作为 PaperPilot 的「差距检查清单」。</p></li></ol></section><section class="tier t4"><h3>不建议采用 / 避坑清单</h3><p class="tdesc">法律风险、技术过时或明确不可用（无许可证 = 保留所有权利）。</p><ol class="recolist"><li><div class="rh"><span class="rn">ethanwillis/zotero-scihub / syt2/zotero-scipdf</span><span class="rm"></span></div><p>Sci-Hub 相关下载能力涉及版权侵权风险，即使星数很高也建议明确不接入；PaperPilot 已有 Unpaywall 合法补全文链路。</p></li><li><div class="rh"><span class="rn">jlegewie/zotfile / fei0810/markdownhere4zotero / retorquere/zotero-auto-index / papermachines/papermachines</span><span class="rm"></span></div><p>已归档或技术方案被 Zotero 7 原生能力取代，无集成价值。</p></li><li><div class="rh"><span class="rn">无许可证项目（本次 Top 100 中共 26 个）</span><span class="rm"></span></div><p>GitHub 明确未识别到许可，默认保留所有权利——任何代码级复用都属侵权。PaperPilot 只可参考其思路，不可复制实现；如需采用，应先联系作者取得授权。</p></li></ol></section>
+<section class="tier t1"><h3>第一梯队 · 建议直接采用</h3><p class="tdesc">许可证与 Papilot（Apache-2.0）兼容或同族 —— 可以合法地直接复用代码/模块，且与现有能力互补。</p><ol class="recolist"><li><div class="rh"><span class="rn"><a href="https://github.com/windingwind/zotero-plugin-toolkit" target="_blank" rel="noopener">windingwind/zotero-plugin-toolkit</a></span><span class="rm">★ 200 ｜ MIT ｜ 维护中</span></div><p>MIT 许可、与 Apache-2.0 完全兼容、专为 Zotero 7+ 插件打造。Papilot 目前大量 UI/菜单/偏好面板/通知逻辑是手写样板，长期维护成本高；引入该工具包可把这块收敛为可复用层，是投入产出比最高的一项。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/volatile-static/Chartero" target="_blank" rel="noopener">volatile-static/Chartero</a></span><span class="rm">★ 519 ｜ Apache-2.0 ｜ 维护中</span></div><p>Apache-2.0 与 Papilot 同族许可，阅读统计与图表模块可直接复用（保留声明即可），补强「文献统计图谱」这一现有薄弱环节，且法律摩擦为零。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/cookjohn/zotero-mcp" target="_blank" rel="noopener">cookjohn/zotero-mcp</a></span><span class="rm">★ 1,201 ｜ MIT ｜ 活跃</span></div><p>MIT 许可；把 Papilot 的库检索、全文读取、批注写入能力以 MCP 暴露给外部 AI 客户端，是「让别人的 Agent 用你的能力」的生态位，与 Papilot 的 AI 定位互补而非竞争。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/dcartertod/zotero-plugins" target="_blank" rel="noopener">dcartertod/zotero-plugins</a></span><span class="rm">★ 211 ｜ Apache-2.0 ｜ 低活跃</span></div><p>Apache-2.0，一组小功能实现，可逐项甄别后直接并入「功能中心」，零许可风险地补长尾能力。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/SciImage/zotero-attachment-scanner" target="_blank" rel="noopener">SciImage/zotero-attachment-scanner</a></span><span class="rm">★ 135 ｜ MIT ｜ 活跃</span></div><p>MIT 许可，「库健康」是 Papilot 已有栏目，其扫描分类逻辑可直接复用或对照补齐，风险低。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/retorquere/zotero-better-bibtex" target="_blank" rel="noopener">retorquere/zotero-better-bibtex</a></span><span class="rm">★ 7,181 ｜ MIT ｜ 活跃</span></div><p>MIT 且高度成熟：导出与 citekey 逻辑是 LaTeX 用户的刚需，Papilot 若补「导出/引用键」可直接复用原子模块；更稳妥的做法是检测到 BBT 时走共存联动。</p></li></ol></section><section class="tier t2"><h3>第二梯队 · 值得借鉴实现</h3><p class="tdesc">多为 AGPL-3.0 / GPL-3.0 强 copyleft 项目 —— <b>代码不可复制</b>，但设计、交互、规则口径极具参考价值。</p><ol class="recolist"><li><div class="rh"><span class="rn"><a href="https://github.com/northword/zotero-format-metadata" target="_blank" rel="noopener">northword/zotero-format-metadata</a></span><span class="rm">★ 1,059 ｜ AGPL-3.0 ｜ 活跃</span></div><p>元数据规则集是「规范清洗」的事实标准，值得逐条对标补齐 Papilot 的规则覆盖与「问题清单 + 一键修复」交互（仅借鉴设计与规则口径，代码与数据不可复制）。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/ChenglongMa/zoplicate" target="_blank" rel="noopener">ChenglongMa/zoplicate</a></span><span class="rm">★ 1,003 ｜ AGPL-3.0 ｜ 活跃</span></div><p>查重与合并的专业实现，「智能清理」的键设计（DOI/标题归一化/作者组合）与人工确认交互值得直接对标。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/windingwind/zotero-actions-tags" target="_blank" rel="noopener">windingwind/zotero-actions-tags</a></span><span class="rm">★ 2,837 ｜ AGPL-3.0 ｜ 维护中</span></div><p>触发-条件-动作模型 + 脚本沙箱，可把 Papilot 的「规则打标」升级为可配置自动化，只需借鉴模型与安全边界设计。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/tefkah/zotero-night" target="_blank" rel="noopener">tefkah/zotero-night</a></span><span class="rm">★ 2,452 ｜ GPL-3.0 ｜ 维护中</span></div><p>PDF 反色时保持图片原样、跟随系统明暗的策略，可显著改善 Papilot 阅读主题在深色下的观感。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/MuiseDestiny/zotero-style" target="_blank" rel="noopener">MuiseDestiny/zotero-style</a></span><span class="rm">★ 5,284 ｜ AGPL-3.0 ｜ 维护中</span></div><p>列表列的信息密度与性能优化经验（大库下避免卡顿）对 Papilot 的分区列/被引量列有直接参考价值。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/syt2/zotero-addons" target="_blank" rel="noopener">syt2/zotero-addons</a></span><span class="rm">★ 1,760 ｜ AGPL-3.0 ｜ 活跃</span></div><p>插件索引 + 版本兼容筛选 + 一键安装机制，是「功能中心」向能力集市演进时最值得借鉴的形态（需自带供应链安全校验）。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/windingwind/zotero-pdf-preview" target="_blank" rel="noopener">windingwind/zotero-pdf-preview</a></span><span class="rm">★ 1,250 ｜ GPL-3.0 ｜ 停滞</span></div><p>缩略图异步渲染与缓存策略，可直接迁移到 Papilot 的列/侧栏预览。</p></li></ol></section><section class="tier t3"><h3>第三梯队 · 竞品对标与差距检查</h3><p class="tdesc">与 Papilot 已有功能重叠或同赛道竞争 —— 价值在于对照功能完整度、发现自身短板，而非复用代码。</p><ol class="recolist"><li><div class="rh"><span class="rn"><a href="https://github.com/l0o0/jasminum" target="_blank" rel="noopener">l0o0/jasminum</a></span><span class="rm">★ 7,267 ｜ AGPL-3.0 ｜ 活跃</span></div><p>中文元数据（知网/万方）同赛道竞品，建议对照其抓取链路与失败兜底，校验 Papilot 中文元数据功能的完整性。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/Dominic-DallOsto/zotero-reading-list" target="_blank" rel="noopener">Dominic-DallOsto/zotero-reading-list</a></span><span class="rm">★ 578 ｜ GPL-3.0 ｜ 活跃</span></div><p>阅读状态功能几乎重合，建议对照其状态判定边界补齐 Papilot 的自动流转规则。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/redleafnew/zotero-updateifsE" target="_blank" rel="noopener">redleafnew/zotero-updateifsE</a></span><span class="rm">★ 923 ｜ AGPL-3.0 ｜ 维护中</span></div><p>同为 easyScholar 使用者，可对照其字段口径与徽章定义，验证 Papilot 分区解析的覆盖率。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/windingwind/zotero-pdf-translate" target="_blank" rel="noopener">windingwind/zotero-pdf-translate</a></span><span class="rm">★ 11,959 ｜ AGPL-3.0 ｜ 活跃</span></div><p>翻译能力的第一竞品，作为功能与体验标杆持续跟踪，但代码不可复用。</p></li><li><div class="rh"><span class="rn"><a href="https://github.com/wdcpclover/ai4paper" target="_blank" rel="noopener">wdcpclover/ai4paper</a></span><span class="rm">★ 3,585 ｜ NOASSERTION ｜ 活跃</span></div><p>功能覆盖面最广的对标对象，建议作为 Papilot 的「差距检查清单」。</p></li></ol></section><section class="tier t4"><h3>不建议采用 / 避坑清单</h3><p class="tdesc">法律风险、技术过时或明确不可用（无许可证 = 保留所有权利）。</p><ol class="recolist"><li><div class="rh"><span class="rn">ethanwillis/zotero-scihub / syt2/zotero-scipdf</span><span class="rm"></span></div><p>Sci-Hub 相关下载能力涉及版权侵权风险，即使星数很高也建议明确不接入；Papilot 已有 Unpaywall 合法补全文链路。</p></li><li><div class="rh"><span class="rn">jlegewie/zotfile / fei0810/markdownhere4zotero / retorquere/zotero-auto-index / papermachines/papermachines</span><span class="rm"></span></div><p>已归档或技术方案被 Zotero 7 原生能力取代，无集成价值。</p></li><li><div class="rh"><span class="rn">无许可证项目（本次 Top 100 中共 26 个）</span><span class="rm"></span></div><p>GitHub 明确未识别到许可，默认保留所有权利——任何代码级复用都属侵权。Papilot 只可参考其思路，不可复制实现；如需采用，应先联系作者取得授权。</p></li></ol></section>
 
-<h2>四、许可证兼容性对照（PaperPilot = Apache-2.0）</h2>
+<h2>四、许可证兼容性对照（Papilot = Apache-2.0）</h2>
 <div class="tblwrap"><table>
 <thead><tr><th class="no">许可证</th><th class="no">本项目数量</th><th class="no">能否复用代码</th></tr></thead>
 <tbody><tr><td><span class="chip" style="--c:#3fb950">MIT</span></td><td class="num">14</td><td>宽松，可自由复用/修改/再分发（保留版权与许可声明）。与 Apache-2.0 完全兼容。</td></tr>
-<tr><td><span class="chip" style="--c:#3fb950">Apache-2.0</span></td><td class="num">2</td><td>宽松，含专利授权条款，与 PaperPilot 同族，可自由复用。</td></tr>
+<tr><td><span class="chip" style="--c:#3fb950">Apache-2.0</span></td><td class="num">2</td><td>宽松，含专利授权条款，与 Papilot 同族，可自由复用。</td></tr>
 <tr><td><span class="chip" style="--c:#3fb950">BSD-2-Clause</span></td><td class="num">1</td><td>宽松，保留声明即可，可自由复用。</td></tr>
 <tr><td><span class="chip" style="--c:#d29922">MPL-2.0</span></td><td class="num">6</td><td>文件级 copyleft：复用的<b>文件</b>需保留并公开其修改，其余代码可用任意许可。可有限复用。</td></tr>
-<tr><td><span class="chip" style="--c:#f0883e">GPL-3.0</span></td><td class="num">12</td><td>强 copyleft：一旦并入即要求整个衍生作品以 GPL 发布，与 PaperPilot 的 Apache-2.0 不兼容，<b>禁止复制代码</b>。</td></tr>
+<tr><td><span class="chip" style="--c:#f0883e">GPL-3.0</span></td><td class="num">12</td><td>强 copyleft：一旦并入即要求整个衍生作品以 GPL 发布，与 Papilot 的 Apache-2.0 不兼容，<b>禁止复制代码</b>。</td></tr>
 <tr><td><span class="chip" style="--c:#f85149">AGPL-3.0</span></td><td class="num">39</td><td>最强 copyleft（含网络服务条款）：<b>禁止复制代码</b>，仅可借鉴设计与思路。</td></tr>
 <tr><td><span class="chip" style="--c:#8b949e">NOASSERTION</span></td><td class="num">26</td><td>GitHub 未识别到许可证 = 默认保留所有权利，<b>不可复用任何代码</b>。</td></tr></tbody></table></div>
 <div class="note" style="margin-top:14px">
-<b>关键红线</b>：Apache-2.0 与 GPL-3.0 / AGPL-3.0 <b>不兼容</b> —— 一旦把这两类代码并入 PaperPilot，整个插件就必须改为 GPL/AGPL 发布，与 PaperPilot 的开源与商业化（open-core）路线直接冲突。因此本文对 AGPL/GPL 项目的建议一律限定在"借鉴设计与交互"层面。
+<b>关键红线</b>：Apache-2.0 与 GPL-3.0 / AGPL-3.0 <b>不兼容</b> —— 一旦把这两类代码并入 Papilot，整个插件就必须改为 GPL/AGPL 发布，与 Papilot 的开源与商业化（open-core）路线直接冲突。因此本文对 AGPL/GPL 项目的建议一律限定在"借鉴设计与交互"层面。
 </div>
 
 <h2>五、Top 100 全量明细</h2>
@@ -182,8 +182,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="1"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 已自带划词翻译与全文对照翻译，功能高度重叠。可借鉴其 PDF 文本层定位与译文段落映射算法、以及多引擎适配层（腾讯/彩云/DeepL/LLM）的降级策略。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0 具强传染性，代码不能进入 Apache-2.0 的 PaperPilot；且对方是同类头部竞品，反向借鉴边界需谨慎。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 已自带划词翻译与全文对照翻译，功能高度重叠。可借鉴其 PDF 文本层定位与译文段落映射算法、以及多引擎适配层（腾讯/彩云/DeepL/LLM）的降级策略。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0 具强传染性，代码不能进入 Apache-2.0 的 Papilot；且对方是同类头部竞品，反向借鉴边界需谨慎。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/windingwind/zotero-pdf-translate" target="_blank" rel="noopener">windingwind/zotero-pdf-translate</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：524 ｜ 创建：2022-03-09 ｜ 未关闭 Issue：17</div>
 </td></tr>
@@ -200,8 +200,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="2"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 有「收集批注为笔记 / 按模板新建笔记」，可借鉴其模板变量引擎与笔记-条目关联数据模型，补齐笔记批量操作与模板市场思路。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0，代码不可直接复用；其数据自定义字段若与 PaperPilot 模板体系混用会造成迁移负担。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 有「收集批注为笔记 / 按模板新建笔记」，可借鉴其模板变量引擎与笔记-条目关联数据模型，补齐笔记批量操作与模板市场思路。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0，代码不可直接复用；其数据自定义字段若与 Papilot 模板体系混用会造成迁移负担。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/windingwind/zotero-better-notes" target="_blank" rel="noopener">windingwind/zotero-better-notes</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：275 ｜ 创建：2022-04-27 ｜ 未关闭 Issue：14</div>
 </td></tr>
@@ -218,7 +218,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="3"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 工作台/划词浮窗与之定位一致，可借鉴其「标签触发命令」（#tag 式 prompt 快捷指令）与浮窗交互细节。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 工作台/划词浮窗与之定位一致，可借鉴其「标签触发命令」（#tag 式 prompt 快捷指令）与浮窗交互细节。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0 且项目 2026-05 后停更；其依赖的外部 API 中转已失效，仅作 UX 参照。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/MuiseDestiny/zotero-gpt" target="_blank" rel="noopener">MuiseDestiny/zotero-gpt</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：317 ｜ 创建：2023-03-28 ｜ 未关闭 Issue：247</div>
@@ -236,7 +236,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="4"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot「中文文件名识别元数据（知网/万方）」直接重叠，属同赛道竞品。可对照其 CNKI 检索参数与解析规则，校验 PaperPilot 抓取链路的完整性。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot「中文文件名识别元数据（知网/万方）」直接重叠，属同赛道竞品。可对照其 CNKI 检索参数与解析规则，校验 Papilot 抓取链路的完整性。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0 不可抄代码；CNKI 反爬与风控策略频繁变动，对方近期频繁更新正说明该链路脆弱。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/l0o0/jasminum" target="_blank" rel="noopener">l0o0/jasminum</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：323 ｜ 创建：2020-06-16 ｜ 未关闭 Issue：46</div>
@@ -254,7 +254,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="5"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可、技术成熟，若 PaperPilot 要做「导出/引用键」类功能可直接复用其格式编码逻辑；更省事的做法是检测到 BBT 已安装时走共存联动而非重复造轮子。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可、技术成熟，若 Papilot 要做「导出/引用键」类功能可直接复用其格式编码逻辑；更省事的做法是检测到 BBT 已安装时走共存联动而非重复造轮子。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>其导出引擎体量庞大（数千行），全量移植性价比低；建议只取 citekey 生成与 LaTeX 转义等原子模块。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/retorquere/zotero-better-bibtex" target="_blank" rel="noopener">retorquere/zotero-better-bibtex</a> ｜ 许可证：MIT ｜ 语言：TypeScript ｜ Forks：390 ｜ 创建：2013-09-20 ｜ 未关闭 Issue：43</div>
@@ -272,8 +272,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="6"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 做全文对照翻译时，「插件 + 本机 Python 服务」的进程管理与任务队列设计值得借鉴（含进度回传、失败重试）。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0 不可复用代码；本地服务依赖 Python 与模型权重，与 PaperPilot「零构建依赖」的打包理念冲突，需评估是否值得引入。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 做全文对照翻译时，「插件 + 本机 Python 服务」的进程管理与任务队列设计值得借鉴（含进度回传、失败重试）。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0 不可复用代码；本地服务依赖 Python 与模型权重，与 Papilot「零构建依赖」的打包理念冲突，需评估是否值得引入。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/guaguastandup/zotero-pdf2zh" target="_blank" rel="noopener">guaguastandup/zotero-pdf2zh</a> ｜ 许可证：AGPL-3.0 ｜ 语言：Python ｜ Forks：259 ｜ 创建：2025-01-14 ｜ 未关闭 Issue：61</div>
 </td></tr>
@@ -290,7 +290,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="7"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 缺少「文献发现」环节，可借鉴其「库向量 → arXiv 增量检索 → 邮件模板推送」的编排与调度设计，做成可选情报模块。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 缺少「文献发现」环节，可借鉴其「库向量 → arXiv 增量检索 → 邮件模板推送」的编排与调度设计，做成可选情报模块。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；推送链路依赖外部 SMTP/第三方，且需长期跑批，与插件被动触发模型不同，需独立调度设计。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/TideDra/zotero-arxiv-daily" target="_blank" rel="noopener">TideDra/zotero-arxiv-daily</a> ｜ 许可证：AGPL-3.0 ｜ 语言：Python ｜ Forks：5,248 ｜ 创建：2024-11-23 ｜ 未关闭 Issue：60</div>
@@ -308,8 +308,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="8"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot「期刊分区列/被引量列」正面竞争。可借鉴其列渲染性能优化（虚拟滚动下的补绘）与设置项分组方式。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；其列机制与 PaperPilot 现有 columns 实现思路不同，混用会导致双重刷新与性能问题。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot「期刊分区列/被引量列」正面竞争。可借鉴其列渲染性能优化（虚拟滚动下的补绘）与设置项分组方式。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；其列机制与 Papilot 现有 columns 实现思路不同，混用会导致双重刷新与性能问题。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/MuiseDestiny/zotero-style" target="_blank" rel="noopener">MuiseDestiny/zotero-style</a> ｜ 许可证：AGPL-3.0 ｜ 语言：JavaScript ｜ Forks：165 ｜ 创建：2022-11-21 ｜ 未关闭 Issue：797</div>
 </td></tr>
@@ -326,7 +326,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="9"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 已有「附件重命名」，可参考其重命名规则模板语法（%a_%y_%t）作为规则设计基线。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 已有「附件重命名」，可参考其重命名规则模板语法（%a_%y_%t）作为规则设计基线。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证（保留所有权利），代码完全不可复用；2024 年后停滞，且已知在 Zotero 7 上兼容性差。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/jlegewie/zotfile" target="_blank" rel="noopener">jlegewie/zotfile</a> ｜ 许可证：NOASSERTION ｜ 语言：Java ｜ Forks：293 ｜ 创建：2011-12-30 ｜ 未关闭 Issue：300</div>
@@ -344,7 +344,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="10"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>不建议集成：能力与合规风险倒挂，PaperPilot 已有 Unpaywall 合法补全文链路，无需引入。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>不建议集成：能力与合规风险倒挂，Papilot 已有 Unpaywall 合法补全文链路，无需引入。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；Sci-Hub 在多数司法辖区涉及版权侵权，接入会给插件带来下架与法律风险。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/ethanwillis/zotero-scihub" target="_blank" rel="noopener">ethanwillis/zotero-scihub</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：207 ｜ 创建：2018-08-13 ｜ 未关闭 Issue：26</div>
@@ -362,7 +362,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="11"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>功能覆盖面与 PaperPilot 高度重合（翻译+问答+分区+综述），属直接竞品，建议作为「对标清单」逐项检查 PaperPilot 体验差距。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>功能覆盖面与 Papilot 高度重合（翻译+问答+分区+综述），属直接竞品，建议作为「对标清单」逐项检查 Papilot 体验差距。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证（保留所有权利），任何代码复用都不被允许；且其部分能力依赖自建云服务，闭源程度高。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/wdcpclover/ai4paper" target="_blank" rel="noopener">wdcpclover/ai4paper</a> ｜ 许可证：NOASSERTION ｜ 语言：HTML ｜ Forks：40 ｜ 创建：2026-02-27 ｜ 未关闭 Issue：4</div>
@@ -380,7 +380,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="12"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，其「Notifier 事件 → 队列 → 远端 API 幂等写入」同步引擎设计可直接移植，PaperPilot 未来做 Obsidian/Notion/语雀同步时可复用。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，其「Notifier 事件 → 队列 → 远端 API 幂等写入」同步引擎设计可直接移植，Papilot 未来做 Obsidian/Notion/语雀同步时可复用。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>依赖 Notion API 与用户授权；同步冲突处理较简单，多端并发场景需自行加固。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/dvanoni/notero" target="_blank" rel="noopener">dvanoni/notero</a> ｜ 许可证：MIT ｜ 语言：TypeScript ｜ Forks：140 ｜ 创建：2021-09-26 ｜ 未关闭 Issue：72</div>
@@ -398,8 +398,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="13"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>可借鉴其 agent 工具编排（检索工具/阅读工具/写作工具的分层与超时控制），用于增强 PaperPilot 工作台的多轮任务能力。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；agent 框架较重，直接引入会显著抬高 PaperPilot 的复杂度与排障成本。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>可借鉴其 agent 工具编排（检索工具/阅读工具/写作工具的分层与超时控制），用于增强 Papilot 工作台的多轮任务能力。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；agent 框架较重，直接引入会显著抬高 Papilot 的复杂度与排障成本。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/yilewang/llm-for-zotero" target="_blank" rel="noopener">yilewang/llm-for-zotero</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：183 ｜ 创建：2026-01-29 ｜ 未关闭 Issue：191</div>
 </td></tr>
@@ -416,8 +416,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="14"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot「规则打标」可借鉴其触发-条件-动作模型与脚本沙箱（受限 API 暴露面），提升自动化可配置性。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；其脚本生态依赖 Zotero 内部 API 深度访问，PaperPilot 若开放脚本需额外做安全边界设计。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot「规则打标」可借鉴其触发-条件-动作模型与脚本沙箱（受限 API 暴露面），提升自动化可配置性。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；其脚本生态依赖 Zotero 内部 API 深度访问，Papilot 若开放脚本需额外做安全边界设计。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/windingwind/zotero-actions-tags" target="_blank" rel="noopener">windingwind/zotero-actions-tags</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：65 ｜ 创建：2020-12-10 ｜ 未关闭 Issue：1</div>
 </td></tr>
@@ -434,7 +434,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="15"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot「参考文献一键入库/引文追溯」重叠，可对照其 PDF 版面解析（参考文献段落切分）准确率与容错策略。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot「参考文献一键入库/引文追溯」重叠，可对照其 PDF 版面解析（参考文献段落切分）准确率与容错策略。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；2026-03 后转为低活跃，其解析规则对新版式 PDF 覆盖下降。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/MuiseDestiny/zotero-reference" target="_blank" rel="noopener">MuiseDestiny/zotero-reference</a> ｜ 许可证：AGPL-3.0 ｜ 语言：JavaScript ｜ Forks：86 ｜ 创建：2022-12-12 ｜ 未关闭 Issue：211</div>
@@ -452,7 +452,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="16"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>典型商业竞品，建议跟踪其功能节奏（如 MCP 集成、模型覆盖）以校准 PaperPilot 的差异化路线。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>典型商业竞品，建议跟踪其功能节奏（如 MCP 集成、模型覆盖）以校准 Papilot 的差异化路线。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0 但核心能力走商业通道，实际开源价值有限，不可复用代码。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/papersgpt/papersgpt-for-zotero" target="_blank" rel="noopener">papersgpt/papersgpt-for-zotero</a> ｜ 许可证：AGPL-3.0 ｜ 语言：JavaScript ｜ Forks：98 ｜ 创建：2024-11-22 ｜ 未关闭 Issue：75</div>
@@ -470,7 +470,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="17"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 主题系统已覆盖 UI/PDF 阅读主题，可借鉴其 PDF 反色时的图片保真处理（仅反文本不反图）与系统明暗自适应策略。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 主题系统已覆盖 UI/PDF 阅读主题，可借鉴其 PDF 反色时的图片保真处理（仅反文本不反图）与系统明暗自适应策略。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0 传染，CSS/代码均不可直接复制；其实现基于旧版 Zotero 结构，近年维护放缓。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/tefkah/zotero-night" target="_blank" rel="noopener">tefkah/zotero-night</a> ｜ 许可证：GPL-3.0 ｜ 语言：SCSS ｜ Forks：39 ｜ 创建：2022-04-18 ｜ 未关闭 Issue：93</div>
@@ -506,7 +506,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="19"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>纸牌式「小工具集合」的模块组织方式值得借鉴（PaperPilot 功能中心可参考其粒度划分）；期刊缩写等具体逻辑可对照实现。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>纸牌式「小工具集合」的模块组织方式值得借鉴（Papilot 功能中心可参考其粒度划分）；期刊缩写等具体逻辑可对照实现。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证，代码不可复用；功能零散、UI 风格陈旧，整体移植性价比低。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/wshanks/Zutilo" target="_blank" rel="noopener">wshanks/Zutilo</a> ｜ 许可证：NOASSERTION ｜ 语言：JavaScript ｜ Forks：82 ｜ 创建：2011-11-10 ｜ 未关闭 Issue：92</div>
@@ -524,7 +524,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="20"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot「AI 总结/深度解读」重叠；其「入库即自动精读」的事件驱动流程可作为 PaperPilot 自动化的参考模式。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot「AI 总结/深度解读」重叠；其「入库即自动精读」的事件驱动流程可作为 Papilot 自动化的参考模式。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；自动批量精读成本高，容易触发用户 token 超支，需要更谨慎的节流设计。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/steven-jianhao-li/zotero-AI-Butler" target="_blank" rel="noopener">steven-jianhao-li/zotero-AI-Butler</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：98 ｜ 创建：2025-10-29 ｜ 未关闭 Issue：20</div>
@@ -542,7 +542,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="21"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 已有自建更新通道，可借鉴其「插件索引 + 版本兼容筛选 + 一键安装」机制，把「功能中心」升级为可扩展的能力集市。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 已有自建更新通道，可借鉴其「插件索引 + 版本兼容筛选 + 一键安装」机制，把「功能中心」升级为可扩展的能力集市。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；其索引依赖社区维护的 XPI 直链，供应链安全（恶意插件）风险需要在设计时显式防范。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/syt2/zotero-addons" target="_blank" rel="noopener">syt2/zotero-addons</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：30 ｜ 创建：2023-09-08 ｜ 未关闭 Issue：9</div>
@@ -560,7 +560,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="22"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>可参考其「浏览器端与 Zotero 端协同」的产品形态，评估 PaperPilot 是否值得做网页端配套。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>可参考其「浏览器端与 Zotero 端协同」的产品形态，评估 Papilot 是否值得做网页端配套。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；2025-04 后停滞，OpenAI 依赖较深。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/lifan0127/ai-research-assistant" target="_blank" rel="noopener">lifan0127/ai-research-assistant</a> ｜ 许可证：AGPL-3.0 ｜ 语言：JavaScript ｜ Forks：118 ｜ 创建：2023-03-28 ｜ 未关闭 Issue：103</div>
@@ -578,7 +578,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="23"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MPL-2.0 为文件级 copyleft、与 Apache-2.0 兼容，PaperPilot「元数据补全」可直接复用其 DOI 校验流程（保留文件级声明）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MPL-2.0 为文件级 copyleft、与 Apache-2.0 兼容，Papilot「元数据补全」可直接复用其 DOI 校验流程（保留文件级声明）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>2024 年后停滞；CrossRef 限流较严，需自带退避与缓存。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/bwiernik/zotero-shortdoi" target="_blank" rel="noopener">bwiernik/zotero-shortdoi</a> ｜ 许可证：MPL-2.0 ｜ 语言：JavaScript ｜ Forks：81 ｜ 创建：2017-11-29 ｜ 未关闭 Issue：31</div>
@@ -596,7 +596,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="24"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 附件管理可借鉴其「规则引擎 + 预览待执行列表」的交互（先预览后执行，降低误操作）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 附件管理可借鉴其「规则引擎 + 预览待执行列表」的交互（先预览后执行，降低误操作）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0 传染，代码不可复制；与 ZotFile 迁移场景强绑定，通用性一般。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/wileyyugioh/zotmoov" target="_blank" rel="noopener">wileyyugioh/zotmoov</a> ｜ 许可证：GPL-3.0 ｜ 语言：JavaScript ｜ Forks：34 ｜ 创建：2023-06-26 ｜ 未关闭 Issue：42</div>
@@ -614,7 +614,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="25"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>若 PaperPilot 加强 Markdown 导出，可参考其 front-matter 字段映射与文件命名冲突处理。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>若 Papilot 加强 Markdown 导出，可参考其 front-matter 字段映射与文件命名冲突处理。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>已于 2024 年归档；GPL-3.0，且 Obsidian 生态已有更成熟的 ZotLit/Notero 类方案。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/argenos/zotero-mdnotes" target="_blank" rel="noopener">argenos/zotero-mdnotes</a> ｜ 许可证：GPL-3.0 ｜ 语言：JavaScript ｜ Forks：80 ｜ 创建：2020-07-28 ｜ 未关闭 Issue：0</div>
@@ -632,7 +632,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="26"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot「附件重命名/智能清理」相邻，可借鉴其「扫描候选文件 → 相似度匹配 → 人工确认」流程。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot「附件重命名/智能清理」相邻，可借鉴其「扫描候选文件 → 相似度匹配 → 人工确认」流程。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；匹配算法依赖本地文件名启发式，跨平台（中文文件名/特殊字符）需自测。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/MuiseDestiny/zotero-attanger" target="_blank" rel="noopener">MuiseDestiny/zotero-attanger</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：40 ｜ 创建：2023-12-24 ｜ 未关闭 Issue：161</div>
@@ -650,7 +650,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="27"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 无 Word 集成规划，仅当未来切入写作场景时可参考其工具栏交互。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 无 Word 集成规划，仅当未来切入写作场景时可参考其工具栏交互。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；依赖 Word 插件侧改造，超出 Zotero 插件边界。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/MuiseDestiny/zotero-citation" target="_blank" rel="noopener">MuiseDestiny/zotero-citation</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：27 ｜ 创建：2023-01-26 ｜ 未关闭 Issue：82</div>
@@ -668,7 +668,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="28"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 已掌握 itemTree 列注入机制，可借鉴其缩略图异步渲染与缓存策略（避免大库卡顿）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 已掌握 itemTree 列注入机制，可借鉴其缩略图异步渲染与缓存策略（避免大库卡顿）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0 且已归档（2024-01），实现基于旧版 Zotero 7 早期 API，不可直接复用。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/windingwind/zotero-pdf-preview" target="_blank" rel="noopener">windingwind/zotero-pdf-preview</a> ｜ 许可证：GPL-3.0 ｜ 语言：TypeScript ｜ Forks：19 ｜ 创建：2022-07-13 ｜ 未关闭 Issue：0</div>
@@ -686,7 +686,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="29"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可 + 与 PaperPilot「AI 工作流」定位互补：可直接集成或借鉴其 MCP 工具定义（搜索/取全文/读批注/写笔记），让 PaperPilot 成为本地文献能力的「供给方」。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可 + 与 Papilot「AI 工作流」定位互补：可直接集成或借鉴其 MCP 工具定义（搜索/取全文/读批注/写笔记），让 Papilot 成为本地文献能力的「供给方」。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>MCP 协议仍在演进，工具 schema 需跟随版本；端口监听与本地安全（仅 127.0.0.1、鉴权token）必须做对，否则成为权限后门。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/cookjohn/zotero-mcp" target="_blank" rel="noopener">cookjohn/zotero-mcp</a> ｜ 许可证：MIT ｜ 语言：TypeScript ｜ Forks：99 ｜ 创建：2025-08-14 ｜ 未关闭 Issue：20</div>
@@ -704,7 +704,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="30"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot「元数据规范清洗」可对标其规则集覆盖面与「逐条列出问题 + 一键修复」的 UX，作为规则完备性的验收清单。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot「元数据规范清洗」可对标其规则集覆盖面与「逐条列出问题 + 一键修复」的 UX，作为规则完备性的验收清单。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0，代码与规则数据均不建议复制；规则强绑定中文期刊缩写表，需要自建或寻找可商用数据源。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/northword/zotero-format-metadata" target="_blank" rel="noopener">northword/zotero-format-metadata</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：28 ｜ 创建：2023-03-21 ｜ 未关闭 Issue：28</div>
@@ -723,7 +723,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <tr class="detail" data-for="31"><td colspan="9">
 <div class="dgrid">
 <div class="dbox"><h5>适配方式 / 复用价值</h5><p>法律风险与 zotero-scihub 同类，不建议接入。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；涉版权侵权场景，接入会污染 PaperPilot 的合规形象。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；涉版权侵权场景，接入会污染 Papilot 的合规形象。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/syt2/zotero-scipdf" target="_blank" rel="noopener">syt2/zotero-scipdf</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：63 ｜ 创建：2023-11-23 ｜ 未关闭 Issue：23</div>
 </td></tr>
@@ -740,8 +740,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="32"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot「智能清理」可借鉴其查重键设计（DOI/标题归一化/作者组合）与「可疑对」人工确认交互。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；合并操作不可逆，PaperPilot 若照搬需自带回滚/快照机制。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot「智能清理」可借鉴其查重键设计（DOI/标题归一化/作者组合）与「可疑对」人工确认交互。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；合并操作不可逆，Papilot 若照搬需自带回滚/快照机制。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/ChenglongMa/zoplicate" target="_blank" rel="noopener">ChenglongMa/zoplicate</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：19 ｜ 创建：2023-10-29 ｜ 未关闭 Issue：52</div>
 </td></tr>
@@ -758,7 +758,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="33"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot「被引量列（Semantic Scholar）」同源，可借鉴其多数据源适配器抽象与字段落库策略，把被引量从只读列升级为可缓存字段。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot「被引量列（Semantic Scholar）」同源，可借鉴其多数据源适配器抽象与字段落库策略，把被引量从只读列升级为可缓存字段。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>MPL-2.0（文件级）可有限复用但需开源被修改文件；项目 2023 年后停滞，API 适配已过时。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/eschnett/zotero-citationcounts" target="_blank" rel="noopener">eschnett/zotero-citationcounts</a> ｜ 许可证：MPL-2.0 ｜ 语言：JavaScript ｜ Forks：46 ｜ 创建：2020-09-29 ｜ 未关闭 Issue：29</div>
@@ -776,8 +776,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="34"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot 分区列共用 easyScholar 数据源，可直接对照其字段口径（JCR/中科院/CCF/ESI）与徽章定义，校验 PaperPilot 的解析完整性。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；同为 easyScholar 用户，存在秘钥配额竞争，PaperPilot 的本地缓存与节流策略更重要。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot 分区列共用 easyScholar 数据源，可直接对照其字段口径（JCR/中科院/CCF/ESI）与徽章定义，校验 Papilot 的解析完整性。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；同为 easyScholar 用户，存在秘钥配额竞争，Papilot 的本地缓存与节流策略更重要。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/redleafnew/zotero-updateifsE" target="_blank" rel="noopener">redleafnew/zotero-updateifsE</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：27 ｜ 创建：2022-05-29 ｜ 未关闭 Issue：13</div>
 </td></tr>
@@ -794,7 +794,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="35"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>若 PaperPilot 想做「文献质量信号」，可参考其指标呈现方式（徽章 + 悬浮明细）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>若 Papilot 想做「文献质量信号」，可参考其指标呈现方式（徽章 + 悬浮明细）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；依赖商业 API，无免费稳定配额。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/scitedotai/scite-zotero-plugin" target="_blank" rel="noopener">scitedotai/scite-zotero-plugin</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：40 ｜ 创建：2020-11-05 ｜ 未关闭 Issue：25</div>
@@ -812,8 +812,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="36"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 是手写 bootstrap 无构建链，可对照其工程实践逐步引入 i18n 与 prefs 注册规范，降低长期维护成本。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0，模板代码同样受约束，不可直接作为 PaperPilot 骨架；且引入构建链会与「改完即打包」的现有流程冲突。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 是手写 bootstrap 无构建链，可对照其工程实践逐步引入 i18n 与 prefs 注册规范，降低长期维护成本。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0，模板代码同样受约束，不可直接作为 Papilot 骨架；且引入构建链会与「改完即打包」的现有流程冲突。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/windingwind/zotero-plugin-template" target="_blank" rel="noopener">windingwind/zotero-plugin-template</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：181 ｜ 创建：2022-08-19 ｜ 未关闭 Issue：6</div>
 </td></tr>
@@ -830,7 +830,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="37"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 的全文问答/翻译在扫描版 PDF 上会失效，可借鉴其「检测缺失文本层 → 调用 OCR → 回写 PDF」的能力设计。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 的全文问答/翻译在扫描版 PDF 上会失效，可借鉴其「检测缺失文本层 → 调用 OCR → 回写 PDF」的能力设计。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；OCR 依赖外部二进制/服务，体积与部署复杂度高，建议做成可选外部依赖而非内置。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/UB-Mannheim/zotero-ocr" target="_blank" rel="noopener">UB-Mannheim/zotero-ocr</a> ｜ 许可证：AGPL-3.0 ｜ 语言：JavaScript ｜ Forks：53 ｜ 创建：2018-10-25 ｜ 未关闭 Issue：11</div>
@@ -848,7 +848,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="38"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，若 PaperPilot 增加「与本地笔记库联动」，可直接复用其 URI 方案（zotero://select）与文件映射逻辑。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，若 Papilot 增加「与本地笔记库联动」，可直接复用其 URI 方案（zotero://select）与文件映射逻辑。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>面向个人工作流，配置项较多；跨设备路径一致性需要自行处理。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/daeh/zotero-markdb-connect" target="_blank" rel="noopener">daeh/zotero-markdb-connect</a> ｜ 许可证：MIT ｜ 语言：TypeScript ｜ Forks：12 ｜ 创建：2021-12-27 ｜ 未关闭 Issue：12</div>
@@ -866,7 +866,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="39"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot「智能清理」可借鉴其安全策略（先统计占用 → 二次确认 → 记录可恢复清单）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot「智能清理」可借鉴其安全策略（先统计占用 → 二次确认 → 记录可恢复清单）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；破坏性操作，直接照搬删除逻辑风险高。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/redleafnew/delitemwithatt" target="_blank" rel="noopener">redleafnew/delitemwithatt</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：15 ｜ 创建：2021-03-19 ｜ 未关闭 Issue：4</div>
@@ -884,8 +884,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="40"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，PaperPilot「按模板新建笔记」可直接借鉴/复用其模板变量语法与渲染实现，快速增强卡片能力。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>2025-06 后停滞；模板语法与 PaperPilot 现有模板若不一致，需做兼容层。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，Papilot「按模板新建笔记」可直接借鉴/复用其模板变量语法与渲染实现，快速增强卡片能力。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>2025-06 后停滞；模板语法与 Papilot 现有模板若不一致，需做兼容层。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/018/zotcard" target="_blank" rel="noopener">018/zotcard</a> ｜ 许可证：MIT ｜ 语言：JavaScript ｜ Forks：36 ｜ 创建：2020-11-04 ｜ 未关闭 Issue：55</div>
 </td></tr>
@@ -902,7 +902,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="41"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 已用 Semantic Scholar 被引量，无需引入；仅作被引量数据源冗余方案参考。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 已用 Semantic Scholar 被引量，无需引入；仅作被引量数据源冗余方案参考。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；2021 年后停滞，Google Scholar 反爬已使该方案基本失效。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/beloglazov/zotero-scholar-citations" target="_blank" rel="noopener">beloglazov/zotero-scholar-citations</a> ｜ 许可证：NOASSERTION ｜ 语言：JavaScript ｜ Forks：78 ｜ 创建：2011-07-24 ｜ 未关闭 Issue：27</div>
@@ -920,8 +920,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="42"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot「阅读状态（自动流转）」功能几乎重合，属同赛道轻量竞品；建议对照其状态机细节（如何判定「在读」）补齐 PaperPilot 的边界场景。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0，代码不可复用；功能单一，PaperPilot 已覆盖。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot「阅读状态（自动流转）」功能几乎重合，属同赛道轻量竞品；建议对照其状态机细节（如何判定「在读」）补齐 Papilot 的边界场景。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0，代码不可复用；功能单一，Papilot 已覆盖。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/Dominic-DallOsto/zotero-reading-list" target="_blank" rel="noopener">Dominic-DallOsto/zotero-reading-list</a> ｜ 许可证：GPL-3.0 ｜ 语言：TypeScript ｜ Forks：20 ｜ 创建：2022-01-01 ｜ 未关闭 Issue：13</div>
 </td></tr>
@@ -938,7 +938,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="43"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot「PDF 速览」可借鉴其图表区域识别与缩略图缓存方案，用于提升阅读面板的信息密度。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot「PDF 速览」可借鉴其图表区域识别与缩略图缓存方案，用于提升阅读面板的信息密度。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；版面识别依赖启发式，对双栏/扫描件准确率有限。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/MuiseDestiny/zotero-figure" target="_blank" rel="noopener">MuiseDestiny/zotero-figure</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：20 ｜ 创建：2023-05-31 ｜ 未关闭 Issue：55</div>
@@ -956,7 +956,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="44"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot「智能清理/库健康」可借鉴其「孤儿文件 vs 断链附件」分类处理策略。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot「智能清理/库健康」可借鉴其「孤儿文件 vs 断链附件」分类处理策略。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证且已归档，代码不可用；仅作流程参考。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/retorquere/zotero-storage-scanner" target="_blank" rel="noopener">retorquere/zotero-storage-scanner</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：19 ｜ 创建：2013-10-02 ｜ 未关闭 Issue：5</div>
@@ -974,8 +974,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="45"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Apache-2.0 与 PaperPilot 同族许可，可直接复用其统计与图表模块，补强 PaperPilot「文献统计图谱」，是少数「许可证零摩擦」的高价值候选。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>其图表基于 Zotero 内部阅读会话数据，需适配 PaperPilot 的数据来源；2026-04 后维护转缓，需自行接手维护分支。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Apache-2.0 与 Papilot 同族许可，可直接复用其统计与图表模块，补强 Papilot「文献统计图谱」，是少数「许可证零摩擦」的高价值候选。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>其图表基于 Zotero 内部阅读会话数据，需适配 Papilot 的数据来源；2026-04 后维护转缓，需自行接手维护分支。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/volatile-static/Chartero" target="_blank" rel="noopener">volatile-static/Chartero</a> ｜ 许可证：Apache-2.0 ｜ 语言：Vue ｜ Forks：12 ｜ 创建：2022-09-01 ｜ 未关闭 Issue：31</div>
 </td></tr>
@@ -992,7 +992,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="46"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 若做「批量入库」，可借鉴其文件去重（哈希）与已导入标记机制。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 若做「批量入库」，可借鉴其文件去重（哈希）与已导入标记机制。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；仓库描述稀少、文档缺失，工程可读性一般。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/retorquere/zotero-folder-import" target="_blank" rel="noopener">retorquere/zotero-folder-import</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：31 ｜ 创建：2020-02-13 ｜ 未关闭 Issue：6</div>
@@ -1010,7 +1010,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="47"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 分区列已覆盖 IF 数据，无需引入；其数据源可作为 IF 兜底备选。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 分区列已覆盖 IF 数据，无需引入；其数据源可作为 IF 兜底备选。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；数据源可用性不稳定，2026-06 后维护放缓。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/qnscholar/zotero-if" target="_blank" rel="noopener">qnscholar/zotero-if</a> ｜ 许可证：NOASSERTION ｜ 语言：— ｜ Forks：10 ｜ 创建：2023-07-03 ｜ 未关闭 Issue：22</div>
@@ -1028,8 +1028,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="48"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 已有分区配置导入导出，可借鉴其「全量环境快照」思路，做成「一键备份 PaperPilot 全部设置（含模型通道）」的增强功能。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；备份文件含凭据时必须脱敏，PaperPilot 的密钥纪律要求更高。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 已有分区配置导入导出，可借鉴其「全量环境快照」思路，做成「一键备份 Papilot 全部设置（含模型通道）」的增强功能。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；备份文件含凭据时必须脱敏，Papilot 的密钥纪律要求更高。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/l0o0/tara" target="_blank" rel="noopener">l0o0/tara</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：14 ｜ 创建：2022-10-26 ｜ 未关闭 Issue：6</div>
 </td></tr>
@@ -1064,7 +1064,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="50"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MPL-2.0 可文件级复用，其「字段择优合并」规则表值得直接移植到 PaperPilot「智能清理」。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MPL-2.0 可文件级复用，其「字段择优合并」规则表值得直接移植到 Papilot「智能清理」。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>2024 年后停滞；合并不可逆，缺少撤销机制。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/frangoud/ZoteroDuplicatesMerger" target="_blank" rel="noopener">frangoud/ZoteroDuplicatesMerger</a> ｜ 许可证：MPL-2.0 ｜ 语言：JavaScript ｜ Forks：15 ｜ 创建：2021-02-28 ｜ 未关闭 Issue：13</div>
@@ -1082,7 +1082,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="51"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot PDF 阅读增强可借鉴其文本层样式注入方式（不改原 PDF、仅渲染层加粗）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot PDF 阅读增强可借鉴其文本层样式注入方式（不改原 PDF、仅渲染层加粗）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；对学术 PDF 的实际收益争议较大，属锦上添花功能。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/windingwind/bionic-for-zotero" target="_blank" rel="noopener">windingwind/bionic-for-zotero</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：13 ｜ 创建：2024-11-16 ｜ 未关闭 Issue：13</div>
@@ -1100,7 +1100,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="52"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>被 PaperPilot 分区列与 updateifsE 覆盖，无需引入。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>被 Papilot 分区列与 updateifsE 覆盖，无需引入。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证，2022 年后停滞，数据源已不可用。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/redleafnew/zotero-updateifs" target="_blank" rel="noopener">redleafnew/zotero-updateifs</a> ｜ 许可证：NOASSERTION ｜ 语言：JavaScript ｜ Forks：10 ｜ 创建：2022-01-19 ｜ 未关闭 Issue：6</div>
@@ -1118,7 +1118,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="53"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 若做「预印本/正式版去重与版本追踪」，可借鉴其 arXiv ID 提取与版本比对逻辑。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 若做「预印本/正式版去重与版本追踪」，可借鉴其 arXiv ID 提取与版本比对逻辑。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；场景偏物理/数学等 arXiv 强相关学科，通用性受限。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/AllanChain/zotero-arxiv-workflow" target="_blank" rel="noopener">AllanChain/zotero-arxiv-workflow</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：10 ｜ 创建：2024-05-05 ｜ 未关闭 Issue：2</div>
@@ -1136,8 +1136,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="54"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>仅当 PaperPilot 计划开放本地引用服务时可参考其本地 HTTP 接口设计。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0；面向纯文本工作流，与 PaperPilot 目标用户重合度低。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>仅当 Papilot 计划开放本地引用服务时可参考其本地 HTTP 接口设计。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0；面向纯文本工作流，与 Papilot 目标用户重合度低。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/egh/zotxt" target="_blank" rel="noopener">egh/zotxt</a> ｜ 许可证：GPL-3.0 ｜ 语言：JavaScript ｜ Forks：21 ｜ 创建：2013-07-27 ｜ 未关闭 Issue：13</div>
 </td></tr>
@@ -1154,7 +1154,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="55"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot「功能中心」可借鉴其「按使用场景打包推荐配置」的思路，做成一键启用推荐能力组合。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot「功能中心」可借鉴其「按使用场景打包推荐配置」的思路，做成一键启用推荐能力组合。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0；其推荐清单是静态维护的，与生态变化容易脱节。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/jackhanyuan/zotero-better-plugin" target="_blank" rel="noopener">jackhanyuan/zotero-better-plugin</a> ｜ 许可证：GPL-3.0 ｜ 语言：— ｜ Forks：30 ｜ 创建：2023-10-30 ｜ 未关闭 Issue：0</div>
@@ -1172,7 +1172,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="56"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，PaperPilot 若要提升「文献可达性」，可直接复用其存档适配器与快照元数据设计。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，Papilot 若要提升「文献可达性」，可直接复用其存档适配器与快照元数据设计。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>2022 年后停滞，第三方存档服务接口需重新适配。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/leonkt/zotero-memento" target="_blank" rel="noopener">leonkt/zotero-memento</a> ｜ 许可证：MIT ｜ 语言：JavaScript ｜ Forks：20 ｜ 创建：2019-08-29 ｜ 未关闭 Issue：12</div>
@@ -1191,7 +1191,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <tr class="detail" data-for="57"><td colspan="9">
 <div class="dgrid">
 <div class="dbox"><h5>适配方式 / 复用价值</h5><p>可作为「排版保留式翻译」的效果对标；技术上闭源服务端，无复用价值。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0 但核心服务商业闭源；需会员，无法作为 PaperPilot 的能力来源。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0 但核心服务商业闭源；需会员，无法作为 Papilot 的能力来源。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/immersive-translate/zotero-immersivetranslate" target="_blank" rel="noopener">immersive-translate/zotero-immersivetranslate</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：23 ｜ 创建：2025-04-03 ｜ 未关闭 Issue：15</div>
 </td></tr>
@@ -1208,7 +1208,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="58"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot「引文追溯」可参考 Wikidata 作为开放数据源（免费、免密钥），补充 Semantic Scholar 的覆盖盲区。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot「引文追溯」可参考 Wikidata 作为开放数据源（免费、免密钥），补充 Semantic Scholar 的覆盖盲区。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0；Wikidata 覆盖以经典文献为主，新论文缺失严重。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/zotero-cita/zotero-cita" target="_blank" rel="noopener">zotero-cita/zotero-cita</a> ｜ 许可证：GPL-3.0 ｜ 语言：TypeScript ｜ Forks：17 ｜ 创建：2020-12-18 ｜ 未关闭 Issue：90</div>
@@ -1226,7 +1226,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="59"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>早期 AI 插件形态参考，当前已被 PaperPilot 等更完整方案超越。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>早期 AI 插件形态参考，当前已被 Papilot 等更完整方案超越。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；2025-11 后低活跃，依赖旧模型接口。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/kazgu/zotero-chatgpt" target="_blank" rel="noopener">kazgu/zotero-chatgpt</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：21 ｜ 创建：2023-04-11 ｜ 未关闭 Issue：24</div>
@@ -1244,7 +1244,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="60"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot「引文追溯」可借鉴其「以种子文献扩展引文网络」的交互（力导向图 + 分层展开）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot「引文追溯」可借鉴其「以种子文献扩展引文网络」的交互（力导向图 + 分层展开）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；依赖第三方 API 配额，长会话图查询成本较高。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/inciteful-xyz/inciteful-zotero-plugin" target="_blank" rel="noopener">inciteful-xyz/inciteful-zotero-plugin</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：5 ｜ 创建：2023-03-06 ｜ 未关闭 Issue：5</div>
@@ -1262,7 +1262,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="61"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot「PDF 阅读主题（护眼叠色）」重叠，Feature 已覆盖。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot「PDF 阅读主题（护眼叠色）」重叠，Feature 已覆盖。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；实现为简单滤镜，价值有限。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/wangqian06/zotero-pdf-background" target="_blank" rel="noopener">wangqian06/zotero-pdf-background</a> ｜ 许可证：NOASSERTION ｜ 语言：JavaScript ｜ Forks：16 ｜ 创建：2022-06-03 ｜ 未关闭 Issue：10</div>
@@ -1280,7 +1280,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="62"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>轻量工具型插件，PaperPilot 可按需内置类似「外部打开」快捷动作。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>轻量工具型插件，Papilot 可按需内置类似「外部打开」快捷动作。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；功能过小，单独集成意义不大。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/retorquere/zotero-open-pdf" target="_blank" rel="noopener">retorquere/zotero-open-pdf</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：7 ｜ 创建：2022-06-23 ｜ 未关闭 Issue：6</div>
@@ -1298,7 +1298,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="63"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>新兴竞品，建议跟踪其架构选择（TS + 现代构建）与 AI 交互设计，作为 PaperPilot 演进方向的对照。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>新兴竞品，建议跟踪其架构选择（TS + 现代构建）与 AI 交互设计，作为 Papilot 演进方向的对照。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；项目年轻（261 star），稳定性与功能完整度待验证。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/jlegewie/beaver-zotero" target="_blank" rel="noopener">jlegewie/beaver-zotero</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：20 ｜ 创建：2025-02-10 ｜ 未关闭 Issue：40</div>
@@ -1316,7 +1316,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="64"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 若补齐「期刊缩写/条目类型规整」，可参考其工具粒度与菜单组织。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 若补齐「期刊缩写/条目类型规整」，可参考其工具粒度与菜单组织。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0；2024 年后停滞，部分依赖旧 API。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/bwiernik/zotero-tools" target="_blank" rel="noopener">bwiernik/zotero-tools</a> ｜ 许可证：GPL-3.0 ｜ 语言：Makefile ｜ Forks：67 ｜ 创建：2017-11-26 ｜ 未关闭 Issue：4</div>
@@ -1334,7 +1334,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="65"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>学科垂直集成的范例：MPL-2.0 许可友好，可复用其「按学科接入专业数据库」的适配器模式，用于 PaperPilot 面向特定学科时的扩展设计。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>学科垂直集成的范例：MPL-2.0 许可友好，可复用其「按学科接入专业数据库」的适配器模式，用于 Papilot 面向特定学科时的扩展设计。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>高度绑定高能物理场景，通用性差；需要维护领域专用 API。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/fkguo/zotero-inspire" target="_blank" rel="noopener">fkguo/zotero-inspire</a> ｜ 许可证：MPL-2.0 ｜ 语言：TypeScript ｜ Forks：9 ｜ 创建：2022-05-25 ｜ 未关闭 Issue：5</div>
@@ -1352,7 +1352,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="66"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MPL-2.0 许可兼容，其「字段映射可配置」的思路可用于 PaperPilot 被引量列的落库策略。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MPL-2.0 许可兼容，其「字段映射可配置」的思路可用于 Papilot 被引量列的落库策略。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>2024 年后停滞，数据源适配过时。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/FrLars21/ZoteroCitationCountsManager" target="_blank" rel="noopener">FrLars21/ZoteroCitationCountsManager</a> ｜ 许可证：MPL-2.0 ｜ 语言：JavaScript ｜ Forks：20 ｜ 创建：2023-11-11 ｜ 未关闭 Issue：35</div>
@@ -1388,7 +1388,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="68"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，任务/待办集成范式可直接复用——PaperPilot 若做「阅读任务外发」（Todoist/滴答清单/飞书任务）可取其适配层设计。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，任务/待办集成范式可直接复用——Papilot 若做「阅读任务外发」（Todoist/滴答清单/飞书任务）可取其适配层设计。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>2023 年后停滞；仅适配 Todoist，多平台需重写适配器。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/wbthomason/zotodo" target="_blank" rel="noopener">wbthomason/zotodo</a> ｜ 许可证：MIT ｜ 语言：TypeScript ｜ Forks：10 ｜ 创建：2020-05-27 ｜ 未关闭 Issue：17</div>
@@ -1406,7 +1406,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="69"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot「真假文献识别（AI 幻觉检测）」互补，PubPeer 是权威学术质疑数据源，建议接入其公开 API 作为质量信号。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot「真假文献识别（AI 幻觉检测）」互补，PubPeer 是权威学术质疑数据源，建议接入其公开 API 作为质量信号。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证，代码不可复用，但公开 API 可独立调用；覆盖以生命科学为主，命中率有限。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/PubPeerFoundation/pubpeer_zotero_plugin" target="_blank" rel="noopener">PubPeerFoundation/pubpeer_zotero_plugin</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：6 ｜ 创建：2019-06-17 ｜ 未关闭 Issue：13</div>
@@ -1424,7 +1424,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="70"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 若做「库内语义检索」，可借鉴其「本地向量索引 + 增量更新 + MCP 暴露」的三层设计。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 若做「库内语义检索」，可借鉴其「本地向量索引 + 增量更新 + MCP 暴露」的三层设计。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；本地嵌入模型与索引体积较大，与插件轻量化目标冲突。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/introfini/ZotSeek" target="_blank" rel="noopener">introfini/ZotSeek</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：16 ｜ 创建：2025-12-26 ｜ 未关闭 Issue：6</div>
@@ -1442,7 +1442,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="71"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 可扩展「听论文」能力，借鉴其系统 TTS 与云端 TTS 双通道设计（含朗读高亮同步）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 可扩展「听论文」能力，借鉴其系统 TTS 与云端 TTS 双通道设计（含朗读高亮同步）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；2026-03 后低活跃，其云端 TTS 依赖第三方额度。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/ImperialSquid/zotero-zotts" target="_blank" rel="noopener">ImperialSquid/zotero-zotts</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：8 ｜ 创建：2023-04-17 ｜ 未关闭 Issue：17</div>
@@ -1460,8 +1460,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="72"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Apache-2.0 与 PaperPilot 同族许可，其中的小功能实现（如特定字段列、快捷动作）可直接取用并入功能中心。</p></div>
-<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>单项功能都很小，价值密度低；需逐个甄别是否与 PaperPilot 已有能力重复。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Apache-2.0 与 Papilot 同族许可，其中的小功能实现（如特定字段列、快捷动作）可直接取用并入功能中心。</p></div>
+<div class="dbox warn"><h5>潜在限制 / 风险</h5><p>单项功能都很小，价值密度低；需逐个甄别是否与 Papilot 已有能力重复。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/dcartertod/zotero-plugins" target="_blank" rel="noopener">dcartertod/zotero-plugins</a> ｜ 许可证：Apache-2.0 ｜ 语言：JavaScript ｜ Forks：6 ｜ 创建：2021-03-23 ｜ 未关闭 Issue：7</div>
 </td></tr>
@@ -1478,7 +1478,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="73"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，PaperPilot「元数据补全/规范清洗」可直接借鉴其多源匹配优先级（Crossref→S2→OpenAlex）与冲突消解策略。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，Papilot「元数据补全/规范清洗」可直接借鉴其多源匹配优先级（Crossref→S2→OpenAlex）与冲突消解策略。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>较新项目，规则覆盖面仍在增长；批量更新需谨慎的预览-确认流程。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/RoadToDream/ZotMeta" target="_blank" rel="noopener">RoadToDream/ZotMeta</a> ｜ 许可证：MIT ｜ 语言：JavaScript ｜ Forks：17 ｜ 创建：2023-09-11 ｜ 未关闭 Issue：0</div>
@@ -1496,7 +1496,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="74"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>本项目最值得直接采用的依赖：MIT 许可、与 Apache-2.0 完全兼容、专为 Zotero 7+ 插件设计，可显著降低 PaperPilot 的样板代码与跨版本适配成本（prefs 注册、菜单注入、Notifier 封装）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>本项目最值得直接采用的依赖：MIT 许可、与 Apache-2.0 完全兼容、专为 Zotero 7+ 插件设计，可显著降低 Papilot 的样板代码与跨版本适配成本（prefs 注册、菜单注入、Notifier 封装）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>引入第三方依赖会改变「零构建依赖」现状，需要评估打包方式（直接内联 / 作为 bundled 模块）；需锁定版本以规避上游破坏性变更。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/windingwind/zotero-plugin-toolkit" target="_blank" rel="noopener">windingwind/zotero-plugin-toolkit</a> ｜ 许可证：MIT ｜ 语言：TypeScript ｜ Forks：21 ｜ 创建：2022-12-21 ｜ 未关闭 Issue：4</div>
@@ -1532,7 +1532,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="76"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 分区列与元数据清洗可集成期刊缩写能力，可参考其缩写表来源与更新方式。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 分区列与元数据清洗可集成期刊缩写能力，可参考其缩写表来源与更新方式。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；缩写表数据来源的再分发授权需单独确认。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/zoushucai/zotero-journalabbr" target="_blank" rel="noopener">zoushucai/zotero-journalabbr</a> ｜ 许可证：AGPL-3.0 ｜ 语言：JavaScript ｜ Forks：13 ｜ 创建：2022-04-18 ｜ 未关闭 Issue：5</div>
@@ -1604,7 +1604,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="80"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>若 PaperPilot 做「文献矩阵/报告导出」，可参考其模板化报告生成方式。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>若 Papilot 做「文献矩阵/报告导出」，可参考其模板化报告生成方式。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证，2025-04 后停滞。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/retorquere/zotero-report-customizer" target="_blank" rel="noopener">retorquere/zotero-report-customizer</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：16 ｜ 创建：2013-11-09 ｜ 未关闭 Issue：17</div>
@@ -1622,7 +1622,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="81"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 PaperPilot 分区列同赛道，建议作为功能对标清单（分区体系覆盖是否有遗漏）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>与 Papilot 分区列同赛道，建议作为功能对标清单（分区体系覆盖是否有遗漏）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证，2024 年后停滞；数据源维护已中断，不能作为数据来源。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/SiriusXT/Zotero-Scholar-Rank" target="_blank" rel="noopener">SiriusXT/Zotero-Scholar-Rank</a> ｜ 许可证：NOASSERTION ｜ 语言：JavaScript ｜ Forks：10 ｜ 创建：2022-04-07 ｜ 未关闭 Issue：16</div>
@@ -1640,7 +1640,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="82"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 列表列渲染可借鉴其作者字段的格式化与省略策略，提升大作者列表的可读性。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 列表列渲染可借鉴其作者字段的格式化与省略策略，提升大作者列表的可读性。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；功能单一，仅在列机制上做小改进。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/github-young/zotero-better-authors" target="_blank" rel="noopener">github-young/zotero-better-authors</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：6 ｜ 创建：2023-09-18 ｜ 未关闭 Issue：4</div>
@@ -1658,7 +1658,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="83"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，PaperPilot「AI 自动打标签/规则打标」可直接复用其标签归一化（大小写/分隔符/同义词）与批量重构逻辑。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，Papilot「AI 自动打标签/规则打标」可直接复用其标签归一化（大小写/分隔符/同义词）与批量重构逻辑。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>文档较少，需代码级审读后再引入；批量重命名不可逆，需要备份。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/ganzoth/zotero-taxonomy-curator" target="_blank" rel="noopener">ganzoth/zotero-taxonomy-curator</a> ｜ 许可证：MIT ｜ 语言：Python ｜ Forks：10 ｜ 创建：2026-05-08 ｜ 未关闭 Issue：0</div>
@@ -1694,7 +1694,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="85"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 元数据补全可增加 PubMed/PMC 数据源，借鉴其标识符回填与校验流程。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 元数据补全可增加 PubMed/PMC 数据源，借鉴其标识符回填与校验流程。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；仅覆盖生物医学领域，且 NCBI 有请求频率限制。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/retorquere/zotero-pmcid-fetcher" target="_blank" rel="noopener">retorquere/zotero-pmcid-fetcher</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：14 ｜ 创建：2020-08-29 ｜ 未关闭 Issue：0</div>
@@ -1712,7 +1712,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="86"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 若做「相关文献发现」，可参考其第三方图谱服务的嵌入方式。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 若做「相关文献发现」，可参考其第三方图谱服务的嵌入方式。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证，2023 年后停滞，第三方服务条款限制较多。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/MuiseDestiny/zotero-connected-papers" target="_blank" rel="noopener">MuiseDestiny/zotero-connected-papers</a> ｜ 许可证：NOASSERTION ｜ 语言：— ｜ Forks：2 ｜ 创建：2023-04-20 ｜ 未关闭 Issue：2</div>
@@ -1730,7 +1730,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="87"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>数字人文小众场景，与 PaperPilot 定位差异大。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>数字人文小众场景，与 Papilot 定位差异大。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0 且 2019 年归档，不可用。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/corajr/zotero-voyant-export" target="_blank" rel="noopener">corajr/zotero-voyant-export</a> ｜ 许可证：GPL-3.0 ｜ 语言：JavaScript ｜ Forks：27 ｜ 创建：2017-04-08 ｜ 未关闭 Issue：0</div>
@@ -1766,7 +1766,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="89"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，与 PaperPilot「库健康/智能清理」高度契合，可直接复用其扫描器与结果分类模型。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，与 Papilot「库健康/智能清理」高度契合，可直接复用其扫描器与结果分类模型。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>较新项目（135 star），需自行承担后续维护；扫描大库时性能需要优化。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/SciImage/zotero-attachment-scanner" target="_blank" rel="noopener">SciImage/zotero-attachment-scanner</a> ｜ 许可证：MIT ｜ 语言：JavaScript ｜ Forks：7 ｜ 创建：2024-12-05 ｜ 未关闭 Issue：3</div>
@@ -1784,7 +1784,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="90"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 被引量列可借鉴其多源聚合与去重口径（不同源计数差异较大，需归一化说明）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 被引量列可借鉴其多源聚合与去重口径（不同源计数差异较大，需归一化说明）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；数据源授权与限流需要自行处理。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/daeh/zotero-citation-tally" target="_blank" rel="noopener">daeh/zotero-citation-tally</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：6 ｜ 创建：2025-06-09 ｜ 未关闭 Issue：4</div>
@@ -1802,7 +1802,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="91"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 主题系统已更完善；可参考其用户自定义配色持久化与切换实现。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 主题系统已更完善；可参考其用户自定义配色持久化与切换实现。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0 且 2022 年后停滞，基于旧版界面结构。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/iShareStuff/ZoteroTheme" target="_blank" rel="noopener">iShareStuff/ZoteroTheme</a> ｜ 许可证：GPL-3.0 ｜ 语言：TypeScript ｜ Forks：4 ｜ 创建：2022-10-16 ｜ 未关闭 Issue：6</div>
@@ -1820,7 +1820,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="92"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot「收集批注为笔记/AI 解读批注」可借鉴其批注分组与导出格式（Markdown/表格）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot「收集批注为笔记/AI 解读批注」可借鉴其批注分组与导出格式（Markdown/表格）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；2026-01 后低活跃。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/zzlb0224/zotero-annotation-manage" target="_blank" rel="noopener">zzlb0224/zotero-annotation-manage</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：10 ｜ 创建：2024-02-20 ｜ 未关闭 Issue：38</div>
@@ -1838,7 +1838,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="93"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>功能与 PaperPilot 大量重叠，属直接竞品；可跟踪其模型接入与成本控制策略。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>功能与 Papilot 大量重叠，属直接竞品；可跟踪其模型接入与成本控制策略。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>AGPL-3.0；商业模型路径，复用价值低。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/Visterainer/aidea-zotero" target="_blank" rel="noopener">Visterainer/aidea-zotero</a> ｜ 许可证：AGPL-3.0 ｜ 语言：TypeScript ｜ Forks：12 ｜ 创建：2026-03-04 ｜ 未关闭 Issue：1</div>
@@ -1856,7 +1856,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="94"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>小工具，PaperPilot 可在元数据清洗中内置类似规则（作为可选开关）。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>小工具，Papilot 可在元数据清洗中内置类似规则（作为可选开关）。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；单一规则，价值有限。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/retorquere/zotero-date-from-last-modified" target="_blank" rel="noopener">retorquere/zotero-date-from-last-modified</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：0 ｜ 创建：2013-10-26 ｜ 未关闭 Issue：1</div>
@@ -1874,7 +1874,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="95"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>思路与 MCP 集成同源：可借鉴其本地服务的鉴权与路由设计，作为 PaperPilot 对外能力（本地 API/MCP）的参考实现。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>思路与 MCP 集成同源：可借鉴其本地服务的鉴权与路由设计，作为 Papilot 对外能力（本地 API/MCP）的参考实现。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证，2022 年停滞；安全模型较弱，不可直接照搬。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/MunGell/ZotServer" target="_blank" rel="noopener">MunGell/ZotServer</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：9 ｜ 创建：2022-02-01 ｜ 未关闭 Issue：2</div>
@@ -1892,7 +1892,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="96"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>LaTeX 用户的小众集成，与 PaperPilot 主流用户场景重合度低。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>LaTeX 用户的小众集成，与 Papilot 主流用户场景重合度低。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>GPL-3.0；2021 年后停滞，LyX 生态本身用户稀少。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/wshanks/lyz" target="_blank" rel="noopener">wshanks/lyz</a> ｜ 许可证：GPL-3.0 ｜ 语言：JavaScript ｜ Forks：15 ｜ 创建：2013-01-22 ｜ 未关闭 Issue：10</div>
@@ -1910,7 +1910,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="97"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>仅当 PaperPilot 计划涉及文字处理器集成时可参考其文档扫描与域替换逻辑。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>仅当 Papilot 计划涉及文字处理器集成时可参考其文档扫描与域替换逻辑。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；Juris-M 分支专用，通用性差。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/Juris-M/zotero-odf-scan-plugin" target="_blank" rel="noopener">Juris-M/zotero-odf-scan-plugin</a> ｜ 许可证：NOASSERTION ｜ 语言：JavaScript ｜ Forks：17 ｜ 创建：2016-03-26 ｜ 未关闭 Issue：4</div>
@@ -1928,7 +1928,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="98"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 笔记面板可借鉴其「按条目聚合笔记 + 可视化时间线」的呈现方式。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 笔记面板可借鉴其「按条目聚合笔记 + 可视化时间线」的呈现方式。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证；2026-07 后维护转缓，功能较薄。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/frianasoa/Ze-Notes" target="_blank" rel="noopener">frianasoa/Ze-Notes</a> ｜ 许可证：NOASSERTION ｜ 语言：TypeScript ｜ Forks：5 ｜ 创建：2022-05-26 ｜ 未关闭 Issue：2</div>
@@ -1946,7 +1946,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="99"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>PaperPilot 附件管理可参考其层级展示交互。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>Papilot 附件管理可参考其层级展示交互。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>无许可证，2023 年后停滞，描述文档缺失。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/retorquere/zotero-file-hierarchy" target="_blank" rel="noopener">retorquere/zotero-file-hierarchy</a> ｜ 许可证：NOASSERTION ｜ 语言：JavaScript ｜ Forks：16 ｜ 创建：2018-09-27 ｜ 未关闭 Issue：3</div>
@@ -1964,7 +1964,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="100"><td colspan="9">
 <div class="dgrid">
-<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，PaperPilot「元数据规范清洗」可借鉴其「库级字段体检 + 异常项定位」的呈现方式。</p></div>
+<div class="dbox"><h5>适配方式 / 复用价值</h5><p>MIT 许可，Papilot「元数据规范清洗」可借鉴其「库级字段体检 + 异常项定位」的呈现方式。</p></div>
 <div class="dbox warn"><h5>潜在限制 / 风险</h5><p>功能范围在扩展中，需评估其稳定性；批量修改需谨慎确认流程。</p></div>
 </div>
 <div class="dmeta">仓库：<a href="https://github.com/ydeng11/zotero-zotadata" target="_blank" rel="noopener">ydeng11/zotero-zotadata</a> ｜ 许可证：MIT ｜ 语言：TypeScript ｜ Forks：8 ｜ 创建：2025-06-08 ｜ 未关闭 Issue：3</div>
@@ -1973,7 +1973,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <p class="sub" id="cnt" style="margin-top:10px"></p>
 
 <h2>六、附录：高星生态周边（非 Zotero 插件本体）</h2>
-<p class="sub">这些项目不属于"可安装的 Zotero 插件"，但构成插件的外围生态，对 PaperPilot 的集成路线有参考意义，故单列不计入 Top 100。</p>
+<p class="sub">这些项目不属于"可安装的 Zotero 插件"，但构成插件的外围生态，对 Papilot 的集成路线有参考意义，故单列不计入 Top 100。</p>
 <div class="tblwrap"><table>
 <thead><tr><th class="no">项目</th><th class="no">★ Star</th><th class="no">许可证</th><th class="no">说明</th></tr></thead>
 <tbody><tr><td><a href="https://github.com/54yyyu/zotero-mcp" target="_blank" rel="noopener">54yyyu/zotero-mcp</a></td><td class="num">5,220</td><td>MIT</td><td>Python 版 MCP 服务器，让 Claude 等客户端读写 Zotero 库</td></tr>
@@ -1986,8 +1986,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <tr><td><a href="https://github.com/eseifert/altero" target="_blank" rel="noopener">eseifert/altero</a></td><td class="num">101</td><td>AGPL-3.0</td><td>Zotero 自托管同步服务器</td></tr></tbody></table></div>
 
 <footer>
-本报告由 GitHub API 数据（2026-10-02 快照）自动聚合，并由 PaperPilot 视角逐项人工评估。Star 数与维护状态随上游变化，复用前请复核目标仓库当时的许可与版本兼容性（Zotero 7/8/9/10 API 差异）。<br>
-生成路径：docs/PaperPilot-Zotero插件Top100调研.html ｜ 数据明细：docs/PaperPilot-Zotero插件Top100调研.csv
+本报告由 GitHub API 数据（2026-10-02 快照）自动聚合，并由 Papilot 视角逐项人工评估。Star 数与维护状态随上游变化，复用前请复核目标仓库当时的许可与版本兼容性（Zotero 7/8/9/10 API 差异）。<br>
+生成路径：docs/Papilot-Zotero插件Top100调研.html ｜ 数据明细：docs/Papilot-Zotero插件Top100调研.csv
 </footer>
 </div>
 <script>

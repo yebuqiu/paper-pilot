@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot 多引擎翻译 测试（插件 0.28.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 多引擎翻译 测试（插件 0.28.0）
  *
  * 为什么要有它：翻译引擎的接入面是「外部世界的契约」——每个厂商的语言码、
  * 请求形态、响应结构各不相同，且都极易因对方改版而静默失效（返回空串、
@@ -46,7 +49,7 @@ function throws(fn, re, label) {
 
 const PrefStore = new Map();
 const Prefs = {
-  PREFIX: 'extensions.zotero.paperpilot.',
+  PREFIX: 'extensions.zotero.papilot.',
   get(k, d) { return PrefStore.has(k) ? PrefStore.get(k) : d; },
   set(k, v) { PrefStore.set(k, v); },
 };

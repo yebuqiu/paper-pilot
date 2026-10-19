@@ -1,0 +1,28 @@
+{
+ "addons": {
+  "papilot@dev.local": {
+   "updates": [
+    {
+     "version": "0.56.0",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.56.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     }
+    },
+    {
+     "version": "0.55.0",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.55.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     }
+    }
+   ]
+  }
+ }
+}

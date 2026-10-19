@@ -1,5 +1,8 @@
-/* PaperPilot 笔记关系图谱（0.23.0，路线图阶段 2 第二批）
- * 解决的问题：PaperPilot 能「生成笔记」（AI 总结/解读/模板/批注），但笔记之间
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 笔记关系图谱（0.23.0，路线图阶段 2 第二批）
+ * 解决的问题：Papilot 能「生成笔记」（AI 总结/解读/模板/批注），但笔记之间
  * 是孤岛——用户看不到「我的笔记彼此怎么关联、哪条笔记是枢纽」。
  *
  * 本模块做三件事：
@@ -337,12 +340,12 @@ var NoteGraph = {
     const win = Zotero.getMainWindow();
     if (!win) return null;
     try {
-      const en = Services.wm.getEnumerator("paperpilot:notegraph");
+      const en = Services.wm.getEnumerator("papilot:notegraph");
       if (en.hasMoreElements()) { const w = en.getNext(); w.focus(); return w; }
     } catch (e) { /* ignore */ }
     return win.openDialog(
-      "chrome://paperpilot/content/note-graph.xhtml",
-      "paperpilot-note-graph",
+      "chrome://papilot/content/note-graph.xhtml",
+      "papilot-note-graph",
       "chrome,centerscreen,resizable,dialog=no",
       { Zotero, Services }
     );

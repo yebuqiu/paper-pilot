@@ -1,5 +1,7 @@
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
-<!-- PaperPilot · AI 技能包商店（Skills Hub）独立窗口
+<!-- Papilot · AI 技能包商店（Skills Hub）独立窗口
      纪律（本项目真机踩坑实录，务必保持）：
        ① 不写 XML 声明；禁用一切未定义实体（如 nbsp / copy / mdash 之类的命名实体），占位一律 &#160;。
        ② XUL 窗口顶部 <script> 先于后续 DOM 执行 → skill-store.js 用 boot() +
@@ -8,15 +10,15 @@
           textarea/button 显式 appearance:none + background/color/border（win 平台
           皮肤会把未定型控件强制透明底 + 蓝渐变 + max-height:25px）；
           布局只用 html:div 弹性盒，不依赖 XUL 盒模型排表单。
-     核心域契约：Zotero.PaperPilot.skillPacks（另一模块实现），本窗口全程防御式调用；
+     核心域契约：Zotero.Papilot.skillPacks（另一模块实现），本窗口全程防御式调用；
      单例（防重复打开）由打开方负责。窗口参数 {Zotero, Services} 经 window.arguments 传入。 -->
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot · 技能商店"
-        windowtype="paperpilot:skillstore"
+        title="Papilot · 技能商店"
+        windowtype="papilot:skillstore"
         width="880" height="640"
         persist="screenX screenY width height sizemode">
-  <script src="chrome://paperpilot/content/skill-store.js"></script>
+  <script src="chrome://papilot/content/skill-store.js"></script>
   <html:style><![CDATA[
     /* ===== 主题变量（对齐 prefs.css 变量组；浅色 = GitHub Primer Light） ===== */
     #pp-ss-root {
@@ -28,7 +30,7 @@
       --pp-ok-bg:rgba(26,127,55,.13);
       --pp-code-bg:#f6f8fa; --pp-code-text:#1f2328;
     }
-    /* 系统深色模式（JS 会按 PaperPilot 自定义界面主题再校正 data-theme） */
+    /* 系统深色模式（JS 会按 Papilot 自定义界面主题再校正 data-theme） */
     @media (prefers-color-scheme: dark) {
       #pp-ss-root:not([data-theme="light"]) {
         --pp-bg:#1a1e23; --pp-surface:#21252b; --pp-surface-2:#1a1e23;

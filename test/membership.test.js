@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot 会员域集成测试（0.23.0 / 服务端 1.4.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 会员域集成测试（0.23.0 / 服务端 1.4.0）
  *
  * 零依赖、自起自停：用临时 PP_DATA_DIR 起一个账号服务器实例，跑完整购买/激活链路。
  *   node test/membership.test.js

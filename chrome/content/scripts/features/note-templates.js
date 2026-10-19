@@ -1,4 +1,7 @@
-/* PaperPilot 笔记模板系统（0.11.0，Better Notes 品类的轻量路线）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 笔记模板系统（0.11.0，Better Notes 品类的轻量路线）
  * 模板 = 带占位符的 Markdown 骨架，对选中条目一键生成结构化笔记。
  * 占位符：{{title}} {{creators}} {{year}} {{pub}} {{doi}} {{abstract}}
  *         {{annotations}}（批注列表，无批注则占位文字）
@@ -160,24 +163,24 @@ var NoteTemplates = {
     const names = tpls.map((t) => t.name);
     const win = Zotero.getMainWindow();
     const out = { value: 0 };
-    if (!Services.prompt.select(win, "PaperPilot · " + I18n.t("menuNoteTemplate"),
+    if (!Services.prompt.select(win, "Papilot · " + I18n.t("menuNoteTemplate"),
       I18n.isZh ? "选择笔记模板：" : "Pick a template:", names.length, names, out)) return;
     const tpl = tpls[out.value];
     if (!tpl) return;
 
     // 含 AI 占位符时检查 key
     if (/\{\{aiSummary\}\}/.test(tpl.body) && !AIClient.hasKey()) {
-      Services.prompt.alert(win, "PaperPilot", I18n.t("chatNoKey"));
+      Services.prompt.alert(win, "Papilot", I18n.t("chatNoKey"));
       return;
     }
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + tpl.name);
+    pw.changeHeadline("Papilot · " + tpl.name);
     pw.show();
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(40);
         const md = await this.render(tpl, item);
@@ -196,7 +199,7 @@ var NoteTemplates = {
   /** 自定义模板 → 可粘贴的 JSON 文本 */
   serializeCustom() {
     return JSON.stringify({
-      app: "paperpilot",
+      app: "papilot",
       kind: "noteTemplates",
       version: 1,
       templates: this.customList(),
@@ -318,14 +321,14 @@ var NoteTemplates = {
     const win = Zotero.getMainWindow();
     const custom = this.customList();
     if (!custom.length) {
-      Services.prompt.alert(win, "PaperPilot", zh
+      Services.prompt.alert(win, "Papilot", zh
         ? "还没有自定义模板，没有可导出的内容。（内置模板无需导出）"
         : "No custom templates to export.");
       return false;
     }
     const write = hooks.writeClipboard || ((t) => this._writeClipboard(t));
     const ok = await write(this.serializeCustom());
-    Services.prompt.alert(win, "PaperPilot", ok
+    Services.prompt.alert(win, "Papilot", ok
       ? (zh ? `已导出 ${custom.length} 个自定义模板到剪贴板。` : `Exported ${custom.length} templates to clipboard.`)
       : (zh ? "写剪贴板失败，请重试。" : "Failed to write clipboard."));
     return ok;
@@ -338,7 +341,7 @@ var NoteTemplates = {
   async importJSON(hooks = {}) {
     const zh = I18n.isZh;
     const win = Zotero.getMainWindow();
-    const alert = hooks.alert || ((msg) => Services.prompt.alert(win, "PaperPilot", msg));
+    const alert = hooks.alert || ((msg) => Services.prompt.alert(win, "Papilot", msg));
     const read = hooks.readClipboard || (() => this._readClipboard());
     const text = await read();
     const parsed = this.parseImport(text);
@@ -360,7 +363,7 @@ var NoteTemplates = {
           Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING +
           Services.prompt.BUTTON_POS_2 * Services.prompt.BUTTON_TITLE_IS_STRING;
         const choice = Services.prompt.confirmEx(win,
-          "PaperPilot · " + (zh ? "模板重名" : "Name conflict"),
+          "Papilot · " + (zh ? "模板重名" : "Name conflict"),
           zh ? "导入的模板里有与现有自定义模板重名的，怎么处理？"
             : "Some imported templates conflict with existing ones.",
           flags,

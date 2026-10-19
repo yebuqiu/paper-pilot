@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 价格表单测（0.23.1）：等级 × 计费周期 × 生效时段 —— 纯函数，不依赖服务端与网络。
  *
  * 覆盖：

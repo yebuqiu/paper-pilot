@@ -1,7 +1,7 @@
 # 领航智能Pay（ljlliu.cn）API 接入分析
 
 > 调研日期：2026-10-18
-> 背景：PaperPilot 在线支付（`server/lib/pay.js`，V1 易支付 MD5 协议）拟接入该聚合支付平台。
+> 背景：Papilot 在线支付（`server/lib/pay.js`，V1 易支付 MD5 协议）拟接入该聚合支付平台。
 > 秘钥来源：商户后台「API 接入」页导出的 Base64 串，解码后为 `{"site":"https://www.ljlliu.cn","pid":3,"key":"uJV3***（密钥已脱敏，见 server/data/pay.json）"}`。
 
 ## 0. 方法论与可信度说明
@@ -9,7 +9,7 @@
 官方文档地址 `https://www.ljlliu.cn/user#/api-access/docs` 位于**用户中心 SPA 内，登录后才可见**（未登录访问被路由守卫重定向到登录页，含滑块验证码）。本文档**无法直接读取官方文档原文**，改用三条腿走路：
 
 1. **生产 API 黑盒实测**（2026-10-18 全部亲测，原始响应见附录）：逐参数测绘 `/mapi.php`、`/submit.php`、`/Api/checkOrder` 的校验链与错误信息；
-2. **易支付（Epay）V1 协议家族比对**：该平台的端点布局（submit.php / mapi.php）、参数命名（pid / out_trade_no / notify_url…）、错误文案风格均为标准易支付家族特征，PaperPilot 现有 V1 网关实现（`server/lib/pay.js`）可直接对照；
+2. **易支付（Epay）V1 协议家族比对**：该平台的端点布局（submit.php / mapi.php）、参数命名（pid / out_trade_no / notify_url…）、错误文案风格均为标准易支付家族特征，Papilot 现有 V1 网关实现（`server/lib/pay.js`）可直接对照；
 3. **域名授权后全链路实测**（同日 15:00，商户后台已授权 `pp.xinglintools.top`）：用正确 MD5 签名**真实创建 0.01/10.00 元测试单**（未支付）、`/Api/checkOrder` 查单——签名构造、下单响应、查单响应、鉴权行为全部拿到一手数据。
 
 **标注约定**：标注 `[实测]` 的内容为直接探测验证；标注 `[惯例]` 的内容为易支付家族通行约定、在本平台尚待真实支付确认；标注 `[待确认]` 的为已知缺口。
@@ -46,7 +46,7 @@
 
 | 字段 | 用途 |
 |---|---|
-| `site` | 网关地址（PaperPilot 网关配置的 `gateway` 字段，末尾不带 `/`） |
+| `site` | 网关地址（Papilot 网关配置的 `gateway` 字段，末尾不带 `/`） |
 | `pid` | 商户 ID（3）——所有下单 / 查单请求的必填参数 |
 | `key` | 商户密钥（16 位）——**只用于签名计算，不作为参数明文传输**（V1 家族惯例；`/Api/checkOrder` 实测传不传 `key` 参数响应一致） |
 
@@ -59,7 +59,7 @@
 | 顺序 | 参数 | 缺省报错 | 说明 |
 |---|---|---|---|
 | 1 | `pid` | `PID不可为空!` | 商户号 |
-| 2 | `out_trade_no` | `订单号不可为空!` | 商户订单号；家族惯例为**纯字母数字**（PaperPilot 内部 `o-xxx` 带连字符号会被拒，`newTradeNo()` 已处理） |
+| 2 | `out_trade_no` | `订单号不可为空!` | 商户订单号；家族惯例为**纯字母数字**（Papilot 内部 `o-xxx` 带连字符号会被拒，`newTradeNo()` 已处理） |
 | 3 | `type` | `支付类型不可为空!` | 支付通道；家族通行值 `alipay` / `wxpay`（`qqpay`/`bank` 等 `[待确认]`） |
 | 4 | `money` | `金额不可为空!` | 金额，两位小数字符串 |
 | 5 | `name` | `商品名称不可为空!` | 商品名 |
@@ -73,7 +73,7 @@
 
 ## 4. 签名与验签规则 `[实测·全链路验证]`
 
-易支付 V1 家族标准 MD5 签名（与 PaperPilot `server/lib/pay.js` 的 `buildSign()` 完全一致）：
+易支付 V1 家族标准 MD5 签名（与 Papilot `server/lib/pay.js` 的 `buildSign()` 完全一致）：
 
 ```
 待签名串 = 所有非空参数（剔除 sign、sign_type 本身）
@@ -86,14 +86,14 @@ sign_type = "MD5"
 以本次凭证为例（key 以 `KEY` 代指）：
 
 ```
-参数: money=10.00, name=PaperPilot会员, notify_url=https://pp.xinglintools.top/api/pay/notify,
+参数: money=10.00, name=Papilot会员, notify_url=https://pp.xinglintools.top/api/pay/notify,
       out_trade_no=PPKY2M1A3B7F1C9, pid=3, return_url=https://pp.xinglintools.top/api/pay/return, type=alipay
 
-待签名串 = "money=10.00&name=PaperPilot会员&notify_url=https://pp.xinglintools.top/api/pay/notify&out_trade_no=PPKY2M1A3B7F1C9&pid=3&return_url=https://pp.xinglintools.top/api/pay/return&type=alipay"
+待签名串 = "money=10.00&name=Papilot会员&notify_url=https://pp.xinglintools.top/api/pay/notify&out_trade_no=PPKY2M1A3B7F1C9&pid=3&return_url=https://pp.xinglintools.top/api/pay/return&type=alipay"
 sign     = md5(待签名串 + KEY)
 ```
 
-> ✅ **2026-10-18 15:00 已实测关闭本项**：用上述构造（密钥直接拼接、剔除 sign/sign_type 与空值、ASCII 升序）对 `/mapi.php` 下单——订单创建成功并返回收银台 URL；同一签名方式对 `/Api/checkOrder` 查单亦通过（401 对照组验证了签名确被校验）。**PaperPilot `buildSign()` 无需任何修改。**
+> ✅ **2026-10-18 15:00 已实测关闭本项**：用上述构造（密钥直接拼接、剔除 sign/sign_type 与空值、ASCII 升序）对 `/mapi.php` 下单——订单创建成功并返回收银台 URL；同一签名方式对 `/Api/checkOrder` 查单亦通过（401 对照组验证了签名确被校验）。**Papilot `buildSign()` 无需任何修改。**
 > 无签名下单的报错原文：`{"code":201,"msg":"验签失败,请检查PID或Key是否正确!"}`。
 
 验签（回调侧）规则同构：取出回传参数中的 `sign`，用剩余非空参数复算 MD5 比对（大小写不敏感）。**注意陷阱**：`notify_url` 参与签名时必须与下单时完全一致（含协议、路径大小写），回调验签时若漏掉任何非空参数（如 `trade_no`）会验签失败——验签应基于回调实际收到的参数集复算，而不是下单时的参数集。
@@ -102,10 +102,10 @@ sign     = md5(待签名串 + KEY)
 
 ### 5.1 下单 —— 跳转模式（`/submit.php`，浏览器场景）
 
-拼好带签名的 URL 后让浏览器直接跳转（PaperPilot `createPayUrl()` 现行做法）：
+拼好带签名的 URL 后让浏览器直接跳转（Papilot `createPayUrl()` 现行做法）：
 
 ```
-https://www.ljlliu.cn/submit.php?pid=3&type=alipay&out_trade_no=PPKY2M1A3B7F1C9&notify_url=<URL编码后>&return_url=<URL编码后>&name=PaperPilot会员&money=10.00&sign=<md5>&sign_type=MD5
+https://www.ljlliu.cn/submit.php?pid=3&type=alipay&out_trade_no=PPKY2M1A3B7F1C9&notify_url=<URL编码后>&return_url=<URL编码后>&name=Papilot会员&money=10.00&sign=<md5>&sign_type=MD5
 ```
 
 Node.js 生成示例（与 `server/lib/pay.js` 同构）：
@@ -130,7 +130,7 @@ const params = {
   out_trade_no: 'PPKY2M1A3B7F1C9',                  // 纯字母数字，商户侧唯一
   notify_url: 'https://pp.xinglintools.top/api/pay/notify',   // 域名须已在平台过白
   return_url: 'https://pp.xinglintools.top/api/pay/return',
-  name: 'PaperPilot会员',
+  name: 'Papilot会员',
   money: '10.00',
 };
 const sign = buildSign(params, CFG_KEY);
@@ -166,7 +166,7 @@ const url = 'https://www.ljlliu.cn/submit.php?'
 | `qrcode` | **收款二维码直链**——实测所有订单返回**同一个**支付宝链接（固定个人收款码，见 §7.1 免签加价机制） |
 | `money` | **加价后的实际支付金额**（字符串，两位小数；注意与请求金额可能差 1–N 分，见 §7.1） |
 
-服务端拿到 `payurl` 后自行决定跳转或展示二维码。PaperPilot 用 submit.php 跳转模式则无需解析本响应。
+服务端拿到 `payurl` 后自行决定跳转或展示二维码。Papilot 用 submit.php 跳转模式则无需解析本响应。
 
 ### 5.3 查单 —— `/Api/checkOrder` `[实测·成功响应已拿到]`
 
@@ -218,27 +218,27 @@ GET https://www.ljlliu.cn/Api/checkOrder?pid=3&out_trade_no=PPKY2M1A3B7F1C9&sign
 **异步通知（notify）**：用户付款成功后，平台向 `notify_url` 发起 GET 请求，携带下单参数 + 订单结果参数 + 签名：
 
 ```
-pid=3&name=PaperPilot会员&money=10.00&out_trade_no=PPKY2M1A3B7F1C9&trade_no=<平台订单号>&type=alipay&status=1&param=&sign=<md5>&sign_type=MD5
+pid=3&name=Papilot会员&money=10.00&out_trade_no=PPKY2M1A3B7F1C9&trade_no=<平台订单号>&type=alipay&status=1&param=&sign=<md5>&sign_type=MD5
 ```
 
-处理要点（PaperPilot `/api/pay/notify` 现行实现已覆盖）：
+处理要点（Papilot `/api/pay/notify` 现行实现已覆盖）：
 
 1. **验签**：剔除 `sign`/`sign_type` 与空值后按 ASCII 升序复算 MD5 比对；
-2. **幂等**：同一订单可能收到多次通知（平台补发），入账逻辑必须幂等（PaperPilot 已用 `paidAt` / 状态机保证）；
-3. **金额与订单号核对**：`out_trade_no` 必须是本地未完结订单；`money` 与本地订单金额比对（PaperPilot 1.8.3 起在**多付侧**留 ¥1 尾差窗口以兼容免签加价，**少付仍一律拒绝**——防的是篡改金额少付，不是多付）；
+2. **幂等**：同一订单可能收到多次通知（平台补发），入账逻辑必须幂等（Papilot 已用 `paidAt` / 状态机保证）；
+3. **金额与订单号核对**：`out_trade_no` 必须是本地未完结订单；`money` 与本地订单金额比对（Papilot 1.8.3 起在**多付侧**留 ¥1 尾差窗口以兼容免签加价，**少付仍一律拒绝**——防的是篡改金额少付，不是多付）；
 4. **应答**：处理成功后响应纯文本 `success`（各家要求 `success`/`ok` 略有差异 `[待确认]`）；未应答或应答非成功串时平台会按退避策略重发；
 5. **不要信任同步跳转**：`return_url` 只是用户浏览器回跳（可能被关闭 / 断网），订单状态更新必须以 notify + 主动查单为准。
 
 **同步回跳（return）**：GET 携带与 notify 相同的参数集，用于前端落地页展示；同样带 sign，可以复用验签逻辑，但**不得**作为入账依据。
 
-**丢包兜底**：notify 收不到时用 `/Api/checkOrder` 主动查单（PaperPilot「刷新订单状态」按钮已内建此逻辑）。
+**丢包兜底**：notify 收不到时用 `/Api/checkOrder` 主动查单（Papilot「刷新订单状态」按钮已内建此逻辑）。
 
 ## 7. 注意事项与常见错误（重点）
 
 按踩坑概率排序，1–7 为实测亲证：
 
 1. **★ 免签加价机制（个人收款码 + 唯一金额匹配）——影响回调金额核对，接入前必读**。实测铁证：所有订单的 `qrcode` 是**同一个支付宝链接**（固定个人收款码）；同金额的第 1 笔订单不加价（¥10.00→10.00），**第 2、3…笔并发未完结订单依次 +1 分**（10.00→10.01→10.02）；`mapi.php` 响应的 `money` 与 `checkOrder` 的 `data.money` 均为**加价后金额**。notify 的 `money` 极可能也带加价值（订单记录即存加价值）`[待真实支付确认]`。
-   **PaperPilot 已适配（服务端 1.8.3）**：回调金额校验在多付侧开尾差窗口（`PP_PAY_OVERPAY_CENTS`，默认 ¥1，`pp.env` 可调，0=恢复精确比对）；少付仍一律拒绝；到账额度仍按本地订单金额。同价套餐并发是常态场景，**没有这个窗口每笔并发单都会被当「金额不符」拒掉**。
+   **Papilot 已适配（服务端 1.8.3）**：回调金额校验在多付侧开尾差窗口（`PP_PAY_OVERPAY_CENTS`，默认 ¥1，`pp.env` 可调，0=恢复精确比对）；少付仍一律拒绝；到账额度仍按本地订单金额。同价套餐并发是常态场景，**没有这个窗口每笔并发单都会被当「金额不符」拒掉**。
 2. **域名白名单是总闸门，且按商户配置**。未过白的一切下单请求（含 `notify_url` 指向平台自身域名、`127.0.0.1`、任意 IP 直连）一律报：
    `该域名不可发起支付，原因：域名没过白，请前往平台授权域名`
    授权入口在用户中心（`pp.xinglintools.top` 已于 2026-10-18 授权并验证通过）。白名单判定对象是 `notify_url` 的域名（实测无协议的 URL 报「异步通知地址域名无效」，过了 URL 解析才进白名单比对）。
@@ -246,20 +246,20 @@ pid=3&name=PaperPilot会员&money=10.00&out_trade_no=PPKY2M1A3B7F1C9&trade_no=<�
 4. **经典查单路径 `api.php?act=order` 在本平台不存在（404）**；查单必须用 `GET /Api/checkOrder`。从其它易支付网关移植代码时这是第一个要改的地方。
 5. **`mapi.php` 完全忽略 `act` 参数**（实测 `act=order`/`act=refund`/`act=close` 全部走下单校验链）。想用经典「同端点 act 分流」的代码在本平台无效。
 6. **`/Api/checkOrder` 只接受 GET**（POST 404），且**先查单后鉴权**：查无订单回 201（不验签），订单存在才验签（坏签名回 401）。
-7. **错误码体系按端点各自为政**：`mapi.php` 下单成功 `code=1`（经典 V1）；`/Api/checkOrder` 成功 `code=0` / 业务错 201 / 鉴权失败 401；公开 API `200/201`。**不要假设全站统一**。PaperPilot `queryOrder()` 的 checkOrder 变体判定已兼容 `code===0 || code===200`。
+7. **错误码体系按端点各自为政**：`mapi.php` 下单成功 `code=1`（经典 V1）；`/Api/checkOrder` 成功 `code=0` / 业务错 201 / 鉴权失败 401；公开 API `200/201`。**不要假设全站统一**。Papilot `queryOrder()` 的 checkOrder 变体判定已兼容 `code===0 || code===200`。
 8. **通道可用性**：实测 `wxpay` 报 `暂无收款账号在线!`（当前商户仅有支付宝收款账号在线）；**拼错 type 的报错与通道离线同文案**——遇到它先确认 type 拼写，再确认通道状态。
 9. **CORS 关闭**：任何浏览器端 AJAX 直调 `mapi.php` 都会失败，下单必须由服务端发起（或跳转 submit.php）。
-10. **订单号格式**：家族惯例纯字母数字 `[惯例]`。PaperPilot 的 `newTradeNo()`（`PP+36进制时间戳+随机hex`）符合要求，勿传内部 `o-xxx` 号。
+10. **订单号格式**：家族惯例纯字母数字 `[惯例]`。Papilot 的 `newTradeNo()`（`PP+36进制时间戳+随机hex`）符合要求，勿传内部 `o-xxx` 号。
 11. **`return_url` 可选但强烈建议传**：不传用户付完款无处可跳，滞留在平台收银台（实测不传可正常下单）。
 12. **key 只进签名不进参数**：V1 家族惯例密钥绝不 URL 传输（本平台 checkOrder 实测传 key 无效果，侧面印证）。key 保管遵循项目密钥纪律（AES 加密于 `server/data/pay.json`，不进 git）。
 13. **单笔金额上限**：`money=100000` 报 `订单金额高于最高发起金额`（阈值在商户配置，后台可见）。
 14. **文档与后台都在登录墙后**：`user#/api-access/docs` 需登录；登录带滑块验证码 + 图形验证码（`captcha_type=1`）。
 15. **平台合规红线**（`getSoftwareConfig` 公开返回的注册弹窗原文）：禁止赌博/刷单/色情/诈骗类交易，禁止伪造订单、拦截回调，禁止批量注册小号。违规清退。收款业务场景需与之匹配。
-16. **免签模式的固有风险须知**：个人收款码 + 金额匹配意味着——匹配依赖支付宝/微信的入账通知（延迟、掉单概率高于商业通道）；平台侧无即时退款能力；收款账号离线则对应通道整体不可用（见 8）。建议保留收款码+人工核销作为回落（PaperPilot 默认设计即如此）。
+16. **免签模式的固有风险须知**：个人收款码 + 金额匹配意味着——匹配依赖支付宝/微信的入账通知（延迟、掉单概率高于商业通道）；平台侧无即时退款能力；收款账号离线则对应通道整体不可用（见 8）。建议保留收款码+人工核销作为回落（Papilot 默认设计即如此）。
 
-## 8. 与 PaperPilot 现有网关代码的适配结论
+## 8. 与 Papilot 现有网关代码的适配结论
 
-PaperPilot `server/lib/pay.js` 的 **`provider: 'epay'`（V1 MD5）通道可直接复用**：
+Papilot `server/lib/pay.js` 的 **`provider: 'epay'`（V1 MD5）通道可直接复用**：
 
 | 配置项 | 值 |
 |---|---|

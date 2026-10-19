@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* Agent 长期记忆（AgentMemory，0.51.0）测试
  *
  * 覆盖：
@@ -35,7 +38,7 @@ function eq(a, b, label) { return ok(a === b, label, { got: a, want: b }); }
 /* ---------------- 桩环境 ---------------- */
 
 const store = new Map();
-const PREF = (k) => 'extensions.zotero.paperpilot.' + k;
+const PREF = (k) => 'extensions.zotero.papilot.' + k;
 
 const Zotero = {
   locale: 'zh-CN',

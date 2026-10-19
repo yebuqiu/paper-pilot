@@ -1,17 +1,17 @@
-# PaperPilot 文献副驾 v0.3.0 — 安装、配置与验证指南
+# Papilot 文献副驾 v0.3.0 — 安装、配置与验证指南
 
 适用于 Zotero 7 / 8（含最新版）。插件功能：期刊分区列、AI 总结、AI 翻译、AI 问答（PDF 全文）、AI 深度解读、Prompt 技能库、批注收集与 AI 批注解读、AI 自动打标签、AI 文献矩阵、PDF 划词翻译/解读浮窗、分类条目统计。
 
 ## 一、获取方式
 
-- 安装包：`paper-pilot-0.3.0.xpi`（本目录下）
-- 源码：`paper-pilot/` 目录，无构建链，改完代码用 Python zipfile 重新打包即可
+- 安装包：`papilot-0.3.0.xpi`（本目录下）
+- 源码：`zotero-papilot/` 目录，无构建链，改完代码用 Python zipfile 重新打包即可
 
 ## 二、安装步骤
 
 1. 打开 Zotero → 菜单 **工具 → 插件（Plugins / Add-ons）**
 2. 点右上角齿轮 → **Install Add-on From File…**
-3. 选择 `paper-pilot-0.3.0.xpi`，确认安装
+3. 选择 `papilot-0.3.0.xpi`，确认安装
 4. 如从旧版升级：先在插件列表移除旧版再装，或直接覆盖安装后重启 Zotero
 
 ## 三、接口配置（已预填，通常无需改动）
@@ -24,7 +24,7 @@
 | API Key | `sk-prism-xxx（换成你自己的 Key）` |
 | 模型 | `deepseek-v4-flash` |
 
-查看/修改路径：**编辑 → 设置 → PaperPilot**（或 工具 → PaperPilot 设置）。
+查看/修改路径：**编辑 → 设置 → Papilot**（或 工具 → Papilot 设置）。
 若以后要换云端服务（OpenAI / DeepSeek / 通义 / SiliconFlow 等 OpenAI 兼容接口），改这三项即可。
 设置窗格内还提供：**测试连接**按钮（就地验证接口）、**温度**调节、分区数据 JSON **浏览…** 文件选择器；分区列开关与数据路径修改**即时生效**，无需重启。
 
@@ -46,28 +46,28 @@ curl -s --noproxy "*" -m 5 -o /dev/null -w "%{http_code}\n" http://127.0.0.1:187
 
 ### 2. 验证接口连通性（插件内）
 
-Zotero → **工具 → PaperPilot 接口连通性测试**
+Zotero → **工具 → Papilot 接口连通性测试**
 - 弹窗显示「✅ 接口连通正常」+ 模型回复 + Base URL/模型名 → 全链路正常
 - 显示「❌ 接口测试失败」→ 按报错排查：网关未启动 / Key 错误 / 模型名拼写
 
 ### 3. 验证插件功能
 
-条目右键菜单已整合为 **PaperPilot 子菜单**，包含下述所有 AI 操作。
+条目右键菜单已整合为 **Papilot 子菜单**，包含下述所有 AI 操作。
 
 | 功能 | 操作 | 预期结果 |
 |---|---|---|
 | 期刊分区列 | 条目列表右键列头，勾选「期刊分区」 | Nature/Science 等显示彩色分区 badge（内置为示例数据，可在设置中指定完整 JSON） |
-| AI 总结 / 翻译 / 深度解读 | 选中文献 → 右键 → PaperPilot → 对应项 | 条目下生成对应子笔记；总结/解读无 PDF 时自动回退用摘要 |
-| 批注收集 | 右键 → PaperPilot → **收集批注为笔记** | PDF 高亮/批注按页聚合成子笔记（无批注会提示） |
-| AI 批注解读 | 右键 → PaperPilot → **AI 解读我的批注** | 基于你划的重点生成「论证主线 + 关注点 + 下一步建议」笔记 |
-| AI 自动打标签 | 右键 → PaperPilot → **AI 自动打标签…** | 弹出勾选框（默认全选），确定后写入 `#领域/xxx` 式标签 |
-| AI 文献矩阵 | 选中 2-8 篇 → 右键 → PaperPilot → **AI 文献矩阵** | 第一篇条目下生成五维度对比表 + 比较分析笔记 |
+| AI 总结 / 翻译 / 深度解读 | 选中文献 → 右键 → Papilot → 对应项 | 条目下生成对应子笔记；总结/解读无 PDF 时自动回退用摘要 |
+| 批注收集 | 右键 → Papilot → **收集批注为笔记** | PDF 高亮/批注按页聚合成子笔记（无批注会提示） |
+| AI 批注解读 | 右键 → Papilot → **AI 解读我的批注** | 基于你划的重点生成「论证主线 + 关注点 + 下一步建议」笔记 |
+| AI 自动打标签 | 右键 → Papilot → **AI 自动打标签…** | 弹出勾选框（默认全选），确定后写入 `#领域/xxx` 式标签 |
+| AI 文献矩阵 | 选中 2-8 篇 → 右键 → Papilot → **AI 文献矩阵** | 第一篇条目下生成五维度对比表 + 比较分析笔记 |
 | 划词浮窗 | PDF 阅读器内选中文字 | 弹窗底部出现「翻译 / 解读」按钮，点击就地显示结果（可在设置关闭） |
 | AI 问答 | 右侧栏「AI 问答」 | 顶部 Prompt 下拉（5 个内置模板 + 设置里可自定义），选中点「执行」即问 |
-| 分类统计 | 左侧分类右键 → **PaperPilot 分类条目统计** | 弹窗显示该分类及各级子分类的条目数 |
+| 分类统计 | 左侧分类右键 → **Papilot 分类条目统计** | 弹窗显示该分类及各级子分类的条目数 |
 
 ### 4. 排错
 
-- **Help → Debug Output Logging → View Output**：搜索 `paperpilot`，插件所有报错（`Zotero.logError`）都在这里
-- **工具 → 开发者 → Run Javascript**：可手动执行 `Zotero.PaperPilot` 检查插件是否加载
+- **Help → Debug Output Logging → View Output**：搜索 `papilot`，插件所有报错（`Zotero.logError`）都在这里
+- **工具 → 开发者 → Run Javascript**：可手动执行 `Zotero.Papilot` 检查插件是否加载
 - 插件列表里禁用再启用 = 重新触发 shutdown/startup，改配置后建议执行一次

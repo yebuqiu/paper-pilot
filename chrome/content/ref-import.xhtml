@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
-<!-- PaperPilot · 参考文献一键入库（0.33.0 重写）
+<!-- Papilot · 参考文献一键入库（0.33.0 重写）
      一个窗口覆盖三种来源：
        ① 粘贴 DOI / 标题 / 链接 / PMID / arXiv 号 / 整段 BibTeX（可多行）
        ② 五个在线库「联合检索」（Crossref / OpenAlex / PubMed / arXiv / Semantic Scholar）
@@ -9,10 +11,10 @@
      全部经 window.arguments[0].api 注入的回调完成（便于测试与排障）。 -->
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot · 参考文献一键入库"
-        windowtype="paperpilot:ref-import"
+        title="Papilot · 参考文献一键入库"
+        windowtype="papilot:ref-import"
         width="900" height="700">
-  <script src="chrome://paperpilot/content/ref-import.js"/>
+  <script src="chrome://papilot/content/ref-import.js"/>
 
   <vbox flex="1" style="padding:10px;gap:8px;">
     <!-- 标题行 -->

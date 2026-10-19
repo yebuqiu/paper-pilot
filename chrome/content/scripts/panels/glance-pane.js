@@ -1,4 +1,7 @@
-/* PaperPilot PDF 速览侧栏（0.11.0，pdf-preview 品类的轻量路线）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 速览侧栏（0.11.0，pdf-preview 品类的轻量路线）
  * ItemPane section：选中条目即显示「摘要 + 全文开篇」，不打开 PDF 也能速览内容。
  * 轻量原因：pdf-preview 的缩略图渲染依赖 pdf.js 离屏绘制，重且易随版本碎；
  * 本实现复用 AIChat 全文索引缓存（首次读取后即缓存，切换无延迟）。
@@ -6,7 +9,7 @@
 /* global Zotero, AIChat, I18n */
 
 var GlancePane = {
-  PANE_ID: "paperpilot-glance",
+  PANE_ID: "papilot-glance",
   _panes: new Map(),
   _registered: false,
 
@@ -41,12 +44,12 @@ var GlancePane = {
       paneID: this.PANE_ID,
       pluginID,
       header: {
-        l10nID: "paperpilot-glance-section-header",
-        icon: "chrome://paperpilot/content/icons/chat.svg",
+        l10nID: "papilot-glance-section-header",
+        icon: "chrome://papilot/content/icons/chat.svg",
       },
       sidenav: {
-        l10nID: "paperpilot-glance-section-sidenav",
-        icon: "chrome://paperpilot/content/icons/chat.svg",
+        l10nID: "papilot-glance-section-sidenav",
+        icon: "chrome://papilot/content/icons/chat.svg",
       },
       onRender({ paneID, doc, body }) {
         if (body.querySelector("[data-pp-glance-root]")) return;

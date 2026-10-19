@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
-<!-- PaperPilot 工作台 2.0（0.13.0）：独立桌面窗口
+<!-- Papilot 工作台 2.0（0.13.0）：独立桌面窗口
      设计体系借鉴 ai4paper：CSS 变量双主题 / 圆角气泡 + hover 消息操作 /
      模式分段切换 / 工具 chips。windowtype 单实例；persist 记忆位置大小 -->
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot 工作台"
-        windowtype="paperpilot:workbench"
+        title="Papilot 工作台"
+        windowtype="papilot:workbench"
         width="920" height="680"
         persist="screenX screenY width height sizemode">
-  <script src="chrome://paperpilot/content/workbench.js"/>
+  <script src="chrome://papilot/content/workbench.js"/>
   <html:style><![CDATA[
     :root {
       --pp-bg:#f9fafb; --pp-surface:#ffffff; --pp-soft:#f1f5f9;

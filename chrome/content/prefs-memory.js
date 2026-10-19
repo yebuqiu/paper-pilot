@@ -1,4 +1,7 @@
-/* PaperPilot 设置窗格脚本 · AI 记忆（0.51.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格脚本 · AI 记忆（0.51.0）
  *
  * 集成方在 prefs.xhtml 提供两个锚点：
  *   <html:div id="pp-mem-list"></html:div>   列表容器（本脚本动态生成行）
@@ -7,7 +10,7 @@
  * 行为：
  *   - 列 AgentMemory.list(50)：每行「[项目] 文本（相对时间）」+ 行内「删除」；
  *   - 「清空全部」走 Services.prompt.confirm（不可用时退化为 3 秒内二次点击确认）；
- *   - 记忆模块经 Zotero.PaperPilot.agentMemory 访问（集成方暴露），未就绪给明确提示。
+ *   - 记忆模块经 Zotero.Papilot.agentMemory 访问（集成方暴露），未就绪给明确提示。
  *
  * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测 pp-mem-list，不存在就
  *    延迟重试（同 prefs-schedule.js / prefs-agent.js 纪律）。
@@ -21,10 +24,10 @@
   const LIST_MAX = 50;
   const KIND_LABEL = { project: "项目", fact: "事实", prefer: "偏好" };
 
-  /** 记忆模块（集成方暴露 Zotero.PaperPilot.agentMemory） */
+  /** 记忆模块（集成方暴露 Zotero.Papilot.agentMemory） */
   const M = () => {
     try {
-      const api = Zotero.PaperPilot && Zotero.PaperPilot.agentMemory;
+      const api = Zotero.Papilot && Zotero.Papilot.agentMemory;
       return (api && typeof api.list === "function") ? api : null;
     } catch (e) { return null; }
   };
@@ -148,7 +151,7 @@
         usedPrompt = true;
         confirmed = !!Services.prompt.confirm(
           Zotero.getMainWindow(),
-          "PaperPilot · AI 记忆",
+          "Papilot · AI 记忆",
           "确定清空全部 AI 记忆？此操作不可撤销。");
       }
     } catch (e) { confirmed = false; }

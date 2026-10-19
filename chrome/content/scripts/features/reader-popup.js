@@ -1,4 +1,7 @@
-/* PaperPilot 阅读器划词浮窗 2.0（0.10.0 重构；0.15.0 交互升级）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 阅读器划词浮窗 2.0（0.10.0 重构；0.15.0 交互升级）
  * 官方 API：Zotero.Reader.registerEventListener("renderTextSelectionPopup", handler, pluginID)
  *
  * 能力：翻译 / 解读 / 追问（浮窗内多轮）；流式渲染（readerPopupStream 开关，
@@ -58,7 +61,7 @@ var ReaderPopup = {
     try {
       Zotero.Reader.registerEventListener("renderTextSelectionPopup", this._handler, pluginID);
     } catch (e) {
-      Zotero.logError(new Error("PaperPilot: 划词浮窗注册失败"));
+      Zotero.logError(new Error("Papilot: 划词浮窗注册失败"));
       Zotero.logError(e);
       this._handler = null;
     }
@@ -228,13 +231,13 @@ var ReaderPopup = {
       : "Explain the following excerpt from a paper in Chinese, two short paragraphs (100-200 chars total), plain text only, no Markdown: first what it says (explain key terms in one phrase), then its role in the paper's argument (what it leads to and what it supports).\n\n") + text;
   },
 
-  /** 打开 PaperPilot 设置面板（浮窗里「未就绪」提示的一键入口） */
+  /** 打开 Papilot 设置面板（浮窗里「未就绪」提示的一键入口） */
   _openSettings() {
     try {
-      const paneID = (Zotero.PaperPilot && Zotero.PaperPilot._paneID) || "paperpilot-prefs";
+      const paneID = (Zotero.Papilot && Zotero.Papilot._paneID) || "papilot-prefs";
       // 0.38.0：设置面板改为折叠分组——浮窗「未就绪」基本是模型通道问题，
       // 打开时自动展开「AI 模型通道」并滚动定位（prefs-fold.js 消费后清掉）
-      if (Zotero.PaperPilot) Zotero.PaperPilot._prefsFocus = "channels";
+      if (Zotero.Papilot) Zotero.Papilot._prefsFocus = "channels";
       Zotero.Utilities.Internal.openPreferences(paneID);
     } catch (e) {
       try { Zotero.logError(e); } catch (_) { /* ignore */ }

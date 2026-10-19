@@ -1,4 +1,7 @@
-/* PaperPilot 阅读状态管理（0.11.0，Reading List 品类）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 阅读状态管理（0.11.0，Reading List 品类）
  * 三个互斥标签：未读 / 在读 / 已读。
  * ① 右键菜单手动标记（批量）；
  * ② 新条目入库自动打「未读」（Notifier item/add，pref 开关）；
@@ -43,8 +46,8 @@ var ReadingState = {
       try { await this.setState(item, state); n++; } catch (e) { Zotero.logError(e); }
     }
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + I18n.t("menuReadingState"));
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    pw.changeHeadline("Papilot · " + I18n.t("menuReadingState"));
+    const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       (I18n.isZh ? "已标记 " : "Marked ") + n + (I18n.isZh ? " 篇为「" : " as '") + state +
       (I18n.isZh ? "」" : "'"));
     progress.setProgress(100);
@@ -97,14 +100,14 @@ var ReadingState = {
           if (event === "add") this._onNewItems(ids);
         } catch (e) { Zotero.logError(e); }
       },
-    }, ["item"], "paperpilot-readingstate");
+    }, ["item"], "papilot-readingstate");
     // tab 事件注册失败不影响主流程
     try {
       this._tabNotifierID = Zotero.Notifier.registerObserver({
         notify: (event, type, ids) => {
           try { this._onTab(event, ids); } catch (e) { /* ignore */ }
         },
-      }, ["tab"], "paperpilot-readingstate-tab");
+      }, ["tab"], "papilot-readingstate-tab");
     } catch (e) {
       this._tabNotifierID = null;
     }

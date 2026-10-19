@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot · 文献列表核验（AI 幻觉检测）"
-        windowtype="paperpilot:dialog"
+        title="Papilot · 文献列表核验（AI 幻觉检测）"
+        windowtype="papilot:dialog"
         width="760" height="600">
-  <script src="chrome://paperpilot/content/paste-check.js"></script>
+  <script src="chrome://papilot/content/paste-check.js"></script>
   <vbox flex="1" style="padding:12px;">
     <label value="粘贴文献列表（每行一条，支持含 DOI / APA / Vancouver 等常见格式），核验每条是否真实存在："/>
     <html:textarea id="pp-pc-input" rows="8"

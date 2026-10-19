@@ -1,4 +1,7 @@
-/* PaperPilot 内置领域术语种子词包（0.4x，配套「术语表与全文翻译优化」领域化升级）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 内置领域术语种子词包（0.4x，配套「术语表与全文翻译优化」领域化升级）
  *
  * 是什么：按学科领域组织的中英术语种子数据（参考机器之心 AITD「专项领域篇」、
  * hotvulcan/finance_i18n、meddict 等开源术语库的领域分档组织方式），供设置面板
@@ -12,7 +15,7 @@
  *     面板导入后用户可自由增删改；
  *   - 只对 en→zh 方向有意义（本项目主场景）；其他语言对由用户自行导入。
  *
- * 加载：main.js files 列表（translate.js 之后）；挂 Zotero.PaperPilot.glossaryPacks。
+ * 加载：main.js files 列表（translate.js 之后）；挂 Zotero.Papilot.glossaryPacks。
  * 消费：prefs-translate.js（内置词包「添加」按钮 → TranslateSvc.mergeGlossary 行级 upsert；
  *        在线词包目录 → fetchCatalog/fetchDomain → 同一条导入链）。
  */

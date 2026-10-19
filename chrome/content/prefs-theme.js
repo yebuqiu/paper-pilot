@@ -1,20 +1,23 @@
-/* PaperPilot 设置窗格 · 主题系统交互脚本（0.17.0 主题库版）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格 · 主题系统交互脚本（0.17.0 主题库版）
  * 由 Zotero.PreferencePanes.register({scripts:[...]}) 注入设置窗口执行。
- * 主题库/壁纸引擎经 Zotero.PaperPilot.uiTheme / pdfTheme 访问（主模块挂载）。
+ * 主题库/壁纸引擎经 Zotero.Papilot.uiTheme / pdfTheme 访问（主模块挂载）。
  * 交互：分类卡片网格（壁纸缩略预览）→ 点击即应用（一键切换，pref 持久化，
  * 重启自动恢复）；自定义主题 = 自定义配色 + 自定义壁纸文件（图片/视频）。
  */
 /* global Zotero, Components, Services, window, document */
 
 (function () {
-  const PREFIX = "extensions.zotero.paperpilot.";
+  const PREFIX = "extensions.zotero.papilot.";
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
 
   const $ = (id) => document.getElementById(id);
   const XHTML = "http://www.w3.org/1999/xhtml";
   const h = (tag) => document.createElementNS(XHTML, tag);
-  const uiT = () => (Zotero.PaperPilot && Zotero.PaperPilot.uiTheme) || null;
-  const pdfT = () => (Zotero.PaperPilot && Zotero.PaperPilot.pdfTheme) || null;
+  const uiT = () => (Zotero.Papilot && Zotero.Papilot.uiTheme) || null;
+  const pdfT = () => (Zotero.Papilot && Zotero.Papilot.pdfTheme) || null;
 
   const getPref = (key, fallback) => {
     try {
@@ -466,7 +469,7 @@
   }
 
   function init() {
-    if (typeof Zotero === "undefined" || !Zotero.PaperPilot || !uiT() || !pdfT()) {
+    if (typeof Zotero === "undefined" || !Zotero.Papilot || !uiT() || !pdfT()) {
       window.setTimeout(init, 400);
       return;
     }

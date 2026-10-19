@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 'use strict';
 /**
  * 优惠券 / 折扣码（服务端 1.4.6）

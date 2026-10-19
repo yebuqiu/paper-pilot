@@ -1,4 +1,4 @@
-/* PaperPilot 设置面板样式（0.15.0 重构）
+/* Papilot 设置面板样式（0.15.0 重构）
  * 参考 GitHub Primer / VS Code 设置页的视觉语言：模块 = 卡片，卡片内分功能区，
  * 配色经 CSS 变量随系统明暗主题切换（Zotero 7/10 chrome 文档支持 prefers-color-scheme）。
  * 经 Zotero.PreferencePanes.register({ stylesheets: [...] }) 随面板加载（官方推荐通道）。

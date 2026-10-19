@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 "use strict";
 
 /**
- * PaperPilot arXiv 工具包 · 公共 API
+ * Papilot arXiv 工具包 · 公共 API
  *
  * 用法（库）：
  *   const { createClient } = require("./src");

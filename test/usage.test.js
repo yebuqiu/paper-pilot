@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 用量趋势测试（服务端 1.4.3 / 插件 0.24.4）
  *
  * 运行：node test/usage.test.js

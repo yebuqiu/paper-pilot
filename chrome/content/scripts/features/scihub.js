@@ -1,4 +1,7 @@
-/* PaperPilot Sci-Hub / Sci-Net / 出版商直连 补全文（0.27.0；0.43.0 借鉴开源项目强化）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot Sci-Hub / Sci-Net / 出版商直连 补全文（0.27.0；0.43.0 借鉴开源项目强化）
  * 用途：Unpaywall 未命中时的补充渠道 —— 有 DOI 但既无开放获取版本、也无 PDF 的条目。
  * 流程：按镜像顺序探测 Sci-Hub 文章页（可配置）→ 解析 PDF 直链（embed#pdf /
  *      citation_pdf_url / object / 下载链 / JS 跳转，兼容 " = " 带空格写法）
@@ -38,7 +41,7 @@ var SciHub = {
   _deadUntil: {}, // host → 不可达失效截止时间戳（会话级）
 
   _debug(msg) {
-    try { Zotero.debug("PaperPilot scihub: " + msg); } catch (e) { /* ignore */ }
+    try { Zotero.debug("Papilot scihub: " + msg); } catch (e) { /* ignore */ }
   },
 
   /** 镜像列表：pref 覆盖默认；允许只写域名（自动补 https://、去尾斜杠） */

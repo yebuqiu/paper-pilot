@@ -1,4 +1,7 @@
-/* PaperPilot · 综述工作台窗口逻辑（0.53.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot · 综述工作台窗口逻辑（0.53.0）
  *
  * 运行在独立 XUL 窗口作用域，窗口参数经 window.arguments 传入：
  *   { Zotero, Services, metas, itemIDs, api, trimmed, maxItems }
@@ -26,7 +29,7 @@
   const XHTML = "http://www.w3.org/1999/xhtml";
   const args = (window.arguments && window.arguments[0]) || {};
   const Z = args.Zotero || null;
-  const PP = Z && Z.PaperPilot ? Z.PaperPilot : null;
+  const PP = Z && Z.Papilot ? Z.Papilot : null;
   let API = args.api || (PP && PP.reviewWorkbench) || null;
   let metas = Array.isArray(args.metas) ? args.metas.slice() : [];
   let trimmed = !!args.trimmed;
@@ -151,7 +154,7 @@
     let AI_OK = false;
     if (!API || typeof API.generateOutline !== "function" ||
       typeof API.draftSections !== "function" || typeof API.parseOutline !== "function") {
-      setHint("核心模块未就绪（ReviewWorkbench 未加载）。请重启 Zotero 或更新 PaperPilot 后重试。", "err");
+      setHint("核心模块未就绪（ReviewWorkbench 未加载）。请重启 Zotero 或更新 Papilot 后重试。", "err");
       setStatus("核心模块未就绪", "err");
       genOutlineBtn.disabled = true;
       genDraftBtn.disabled = true;
@@ -164,7 +167,7 @@
     try { ready = API.aiReady(); } catch (e) { ready = { ok: false, guidance: "" }; }
     AI_OK = !!(ready && ready.ok);
     if (!AI_OK) {
-      setHint("AI 未就绪：" + (ready.guidance || "请先在 设置 → PaperPilot 登录或配置模型通道") + "（配置后重开本窗口）", "err");
+      setHint("AI 未就绪：" + (ready.guidance || "请先在 设置 → Papilot 登录或配置模型通道") + "（配置后重开本窗口）", "err");
       setStatus("AI 未配置：按钮已禁用", "warn");
     } else {
       setHint("流程：① 生成大纲（可手改）→ ② 逐节起草 → ③ 保存为笔记 / 导出 Markdown");
@@ -200,7 +203,7 @@
     }
 
     /** 单实例复用时换入新题录（由 ReviewWorkbench.openDialog 调用） */
-    window.PaperPilotSetPayload = function (payload) {
+    window.PapilotSetPayload = function (payload) {
       try {
         const p = payload || {};
         if (Array.isArray(p.metas)) metas = p.metas.slice();

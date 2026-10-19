@@ -1,4 +1,7 @@
-/* PaperPilot 全文补全（多源链：Unpaywall → Sci-Hub → Sci-Net → 出版商直连）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 全文补全（多源链：Unpaywall → Sci-Hub → Sci-Net → 出版商直连）
  * 0.11.0：Unpaywall 合法开放获取渠道 —— 有 DOI 无 PDF 的条目查 OA 版本并导入。
  * 0.27.0：未命中时按设置可选接力 Sci-Hub / Sci-Net 补充渠道（features/scihub.js）：
  *         Sci-Hub 按镜像顺序探测，未收录的新文献兜底 Sci-Net。
@@ -47,7 +50,7 @@ var OAFetch = {
 
   /** 字节 → 临时文件 → 挂为条目的 PDF 附件（%PDF 校验已由 SciHub 侧完成） */
   async _importBytes(item, bytes, title) {
-    const tmp = PathUtils.join(PathUtils.tempDir, "paperpilot-fulltext-" + Date.now() + "-" + Math.floor(Math.random() * 1e4) + ".pdf");
+    const tmp = PathUtils.join(PathUtils.tempDir, "papilot-fulltext-" + Date.now() + "-" + Math.floor(Math.random() * 1e4) + ".pdf");
     await IOUtils.write(tmp, bytes);
     try {
       const att = await Zotero.Attachments.importFromFile({ file: tmp, parentItemID: item.id });
@@ -93,7 +96,7 @@ var OAFetch = {
         return { status: "added" };
       }
     } catch (e) {
-      try { Zotero.debug("PaperPilot oaFetch: Unpaywall 查询失败 - " + (e && e.message)); } catch (e2) { /* ignore */ }
+      try { Zotero.debug("Papilot oaFetch: Unpaywall 查询失败 - " + (e && e.message)); } catch (e2) { /* ignore */ }
     }
 
     // ② Sci-Hub（补充渠道，按镜像顺序探测；不可达镜像有会话级冷却记忆）
@@ -109,7 +112,7 @@ var OAFetch = {
         return { status: "captcha", host: s1.host, pageUrl: s1.pageUrl };
       }
       if (s1.status !== "not-found" && s1.status !== "unreachable") {
-        try { Zotero.debug("PaperPilot oaFetch: Sci-Hub " + s1.status + " - " + (s1.message || "")); } catch (e2) { /* ignore */ }
+        try { Zotero.debug("Papilot oaFetch: Sci-Hub " + s1.status + " - " + (s1.message || "")); } catch (e2) { /* ignore */ }
       }
     }
 
@@ -141,7 +144,7 @@ var OAFetch = {
         return { status: "captcha", host: s3.host, pageUrl: s3.pageUrl };
       }
       if (s3.status === "unreachable") {
-        try { Zotero.debug("PaperPilot oaFetch: 出版商直连不可达 - " + (s3.message || "")); } catch (e2) { /* ignore */ }
+        try { Zotero.debug("Papilot oaFetch: 出版商直连不可达 - " + (s3.message || "")); } catch (e2) { /* ignore */ }
       }
     }
 
@@ -166,7 +169,7 @@ var OAFetch = {
       }
     }
     try {
-      Zotero.alert(null, "PaperPilot",
+      Zotero.alert(null, "Papilot",
         zh ? "Sci-Hub 要求人机验证：\n已尝试在 Zotero 中打开验证页面。请按页面提示完成验证（如点「Нет」），\n然后重新运行「补全文」。验证状态保存在 Zotero 会话中，一次即可。"
           : "Sci-Hub requires human verification:\nA verification page was opened in Zotero (if available). Complete it as instructed,\nthen run Find Full Text again. The verification is kept in Zotero's session.");
     } catch (e) { /* ignore */ }
@@ -180,13 +183,13 @@ var OAFetch = {
     if (!items.length) { ItemSel.alertEmpty(); return; }
 
     const zh = I18n.isZh;
-    const email = String(Prefs.get("unpaywallEmail", "") || "").trim() || "paperpilot@users.noreply.local";
+    const email = String(Prefs.get("unpaywallEmail", "") || "").trim() || "papilot@users.noreply.local";
     const useScihub = Prefs.get("scihubEnabled", true) !== false;
     const useScinet = useScihub && Prefs.get("scinetEnabled", true) !== false;
     const usePubDirect = Prefs.get("publisherDirectEnabled", true) !== false;
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + I18n.t("menuOaFetch"));
+    pw.changeHeadline("Papilot · " + I18n.t("menuOaFetch"));
     pw.show();
     let nOA = 0, nSci = 0, nSnet = 0, nPub = 0, nHas = 0, nMiss = 0, nNoDoi = 0, nErr = 0;
     let scihubBlocked = false;   // 验证拦截 / 不可达后，本次运行不再尝试 Sci-Hub/Sci-Net
@@ -198,7 +201,7 @@ var OAFetch = {
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(30);
         progress.setText(zh ? "检索中…" : "Searching…");
@@ -228,7 +231,7 @@ var OAFetch = {
           if (!unreachHandled) {
             unreachHandled = true;
             try {
-              Zotero.alert(null, "PaperPilot",
+              Zotero.alert(null, "Papilot",
                 zh ? "无法连接 Sci-Hub 镜像（" + (r.host || "") + "）：\n网络可能阻断该域名。可在 设置 → 增强功能 中更换镜像列表（如 sci-hub.box），\n或稍后重试。"
                   : "Cannot reach Sci-Hub mirror (" + (r.host || "") + "):\nyour network may block it. Try another mirror in Settings → Enhanced Features\n(e.g. sci-hub.box) or retry later.");
             } catch (e) { /* ignore */ }
@@ -254,7 +257,7 @@ var OAFetch = {
       (zh ? "，无 DOI " : ", no DOI ") + nNoDoi;
     if (nErr) sum += (zh ? "，出错 " : ", errors ") + nErr;
     if (captchaHandled) sum += (zh ? "；Sci-Hub 已暂停：完成验证后重跑" : "; Sci-Hub paused: verify then rerun");
-    const summary = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", sum);
+    const summary = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", sum);
     summary.setProgress(100);
     pw.startCloseTimer(6000);
   },

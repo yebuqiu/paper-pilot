@@ -1,4 +1,7 @@
-/* PaperPilot 引文追溯（0.7.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 引文追溯（0.7.0 新增）
  * 基于 Semantic Scholar references/citations 端点：
  * 选中条目 → 解析 S2 paper（DOI 优先，标题检索兜底）→ 拉参考文献与施引文献
  * → 按被引量降序生成 Markdown 笔记（标注哪些参考文献已在本地文库）。
@@ -33,7 +36,7 @@ var CitationTrace = {
       const hit = cands.find((p) => CitationColumn.normalizeTitle(p.title) === want);
       if (hit) {
         if (doiPaper) {
-          Zotero.debug(`PaperPilot: 引文追溯检测到 DOI 错配（${doi}），已按标题匹配到正确记录`);
+          Zotero.debug(`Papilot: 引文追溯检测到 DOI 错配（${doi}），已按标题匹配到正确记录`);
         }
         return hit;
       }
@@ -118,13 +121,13 @@ var CitationTrace = {
       return;
     }
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
+    pw.changeHeadline("Papilot");
     pw.show();
     let first = true;
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(30);
         const r = await this.trace(item);

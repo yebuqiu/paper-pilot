@@ -1,4 +1,7 @@
-/* PaperPilot 入库自动精读（0.23.0，路线图阶段 2）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 入库自动精读（0.23.0，路线图阶段 2）
  * 把「手动点 AI 总结」变成「文献入库即自动精读」：新条目入库 → 延迟落定 →
  * 串行生成结构化总结笔记 → 打上 #AI精读 标记。
  *
@@ -47,7 +50,7 @@ var AutoRead = {
   canRun() {
     const zh = I18n.isZh;
     if (!Prefs.get("autoReadEnabled", false)) {
-      return { ok: false, reason: zh ? "入库自动精读未开启（设置 → PaperPilot）" : "Auto-read is off" };
+      return { ok: false, reason: zh ? "入库自动精读未开启（设置 → Papilot）" : "Auto-read is off" };
     }
     if (typeof AIClient === "undefined" || !AIClient.hasKey()) {
       const why = (AIClient && AIClient.guidance) ? AIClient.guidance() : "";
@@ -123,7 +126,7 @@ var AutoRead = {
         if (!gate.ok) {
           if (!this._warned && this.queue.length) {
             this._warned = true;
-            Zotero.debug("PaperPilot autoRead 停止：" + gate.reason);
+            Zotero.debug("Papilot autoRead 停止：" + gate.reason);
           }
           this.queue = [];
           break;
@@ -134,12 +137,12 @@ var AutoRead = {
         if (!item || !(await this.eligible(item))) continue;
         if (!pw) {
           pw = new Zotero.ProgressWindow({ closeOnClick: true });
-          pw.changeHeadline("PaperPilot · " + (zh ? "入库自动精读" : "Auto read"));
+          pw.changeHeadline("Papilot · " + (zh ? "入库自动精读" : "Auto read"));
           pw.show();
         }
         let title = "";
         try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-        progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+        progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
           (zh ? "AI 精读中：" : "Reading: ") + title.slice(0, 60));
         try {
           await AIChat.summarize(item);
@@ -175,13 +178,13 @@ var AutoRead = {
     if (!items.length) { ItemSel.alertEmpty(); return; }
     const gate = this.canRun();
     if (!gate.ok) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot", gate.reason);
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot", gate.reason);
       return;
     }
     const ok = [];
     for (const it of items) if (await this.eligible(it)) ok.push(it.id);
     if (!ok.length) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         zh ? "这些条目都不满足条件：需要「有 PDF」「未精读过」，并且在你设定的分类白名单内。"
            : "No eligible items (need a PDF, not already read, and inside the whitelist).");
       return;
@@ -189,7 +192,7 @@ var AutoRead = {
     const n = Math.min(ok.length, this.remaining());
     await this.enqueue(ok.slice(0, n));
     if (ok.length > n) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         zh ? `今日剩余额度只够 ${n} 篇，其余 ${ok.length - n} 篇本次跳过（明日额度重置）。`
            : `Daily quota allows ${n} of ${ok.length}; the rest were skipped.`);
     }
@@ -251,7 +254,7 @@ var AutoRead = {
       notify: (event, type, ids) => {
         try { if (type === "item") this._onNotify(event, ids); } catch (e) { Zotero.logError(e); }
       },
-    }, ["item"], "paperpilot-autoread");
+    }, ["item"], "papilot-autoread");
   },
 
   unregister() {

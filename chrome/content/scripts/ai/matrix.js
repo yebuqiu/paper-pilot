@@ -1,4 +1,7 @@
-/* PaperPilot AI 文献矩阵：多篇文献按维度抽取 → 对比表格 + 比较分析笔记 */
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot AI 文献矩阵：多篇文献按维度抽取 → 对比表格 + 比较分析笔记 */
 /* global Zotero, Services, Prefs, AIChat, AIClient, Notes, I18n, ItemSel */
 
 var Matrix = {
@@ -36,25 +39,25 @@ var Matrix = {
     if (!zp) return;
     const items = ItemSel.regularOnly(zp.getSelectedItems() || []);
     if (items.length < 2) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         I18n.isZh ? "请至少选中 2 篇文献" : "Select at least 2 items");
       return;
     }
     const max = Number(Prefs.get("matrixMaxItems", 8)) || 8;
     if (items.length > max) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         I18n.isZh ? `一次最多处理 ${max} 篇（可在设置中调整）` : `Max ${max} items per run`);
       return;
     }
     if (!AIClient.hasKey()) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot", I18n.t("chatNoKey"));
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot", I18n.t("chatNoKey"));
       return;
     }
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + I18n.t("noteMatrixTitle"));
+    pw.changeHeadline("Papilot · " + I18n.t("noteMatrixTitle"));
     const progress = new pw.ItemProgress(
-      "chrome://paperpilot/content/icons/chat.svg",
+      "chrome://papilot/content/icons/chat.svg",
       `${items.length} 篇 · ${I18n.t("matrixBusy")}`
     );
     pw.show();

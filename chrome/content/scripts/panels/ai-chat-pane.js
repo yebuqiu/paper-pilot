@@ -1,10 +1,13 @@
-/* PaperPilot AI 问答侧栏（ItemPane section）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot AI 问答侧栏（ItemPane section）
  * 注意：Zotero 7 的 section body 是 XUL 元素，HTML 元素必须用 XHTML 命名空间创建
  */
 /* global Zotero, AIChat, AIClient, I18n, Notes, Prompts, MdLite */
 
 var AIChatPane = {
-  PANE_ID: "paperpilot-ai-chat",
+  PANE_ID: "papilot-ai-chat",
   _panes: new Map(), // paneID -> 状态
   _registered: false,
 
@@ -45,12 +48,12 @@ var AIChatPane = {
       paneID: this.PANE_ID,
       pluginID,
       header: {
-        l10nID: "paperpilot-chat-section-header",
-        icon: "chrome://paperpilot/content/icons/chat.svg",
+        l10nID: "papilot-chat-section-header",
+        icon: "chrome://papilot/content/icons/chat.svg",
       },
       sidenav: {
-        l10nID: "paperpilot-chat-section-sidenav",
-        icon: "chrome://paperpilot/content/icons/chat.svg",
+        l10nID: "papilot-chat-section-sidenav",
+        icon: "chrome://papilot/content/icons/chat.svg",
       },
       onRender({ paneID, doc, body }) {
         // 防御：同一 body 不重复构建

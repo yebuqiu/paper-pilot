@@ -1,20 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
-<!-- PaperPilot 功能中心（0.12.0）：统一导航入口
+<!-- Papilot 功能中心（0.12.0）：统一导航入口
      左侧类别页签（一类一页，职责单一），右侧功能卡片 + 搜索过滤；
      windowtype 供单实例枚举；persist 记忆位置/大小 -->
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot 功能中心"
-        windowtype="paperpilot:hub"
+        title="Papilot 功能中心"
+        windowtype="papilot:hub"
         width="820" height="600"
         persist="screenX screenY width height sizemode">
-  <script src="chrome://paperpilot/content/hub.js"/>
+  <script src="chrome://papilot/content/hub.js"/>
   <hbox flex="1" style="min-height:0;">
 
     <!-- 左侧：类别导航 -->
     <vbox style="width:170px;min-width:170px;border-right:1px solid var(--material-border,1px solid #ccc);background:var(--material-sidepane,#f0f0f2);padding:8px 6px;gap:2px;">
-      <html:div style="font-weight:700;font-size:14px;padding:4px 8px 10px;">PaperPilot</html:div>
+      <html:div style="font-weight:700;font-size:14px;padding:4px 8px 10px;">Papilot</html:div>
       <vbox id="pp-hub-nav" flex="1" style="gap:2px;"/>
       <html:div id="pp-hub-selcount" style="color:var(--fill-secondary,#777);font-size:11px;padding:8px 8px 2px;border-top:1px solid var(--material-border,1px solid #ddd);"></html:div>
     </vbox>

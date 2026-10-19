@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot 账号后台 · account-server.js（Node >= 14，零依赖）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · account-server.js（Node >= 14，零依赖）
  *
  * 实现 Zotero 插件 0.14.0 账号系统契约（docs/账号系统与模型通道.md）：
  *   POST /api/auth/register  {email,password,nickname} → {ok,user}（公开自助注册，固定 Free）
@@ -135,6 +138,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { JsonStore } = require('./lib/store');
+const { createAsyncWriter } = require('./lib/async-store');
 const { PROVIDERS, providerOf, providersForClient } = require('./lib/presets');
 const membership = require('./lib/membership');
 const coupon = require('./lib/coupon');
@@ -143,6 +147,38 @@ const alerts = require('./lib/alerts');
 const lockout = require('./lib/lockout');
 const sessions = require('./lib/sessions');
 const audit = require('./lib/audit');
+
+// ---------------- 事件循环延迟（让服务端能自证"我卡没卡"）----------------
+// 端口在听 ≠ 能干活：Node 是单线程，一次长同步 IO 就能让 accept 排队、请求悬空，
+// 而控制台看到的只是"健康检查超时"。这里用 200ms 心跳的实际漂移量化卡顿，
+// 由 /api/health 的 lagMs / maxLagMs 暴露给控制台与排障脚本。
+const _loop = { lagMs: 0, maxLagMs: 0, restarts: 0 };
+let _loopLast = Date.now();
+const _loopTimer = setInterval(() => {
+  const now = Date.now();
+  const lag = now - _loopLast - 200;
+  _loop.lagMs = lag > 0 ? lag : 0;
+  if (lag > _loop.maxLagMs) _loop.maxLagMs = lag;
+  _loopLast = now;
+}, 200);
+if (_loopTimer.unref) _loopTimer.unref();
+
+// 崩溃兜底：没有它，任何异步异常都只往 stderr 丢一坨栈，而 stdout 被 cmd 重定向到
+// server-stdout.log —— 一旦那条链断了（例如 VBS 把 stdout 错指到 server-console.log），
+// 进程就"无声消失"，事后完全查不出原因。
+process.on('uncaughtException', (e) => {
+  try { log('FATAL uncaughtException:', (e && e.stack) || e); } catch (_) {}
+  try { fs.appendFileSync(path.join(__dirname, 'data', 'server-crash.log'),
+    '[' + new Date().toISOString() + '] uncaughtException\n' + ((e && e.stack) || e) + '\n\n'); } catch (_) {}
+  _loop.restarts += 1;
+  process.exit(1);
+});
+process.on('unhandledRejection', (e) => {
+  try { log('FATAL unhandledRejection:', (e && e.stack) || e); } catch (_) {}
+  try { fs.appendFileSync(path.join(__dirname, 'data', 'server-crash.log'),
+    '[' + new Date().toISOString() + '] unhandledRejection\n' + ((e && e.stack) || e) + '\n\n'); } catch (_) {}
+  process.exit(1);
+});
 const reconcile = require('./lib/reconcile');
 const mail = require('./lib/mail');
 const pricing = require('./lib/pricing');
@@ -163,6 +199,10 @@ const REGISTER_HTML = path.join(__dirname, 'public', 'register.html');
 const VERIFY_HTML = path.join(__dirname, 'public', 'verify.html');
 const FORGOT_HTML = path.join(__dirname, 'public', 'forgot.html');
 const RESET_HTML = path.join(__dirname, 'public', 'reset.html');
+// 法律文本（2026-10-19）：付费服务上线后必须有可访问的协议与隐私政策，
+// 并与注册页的勾选、订单的同意记录对应（条款版本见 terms.html 顶部）。
+const TERMS_HTML = path.join(__dirname, 'public', 'terms.html');
+const PRIVACY_HTML = path.join(__dirname, 'public', 'privacy.html');
 
 /* 本地配置文件 {DATA_DIR}/pp.env（KEY=VALUE 每行；server/data/ 已 gitignore，密钥不进 git）：
  * PP_RESEND_KEY=re_xxx      启用邮箱验证/密码找回（Resend）
@@ -231,12 +271,26 @@ const PLAIN_METER_MAX = 4 * 1024 * 1024;
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const usersStore = new JsonStore(path.join(DATA_DIR, 'users.json'), { users: [], tokens: {} });
+/* 1.8.6（审查 P1-4）：计量路径的异步合并写 —— 见 lib/async-store.js 顶部注释。
+ * 只给「每次 AI 调用都会走」的 countUsage 用；充值/核销/管理调账等资金路径仍同步 save()。 */
+const usersWriter = createAsyncWriter(usersStore, {
+  label: 'users',
+  log: (...a) => { try { log(...a); } catch (_) { console.error(...a); } },
+});
 const channelsStore = new JsonStore(path.join(DATA_DIR, 'channels.json'), { channels: [], active: null });
 // 0.23.0 会员域：套餐/价格/收款信息/订单/激活码。
 // 首次启动自动落默认配置；v1（无 schemaVersion）文档自动升级，幂等。
 const membershipStore = new JsonStore(path.join(DATA_DIR, 'membership.json'), membership.newDoc());
 membershipStore.data = membership.normalize(membershipStore.data);
-membershipStore.save();
+// ★ 1.8.5（审查 P0-4）：损坏时 loadFailed=true，此时**绝不**落盘——
+//   否则会把 normalize 后的默认文档（空订单/空套餐）覆盖到坏文件上，数据彻底消失。
+if (membershipStore.loadFailed) {
+  // 此处不能调 log()：LOG_FILE 还没初始化（TDZ），只能用 console
+  console.error('[store] FATAL membership.json 损坏，跳过默认值落盘（副本:',
+    membershipStore.corruptPath || '-', '）');
+} else {
+  membershipStore.save();
+}
 // 1.4.2 订单积压告警状态（重启不丢，避免重复轰炸）
 const alertStore = new JsonStore(path.join(DATA_DIR, 'alerts.json'), {});
 // 1.5.0 AI 计费单价表（模型 → 元/千 token）。默认空表 = 一切按「未配置单价」计，
@@ -256,9 +310,41 @@ payStore.data = pay.sanitizeCfg(payStore.data);
 // ★ enforce 默认 false = 观察模式：只扣账不拦截。真实成本数据没跑够之前，
 //   任何拦截阈值都是拍脑袋——先观察、配准价，再开。
 balance.normalizeCfg(pricingStore.data);
-pricingStore.save();
+if (pricingStore.loadFailed) {
+  console.error('[store] FATAL pricing.json 损坏，跳过默认值落盘（副本:',
+    pricingStore.corruptPath || '-', '）');
+} else {
+  pricingStore.save();
+}
 /** 当前余额配置（每次读都归一化，改配置即时生效） */
 function balanceCfg() { return balance.cfgOf(pricingStore.data); }
+
+/**
+ * 1.8.5（审查 P0-4）：数据文件损坏视图。
+ * 任一核心 store 加载失败 → 服务进入维护模式：/api/health 报 degraded，其余接口 503。
+ * 宁可停服，也不能拿空库继续接单（会把坏文件覆盖成空文件，永久丢数据）。
+ */
+function degradation() {
+  const out = [];
+  const pairs = [
+    ['users', usersStore], ['membership', membershipStore], ['channels', channelsStore],
+    ['pricing', pricingStore], ['pay', payStore],
+  ];
+  // 只有「身份 / 资金 / 价格」三类损坏才值得停服；pay/channels 损坏各自的读写路径
+  // 已有 fail-safe（在线支付不可用 / 网关 503），不该连带把登录注册一起停掉。
+  const BLOCKING = { users: 1, membership: 1, pricing: 1 };
+  for (const [name, st] of pairs) {
+    if (st && st.loadFailed) {
+      out.push({
+        store: name,
+        blocking: !!BLOCKING[name],
+        error: String(st.loadError || ''),
+        backup: st.corruptPath ? path.basename(st.corruptPath) : '',
+      });
+    }
+  }
+  return out;
+}
 
 /* ---------------- 在线支付网关（1.6.0） ----------------
  * 配置存 pay.json；密钥密文用 secretbox 解出**仅在本进程内**使用，绝不下发、绝不日志。
@@ -608,13 +694,49 @@ function clientIp(req) {
   return req.socket.remoteAddress || 'unknown';
 }
 
-/** 管理请求判定：必须「本机直连」= 回环 socket 且无代理头。
+/** 管理请求判定：必须「本机直连」= 回环 socket 且无代理头，且 Host/Origin 都是本机。
  *  Tunnel/反代回源虽也来自回环，但必带 CF-Connecting-IP / X-Forwarded-For——
- *  一律视为公网请求并拒绝管理访问（公网只开放注册/登录/网关）。 */
+ *  一律视为公网请求并拒绝管理访问（公网只开放注册/登录/网关）。
+ *
+ *  ★ 1.8.5（审查 P0-2）：只判 socket 会被 DNS rebinding 打穿——恶意页面把自己的域名
+ *  解析到 127.0.0.1，浏览器发出的请求 socket 同样是回环、也没有代理头，但 Host 是
+ *  攻击者域名。补三道：Host 白名单 / Origin 白名单 / Sec-Fetch-Site 同源。
+ *  这三道对「本机管理页 + 启动器」完全透明（它们都走 127.0.0.1 / localhost）。
+ */
+function isLoopbackName(host) {
+  const h = String(host || "").trim().toLowerCase();
+  return h === "127.0.0.1" || h === "localhost" || h === "::1" || h === "[::1]";
+}
+
+/** Host 头必须是本机名（可带端口）；缺 Host（HTTP/1.0）一律拒绝 */
+function hostHeaderIsLocal(req) {
+  const raw = String(req.headers.host || "").trim();
+  if (!raw) return false;
+  return isLoopbackName(raw.replace(/:\d+$/, ""));
+}
+
+/** 带 Origin 时必须是本机 http 源；`Origin: null` / 跨站源一律拒绝 */
+function originIsLocal(req) {
+  const o = req.headers.origin;
+  if (o === undefined || o === null) return true;
+  try {
+    const u = new URL(String(o));
+    if (u.protocol !== "http:") return false;
+    return isLoopbackName(u.hostname);
+  } catch (e) { return false; }
+}
+
+/** 浏览器可控的 Fetch Metadata：跨站/同站请求一律拒绝（非浏览器不带此头，放行） */
+function fetchSiteIsLocal(req) {
+  const s = String(req.headers["sec-fetch-site"] || "").toLowerCase();
+  return !s || s === "same-origin" || s === "none";
+}
+
 function isLocalAdmin(req) {
   if (req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']) return false;
   const ra = req.socket.remoteAddress || '';
-  return ra === '127.0.0.1' || ra === '::1' || ra === '::ffff:127.0.0.1';
+  if (!(ra === '127.0.0.1' || ra === '::1' || ra === '::ffff:127.0.0.1')) return false;
+  return hostHeaderIsLocal(req) && originIsLocal(req) && fetchSiteIsLocal(req);
 }
 
 function slug(name, fallback) {
@@ -720,13 +842,138 @@ function userForClient(user) {
   return out;
 }
 
+/* ---------------- 查找索引（1.8.6，审查 P1-10） ----------------
+ * 用户/订单量上来后，findUserByEmail / findOrder 之类的 O(n) 扫描会出现在每个
+ * 带鉴权或订单相关的请求里（1000 用户 ≈ 每次 1000 次比较，且 health 一次调多次）。
+ * 这里维持 4 张 Map：
+ *   userById / userByEmail / orderById / orderByTradeNo
+ * 命中 O(1)；未命中退回线性扫描（既保证「索引没建/漏维护」时不丢结果，也顺手补索引）。
+ * 维护点：创建用户、删除用户、改用户、下单、写 outTradeNo；另外每次 find 前比较
+ * 数组长度与 Map 大小，不一致就整表重建（删改漏维护的最后一道保险）。
+ * 命中还会核对对象字段，防「删了用户但 Map 里还留着」这类脏命中。
+ */
+const _idx = {
+  userById: new Map(),
+  userByEmail: new Map(),
+  orderById: new Map(),
+  orderByTradeNo: new Map(),
+  hits: 0,
+  misses: 0,
+  rebuilds: 0,
+};
+
+function rebuildUserIndex() {
+  _idx.userById.clear();
+  _idx.userByEmail.clear();
+  const users = (usersStore.data && usersStore.data.users) || [];
+  for (const u of users) indexUser(u);
+  _idx.rebuilds += 1;
+}
+
+function rebuildOrderIndex() {
+  _idx.orderById.clear();
+  _idx.orderByTradeNo.clear();
+  const orders = (membershipStore.data && membershipStore.data.orders) || [];
+  for (const o of orders) indexOrder(o);
+  _idx.rebuilds += 1;
+}
+
+function indexUser(u) {
+  if (!u) return;
+  if (u.id) _idx.userById.set(u.id, u);
+  if (u.email) _idx.userByEmail.set(String(u.email).toLowerCase(), u);
+}
+
+function unindexUser(u) {
+  if (!u) return;
+  if (u.id) _idx.userById.delete(u.id);
+  if (u.email) _idx.userByEmail.delete(String(u.email).toLowerCase());
+}
+
+function indexOrder(o) {
+  if (!o) return;
+  if (o.id) _idx.orderById.set(o.id, o);
+  if (o.outTradeNo) _idx.orderByTradeNo.set(String(o.outTradeNo), o);
+}
+
+/** 数组长度与索引规模不一致 → 有增删没走维护点，整表重建（O(n)，罕见路径） */
+function syncIndexes() {
+  const users = (usersStore.data && usersStore.data.users) || [];
+  if (users.length !== _idx.userById.size) rebuildUserIndex();
+  const orders = (membershipStore.data && membershipStore.data.orders) || [];
+  if (orders.length !== _idx.orderById.size) rebuildOrderIndex();
+}
+
 function findUserByEmail(email) {
-  return usersStore.data.users.find((u) => u.email.toLowerCase() === String(email).toLowerCase()) || null;
+  const k = String(email || '').toLowerCase();
+  if (!k) return null;
+  syncIndexes();
+  const hit = _idx.userByEmail.get(k);
+  if (hit && hit.email && String(hit.email).toLowerCase() === k) { _idx.hits += 1; return hit; }
+  _idx.misses += 1;
+  const users = (usersStore.data && usersStore.data.users) || [];
+  const u = users.find((x) => x && String(x.email || '').toLowerCase() === k) || null;
+  if (u) indexUser(u);
+  return u;
 }
 
 function findUserById(id) {
-  return usersStore.data.users.find((u) => u.id === id) || null;
+  const k = id && String(id);
+  if (!k) return null;
+  syncIndexes();
+  const hit = _idx.userById.get(k);
+  if (hit && hit.id === id) { _idx.hits += 1; return hit; }
+  _idx.misses += 1;
+  const users = (usersStore.data && usersStore.data.users) || [];
+  const u = users.find((x) => x && x.id === id) || null;
+  if (u) indexUser(u);
+  return u;
 }
+
+/** 订单查找（索引优先，未命中退回线性；兼容 membership 的原始实现作为兜底） */
+function findOrder(id) {
+  const k = id && String(id);
+  if (!k) return null;
+  syncIndexes();
+  const hit = _idx.orderById.get(k);
+  if (hit && hit.id === id) { _idx.hits += 1; return hit; }
+  _idx.misses += 1;
+  const o = membership.findOrder(membershipStore.data, id);
+  if (o) indexOrder(o);
+  return o;
+}
+
+function findOrderByTradeNo(no) {
+  const k = String(no || '');
+  if (!k) return null;
+  syncIndexes();
+  const hit = _idx.orderByTradeNo.get(k);
+  if (hit && String(hit.outTradeNo || '') === k) { _idx.hits += 1; return hit; }
+  _idx.misses += 1;
+  const o = membership.findOrderByTradeNo(membershipStore.data, no);
+  if (o) indexOrder(o);
+  return o;
+}
+
+// 启动即建一次索引（此后增删改按维护点增量更新，长度不一致时再整表重建）
+rebuildUserIndex();
+rebuildOrderIndex();
+
+/** 索引规模与命中统计（测试/排障：确认 find* 真的走了索引而不是退化扫描） */
+function indexStats() {
+  return {
+    users: _idx.userById.size,
+    usersByEmail: _idx.userByEmail.size,
+    orders: _idx.orderById.size,
+    ordersByTradeNo: _idx.orderByTradeNo.size,
+    hits: _idx.hits,
+    misses: _idx.misses,
+    rebuilds: _idx.rebuilds,
+  };
+}
+
+/** 同步落盘计量路径（读磁盘前的测试钩子；生产由 shutdown 调用） */
+function flushStores() { return usersWriter.flush(); }
 
 function pruneTokens() {
   const now = Date.now();
@@ -838,13 +1085,38 @@ function rateThrottled(key, max, windowMs) {
   return false;
 }
 
+/* 1.8.6（审查 P2-2）：限速表原本**只增不删** —— 每个公网 IP × 每种动作都会留下一个
+ * key（注册/登录/邮件/网关/支付回调…），长期运行就是一条无界内存曲线。
+ * 每 10 分钟扫一遍：某 key 的时间戳**全部**早于 10 分钟前即整条删除（各限速窗口最长
+ * 60s，晚删只是多留一会儿，不影响判定）。定时器 unref，测试 require 本模块不会挂住进程。 */
+const RATE_SWEEP_MS = 10 * 60e3;
+const RATE_KEEP_MS = 10 * 60e3;
+const _rateSweepTimer = setInterval(() => {
+  const now = Date.now();
+  let removed = 0;
+  for (const [key, list] of rateAttempts) {
+    if (!Array.isArray(list) || !list.length
+      || list.every((t) => now - t >= RATE_KEEP_MS)) {
+      rateAttempts.delete(key);
+      removed += 1;
+    }
+  }
+  if (removed > 0) log('rate table swept:', removed, 'keys, left', rateAttempts.size);
+}, RATE_SWEEP_MS);
+if (_rateSweepTimer.unref) _rateSweepTimer.unref();
+
 /**
  * 网关成功转发后落一次用量（1.5.0 起带 token 与成本）。
  * info = { model, usage, costMicro, dayKey }；不传即只记次数（旧行为）。
+ *
+ * 1.8.6（P1-4）：落盘改为 saveSoon()——合并窗口内多次调用只写一次磁盘。
+ * 调用点（网关计量）在此前已用 balance.consume() 改过内存余额，两者在同一份快照里
+ * 落盘；窗口内硬崩溃会同时丢这批用量与扣费（方向是少收钱），SIGINT/SIGTERM 前
+ * shutdown 会同步 flush，正常运行不丢。详见 lib/async-store.js 顶部。
  */
 function countUsage(user, info) {
   recordUsage(user, info);
-  usersStore.save();
+  usersWriter.saveSoon();
 }
 
 /* ---------------- 通道域（官方网关上游池） ---------------- */
@@ -1258,7 +1530,96 @@ function gatewayChat(req, res, user) {
       if (meterTail.length > 1e6) meterTail = meterTail.slice(-4096);   // 防御异常超长行
     };
 
-    const upReq = mod.request(u, { method: 'POST', headers, timeout }, (upRes) => {
+    /* ---------------- ★ 1.8.6（审查 P1-3）：并发预留（hold）----------------
+     * 缺陷：precheck 只读余额 → 同账号并发 N 个请求全部放行，响应结束后各自扣费，
+     *   余额被打成负数（生产 enforce=true 时即「免费透支」）。
+     * 方案：放行后按估算成本 hold 一笔额度（只占 availableMicro，不动真实余额）；
+     *   响应结束 settleHold 按**实际成本**结算；所有不扣费的出口 releaseHold。
+     * 观察模式（enforce=false）不预留：那会破坏「只记账不拦截」的既有语义。
+     */
+    let holdId = null;
+    let holdClosed = false;
+    /** 结算（唯一扣费出口）。actualMicro 为 0 时等价于「释放 + 记 0 成本」。 */
+    const settleOnce = (actualMicro, reason) => {
+      if (holdClosed) return;
+      holdClosed = true;
+      try {
+        if (holdId) {
+          balance.settleHold(user, holdId, actualMicro, { highTier: isHighTier, reason });
+        } else if (actualMicro > 0) {
+          // 无预留（观察模式 / 估算额为 0）：退回原有扣费路径，行为完全不变
+          balance.consume(user, actualMicro, { highTier: isHighTier, reason });
+        }
+      } catch (e) {
+        log('balance settle failed:', e && e.message);
+      }
+    };
+    /** 释放预留（不扣费）。幂等——同一请求只会真正执行一次。 */
+    const releaseOnce = () => {
+      if (holdClosed) return;
+      holdClosed = true;
+      if (!holdId) return;
+      try { balance.releaseHold(user, holdId); } catch (e) { log('balance release failed:', e && e.message); }
+    };
+
+    if (balanceCfg().enforce) {
+      // 估算：输入按 4 字符 / token 粗估（宁高不宁低），输出按调用方 max_tokens（缺省 4096）
+      const estInTok = Math.ceil(payload.length / 4);
+      const estOutTok = Number(upstreamBody.max_tokens) || 4096;
+      const est = pricing.costOf(pricingStore.data, requestedModel, { inTok: estInTok, outTok: estOutTok });
+      // +20% 余量吸收估算误差；上限取 precheck 给出的可用额（不越过真实余额）
+      const want = Math.max(0, Math.min(Number(gate.avail) || 0, Math.ceil(est.micro * 1.2)));
+      const hd = balance.hold(user, want, { highTier: isHighTier });
+      if (!hd.ok) {
+        // 并发闸门拒发：重跑 precheck 判断到底「没钱」还是「并发占满」。
+        // ★ 客户端不读 code（chrome 侧只判 status===402），且 402 至今没有充值/升级 CTA
+        //   （err.payment 是死标志）—— error 文案是用户**唯一**的信息通道，
+        //   所以余额充足时绝不能谎称「余额不足」。三条路径各自给准确表述。
+        const again = balance.precheck(user, balanceCfg(), { highTier: isHighTier });
+        let code;
+        let error;
+        if (!again.allowed) {
+          // 真的余额不足 / 高级模型无额度：既有 code 与文案**一字不动**
+          code = again.code;
+          error = again.error;
+        } else if (hd.code === 'TOO_MANY_HOLDS') {
+          // 同时在飞的请求打满上限：此时余额很可能充足，不许归因到余额
+          code = hd.code;
+          error = '当前并发请求过多（单账号最多 ' + balance.HOLDS_MAX + ' 个同时进行），'
+            + '请等待其中一些完成后再试。';
+        } else {
+          // 额度被进行中的请求占满：如实说「被占用」，并保留付费引导
+          code = hd.code || 'INSUFFICIENT_BALANCE';
+          error = '当前还有进行中的请求占用着额度（可用 '
+            + pricing.microText(hd.avail) + '），请稍后再试；如余额确实不足请充值或升级专业版。';
+        }
+        return json(res, 402, { ok: false, code, error,
+          balance: balance.userView(user, balanceCfg()) });
+      }
+      holdId = hd.id || null;
+    }
+
+    // ★ 1.8.5（审查 P1-2）：客户端断开（插件 Stop / 关窗 / 断网）必须取消上游。
+    //   旧实现只判 res.writableEnded：客户端走了，上游照跑到超时，token 白烧且仍计费；
+    //   继续往已销毁的 res 写还可能抛出未处理 error → uncaughtException → 进程退出。
+    let clientGone = false;
+    let upReq = null;
+    const onClientGone = () => {
+      if (clientGone) return;
+      clientGone = true;
+      releaseOnce();   // 断开不计费 → 必须把预留还回去（否则额度被永久占住）
+      try { if (upReq) upReq.destroy(); } catch (e) { /* ignore */ }
+      log('gateway: client aborted, upstream cancelled');
+    };
+    req.on('aborted', onClientGone);
+    res.on('close', () => { if (!res.writableEnded) onClientGone(); });
+    res.on('error', onClientGone);
+
+    /**
+     * 上游响应处理（抽成具名函数，而不是内联箭头）：只有这样才能把
+     * `mod.request(...)` 的**同步**抛错就地兜住（见下方 try/catch）。
+     */
+    const onUpstreamResponse = (upRes) => {
       // ★ 上游 401/403 绝不原样透传（1.8.x 修复）：
       //   客户端把官方网关返回的 401 视为「账号令牌失效」并清除本地会话——
       //   上游通道密钥失效/模型未授权若原样透传，会被误当用户掉登录，
@@ -1277,6 +1638,7 @@ function gatewayChat(req, res, user) {
           detail = String(detail || '').replace(/\s+/g, ' ').slice(0, 200);
           log('gateway: upstream auth failure ' + upRes.statusCode
             + ' channel=' + c.id + ' model=' + requestedModel + (detail ? ' :: ' + detail : ''));
+          releaseOnce();   // 未产生可用响应 → 不扣费，释放预留
           json(res, 502, { ok: false, code: 'UPSTREAM_AUTH',
             error: '上游模型通道鉴权失败（HTTP ' + upRes.statusCode
               + '）：服务端通道密钥无效或该模型未在上游开通，请联系管理员检查通道配置'
@@ -1290,11 +1652,41 @@ function gatewayChat(req, res, user) {
         passHeaders[k] = v;
       }
       passHeaders['Cache-Control'] = 'no-store';
-      res.writeHead(upRes.statusCode, passHeaders);
-      const ok = upRes.statusCode < 400;
+      // ★ 1.8.6（审查 P1-3 补充）：上游返回越界状态码（<100 或 >599）会让 writeHead 抛
+      //   RangeError；本回调里的同步异常没人接住 → 进程退出，且 hold 不回滚。
+      //   越界即视为通道异常：释放预留 + 502，绝不把非法状态码转发给客户端。
+      const upStatus = Number(upRes.statusCode);
+      if (!(upStatus >= 100 && upStatus <= 599)) {
+        releaseOnce();
+        log('gateway: illegal upstream status', String(upRes.statusCode), 'channel=' + c.id);
+        try { upRes.resume(); } catch (_) { /* 排空上游，避免连接悬挂 */ }
+        if (!res.headersSent) {
+          try { json(res, 502, { ok: false, code: 'UPSTREAM_BAD_STATUS',
+            error: '上游应答状态码非法（' + String(upRes.statusCode) + '），已中止本次转发' }); }
+          catch (_) { /* 客户端也已断开：忽略 */ }
+        }
+        return;
+      }
+      try {
+        res.writeHead(upStatus, passHeaders);
+      } catch (e) {
+        // 上游应答头值非法（非 ASCII / 含控制字符）同样会抛：释放 + 收尾，不回 JSON 污染响应
+        releaseOnce();
+        log('gateway: writeHead failed:', (e && e.message) || e);
+        try { upRes.resume(); } catch (_) { /* 排空上游，避免连接悬挂 */ }
+        if (!res.headersSent) {
+          try { json(res, 502, { ok: false, code: 'UPSTREAM_BAD_HEADERS',
+            error: '上游应答头非法：' + netErrorText(e) }); } catch (_) { /* ignore */ }
+        } else {
+          try { res.end(); } catch (_) { /* ignore */ }
+        }
+        return;
+      }
+      const ok = upStatus < 400;
 
       upRes.on('data', (chunk) => {
-        if (!res.writableEnded) {
+        if (clientGone) return;
+        if (!res.writableEnded && !res.destroyed) {
           // 手动转发（原先 pipe 无法旁路解析）；保留基本背压处理
           if (!res.write(chunk)) { upRes.pause(); res.once('drain', () => upRes.resume()); }
         }
@@ -1307,8 +1699,11 @@ function gatewayChat(req, res, user) {
         }
       });
       upRes.on('end', () => {
-        if (!res.writableEnded) { try { res.end(); } catch (e) { /* ignore */ } }
-        if (!ok) return;   // 上游 4xx/5xx：不计次（旧行为）。上游是否已产生成本无从得知，保持原口径。
+        if (!res.writableEnded && !res.destroyed) { try { res.end(); } catch (e) { /* ignore */ } }
+        if (!ok) { releaseOnce(); return; }   // 上游 4xx/5xx：不计次（旧行为）；预留必须还回去
+        // 客户端已取消：不计费也不记 usage（用户感知「点了停止就停止」；
+        // 上游可能已产生少量成本，由运营侧承担，日志留痕）
+        if (clientGone) { releaseOnce(); return; }
         try {
           if (!isStream && !plainAbandoned) {
             try { absorb(JSON.parse(Buffer.concat(plainChunks).toString('utf8'))); }
@@ -1318,16 +1713,9 @@ function gatewayChat(req, res, user) {
           //   按请求里的 "auto" 计价会让成本统计彻底失真。
           const billModel = respModel || requestedModel;
           const cost = respUsage ? pricing.costOf(pricingStore.data, billModel, respUsage) : null;
-          // 1.6.0 余额扣减：按真实成本扣（允许透支——拦截由请求前的 pre-check 负责）。
+          // 1.6.0 余额扣减 → 1.8.6：结算预留，按真实成本扣（允许透支——闸门由 hold/precheck 负责）。
           // 必须在 countUsage 之前：countUsage 内部的 usersStore.save() 会把余额一并落盘。
-          if (cost && cost.micro > 0) {
-            balance.consume(user, cost.micro, {
-              // ★ 与上方 pre-check 用**同一个判定**（isHighTier，auto 恒基础档）：
-              //   两处若各算一遍，auto 会在放行时算基础、扣费时算高级——扣减顺序错位。
-              highTier: isHighTier,
-              reason: 'AI 调用 ' + billModel,
-            });
-          }
+          settleOnce(cost ? cost.micro : 0, 'AI 调用 ' + billModel);
           countUsage(user, { model: billModel, usage: respUsage, costMicro: cost ? cost.micro : 0 });
           if (!respUsage) {
             log('metering: 上游未返回 usage →', billModel, '（计入 missingUsage，成本未知）');
@@ -1337,16 +1725,53 @@ function gatewayChat(req, res, user) {
           }
         } catch (e) { log('usage count failed:', e.message); }
       });
-    });
+    };
+
+    // ★ 1.8.6（QA 验收 P1-3 补充）：`http.request` 会对 header 值做**同步**校验——
+    //   通道 apiKey 里混入 \n / 全角 / 零宽字符（管理员从聊天里粘密钥很常见）会抛
+    //   ERR_INVALID_CHAR。这里位于 async 回调内且无人 await，异常会升级为
+    //   unhandledRejection → 模块级兜底 process.exit(1)：一条坏密钥即杀掉整个后台，
+    //   而且预留不会回滚（额度被占到 5 分钟超时）。必须就地 catch：释放预留 + 502。
+    try {
+      upReq = mod.request(u, { method: 'POST', headers, timeout }, onUpstreamResponse);
+    } catch (e) {
+      releaseOnce();
+      log('gateway: build upstream request failed:', (e && e.message) || e);
+      if (!res.headersSent) {
+        try {
+          json(res, 502, { ok: false, code: 'UPSTREAM_CONFIG',
+            error: '上游请求构造失败：' + netErrorText(e)
+              + '（请检查通道密钥/地址是否混入了换行或非 ASCII 字符）' });
+        } catch (_) { /* 客户端也已断开：忽略 */ }
+      } else {
+        try { res.end(); } catch (_) { /* ignore */ }
+      }
+      return;
+    }
     upReq.on('timeout', () => {
+      if (clientGone) return;
+      releaseOnce();   // 超时不计费，先把预留释放（error 回调里再调是幂等的）
       upReq.destroy(new Error('上游连接超时'));
     });
     upReq.on('error', (e) => {
+      // 客户端已断开时 destroy() 会触发 ECONNRESET/aborted：这是预期路径，不能回写
+      if (clientGone) { releaseOnce(); return; }
+      releaseOnce();   // 上游请求失败 → 不扣费
       if (res.headersSent) { try { res.end(); } catch (_) { /* ignore */ } return; }
-      json(res, 502, { ok: false, error: '上游请求失败：' + netErrorText(e) });
+      try { json(res, 502, { ok: false, error: '上游请求失败：' + netErrorText(e) }); }
+      catch (_) { /* 客户端也已断开：忽略 */ }
     });
-    upReq.write(payload);
-    upReq.end();
+    // ★ 同步写失败（socket 已销毁等）也要释放预留，否则额度被占到 5 分钟超时
+    try {
+      upReq.write(payload);
+      upReq.end();
+    } catch (e) {
+      releaseOnce();
+      if (!res.headersSent) {
+        try { json(res, 502, { ok: false, error: '上游请求失败：' + netErrorText(e) }); }
+        catch (_) { /* 客户端也已断开：忽略 */ }
+      }
+    }
   });
 }
 
@@ -1423,6 +1848,9 @@ function auditLog(req, action, opts) {
 /** 回滚后把内存 store 换成磁盘内容（否则会继续用回滚前的旧数据对外服务） */
 function reloadStores() {
   const before = { users: usersStore.data.users.length, orders: membershipStore.data.orders.length };
+  // 1.8.6：重载会覆盖内存，先作废计量路径未落盘的异步快照（在途写也会被代际检查丢弃），
+  // 否则旧快照可能在 reload 之后才 rename，把刚回滚的磁盘内容又盖回去。
+  usersWriter.invalidate();
   usersStore.reload();
   channelsStore.reload();
   membershipStore.reload();
@@ -1431,6 +1859,8 @@ function reloadStores() {
   pricingStore.reload();
   pricingStore.data = pricing.normalize(pricingStore.data);
   balance.normalizeCfg(pricingStore.data);
+  rebuildUserIndex();              // 1.8.6：数据换了一整份，索引必须重建
+  rebuildOrderIndex();
   return {
     before,
     after: { users: usersStore.data.users.length, orders: membershipStore.data.orders.length },
@@ -1536,14 +1966,38 @@ function alertStatus() {
   });
 }
 
-/* ---------------- 后台任务（订单积压巡检） ---------------- */
-
-let _alertTimer = null;
-const ALERT_INTERVAL_MS = Number(process.env.PP_ALERT_INTERVAL_MS) > 0
-  ? Number(process.env.PP_ALERT_INTERVAL_MS) : 5 * 60e3;
+/* ---------------- 后台任务（订单积压巡检 + 过期订单回收） ---------------- */
 
 /**
- * 启动周期任务：每 ALERT_INTERVAL_MS（默认 5 分钟）巡检一次待核销积压。
+ * 回收超时未付/待核销的订单（membership.ORDER_TTL_MS）。
+ * 1.8.6（P1-10）：只在后台定时任务与显式管理入口调用，不再进请求路径——
+ * 原来下单、后台订单列表、后台会员页每个请求都全表扫一遍 orders。
+ */
+function reapExpiredOrders(now) {
+  let changed = false;
+  try {
+    changed = membership.reapOrders(membershipStore.data, now);
+    if (changed) {
+      membershipStore.save();
+      log('orders reaped: expired pending/claimed orders');
+    }
+  } catch (e) {
+    log('reap orders failed:', e.message);
+  }
+  return changed;
+}
+
+let _alertTimer = null;
+let _reapTimer = null;
+const ALERT_INTERVAL_MS = Number(process.env.PP_ALERT_INTERVAL_MS) > 0
+  ? Number(process.env.PP_ALERT_INTERVAL_MS) : 5 * 60e3;
+// 过期订单回收间隔（默认 30 分钟；测试可覆盖）
+const REAP_INTERVAL_MS = Number(process.env.PP_REAP_INTERVAL_MS) > 0
+  ? Number(process.env.PP_REAP_INTERVAL_MS) : 30 * 60e3;
+
+/**
+ * 启动周期任务：每 ALERT_INTERVAL_MS（默认 5 分钟）巡检一次待核销积压；
+ * 每 REAP_INTERVAL_MS（默认 30 分钟）回收过期订单。
  * 放在函数里而不是模块顶层 —— 测试 require 本模块时不该凭空多出定时器。
  */
 function startBackgroundJobs({ intervalMs } = {}) {
@@ -1553,12 +2007,20 @@ function startBackgroundJobs({ intervalMs } = {}) {
     runAlertCheck().catch((e) => log('alert check failed:', e.message));
   }, ms);
   if (_alertTimer.unref) _alertTimer.unref();
-  log('background jobs started: 订单积压巡检每 ' + Math.round(ms / 60000) + ' 分钟一次');
+  // 启动先回收一次（重启后积压的过期订单不必等 30 分钟），随后按间隔跑
+  reapExpiredOrders();
+  _reapTimer = setInterval(() => reapExpiredOrders(), REAP_INTERVAL_MS);
+  if (_reapTimer.unref) _reapTimer.unref();
+  log('background jobs started: 订单积压巡检每 ' + Math.round(ms / 60000) + ' 分钟一次'
+    + '，过期订单回收每 ' + Math.round(REAP_INTERVAL_MS / 60000) + ' 分钟一次');
   return _alertTimer;
 }
 
 function stopBackgroundJobs() {
   if (_alertTimer) { clearInterval(_alertTimer); _alertTimer = null; }
+  if (_reapTimer) { clearInterval(_reapTimer); _reapTimer = null; }
+  // 停机/测试收尾：把计量路径合并窗口里的改动落盘（等价于 shutdown 的 flush）
+  try { usersWriter.flush(); } catch (e) { log('store flush on stop failed:', e.message); }
 }
 
 /**
@@ -1837,7 +2299,7 @@ function payReturnHtml(outTradeNo) {
   return [
     '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',
-    '<title>支付结果 · PaperPilot</title>',
+    '<title>支付结果 · Papilot</title>',
     '<style>',
     'body{margin:0;font:15px/1.7 -apple-system,"Segoe UI",system-ui,sans-serif;background:#f6f7f9;color:#222}',
     '.box{max-width:420px;margin:12vh auto;background:#fff;border-radius:14px;padding:28px 26px;',
@@ -1881,11 +2343,21 @@ function applyOrderFulfill(order, by) {
   const f = membership.fulfillOrder(membershipStore.data, order, { by });
   if (f.error) return { ok: false, error: f.error, user };
   if (order.kind === 'credit') {
+    // ★ 1.8.5（审查 P0-3）：已经入过账就只补订单状态，不重复加钱。
+    //   写序改成「先入账（users.json）→ 后置订单状态（membership.json）」后，
+    //   两次写之间崩溃只会留下「钱到了、单还 pending」，网关/查单重试走到这里即收敛。
+    if (balance.hasRef(user, order.id, 'recharge')) {
+      return { ok: true, user, order, creditMicro: Number(order.creditMicro), already: true };
+    }
     const r = balance.creditTopUp(user, Number(order.creditMicro), {
       orderId: order.id, reason: '充值订单 ' + order.id,
     });
     if (r.error) return { ok: false, error: r.error, user };
     return { ok: true, user, order, creditMicro: Number(order.creditMicro), balance: r.balance };
+  }
+  // 会员单同理：历史里已有同一 refId 的开通记录 → 只补订单状态，不重复叠加时长
+  if (membership.hasGrantRef(user, order.id)) {
+    return { ok: true, user, order, already: true };
   }
   const mp = membership.grantMembership(membershipStore.data, user, {
     plan: order.plan, months: order.months, perpetual: order.perpetual,
@@ -1914,6 +2386,7 @@ async function adminCreateUser(input) {
     createdAt: new Date().toISOString(), lastLoginAt: null, usage: { date: today(), count: 0 },
   };
   usersStore.data.users.push(user);
+  indexUser(user);                 // 1.8.6：新用户即时进索引（不必等长度检查重建）
   syncMembershipFromLegacy(user);
   pruneTokens();
   usersStore.save();
@@ -1934,16 +2407,131 @@ function adminUpdateUser(id, input) {
   if (user.dailyLimit !== undefined) delete user.dailyLimit;
   // 等级或到期日被改动 → 同步会员对象（覆盖式，不做叠加）
   if (input.plan !== undefined || input.expiresAt !== undefined) syncMembershipFromLegacy(user);
+  indexUser(user);                 // 1.8.6：邮箱/id 未变，刷新一遍兜底
   usersStore.save();
   return { user: userAdminOut(user) };
 }
+
+/* ---------------- /api/health 快照（1.8.6，审查 P1-10 / P2-5） ----------------
+ * 控制台与启动器会 1–5 秒轮询一次 health。原实现每次都要：
+ *   backlogNow() × 3（每次遍历全部订单）+ audit.stats() × 2（两次读目录+文件 stat）
+ *   + 若干 O(n) reduce/filter，单次几十毫秒——轮询本身就变成负载。
+ * 现在：重活只算一次（backlog/audit 各一次），整份结果缓存 HEALTH_CACHE_MS（默认 2s）；
+ * 缓存命中时只覆盖 pid/lagMs/uptime/now/degraded 这些**读取成本为零**的活性字段，
+ * 保证「服务卡没卡」仍然实时可观测。
+ * 缓存失效：?detail=1 强制重算（后台深看用），或进程内 2s 到期。
+ */
+const HEALTH_CACHE_MS = (() => {
+  const n = Number(process.env.PP_HEALTH_CACHE_MS);
+  return Number.isFinite(n) && n >= 0 ? Math.min(n, 60000) : 2000;
+})();
+let _healthCache = null;
+let _healthCacheAt = 0;
+const _healthStats = { computes: 0, hits: 0 };
+
+/** 计算（或复用缓存里的）health 主体；detail=true 强制重算 */
+function healthSnapshot(deg, detail) {
+  const now = Date.now();
+  const fresh = detail || !_healthCache || (now - _healthCacheAt) >= HEALTH_CACHE_MS;
+  if (!fresh) {
+    _healthStats.hits += 1;
+  } else {
+    // 1.8.6：backlog 与 audit.stats 各自只算一次（原来 backlog 算 3 遍、audit 算 2 遍）
+    const bl = backlogNow();
+    const ast = audit.stats(DATA_DIR);
+    _healthCache = {
+      ok: true, service: 'papilot-account-server', version: '1.8.5',
+      // 以下活性字段每次响应都会覆盖为实时值（见下方 Object.assign）
+      uptime: Math.round(process.uptime()), now: new Date().toISOString(),
+      pid: process.pid,                 // 控制台据此显示 PID，不必再查 WMI / Get-NetTCPConnection
+      lagMs: _loop.lagMs,               // 事件循环延迟：>500ms 说明被同步 IO 堵住了
+      maxLagMs: _loop.maxLagMs,
+      // 1.8.5：数据文件损坏 → true。此时除 health/管理页外全部 503（维护模式）
+      degraded: deg.length > 0,
+      degradedStores: deg,
+      mail: mail.configured() ? 'on' : 'off',
+      users: usersStore.data.users.length,
+      channels: channelsStore.data.channels.length,
+      active: channelsStore.data.active || null,
+      publishedModels: publishedModels().length, // 0 = 全部上线
+      highTierModels: highTierModels().length,   // 1.4.9 需付费档的模型数（0 = 无分级）
+      // 1.5.0 AI 计量：配了单价的模型数 + 计量盲区累计（上游未返回 usage 的次数）
+      pricedModels: pricing.modelList(pricingStore.data).length,
+      meteringGaps: usersStore.data.users.reduce((s, u) => s + (Number((u.usage || {}).missingUsage) || 0), 0),
+      // 1.6.0 余额：enforce=false = 观察模式（只记账不拦截）；signupGrant 为注册赠送额度
+      balanceEnforce: balanceCfg().enforce,
+      signupGrantMicro: balanceCfg().signupGrantMicro,
+      // 1.7.0 在线支付：仅当「配置齐 + PP_PUBLIC_URL 已配（须 https）+ 密钥能解开」才算可用
+      onlinePay: onlinePayReady(),
+      // 0.23.0 会员域
+      plans: Object.keys(membershipStore.data.plans || {}),
+      orders: membershipStore.data.orders.length,
+      ordersAwaitingReview: membershipStore.data.orders.filter((o) => o.status === 'claimed').length,
+      // 1.4.6 优惠券
+      coupons: (membershipStore.data.coupons || []).length,
+      couponsActive: (membershipStore.data.coupons || []).filter((c) => coupon.stateOf(c) === 'active').length,
+      codesUnused: membershipStore.data.codes.filter((c) => !c.usedAt).length,
+      // 1.4.1 价格表
+      priceActive: membershipStore.data.priceItems.filter((i) => membership.priceState(i) === 'active').length,
+      priceScheduled: membershipStore.data.priceItems.filter((i) => membership.priceState(i) === 'scheduled').length,
+      // 1.4.2 运维观测：订单积压 + 快照
+      backlogCount: bl.count,
+      backlogOldestMinutes: bl.oldestMinutes,
+      backlogOverdue: bl.over,
+      snapshots: backup.list(DATA_DIR).length,
+      lastSnapshotAt: (backup.latest(DATA_DIR) || {}).at || null,
+      // 1.4.7 登录设备：近 N 天活跃会话数 / 活跃设备超阈值的账号数
+      sessionsActive: sessions.countActiveAll(usersStore.data),
+      devicesOverLimit: deviceAlertNow().count,
+      // 1.4.4 审计：日志体积（后台据此判断是否需要查看/归档）
+      auditBytes: ast.bytes,
+      auditArchiveBytes: ast.archiveBytes,
+      cachedAt: new Date(now).toISOString(),
+    };
+    _healthCacheAt = now;
+    _healthStats.computes += 1;
+  }
+  // 活性字段实时覆盖（缓存命中也保持「当前卡不卡」可信）
+  return Object.assign({}, _healthCache, {
+    uptime: Math.round(process.uptime()),
+    now: new Date().toISOString(),
+    pid: process.pid,
+    lagMs: _loop.lagMs,
+    maxLagMs: _loop.maxLagMs,
+    degraded: deg.length > 0,
+    degradedStores: deg,
+    cachedAgeMs: Math.max(0, now - _healthCacheAt),
+  });
+}
+
+/** health 计算次数（测试注入断言：连续 N 次只应 +1） */
+function healthStats() { return Object.assign({ cacheMs: HEALTH_CACHE_MS }, _healthStats); }
 
 /* ---------------- 路由 ---------------- */
 
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
+  const query = req.url.split('?')[1] || '';
   const method = req.method;
   try {
+    // ★ 1.8.5（审查 P0-4）：核心数据文件损坏 → 维护模式。
+    //   只放行 health（运维要能看到原因）与只读管理页，其余一律 503——
+    //   注册/下单/写操作继续跑会用空文档覆盖坏文件，把「可恢复」变成「永久丢失」。
+    const deg = degradation();
+    const blocking = deg.filter((d) => d.blocking);
+    if (blocking.length) {
+      const allow = method === 'GET' && (url === '/api/health'
+        || url === '/admin' || url === '/admin.html'
+        || url === '/favicon.ico' || url === '/favicon.png');
+      if (!allow) {
+        return json(res, 503, {
+          ok: false, code: 'DEGRADED',
+          error: '本地数据文件损坏，服务处于维护模式：' + blocking.map((d) => d.store).join('、')
+            + '。请从 data/backup 恢复（或按 .corrupt-* 副本人工修复）后重启服务。',
+          degraded: deg,
+        });
+      }
+    }
     /* --- 静态与管理页 --- */
     if (method === 'GET' && (url === '/admin' || url === '/admin.html')) {
       if (!isLocalAdmin(req)) return json(res, 403, { ok: false, error: '管理页仅限本机访问' });
@@ -1966,9 +2554,11 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(html);
     }
-    // 邮箱验证 / 忘记密码 / 重置密码（公开页面，token 走 query）
-    if (method === 'GET' && (url === '/verify' || url === '/forgot' || url === '/reset')) {
-      const file = { '/verify': VERIFY_HTML, '/forgot': FORGOT_HTML, '/reset': RESET_HTML }[url];
+    // 邮箱验证 / 忘记密码 / 重置密码 / 用户协议 / 隐私政策（公开页面，token 走 query）
+    if (method === 'GET' && (url === '/verify' || url === '/forgot' || url === '/reset'
+        || url === '/terms' || url === '/privacy')) {
+      const file = { '/verify': VERIFY_HTML, '/forgot': FORGOT_HTML, '/reset': RESET_HTML,
+        '/terms': TERMS_HTML, '/privacy': PRIVACY_HTML }[url];
       let html;
       try { html = fs.readFileSync(file); }
       catch (e) { return json(res, 500, { ok: false, error: '页面文件缺失' }); }
@@ -1977,47 +2567,19 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (method === 'GET' && url === '/api/health') {
-      return json(res, 200, {
-        ok: true, service: 'paperpilot-account-server', version: '1.8.4',
-        uptime: Math.round(process.uptime()), now: new Date().toISOString(),
-        mail: mail.configured() ? 'on' : 'off',
-        users: usersStore.data.users.length,
-        channels: channelsStore.data.channels.length,
-        active: channelsStore.data.active || null,
-        publishedModels: publishedModels().length, // 0 = 全部上线
-        highTierModels: highTierModels().length,   // 1.4.9 需付费档的模型数（0 = 无分级）
-        // 1.5.0 AI 计量：配了单价的模型数 + 计量盲区累计（上游未返回 usage 的次数）
-        pricedModels: pricing.modelList(pricingStore.data).length,
-        meteringGaps: usersStore.data.users.reduce((s, u) => s + (Number((u.usage || {}).missingUsage) || 0), 0),
-        // 1.6.0 余额：enforce=false = 观察模式（只记账不拦截）；signupGrant 为注册赠送额度
-        balanceEnforce: balanceCfg().enforce,
-        signupGrantMicro: balanceCfg().signupGrantMicro,
-        // 1.7.0 在线支付：仅当「配置齐 + PP_PUBLIC_URL 已配（须 https）+ 密钥能解开」才算可用
-        onlinePay: onlinePayReady(),
-        // 0.23.0 会员域
-        plans: Object.keys(membershipStore.data.plans || {}),
-        orders: membershipStore.data.orders.length,
-        ordersAwaitingReview: membershipStore.data.orders.filter((o) => o.status === 'claimed').length,
-        // 1.4.6 优惠券
-        coupons: (membershipStore.data.coupons || []).length,
-        couponsActive: (membershipStore.data.coupons || []).filter((c) => coupon.stateOf(c) === 'active').length,
-        codesUnused: membershipStore.data.codes.filter((c) => !c.usedAt).length,
-        // 1.4.1 价格表
-        priceActive: membershipStore.data.priceItems.filter((i) => membership.priceState(i) === 'active').length,
-        priceScheduled: membershipStore.data.priceItems.filter((i) => membership.priceState(i) === 'scheduled').length,
-        // 1.4.2 运维观测：订单积压 + 快照
-        backlogCount: backlogNow().count,
-        backlogOldestMinutes: backlogNow().oldestMinutes,
-        backlogOverdue: backlogNow().over,
-        snapshots: backup.list(DATA_DIR).length,
-        lastSnapshotAt: (backup.latest(DATA_DIR) || {}).at || null,
-        // 1.4.7 登录设备：近 N 天活跃会话数 / 活跃设备超阈值的账号数
-        sessionsActive: sessions.countActiveAll(usersStore.data),
-        devicesOverLimit: deviceAlertNow().count,
-        // 1.4.4 审计：日志体积（后台据此判断是否需要查看/归档）
-        auditBytes: audit.stats(DATA_DIR).bytes,
-        auditArchiveBytes: audit.stats(DATA_DIR).archiveBytes,
-      });
+      // 1.8.6（P2-5）：**默认仍返回全部既有字段**——启动器 scripts/launcher.ps1 会读
+      //   pid / version / lagMs / channels / users / ordersAwaitingReview / backlogCount /
+      //   backlogOverdue / backlogOldestMinutes，裁字段会直接把控制台打红。
+      //   性能靠 2s 缓存（healthSnapshot）解决；?detail=1 强制重算，?lite=1 才给核心字段。
+      const full = healthSnapshot(deg, /(?:^|&)detail=1(?:&|$)/.test(query));
+      if (/(?:^|&)lite=1(?:&|$)/.test(query)) {
+        return json(res, 200, {
+          ok: full.ok, version: full.version, pid: full.pid,
+          lagMs: full.lagMs, maxLagMs: full.maxLagMs,
+          degraded: full.degraded, users: full.users, orders: full.orders,
+        });
+      }
+      return json(res, 200, full);
     }
 
     /* --- 插件契约：鉴权 --- */
@@ -2032,6 +2594,13 @@ const server = http.createServer(async (req, res) => {
       const r = await adminCreateUser(Object.assign({}, input, { plan: 'Free' }));
       if (r.error) return json(res, 400, { ok: false, error: r.error });
       const user = findUserByEmail(r.user.email);
+      // 2026-10-19 合规：条款同意留痕（软记录）。旧客户端不带 acceptedTerms 时静默跳过，
+      // 一旦带了就落库——争议时需要能举证「同意的是哪一版条款、何时、何 IP」。
+      const _tv = String(input.acceptedTerms == null ? '' : input.acceptedTerms).trim().slice(0, 16);
+      if (_tv && user) {
+        user.terms = { version: _tv, acceptedAt: new Date().toISOString(), ip: ip };
+        usersStore.save();
+      }
       // 1.6.0 注册赠送 AI 额度（配置为 0 即关闭；重复发放幂等跳过）
       const gift = balance.grantSignup(user, balanceCfg());
       if (gift.granted) {
@@ -2254,8 +2823,11 @@ const server = http.createServer(async (req, res) => {
         snapshot('membership-change', { note: '激活码兑换：' + user.email });
         const r = membership.redeem(membershipStore.data, input.code, user);
         if (r.error) return json(res, 400, { ok: false, error: r.error });
-        membershipStore.save();
+        // ★ 1.8.5（审查 P0-3）：先写「用户域」（会员已开通），再写「码状态」。
+        //   反过来会在两次写之间崩溃时留下「码已废、会员没到账」，且重试被 usedAt 挡住。
+        //   现在最坏是「会员已到账、码还可用」→ 重试命中 redeem 的 refId 幂等分支只补标记。
         usersStore.save();
+        membershipStore.save();
         log('membership redeemed:', user.email, r.code.plan, r.code.months + 'm');
         return json(res, 200, { ok: true, membership: r.membership, user: userForClient(user), code: r.code });
       }
@@ -2336,7 +2908,18 @@ const server = http.createServer(async (req, res) => {
       if (method === 'POST' && url === '/api/orders') {
         let input;
         try { input = await readBody(req); } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
-        if (membership.reapOrders(membershipStore.data)) membershipStore.save();
+        // 2026-10-19 合规：订单级条款留痕（软记录，不阻断旧客户端）。
+        // 条款版本由客户端下单时带上；没带就只在服务端留空，等客户端覆盖率上来再收紧。
+        const _termsVer = String(input.termsVersion == null ? '' : input.termsVersion).trim().slice(0, 16);
+        const stampTerms = (order) => {
+          if (!order || !_termsVer) return;
+          order.termsVersion = _termsVer;
+          order.termsAcceptedAt = new Date().toISOString();
+        };
+
+        // 1.8.6（P1-10）：过期订单回收不再挂在请求路径上（原来每个下单/后台列表请求
+        //   都要全表扫一遍订单）。改由 startBackgroundJobs 每 30 分钟跑一次；
+        //   需要立刻回收走 POST /api/admin/orders/reap（本机管理入口）。
 
         // 1.6.0 充值订单：{ kind:'credit', optionId } → 买 AI 余额（核销后自动入账）
         if (input.kind === 'credit') {
@@ -2351,6 +2934,8 @@ const server = http.createServer(async (req, res) => {
             label: opt.label || ('AI 额度充值 ¥' + (opt.cents / 100).toFixed(0)),
           });
           if (r.error) return json(res, 400, { ok: false, error: r.error });
+          stampTerms(r.order);       // 2026-10-19：订单级条款留痕
+          indexOrder(r.order);       // 1.8.6：新订单进索引
           membershipStore.save();
           log('credit order created:', user.email, '¥' + (opt.cents / 100).toFixed(2),
             '→ credit', r.order.creditMicro + ' micro');
@@ -2364,6 +2949,8 @@ const server = http.createServer(async (req, res) => {
           couponCode: input.couponCode || '',
         });
         if (r.error) return json(res, 400, { ok: false, error: r.error });
+        stampTerms(r.order);         // 2026-10-19：订单级条款留痕
+        indexOrder(r.order);         // 1.8.6：新订单进索引
         membershipStore.save();
         log('order created:', user.email, r.order.plan, r.order.months + 'm',
           '¥' + r.order.amount, r.order.couponCode ? ('coupon=' + r.order.couponCode) : '');
@@ -2372,7 +2959,7 @@ const server = http.createServer(async (req, res) => {
 
       const om = url.match(/^\/api\/orders\/([a-zA-Z0-9-]+)(\/claim|\/cancel)?$/);
       if (om) {
-        const order = membership.findOrder(membershipStore.data, om[1]);
+        const order = findOrder(om[1]);
         if (!order || order.userId !== user.id) return json(res, 404, { ok: false, error: '订单不存在' });
         if (method === 'GET' && !om[2]) {
           return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, order) });
@@ -2402,7 +2989,7 @@ const server = http.createServer(async (req, res) => {
         if (rateThrottled('pay:' + user.id, PAY_MAX, LOGIN_WINDOW_MS)) {
           return json(res, 429, { ok: false, error: '操作过于频繁，请稍后再试' });
         }
-        const order = membership.findOrder(membershipStore.data, pm[1]);
+        const order = findOrder(pm[1]);
         if (!order || order.userId !== user.id) return json(res, 404, { ok: false, error: '订单不存在' });
         if (!onlinePayReady()) return json(res, 503, { ok: false, error: '在线支付未开通，请用收款码支付' });
         // 第一阶段只接充值订单：金额小、退款纠纷少，先跑通链路
@@ -2413,13 +3000,14 @@ const server = http.createServer(async (req, res) => {
         const channel = pay.CHANNELS.indexOf(String(input.channel)) >= 0 ? String(input.channel) : 'wxpay';
         // 商户订单号：网关只收字母数字，内部 id 带连字符，故另生成并落库
         if (!order.outTradeNo) order.outTradeNo = pay.newTradeNo('PP');
+        indexOrder(order);           // 1.8.6：新增 outTradeNo 后补 tradeNo 索引（回调反查用）
         order.payChannel = channel;
         order.updatedAt = new Date().toISOString();
         const cfg = payCfg(true);
         const payUrl = pay.createPayUrl(cfg, {
           outTradeNo: order.outTradeNo,
           amountCents: order.amountCents,
-          itemName: order.note || ('PaperPilot ' + pay.moneyStr(order.amountCents) + ' 充值'),
+          itemName: order.note || ('Papilot ' + pay.moneyStr(order.amountCents) + ' 充值'),
         }, channel, siteBaseUrl());
         membershipStore.save();
         log('online pay started:', user.email, order.id, channel, pay.moneyStr(order.amountCents), 'no=' + order.outTradeNo);
@@ -2434,7 +3022,7 @@ const server = http.createServer(async (req, res) => {
         if (rateThrottled('payq:' + user.id, PAY_QUERY_MAX, LOGIN_WINDOW_MS)) {
           return json(res, 429, { ok: false, error: '查询过于频繁，请稍后再试' });
         }
-        const order = membership.findOrder(membershipStore.data, pm[1]);
+        const order = findOrder(pm[1]);
         if (!order || order.userId !== user.id) return json(res, 404, { ok: false, error: '订单不存在' });
         if (order.status !== 'pending') {
           return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, order) });
@@ -2453,8 +3041,9 @@ const server = http.createServer(async (req, res) => {
         if (q.ok && q.paid) {
           const r = fulfillByGateway(order, { tradeNo: q.tradeNo, channel: order.payChannel, source: 'gateway-query' });
           if (!r.ok) return json(res, 500, { ok: false, error: '入账失败：' + r.error });
-          membershipStore.save();
+          // ★ 1.8.5（P0-3）：先入账后置状态（见 applyOrderFulfill 的幂等判据）
           usersStore.save();
+          membershipStore.save();
           if (!r.already) {
             auditLog(req, 'order.pay', { target: order.id, note: '主动查单确认支付：' + user.email,
               after: { outTradeNo: order.outTradeNo, tradeNo: order.tradeNo,
@@ -2490,7 +3079,7 @@ const server = http.createServer(async (req, res) => {
       if (!pay.verifyNotify(cfg, q)) return reject('bad_sign');
       if (String(q.pid) !== cfg.pid) return reject('pid_mismatch');
       if (q.trade_status !== 'TRADE_SUCCESS') return reject('trade_status_' + String(q.trade_status || ''));
-      const order = membership.findOrderByTradeNo(membershipStore.data, q.out_trade_no);
+      const order = findOrderByTradeNo(q.out_trade_no);
       if (!order) return reject('order_not_found');
       // ★ 防少付：只验签不够，必须比对实付金额与本地订单金额（精确到分）。
       // 多付侧留免签加价尾差窗口（PAY_OVERPAY_TOLERANCE_CENTS，见常量注释）；
@@ -2503,8 +3092,9 @@ const server = http.createServer(async (req, res) => {
       }
       const r = fulfillByGateway(order, { tradeNo: q.trade_no, channel: q.type, source: 'gateway' });
       if (!r.ok) return reject('fulfill_' + r.error);
-      membershipStore.save();
+      // ★ 1.8.5（P0-3）：先入账后置状态；中途崩溃由回调重试 + refId 幂等收敛
       usersStore.save();
+      membershipStore.save();
       log('[pay-notify] fulfilled', order.id, 'no=' + order.outTradeNo, r.already ? '(already)' : '');
       if (!r.already) {
         auditLog(req, 'order.pay', { target: order.id,
@@ -2535,7 +3125,7 @@ const server = http.createServer(async (req, res) => {
       }
       const qp = new URLSearchParams(queryOf(req));
       const no = String(qp.get('out_trade_no') || '').replace(/[^A-Za-z0-9]/g, '');
-      const order = membership.findOrderByTradeNo(membershipStore.data, no);
+      const order = findOrderByTradeNo(no);
       if (!order) return json(res, 200, { ok: true, paid: false, status: 'not_found' });
       return json(res, 200, { ok: true,
         paid: order.status === 'fulfilled', status: order.status });
@@ -2608,6 +3198,7 @@ const server = http.createServer(async (req, res) => {
             before: { plan: victim.plan, status: victim.status,
               membership: (victim.membership && victim.membership.plan) || null } });
           usersStore.data.users.splice(idx, 1);
+          unindexUser(victim);       // 1.8.6：删用户同时清索引，避免脏命中
           for (const [tok, rec] of Object.entries(usersStore.data.tokens || {})) {
             if (rec && rec.userId === id) delete usersStore.data.tokens[tok];
           }
@@ -2779,7 +3370,6 @@ const server = http.createServer(async (req, res) => {
 
       /** 订单 + 激活码 + 套餐配置一览 */
       if (url === '/api/admin/membership' && method === 'GET') {
-        if (membership.reapOrders(membershipStore.data)) membershipStore.save();
         const orders = membershipStore.data.orders.slice().reverse()
           .map((o) => Object.assign(membership.orderOut(membershipStore.data, o),
             { userId: o.userId, email: o.email }));
@@ -3110,7 +3700,6 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (url === '/api/admin/orders' && method === 'GET') {
-        if (membership.reapOrders(membershipStore.data)) membershipStore.save();
         return json(res, 200, {
           ok: true,
           orders: membershipStore.data.orders.slice().reverse()
@@ -3119,10 +3708,16 @@ const server = http.createServer(async (req, res) => {
         });
       }
 
+      /** 立即回收过期订单（1.8.6：P1-10 后请求路径不再扫订单，这里保留显式管理入口） */
+      if (url === '/api/admin/orders/reap' && method === 'POST') {
+        const changed = reapExpiredOrders();
+        return json(res, 200, { ok: true, changed, orders: membershipStore.data.orders.length });
+      }
+
       /** 核销（fulfill）/ 取消（cancel）订单 */
       m = url.match(/^\/api\/admin\/orders\/([a-zA-Z0-9-]+)\/(fulfill|cancel)$/);
       if (m && method === 'POST') {
-        const order = membership.findOrder(membershipStore.data, m[1]);
+        const order = findOrder(m[1]);
         if (!order) return json(res, 404, { ok: false, error: '订单不存在' });
         let input = {};
         try { input = await readBody(req); } catch (e) { /* 允许空请求体 */ }
@@ -3131,8 +3726,9 @@ const server = http.createServer(async (req, res) => {
           const r = applyOrderFulfill(order, 'admin');
           if (!r.ok) return json(res, 400, { ok: false, error: r.error });
           const user = r.user;
-          membershipStore.save();
+          // ★ 1.8.5（P0-3）：先入账/开通，后置订单状态
           usersStore.save();
+          membershipStore.save();
           if (order.kind === 'credit') {
             log('credit order fulfilled:', order.id, user.email, order.creditMicro + ' micro');
             auditLog(req, 'order.fulfill', { target: order.id, note: '充值入账 ' + user.email,
@@ -3347,7 +3943,7 @@ const server = http.createServer(async (req, res) => {
         const applied = [];
         for (const r of m.results) {
           if (r.status !== 'matched') continue;
-          const order = membership.findOrder(membershipStore.data, r.orderId);
+          const order = findOrder(r.orderId);
           if (!order) {
             applied.push({ orderId: r.orderId, ok: false, error: '订单已不存在' });
             continue;
@@ -3377,8 +3973,9 @@ const server = http.createServer(async (req, res) => {
             after: { amountCents: r.amountCents, perpetual: !!mp.perpetual, expiresAt: mp.expiresAt || null },
           });
         }
-        membershipStore.save();
+        // ★ 1.8.5（P0-3）：对账是批量核销，写序同样先用户域后订单域
         usersStore.save();
+        membershipStore.save();
         log('reconcile applied:',
           applied.filter((x) => x.ok).length + '/' + m.results.length,
           'matched=' + m.summary.matched, 'cents=' + m.summary.matchedCents);
@@ -3528,7 +4125,7 @@ if (require.main === module) {
   }
   startBackgroundJobs();
   server.listen(PORT, HOST, () => {
-    log('PaperPilot account server listening on http://' + HOST + ':' + PORT);
+    log('Papilot account server listening on http://' + HOST + ':' + PORT);
     log('admin page: http://' + HOST + ':' + PORT + '/admin  (loopback only)');
     log('data dir :', DATA_DIR);
     log('token ttl:', Math.round(TOKEN_TTL_MS / 3600e3) + 'h (sliding renewal on /me and /v1/*)');
@@ -3538,6 +4135,9 @@ if (require.main === module) {
     stopBackgroundJobs();
     // 兜底：把网关调用节流续期中尚未落盘的令牌有效期刷盘
     if (_tokenSaveTimer) { clearTimeout(_tokenSaveTimer); _tokenSaveTimer = null; }
+    // 1.8.6：先同步 flush 计量路径的合并窗口（否则窗口内的 usage/扣费会随进程退出丢失），
+    // 再整体落一次盘。flush 会推进写代际，在途异步写发现过时后自行丢弃。
+    try { usersWriter.flush(); } catch (e) { log('shutdown flush failed:', e.message); }
     try { usersStore.save(); } catch (e) { log('shutdown save failed:', e.message); }
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 1500).unref();
@@ -3548,10 +4148,16 @@ if (require.main === module) {
 
 module.exports = {
   server, PORT, DATA_DIR,
+  usersStore, membershipStore, channelsStore, pricingStore, payStore,
+  // 1.8.6（P1-4/P1-10）：异步计量写与查找索引，供测试/排障检查
+  usersWriter, countUsage, flushStores, healthStats, indexStats,
+  degradation,
   startBackgroundJobs, stopBackgroundJobs, runAlertCheck, alertStatus,
-  backlogNow, deviceAlertNow, reloadStores, snapshot,
+  backlogNow, deviceAlertNow, reloadStores, snapshot, reapExpiredOrders,
+  findUserByEmail, findUserById, findOrder, findOrderByTradeNo,
+  // 1.8.5：资金履约入口导出，供 test/pay-atomic.test.js 复现「两次写之间崩溃」
+  applyOrderFulfill,
   usageDays, bumpUsage, isoDay, pruneUsageDaily, USAGE_KEEP_DAYS, today,
   // 1.5.0 AI 计量
   recordUsage, usageTotalsIn, usageSeriesDays, costViewOf, usageSummary, pricingAdminOut,
-  pricingStore,
 };

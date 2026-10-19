@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 # -*- coding: utf-8 -*-
 """launcher.ps1 × account-server.js 接线一致性静态扫描（0.23.0）
 
@@ -496,7 +499,8 @@ for _fn in sorted(os.listdir(TEST_DIR)):
     _n += 1
     ok("server.listen(0, '127.0.0.1'" in _src,
        "14.%d %s 端口由系统分配（listen(0)）" % (_n * 3 - 2, _fn))
-    ok("PORT = server.address().port;" in _src,
+    # 1.8.5：允许 `PORT = server.address().port` 与 `PORT = m.server.address().port`
+    ok(".address().port;" in _src,
        "14.%d %s 回读实际端口" % (_n * 3 - 1, _fn))
     # ★ 请求助手必须关掉 keep-alive：
     #   Node 19+ 客户端默认 keep-alive，而 Node 服务端 keepAliveTimeout 默认 5s——
@@ -527,7 +531,7 @@ utils_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "core", "u
                    encoding="utf-8").read()
 
 ok('"features/theme-toggle.js"' in mainjs, "15.1 main.js 装配清单含 theme-toggle.js")
-ok("this.themeToggle = ThemeToggle;" in mainjs, "15.2 main.js 把 ThemeToggle 挂到 Zotero.PaperPilot")
+ok("this.themeToggle = ThemeToggle;" in mainjs, "15.2 main.js 把 ThemeToggle 挂到 Zotero.Papilot")
 ok("ThemeToggle.register(id);" in mainjs, "15.3 main.js 启动时注册主题按钮")
 ok("ThemeToggle.unregister();" in mainjs, "15.4 main.js 关闭时注销主题按钮（按钮/弹层/样式全摘）")
 ok("ThemeToggle.refresh()" in mainjs, "15.5 主题 pref 变化时同步两处按钮提示")
@@ -544,7 +548,7 @@ ok("getElementById" not in _render_fn,
 # 规范对齐：class 用宿主原生按钮类，不发明样式
 ok('setAttribute("class", "toolbar-button pp-theme-pdf-toggle")' in toggle_js,
    "15.12 阅读器按钮用原生 .toolbar-button（hover/active/disabled 全免费）")
-ok('btn.style.listStyleImage = \'url("chrome://paperpilot/content/icons/theme.svg")\'' in toggle_js,
+ok('btn.style.listStyleImage = \'url("chrome://papilot/content/icons/theme.svg")\'' in toggle_js,
    "15.13 主窗口按钮用 context-fill 单色图标")
 ok('btn.setAttribute("class", "zotero-tb-button")' in toggle_js,
    "15.14 主窗口按钮用原生 .zotero-tb-button（28×28 与相邻控件一致）")
@@ -582,7 +586,7 @@ ok("themeButtonTip" not in toggle_js and "themeButtonTip:" not in utils_js,
    "15.32 旧的合并文案键已清干净")
 # 旧的自造工具栏注入必须已经拆掉，否则会出现两个按钮
 ok("_addToolbarButton" not in pdftheme_js, "15.33 pdf-theme 已移除旧的自造工具栏按钮（避免双按钮）")
-ok("paperpilot-pdf-theme-toggle" not in pdftheme_js, "15.34 pdf-theme 不再持有旧按钮 id")
+ok("papilot-pdf-theme-toggle" not in pdftheme_js, "15.34 pdf-theme 不再持有旧按钮 id")
 # ---- 15.35~15.36：「自定义主题」必须是跳板，不能直接套用空色板 ----
 # 起因：uiThemeCustom 为空时 setTheme("custom") 会渲染出「全白 + 无壁纸」的主题，
 # 用户点完的观感就是「没反应 / 背景反而没了」（0.25.1 用户实测）。
@@ -629,7 +633,7 @@ ok(_main_js.index('"arxiv/arxiv-fetch.js"') < _main_js.index('"features/discover
    "16.93 arxiv-fetch 排在 discovery.js 之前")
 ok(_main_js.index('"arxiv/arxiv-errors.js"') < _main_js.index('"arxiv/arxiv-query.js"') < _main_js.index('"arxiv/arxiv-atom.js"'),
    "16.94 核心内部按依赖序（errors → query → atom）")
-ok("this.arxiv = ArxivFetch;" in _main_js, "16.95 main.js 把 ArxivFetch 挂到 Zotero.PaperPilot")
+ok("this.arxiv = ArxivFetch;" in _main_js, "16.95 main.js 把 ArxivFetch 挂到 Zotero.Papilot")
 ok("ArxivFetch.selfTest()" in _main_js, "16.96 启动时跑 arXiv 核心离线自检（结论写进 boot 日志）")
 
 # Discovery 迁移：自带解析/查询/拉取必须已经拆掉，且改用新的核心
@@ -684,9 +688,9 @@ wb_js = io.open(os.path.join(ROOT, "chrome", "content", "workbench.js"), encodin
 hub_js = io.open(os.path.join(ROOT, "chrome", "content", "hub.js"), encoding="utf-8").read()
 pprefs_xhtml = io.open(PPREFS_XHTML, encoding="utf-8").read()
 
-ok('windowtype="paperpilot:bilingual"' in bl_xhtml, "17.3 窗口 windowtype=paperpilot:bilingual")
-ok("chrome://paperpilot/content/bilingual-view.js" in bl_xhtml, "17.4 窗口挂了窗口脚本")
-ok('WINDOW_TYPE: "paperpilot:bilingual"' in bl_mod, "17.5 模块 WINDOW_TYPE 与 windowtype 一致")
+ok('windowtype="papilot:bilingual"' in bl_xhtml, "17.3 窗口 windowtype=papilot:bilingual")
+ok("chrome://papilot/content/bilingual-view.js" in bl_xhtml, "17.4 窗口挂了窗口脚本")
+ok('WINDOW_TYPE: "papilot:bilingual"' in bl_mod, "17.5 模块 WINDOW_TYPE 与 windowtype 一致")
 ok("getEnumerator(this.WINDOW_TYPE)" in bl_mod, "17.6 单实例复用按同一常量枚举（名字不会写歪）")
 
 # 17.7 窗口脚本引用的元素 id 必须都在 xhtml 里（§7 同款守卫）
@@ -738,8 +742,8 @@ ok("bilingualViewLayout" in prefsdef, "17.24 prefs.js 有 bilingualViewLayout �
 ok("bilingualViewFontSize" in pprefs_xhtml, "17.25 设置面板可配双栏窗口字号")
 
 # 17.26~17.27 主题作用域
-ok("paperpilot:bilingual" in uitheme_js, "17.26 双栏窗口纳入 ui-theme 主题作用域")
-ok('wtype === "paperpilot:bilingual"' in uitheme_js, "17.27 ui-theme 的窗口判定含双栏窗口")
+ok("papilot:bilingual" in uitheme_js, "17.26 双栏窗口纳入 ui-theme 主题作用域")
+ok('wtype === "papilot:bilingual"' in uitheme_js, "17.27 ui-theme 的窗口判定含双栏窗口")
 
 # 17.28~17.29 文案键
 ok("menuBilingualView" in utils_js, "17.28 文案表有 menuBilingualView")
@@ -783,7 +787,8 @@ ok("const billModel = respModel || requestedModel;" in srv,
    "18.14 ★ 按「响应里的真实模型」计价（auto 会被上游解析成真名）")
 ok("countUsage(user, { model: billModel, usage: respUsage, costMicro: cost ? cost.micro : 0 })" in srv,
    "18.15 计量信息落库（次数 + token + 成本）")
-ok("if (!ok) return;   // 上游 4xx" in srv, "18.16 上游 4xx 不计次（保持 1.4.x 旧口径）")
+ok("if (!ok) { releaseOnce(); return; }" in srv,
+   "18.16 上游 4xx 不计次（保持 1.4.x 旧口径；1.8.5 先释放预留）")
 ok("plainSize > PLAIN_METER_MAX" in srv, "18.17 非流式响应体过大时放弃解析（保护内存）")
 
 # --- 用量结构：旧字段不能被破坏 ---
@@ -808,7 +813,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.8.4'" in srv, "18.31 服务端版本号已随批次更新（1.8.4）")
+ok("version: '1.8.5'" in srv, "18.31 服务端版本号已随批次更新（1.8.5）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -910,19 +915,20 @@ ok("balance.grantSignup(user, balanceCfg())" in srv, "19.14 注册自动赠送")
 ok("const gate = balance.precheck(user, balanceCfg(), { highTier: isHighTier });" in srv,
    "19.15 网关 pre-check（在 auto 解析之后，高级判定才准确）")
 ok("return json(res, 402, { ok: false, code: gate.code" in srv, "19.16 余额不足 → 402（非 429，语义独立）")
-ok("balance.consume(user, cost.micro" in srv, "19.17 网关按真实成本扣减")
+ok("settleOnce(cost ? cost.micro : 0" in srv and "balance.settleHold(" in srv,
+   "19.17 网关按真实成本结算（1.8.5 预留制：settleHold 替代直接 consume）")
 # 用位置关系断言顺序（正则跨多行块太脆）：扣减必须先于 countUsage，
 # 借 countUsage 内部的 usersStore.save() 把余额变动一并落盘
-_consume_pos = srv.find("balance.consume(user, cost.micro")
+_consume_pos = srv.find("settleOnce(cost ? cost.micro")
 _count_pos = srv.find("countUsage(user, { model: billModel")
 ok(_consume_pos >= 0 and _count_pos >= 0 and _consume_pos < _count_pos,
-   "19.18 ★ 扣减在 countUsage 之前（借它的 save 一并落盘）")
+   "19.18 ★ 结算在 countUsage 之前（同一快照落盘：余额与用量原子）")
 ok("balance: balance.userView(user, balanceCfg())," in srv, "19.19 /api/auth/me 下发 balance")
 ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余额")
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.8.4'" in srv, "19.24 服务端版本随批次推进（1.8.4）")
+ok("version: '1.8.5'" in srv, "19.24 服务端版本随批次推进（1.8.5）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -983,7 +989,7 @@ def _latest_dist_version():
     vs = []
     try:
         for f in os.listdir(d):
-            m = re.match(r"paper-pilot-(\d+\.\d+\.\d+)\.xpi$", f)
+            m = re.match(r"papilot-(\d+\.\d+\.\d+)\.xpi$", f)
             if m:
                 vs.append(tuple(int(x) for x in m.group(1).split(".")))
     except OSError:
@@ -1082,7 +1088,7 @@ ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/p
 for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
     ok(k in html, "21.31 admin.html 含 %s" % k)
 
-ok("version: '1.8.4'" in srv, "21.32 服务端版本 1.8.4")
+ok("version: '1.8.5'" in srv, "21.32 服务端版本 1.8.5")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 22. 多引擎翻译（插件 0.28.0） ----------
@@ -1096,7 +1102,7 @@ tr_js = io.open(TRANSLATE_JS, encoding="utf-8").read()
 trp_js = io.open(PREFS_TRANSLATE_JS, encoding="utf-8").read()
 
 ok('"ai/translate.js"' in mainjs, "22.1 main.js 装配清单含 ai/translate.js")
-ok("this.translateSvc = TranslateSvc;" in mainjs, "22.2 main.js 把 TranslateSvc 挂到 Zotero.PaperPilot")
+ok("this.translateSvc = TranslateSvc;" in mainjs, "22.2 main.js 把 TranslateSvc 挂到 Zotero.Papilot")
 ok("TranslateSvc.migrate();" in mainjs, "22.3 启动时执行翻译配置一次性迁移")
 ok('"chrome/content/prefs-translate.js"' in mainjs, "22.4 设置面板注册 prefs-translate.js 脚本")
 
@@ -1132,9 +1138,9 @@ ok("TranslateSvc.translate(meta.title" in ch_js, "22.16 标题摘要翻译走 Tr
 ok("TranslateSvc.translate(text" in pc_js, "22.17 对比窗口整页翻译走 TranslateSvc")
 
 # pref 默认值与设置界面
-ok('paperpilot.readerPopupTargetLang", "zh-CN"' in prefsdef, "22.18 目标语言默认规范码 zh-CN")
+ok('papilot.readerPopupTargetLang", "zh-CN"' in prefsdef, "22.18 目标语言默认规范码 zh-CN")
 for _k in ["translateFromLang", "translateCfg", "translateMigrated28"]:
-    ok(("paperpilot.%s" % _k) in prefsdef, "22.19 prefs.js 含 %s 默认值" % _k)
+    ok(("papilot.%s" % _k) in prefsdef, "22.19 prefs.js 含 %s 默认值" % _k)
 for _k in ["pp-tr-status", "pp-tr-active", "pp-tr-from", "pp-tr-to", "pp-tr-fallback",
            "pp-tr-timeout", "pp-tr-retry", "pp-tr-cache", "pp-tr-list", "pp-tr-test-result",
            "pp-tr-route", "pp-tr-total", "pp-tr-cooldown", "pp-tr-local-scan", "pp-tr-local"]:
@@ -1234,9 +1240,9 @@ ok("test/prefs-translate.test.js" in _pf3, "22.67 preflight 含翻译设置面�
 # prefs.xhtml 菜单定制卡片、prefs-menu.js 面板脚本、main.js 暴露 menus/i18n。
 # 钉死「重组不减功能」：注册表必须恰好 41 条（0.28 的 40 条 + 0.31.0 新增 ai-chat），
 # classic 平铺回退必须真实存在（menuMode=classic 不是空话）。
-ok('paperpilot.menuMode", "grouped"' in prefsdef, "23.1 prefs.js 有 menuMode 默认值 grouped")
+ok('papilot.menuMode", "grouped"' in prefsdef, "23.1 prefs.js 有 menuMode 默认值 grouped")
 for _k in ["menuHiddenGroups", "menuQuickItems"]:
-    ok(("paperpilot.%s" % _k) in prefsdef, "23.2 prefs.js 含 %s 默认值" % _k)
+    ok(("papilot.%s" % _k) in prefsdef, "23.2 prefs.js 含 %s 默认值" % _k)
 ok("ITEM_REGISTRY" in menus_js and "GROUPS" in menus_js, "23.3 menus.js 改为注册表驱动")
 ok('_buildClassicItemMenu' in menus_js and '_buildClassicTools' in menus_js,
    "23.4 classic 平铺回退构建器存在（menuMode=classic 可一键切回）")
@@ -1251,7 +1257,7 @@ ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
 ok("this.menus = Menus;" in mainjs and "this.i18n = I18n;" in mainjs,
-   "23.10 main.js 把 Menus/I18n 挂到 Zotero.PaperPilot（面板单一真源）")
+   "23.10 main.js 把 Menus/I18n 挂到 Zotero.Papilot（面板单一真源）")
 for _k in ["pp-menu-mode", "pp-menu-groups", "pp-menu-quick-0", "pp-menu-quick-1",
            "pp-menu-quick-2", "pp-menu-result"]:
     ok(_k in xhtml_ids, "23.11 prefs.xhtml 含 #%s" % _k)
@@ -1260,8 +1266,8 @@ _pmp_used = set(re.findall(r'\$\("([A-Za-z0-9_-]+)"\)', _pmp_js))
 _pmp_missing = sorted(i for i in _pmp_used if i not in xhtml_ids)
 ok(not _pmp_missing,
    "23.12 prefs-menu.js 引用的元素 id 都存在于 prefs.xhtml → 缺失: %s" % (_pmp_missing or "无"))
-ok("Zotero.PaperPilot.menus" in _pmp_js or "PP().menus" in _pmp_js,
-   "23.13 prefs-menu.js 经 Zotero.PaperPilot.menus 读注册表（不维护第二份列表）")
+ok("Zotero.Papilot.menus" in _pmp_js or "PP().menus" in _pmp_js,
+   "23.13 prefs-menu.js 经 Zotero.Papilot.menus 读注册表（不维护第二份列表）")
 ok("test/menu-registry.test.js" in _pf3, "23.14 preflight 含菜单注册表测试")
 
 # ---------- 24. 阅读器右侧栏 · 翻译面板（插件 0.30.0） ----------
@@ -1274,22 +1280,22 @@ ok("test/menu-registry.test.js" in _pf3, "23.14 preflight 含菜单注册表测�
 #   ④ 划词缓存放在浮窗开关之后 → 用户关掉浮窗后侧栏永远拿不到选中文本。
 PANE_JS = os.path.join(ROOT, "chrome", "content", "scripts", "panels", "translate-pane.js")
 pane_js = io.open(PANE_JS, encoding="utf-8").read()
-ZH_FTL = io.open(os.path.join(ROOT, "locale", "zh-CN", "paperpilot.ftl"), encoding="utf-8").read()
-EN_FTL = io.open(os.path.join(ROOT, "locale", "en-US", "paperpilot.ftl"), encoding="utf-8").read()
+ZH_FTL = io.open(os.path.join(ROOT, "locale", "zh-CN", "papilot.ftl"), encoding="utf-8").read()
+EN_FTL = io.open(os.path.join(ROOT, "locale", "en-US", "papilot.ftl"), encoding="utf-8").read()
 
 ok('"panels/translate-pane.js"' in mainjs, "24.1 main.js 装配清单含 panels/translate-pane.js")
-ok("this.translatePane = TranslatePane;" in mainjs, "24.2 main.js 把 TranslatePane 挂到 Zotero.PaperPilot")
+ok("this.translatePane = TranslatePane;" in mainjs, "24.2 main.js 把 TranslatePane 挂到 Zotero.Papilot")
 ok("TranslatePane.register(id);" in mainjs, "24.3 main.js 启动时注册翻译面板")
 ok("TranslatePane.unregister();" in mainjs, "24.4 main.js 关闭时注销翻译面板")
 ok("Zotero.ItemPaneManager.registerSection({" in pane_js, "24.5 走官方 ItemPaneManager.registerSection")
-ok('paneID: "paperpilot-translate"' in pane_js or 'PANE_ID: "paperpilot-translate"' in pane_js,
-   "24.6 paneID 为 paperpilot-translate")
+ok('paneID: "papilot-translate"' in pane_js or 'PANE_ID: "papilot-translate"' in pane_js,
+   "24.6 paneID 为 papilot-translate")
 ok("onRender(" in pane_js, "24.7 ★ 提供 onRender（Z10 缺了会静默返回 false，面板不出现）")
 ok("sidenav:" in pane_js, "24.8 提供 sidenav（右侧栏图标位）")
-ok('l10nID: "paperpilot-translate-section-header"' in pane_js, "24.9 header l10nID 正确")
-ok('l10nID: "paperpilot-translate-section-sidenav"' in pane_js, "24.10 sidenav l10nID 正确")
+ok('l10nID: "papilot-translate-section-header"' in pane_js, "24.9 header l10nID 正确")
+ok('l10nID: "papilot-translate-section-sidenav"' in pane_js, "24.10 sidenav l10nID 正确")
 for _ftl, _tag in [(ZH_FTL, "zh-CN"), (EN_FTL, "en-US")]:
-    ok("paperpilot-translate-section-header =" in _ftl and "paperpilot-translate-section-sidenav =" in _ftl,
+    ok("papilot-translate-section-header =" in _ftl and "papilot-translate-section-sidenav =" in _ftl,
        "24.11 %s ftl 有 header+sidenav 条目（缺了图标不渲染）" % _tag)
 # ★ 注销必须用 registerSection 的返回值（带命名空间的主键）
 ok("this._registeredPaneID = registeredPaneID;" in pane_js
@@ -1339,7 +1345,7 @@ ok(0 <= _line_of('"ai/pdf-text.js"') < _line_of('"ai/translate.js"'),
    "25.3 ★ PdfText 装配先于 translate.js（后者无依赖，但保持确定性顺序）")
 ok(0 <= _line_of('"ai/pdf-text.js"') < _line_of('"features/bilingual-translate.js"'),
    "25.4 ★ PdfText 装配先于 bilingual-translate.js（消费者）")
-ok("this.pdfText = PdfText;" in mainjs, "25.5 main.js 把 PdfText 挂到 Zotero.PaperPilot")
+ok("this.pdfText = PdfText;" in mainjs, "25.5 main.js 把 PdfText 挂到 Zotero.Papilot")
 
 # 词法判定与分类顺序（误判公式/垃圾 = 丢内容）
 ok("function isCaptionLine" in pdft_js and "function isFormulaText" in pdft_js
@@ -1381,7 +1387,7 @@ ok("maskInlineFormulas, unmaskFormulas," in tr_js, "25.26 掩码函数已导出�
 # pref 默认值 + 设置面板元素
 for _k in ["translateGlossary", "translateGlossaryDomains", "bilingualStructExtract",
            "bilingualContext", "translateFormulaProtect"]:
-    ok(("paperpilot.%s" % _k) in prefsdef, "25.27 prefs.js 含 %s 默认值" % _k)
+    ok(("papilot.%s" % _k) in prefsdef, "25.27 prefs.js 含 %s 默认值" % _k)
 for _id in ["pp-tr-glossary", "pp-tr-glossary-msg", "pp-tr-glossary-domains",
             "pp-tr-glossary-import", "pp-tr-glossary-export",
             "pp-tr-glossary-pack", "pp-tr-glossary-pack-add",
@@ -1437,7 +1443,7 @@ except Exception:
     _glp_ok = False
 ok(_glp_ok, "25.43 种子词包数据文件存在（四域各 ~20 条、全部带领域标签、自编无版权风险）")
 ok("ai/glossary-packs.js" in mainjs and "this.glossaryPacks = GlossaryPacks;" in mainjs,
-   "25.44 main.js 装配 glossary-packs.js 并挂 Zotero.PaperPilot.glossaryPacks")
+   "25.44 main.js 装配 glossary-packs.js 并挂 Zotero.Papilot.glossaryPacks")
 ok("pp-tr-glossary-pack-add" in trp_js and "glossaryPacks" in trp_js,
    "25.45 设置面板「添加领域词包」经 mergeGlossary 行级 upsert（追加不覆盖）")
 # 领域 chips：动态渲染 + 点击切换（写 translateGlossaryDomains）
@@ -1454,7 +1460,7 @@ ok("translateGlossaryPackBase" in _glp_src and "jsdelivr" in _glp_src
 ok("index.json" in _glp_src and "Date.now()" in _glp_src.split("function fetchCatalog")[1].split("\n  }")[0],
    "25.49 ★ index.json 带时间戳破 CDN 缓存（否则「有更新」检测滞后于 jsDelivr 长缓存）")
 for _k in ["translateGlossaryPackBase", "translateGlossaryPackState"]:
-    ok(("paperpilot.%s" % _k) in prefsdef, "25.27b prefs.js 含 %s 默认值" % _k)
+    ok(("papilot.%s" % _k) in prefsdef, "25.27b prefs.js 含 %s 默认值" % _k)
 for _id in ["pp-tr-glossary-online-fetch", "pp-tr-glossary-online-status",
             "pp-tr-glossary-online-list"]:
     ok(_id in xhtml_ids, "25.28b prefs.xhtml 含 #%s" % _id)
@@ -1464,7 +1470,7 @@ ok("pp-tr-glossary-online-fetch" in trp_js and "onOnlineFetch" in trp_js
 ok("parseGlossaryImport(r.text)" in trp_js and "translateGlossaryPackState" in trp_js,
    "25.51 ★ 在线导入走 parseGlossaryImport→mergeGlossary 同一条链（与文件导入一致）")
 ok("glossaryPacks" in trp_js and "fetchCatalog()" in trp_js,
-   "25.52 面板经 Zotero.PaperPilot.glossaryPacks 调沙箱侧在线模块（与 TranslateSvc 同模式）")
+   "25.52 面板经 Zotero.Papilot.glossaryPacks 调沙箱侧在线模块（与 TranslateSvc 同模式）")
 
 
 # ---------- 26. 参考文献一键入库（插件 0.33.0 重写） ----------
@@ -1495,7 +1501,7 @@ _ri_i_src = mainjs.find('"features/ref-sources.js"')
 _ri_i_imp = mainjs.find('"features/ref-import.js"')
 ok(_ri_i_fmt > 0 and _ri_i_src > _ri_i_fmt and _ri_i_imp > _ri_i_src,
    "26.1 main.js 按依赖序装配 ref-format → ref-sources → ref-import")
-ok("this.refImport = RefImport;" in mainjs, "26.2 main.js 把 RefImport 挂到 Zotero.PaperPilot")
+ok("this.refImport = RefImport;" in mainjs, "26.2 main.js 把 RefImport 挂到 Zotero.Papilot")
 
 # 25.5~25.7 入口：注册表、classic 菜单、功能中心三处都必须走新对话框
 ok('run: () => RefImport.openDialog()' in menus_js, "26.3 注册表 ref-import 入口指向新对话框")
@@ -1523,8 +1529,8 @@ ok("toBibtex" in ri_fmt and "toRIS" in ri_fmt and "toEndNoteXML" in ri_fmt and "
    "26.15 ★ 导出支持 BibTeX / EndNote(RIS) / EndNote XML / CSL-JSON")
 
 # 25.16~25.19 对话框：windowtype / 脚本引用 id 全部存在 / 不直连网络 / API 一一对应
-ok('windowtype="paperpilot:ref-import"' in ri_dialog_xhtml,
-   "26.16 对话框 windowtype 为 paperpilot:ref-import")
+ok('windowtype="papilot:ref-import"' in ri_dialog_xhtml,
+   "26.16 对话框 windowtype 为 papilot:ref-import")
 _ri_ids = set(re.findall(r'id="([A-Za-z0-9_-]+)"', ri_dialog_xhtml))
 # 对话框脚本里的 $("…") 与 getElementById("…") 都必须在 xhtml 里存在
 _ri_refs = set(re.findall(r'\$\(\s*"([A-Za-z0-9_-]+)"\s*\)', ri_dialog_js))
@@ -1546,7 +1552,7 @@ ok(not _ri_api_missing,
    "26.19 ★ 对话框用到的 api 方法都已注入 → 缺失: %s" % (_ri_api_missing or "无"))
 
 # 25.20~25.22 主题作用域 / 文案 / 默认值 / 门禁
-ok("paperpilot:ref-import" in uitheme_js, "26.20 新对话框纳入 ui-theme 主题作用域")
+ok("papilot:ref-import" in uitheme_js, "26.20 新对话框纳入 ui-theme 主题作用域")
 ok("menuRefImport" in utils_js, "26.21 文案表保留 menuRefImport")
 ok("refImportSources" in prefsdef, "26.22 prefs.js 有 refImportSources 默认值")
 ok("refImportMailto" in prefsdef, "26.23 prefs.js 有 refImportMailto 默认值")
@@ -1554,10 +1560,10 @@ _pf4 = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").
 ok("test/ref-import.test.js" in _pf4, "26.24 preflight 含参考文献入库测试")
 # 单实例枚举必须用 windowtype（写成窗口名 → 每点一次菜单就开一个新窗口，
 # 这类错误静态单测看不出来，只有真机连点两次才会发现）
-ok('WINDOW_TYPE: "paperpilot:ref-import"' in ri_mod
+ok('WINDOW_TYPE: "papilot:ref-import"' in ri_mod
    and "getEnumerator(this.WINDOW_TYPE)" in ri_mod,
    "26.25 ★ 单实例枚举用 windowtype（不是窗口名）")
-ok('WINDOW_NAME: "paperpilot-ref-import"' in ri_mod
+ok('WINDOW_NAME: "papilot-ref-import"' in ri_mod
    and "openDialog(this.DLOG_URL, this.WINDOW_NAME" in ri_mod,
    "26.26 openDialog 用窗口名，与 windowtype 分开")
 
@@ -1651,7 +1657,7 @@ ok(0 <= _mj_line('"ai/pdf-text.js"') < _mj_line('"features/pdf-inline.js"'),
    "27.3 ★ 装配序：PdfInline 在 ai/pdf-text.js 之后（复用 viewerOf/classify 单一真源）")
 ok(0 <= _mj_line('"ai/translate.js"') < _mj_line('"features/pdf-inline.js"'),
    "27.4 ★ 装配序：PdfInline 在 ai/translate.js 之后（翻译一律走 TranslateSvc）")
-ok("this.pdfInline = PdfInline;" in mainjs, "27.5 main.js 把 PdfInline 挂到 Zotero.PaperPilot")
+ok("this.pdfInline = PdfInline;" in mainjs, "27.5 main.js 把 PdfInline 挂到 Zotero.Papilot")
 ok("PdfInline.register(id);" in mainjs, "27.6 main.js 启动时注册（阅读器工具栏按钮）")
 ok("PdfInline.unregister();" in mainjs, "27.7 main.js 关闭时注销（摘除注入物）")
 
@@ -1687,10 +1693,10 @@ menus27 = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "menus.js")
 ok('id: "pdf-inline"' not in menus27, "27.21 菜单里已无 pdf-inline 页内入口（0.36.0 撤掉）")
 ok("PdfInline.startForSelected" not in menus27, "27.22 菜单不再指向页内叠加")
 ok("menuPdfInline" in utils_js, "27.23 文案表含 menuPdfInline")
-ok("paperpilot-inline-reader-button" in pi_js, "27.24 阅读器工具栏按钮 id 固定（供清理与测试定位）")
+ok("papilot-inline-reader-button" in pi_js, "27.24 阅读器工具栏按钮 id 固定（供清理与测试定位）")
 
 for _k in ["pdfInlineMode", "pdfInlineFontScale", "pdfInlineSelectable", "pdfInlineGapMs"]:
-    ok(("paperpilot.%s" % _k) in prefsdef, "27.25 prefs.js 含 %s 默认值" % _k)
+    ok(("papilot.%s" % _k) in prefsdef, "27.25 prefs.js 含 %s 默认值" % _k)
 # 0.36.0：设置面板暴露的是「左原右译」的四项（pp-pd-*）；内核 pref 不再直接暴露
 for _id in ["pp-pd-rightmode", "pp-pd-scale", "pp-pd-sync", "pp-pd-zoom"]:
     ok(_id in xhtml_ids, "27.26 prefs.xhtml 含 #%s" % _id)
@@ -1741,13 +1747,13 @@ def _mj3_line(marker):
 
 ok(0 <= _mj3_line('"features/pdf-inline.js"') < _mj3_line('"features/pdf-dual.js"'),
    "28.3 ★ 装配序：PdfDual 在内核 pdf-inline.js 之后（右栏复用其 attach）")
-ok("this.pdfDual = PdfDual;" in mainjs, "28.4 main.js 把 PdfDual 挂到 Zotero.PaperPilot")
+ok("this.pdfDual = PdfDual;" in mainjs, "28.4 main.js 把 PdfDual 挂到 Zotero.Papilot")
 ok("this.pdfDual.selfTest(undefined, att)" in mainjs and "pdfDualSelfTest" in prefsdef,
    "28.5 自检开关（真实 PDF 上验左右 pane 挂载与右栏落卡；可指定附件排障）")
 
 # 窗口骨架与元素守卫
-ok('windowtype="paperpilot:pdf-dual"' in pd_xhtml, "28.6 窗口 windowtype=paperpilot:pdf-dual")
-ok("chrome://paperpilot/content/pdf-dual-view.js" in pd_xhtml, "28.7 窗口挂了窗口脚本")
+ok('windowtype="papilot:pdf-dual"' in pd_xhtml, "28.6 窗口 windowtype=papilot:pdf-dual")
+ok("chrome://papilot/content/pdf-dual-view.js" in pd_xhtml, "28.7 窗口挂了窗口脚本")
 ok('id="pp-pd-left-browser"' in pd_xhtml and 'id="pp-pd-right-browser"' in pd_xhtml,
    "28.8 ★ 左右各一个 reader browser（左原版 / 右译文）")
 ok('class="reader"' in pd_xhtml and "<splitter" in pd_xhtml,
@@ -1796,12 +1802,12 @@ ok("pdfDual.openForSelected" in hub_js, "28.26 功能中心卡片指向 PdfDual"
 pane_js2 = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "panels", "translate-pane.js"),
                    encoding="utf-8").read()
 ok("pdfDual.openForItem(" in pane_js2, "28.27 阅读器侧栏翻译面板指向 PdfDual")
-ok("WINDOW_TYPE: \"paperpilot:pdf-dual\"" in pd_mod and "getEnumerator(this.WINDOW_TYPE)" in pd_mod,
+ok("WINDOW_TYPE: \"papilot:pdf-dual\"" in pd_mod and "getEnumerator(this.WINDOW_TYPE)" in pd_mod,
    "28.28 单实例复用（按常量枚举，名字不会写歪）")
 
 # pref 默认值与设置面板
 for _k in ["pdfDualSyncScroll", "pdfDualSyncZoom", "pdfDualRightMode", "pdfDualSelfTest"]:
-    ok(("paperpilot.%s" % _k) in prefsdef, "28.29 prefs.js 含 %s 默认值" % _k)
+    ok(("papilot.%s" % _k) in prefsdef, "28.29 prefs.js 含 %s 默认值" % _k)
 _utils_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "core", "utils.js"),
                      encoding="utf-8").read()
 ok("menuPdfDual" in _utils_src and "pdSync" in _utils_src,
@@ -1914,13 +1920,13 @@ ok("prefs-fold.js" in mainjs, "31.2 main.js 注册 prefs-fold.js（scripts 列�
 for _eid in ("pp-fold-expand", "pp-fold-collapse"):
     ok(_eid in xhtml_ids, "31.3 prefs.xhtml 含折叠工具条 #%s" % _eid)
 _FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "skills", "subscriptions", "schedule", "popup",
-              "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys"]
+              "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys", "cloud"]
 _fold_found = re.findall(r'data-fold="([a-z]+)"', prefs_xhtml)
 ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
-   "31.4 prefs.xhtml 的 17 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务；0.53.0 检索订阅）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 17,
-   "31.5 折叠卡片共 17 张（0.49.0 定时任务，0.53.0 检索订阅；不多不少，防止漏包一张）")
-ok('pref("extensions.zotero.paperpilot.prefsFoldOpen", "");' in prefsdef,
+   "31.4 prefs.xhtml 的 18 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务；0.53.0 检索订阅；0.56.0 云同步）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 18,
+   "31.5 折叠卡片共 18 张（0.49.0 定时任务，0.53.0 检索订阅，0.56.0 云同步；不多不少，防止漏包一张）")
+ok('pref("extensions.zotero.papilot.prefsFoldOpen", "");' in prefsdef,
    "31.6 prefs.js 有 prefsFoldOpen 默认值（空 = 全收起）")
 ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
    "31.7 prefs-fold.js 读写 prefsFoldOpen 并切换 pp-fold-closed")
@@ -1947,7 +1953,7 @@ _tq_js = io.open(TQ_JS, encoding="utf-8").read() if os.path.exists(TQ_JS) else "
 ok("toolbar-quick.js" in mainjs, "32.4 main.js 注册 toolbar-quick.js（scripts 列表）")
 ok("ToolbarQuick.register()" in mainjs and "ToolbarQuick.unregister()" in mainjs,
    "32.5 main.js 挂 ToolbarQuick 生命周期（register/unregister）")
-ok('pref("extensions.zotero.paperpilot.quickBarButtonEnabled", true);' in prefsdef,
+ok('pref("extensions.zotero.papilot.quickBarButtonEnabled", true);' in prefsdef,
    "32.6 prefs.js 有 quickBarButtonEnabled 默认值")
 ok("quickBarButtonEnabled" in mainjs and "ToolbarQuick.syncEnabled" in mainjs,
    "32.7 pref 观察者接线：quickBarButtonEnabled → ToolbarQuick.syncEnabled")
@@ -2042,16 +2048,18 @@ ok("buildImagePdf" in (io.open(_pe_test, encoding="utf-8").read() if os.path.exi
 # 这里钉死三件事：判定同时看登录态与套餐、探测不到时放行、以及**内置 Key 不被绕过**。
 _rk_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "columns", "rank-column.js"),
                  encoding="utf-8").read()
-ok("_officialKeyAllowed" in _rk_js, "34.1 分区列有内置 Key 的资格判定 _officialKeyAllowed()")
-ok("Account.isLoggedIn" in _rk_js and "Account.isPro" in _rk_js,
-   "34.2 ★ 门控同时看「已登录」与「专业版」（未登录不能白拿内置 Key）")
-ok('reason === "trial"' in _rk_js, "34.3 新用户试用期可用内置 Key")
-ok('reason === "unknown"' in _rk_js,
-   "34.4 ★ 旧服务端 / 探测不到 ⇒ 放行，不惩罚老用户（同模型分级纪律）")
+ok("_officialKeyAllowed" not in _rk_js,
+   "34.1 0.56.0：内置 Key 的套餐门控已移除（Key 只认用户自备）")
+ok("ES_OFFICIAL_KEY" not in _rk_js,
+   "34.2 ★ 内置官方 Key 常量已删除（第三方 Key 无商用授权，不能随包分发）")
+ok('Prefs.get("easyScholarKey"' in _rk_js,
+   "34.3 Key 唯一来源是用户 pref easyScholarKey")
+ok('return "need_key"' in _rk_js,
+   "34.4 ★ 未填 Key ⇒ esStatus 返回 need_key（设置页给出可执行指引，不静默空白）")
 ok("esStatus" in _rk_js, "34.5 提供 esStatus() 供设置页给出可执行指引")
 _rek_refs = _rk_js.count("ES_OFFICIAL_KEY")
-ok(_rek_refs == 2,
-   "34.6 ★ 内置 Key 仅 2 处引用（常量定义 + esKey），别处直接引用＝绕过门控（实际 %d 处）" % _rek_refs)
+ok(_rek_refs == 0,
+   "34.6 ★ 源码中零处引用内置 Key（防止死灰复燃，实际 %d 处）" % _rek_refs)
 ok("esStatus" in io.open(os.path.join(ROOT, "chrome", "content", "prefs-pane.js"),
                          encoding="utf-8").read(),
    "34.7 设置页状态行展示门控状态（免费版不会只看到空白以为坏了）")
@@ -2078,7 +2086,7 @@ ok("parseRecognized" in _cn_ai and "_unverified: true" in _cn_ai,
 ok("parseRescueResults" in _cn_ai and "CNKI-LLM" in _cn_ai,
    "35.5 P3 自愈解析在（来源标 CNKI-LLM 便于审计）")
 ok("_renderPagesPNG" in _cn_ai and "pdf-render-worker.js" in _cn_ai,
-   "35.6 视觉路径渲染走随包 worker（chrome://paperpilot/content/scripts/pdf-render-worker.js）")
+   "35.6 视觉路径渲染走随包 worker（chrome://papilot/content/scripts/pdf-render-worker.js）")
 ok(os.path.exists(os.path.join(ROOT, "chrome", "content", "scripts", "pdf-render-worker.js")),
    "35.7 pdf-render-worker.js 已随包（视觉路径缺它即静默 null）")
 ok('cnFetchAIVision", false' in prefsdef,
@@ -2141,7 +2149,7 @@ ok("test/cn-auth.test.js" in _pf5,
 ok("PP.cnAuth.loginInteractive()" in hub_js,
    "36.12 功能中心（Hub）保留「知网账号登录」入口卡（全能入口，与右键菜单分离）")
 ok("this.cnAuth = CNAuth" in mainjs,
-   "36.13 main.js 暴露 cnAuth（面板/Hub/排障经 Zotero.PaperPilot 访问）")
+   "36.13 main.js 暴露 cnAuth（面板/Hub/排障经 Zotero.Papilot 访问）")
 # 设置面板「知网账号」卡片（0.43.1）
 _prefs_xhtml = io.open(os.path.join(ROOT, "chrome", "content", "prefs.xhtml"), encoding="utf-8").read()
 ok('data-fold="cnki"' in _prefs_xhtml and 'id="pp-cnki-login-btn"' in _prefs_xhtml
@@ -2195,8 +2203,8 @@ ok('{ id: "third-source", group: "cn", labelKey: "menuThirdSource", run: () => T
 ok("menuThirdSource:" in utils_js, "37.8 I18n 表含 menuThirdSource 文案")
 for _k in ["thirdSourceEnabled", "thirdSourceSite", "thirdSourceUsername", "thirdSourcePassword",
            "thirdSourceLastTest", "thirdSourceEntitlements", "thirdSourceEndpointCheck"]:
-    ok(("paperpilot.%s" % _k) in prefsdef, "37.9 prefs.js 含 %s 默认值" % _k)
-ok('pref("extensions.zotero.paperpilot.thirdSourceEnabled", false);' in prefsdef,
+    ok(("papilot.%s" % _k) in prefsdef, "37.9 prefs.js 含 %s 默认值" % _k)
+ok('pref("extensions.zotero.papilot.thirdSourceEnabled", false);' in prefsdef,
    "37.10 ★ 实验功能默认关闭")
 ok("proGate()" in _ts_js and '"not-logged-in"' in _ts_js and "unknown-allow" in _ts_js,
    "37.11 ★ Pro 软门控（判定不出时放行；仅明确非 Pro 拦截）")
@@ -2254,13 +2262,13 @@ ok(_p1 >= 0 and _p2 >= 0 and _p1 < _p2,
 ok("Get-AutoBootServices" in _launcher and "Start-ServicesOnBoot" in _launcher
    and "bootTimer" in _launcher,
    "38.12 ★ 控制台启动后默认拉起后台与通道（可在维护页关闭）")
-ok("paperpilot-launcher-boot.log" in _launcher and "FATAL: " in _launcher
+ok("papilot-launcher-boot.log" in _launcher and "FATAL: " in _launcher
    and "DefaultDesktopOnly" in _launcher,
    "38.13 启动日志 + 致命错误弹窗（wscript 隐藏启动也能排障）")
 ok("[PpWin32]::FindWindow([IntPtr]::Zero" in _launcher,
    "38.14 ★ 重复启动时激活已有窗口（$null 传给 string 会变空串→找不到窗口）")
-_bat = io.open(os.path.join(ROOT, "启动PaperPilot后台.bat"), encoding="gbk").read()
-ok(":pp_probe" in _bat and "tasklist.exe" in _bat and "paperpilot-launcher.pid" in _bat,
+_bat = io.open(os.path.join(ROOT, "启动Papilot后台.bat"), encoding="gbk").read()
+ok(":pp_probe" in _bat and "tasklist.exe" in _bat and "papilot-launcher.pid" in _bat,
    "38.15 ★ bat 启动后做 PID 存活确认（wscript 返回 0 ≠ 真的起来了）")
 ok("Test-PortOpen" in _launcher and "Get-TunnelProcessCached" in _launcher,
    "38.16 轮询走快探测/缓存（不再每拍 Get-NetTCPConnection + CIM）")
@@ -2286,8 +2294,8 @@ ok("_fingerprint" in _at_js and "_cachePut" in _at_js and "CACHE_MAX" in _at_js,
 ok("async suggest(item)" in _at_js and "suggestDetailed" in _at_js,
    "39.7 ★ suggest() 兼容层保留（automation.js 的 aiAutoTag 动作不改自升级）")
 for _k in ["autoTagUseVocab", "autoTagCache", "autoTagLang", "autoTagConfidenceThreshold", "autoTagCacheData"]:
-    ok(("paperpilot.%s" % _k) in prefsdef, "39.8 prefs.js 含 %s 默认值" % _k)
-ok('pref("extensions.zotero.paperpilot.autoTagLang", "auto");' in prefsdef,
+    ok(("papilot.%s" % _k) in prefsdef, "39.8 prefs.js 含 %s 默认值" % _k)
+ok('pref("extensions.zotero.papilot.autoTagLang", "auto");' in prefsdef,
    "39.9 ★ 标签语言默认 auto（跟随界面；中文用户行为不变）")
 ok('id="pp-autotag-vocab"' in prefs_xhtml and 'id="pp-autotag-lang"' in prefs_xhtml
    and 'id="pp-autotag-threshold"' in prefs_xhtml and 'id="pp-autotag-cache"' in prefs_xhtml,
@@ -2352,16 +2360,16 @@ for _eid in ("pp-agent-tools", "pp-agent-mode", "pp-agent-confirm", "pp-syspromp
              "pp-syspreset-reset", "pp-agent-tags", "pp-tags-export", "pp-tags-import"):
     ok(_eid in xhtml_ids, "40.13 prefs.xhtml 含 #%s" % _eid)
 ok('id="pp-sysprompt"' in prefs_xhtml and
-   'preference="extensions.zotero.paperpilot.aiSystemPrompt"' in prefs_xhtml,
+   'preference="extensions.zotero.papilot.aiSystemPrompt"' in prefs_xhtml,
    "40.14 System Prompt textarea 保留 preference= 声明式绑定并带 id（预设按钮写入用）")
 # aiAgentTools 为 CSV 白名单，由 prefs-agent.js chips 读写（无声明式绑定，40.17 盯两端）
 for _pk in ("aiHistoryRounds", "aiTopP", "chatAgentMode", "aiAgentMaxSteps",
             "aiAgentConfirmWrite"):
-    ok('preference="extensions.zotero.paperpilot.%s"' % _pk in prefs_xhtml,
+    ok('preference="extensions.zotero.papilot.%s"' % _pk in prefs_xhtml,
        "40.15 prefs.xhtml 声明式绑定 %s" % _pk)
-    ok('pref("extensions.zotero.paperpilot.%s"' % _pk in prefsdef,
+    ok('pref("extensions.zotero.papilot.%s"' % _pk in prefsdef,
        "40.16 prefs.js 有 %s 默认值" % _pk)
-ok('pref("extensions.zotero.paperpilot.aiAgentTools"' in prefsdef,
+ok('pref("extensions.zotero.papilot.aiAgentTools"' in prefsdef,
    "40.16b prefs.js 有 aiAgentTools 默认值（CSV 白名单）")
 ok("aiAgentTools" in _pa_js and "aiAgentTools" in _at_js,
    "40.17 工具白名单 pref 两端一致（面板写 / AgentTools 读）")
@@ -2404,7 +2412,7 @@ if _cat_ok:
     ok(str(_cat.get("updatedAt", "")).isdigit(), "42.8 目录 updatedAt 为毫秒时间戳")
 ok(os.path.exists(os.path.join(ROOT, "scripts", "build-skill-catalog.js")),
    "42.9 目录生成器 build-skill-catalog.js 在库（唯一生成通道）")
-ok('pref("extensions.zotero.paperpilot.skillStoreSource", "https://gitee.com/' in prefsdef,
+ok('pref("extensions.zotero.papilot.skillStoreSource", "https://gitee.com/' in prefsdef,
    "42.10 skillStoreSource 默认指向官方 Gitee raw 目录")
 ok("server/public/skill-catalog.json" in prefsdef,
    "42.11 默认目录 URL 路径与仓库文件路径一致")
@@ -2461,14 +2469,14 @@ ok(os.path.exists(os.path.join(ROOT, "chrome/content/prefs-schedule.js")) and "p
    "43.12 定时任务设置面板脚本在库并注册")
 ok('id="pp-sch-rows"' in prefs_xhtml and 'data-fold="schedule"' in prefs_xhtml,
    "43.13 prefs.xhtml 定时任务卡片容器")
-ok('id="pp-profile"' in prefs_xhtml and 'preference="extensions.zotero.paperpilot.researcherProfile"' in prefs_xhtml,
+ok('id="pp-profile"' in prefs_xhtml and 'preference="extensions.zotero.papilot.researcherProfile"' in prefs_xhtml,
    "43.14 prefs.xhtml 研究者画像输入（声明式绑定）")
 ok('id="pp-agent-decision-model"' in prefs_xhtml
-   and 'preference="extensions.zotero.paperpilot.aiAgentDecisionModel"' in prefs_xhtml,
+   and 'preference="extensions.zotero.papilot.aiAgentDecisionModel"' in prefs_xhtml,
    "43.15 prefs.xhtml 决策模型输入（声明式绑定）")
 for _pk in ("chatSessions", "aiAgentDecisionModel", "researcherProfile", "agentAuditLog",
             "scheduleDailyDigest", "scheduleWeeklyReport", "scheduleLibHealth", "scheduleLastRun"):
-    ok('pref("extensions.zotero.paperpilot.%s"' % _pk in prefsdef,
+    ok('pref("extensions.zotero.papilot.%s"' % _pk in prefsdef,
        "43.16 prefs.js 有 %s 默认值" % _pk)
 ok("search_arxiv" in prefsdef and "move_to_collection" in prefsdef and "export_bibliography" in prefsdef,
    "43.17 ★ aiAgentTools 默认 CSV 含 5 个新工具（11 工具）")
@@ -2493,7 +2501,7 @@ ok(os.path.exists(os.path.join(ROOT, "test", "chat-sessions.test.js"))
    "43.25 三套新测试在库（会话/定时/MCP）")
 
 # ---------- 44. 0.51.0（引用可点击 / Agent 记忆 / 相关文献） ----------
-ok('pref("extensions.zotero.paperpilot.citeLinksEnabled", true)' in prefsdef,
+ok('pref("extensions.zotero.papilot.citeLinksEnabled", true)' in prefsdef,
    "44.1 citeLinksEnabled 默认开（回答引用可点击）")
 ok("_citeRefsOf" in _cf_src and "_focusItem" in _cf_src and "_decorateCites" in _cf_src,
    "44.2 ★ chat-float 引用识别/装饰/定位三件套（纯函数 + 渲染路径）")
@@ -2503,7 +2511,7 @@ ok(os.path.exists(_am_js), "44.4 AgentMemory 模块在库（长期记忆）")
 _am_src = io.open(_am_js, encoding="utf-8").read() if os.path.exists(_am_js) else ""
 ok("asPromptBlock" in _am_src and "add(" in _am_src and "search(" in _am_src,
    "44.5 AgentMemory API（add/list/search/remove/clear/asPromptBlock）")
-ok('pref("extensions.zotero.paperpilot.agentMemory"' in prefsdef, "44.6 agentMemory pref 默认值")
+ok('pref("extensions.zotero.papilot.agentMemory"' in prefsdef, "44.6 agentMemory pref 默认值")
 ok('"features/agent-memory.js"' in mainjs and "this.agentMemory = AgentMemory" in mainjs,
    "44.7 main.js 装配并暴露 agentMemory")
 ok("prefs-memory.js" in mainjs and os.path.exists(os.path.join(ROOT, "chrome/content/prefs-memory.js")),
@@ -2523,16 +2531,16 @@ ok("register(" in _rp_src and "fetchFor" in _rp_src and "importPaper" in _rp_src
 _s2x = os.path.join(ROOT, "chrome/content/scripts/features/s2-client.js")
 ok(os.path.exists(_s2x) and "recommendations" in io.open(_s2x, encoding="utf-8").read(),
    "44.17 S2Client 扩展 recommendations（幂等挂载）")
-ok('pref("extensions.zotero.paperpilot.relatedPapersEnabled", true)' in prefsdef,
+ok('pref("extensions.zotero.papilot.relatedPapersEnabled", true)' in prefsdef,
    "44.18 relatedPapersEnabled 默认开")
 ok('"features/s2-client.js"' in mainjs and '"features/related-papers.js"' in mainjs
    and mainjs.find('"ai/semantic-scholar.js"') < mainjs.find('"features/s2-client.js"'),
    "44.19 main.js 装配顺序（semantic-scholar → s2-client 扩展 → related-papers）")
 ok("RelatedPapers.register(id)" in mainjs and "RelatedPapers.unregister()" in mainjs,
    "44.20 ★ 相关文献面板注册/注销接线")
-_ftl_zh = io.open(os.path.join(ROOT, "locale/zh-CN/paperpilot.ftl"), encoding="utf-8").read()
-_ftl_en = io.open(os.path.join(ROOT, "locale/en-US/paperpilot.ftl"), encoding="utf-8").read()
-ok("paperpilot-related-section-header" in _ftl_zh and "paperpilot-related-section-header" in _ftl_en,
+_ftl_zh = io.open(os.path.join(ROOT, "locale/zh-CN/papilot.ftl"), encoding="utf-8").read()
+_ftl_en = io.open(os.path.join(ROOT, "locale/en-US/papilot.ftl"), encoding="utf-8").read()
+ok("papilot-related-section-header" in _ftl_zh and "papilot-related-section-header" in _ftl_en,
    "44.21 ftl 双语文案（相关文献 section header 必需）")
 ok("test/chat-sessions.test.js" in _preflight_src and "test/scheduler.test.js" in _preflight_src
    and "test/mcp.test.js" in _preflight_src and "test/agent-memory.test.js" in _preflight_src
@@ -2549,13 +2557,13 @@ ok("_classify" in _cc_src and "fetchFor" in _cc_src and "register(" in _cc_src,
    "45.2 CitationContext API（register/fetchFor/_classify 倾向判定）")
 ok("citations" in io.open(os.path.join(ROOT, "chrome/content/scripts/features/s2-client.js"), encoding="utf-8").read(),
    "45.3 S2Client 扩展 citations（双模分派：兼容既有 citation-trace 旧语义）")
-ok('pref("extensions.zotero.paperpilot.citationContextEnabled", true)' in prefsdef,
+ok('pref("extensions.zotero.papilot.citationContextEnabled", true)' in prefsdef,
    "45.4 citationContextEnabled 默认开")
 ok('"features/citation-context.js"' in mainjs and "CitationContext.register(id)" in mainjs
    and "CitationContext.unregister()" in mainjs,
    "45.5 ★ 引文上下文面板注册/注销接线")
-ok("paperpilot-citecon-section-header" in io.open(os.path.join(ROOT, "locale/zh-CN/paperpilot.ftl"), encoding="utf-8").read()
-   and "paperpilot-citecon-section-header" in io.open(os.path.join(ROOT, "locale/en-US/paperpilot.ftl"), encoding="utf-8").read(),
+ok("papilot-citecon-section-header" in io.open(os.path.join(ROOT, "locale/zh-CN/papilot.ftl"), encoding="utf-8").read()
+   and "papilot-citecon-section-header" in io.open(os.path.join(ROOT, "locale/en-US/papilot.ftl"), encoding="utf-8").read(),
    "45.6 ftl 双语（引文上下文 section）")
 _md_path = os.path.join(ROOT, "chrome/content/scripts/features/meta-doctor.js")
 ok(os.path.exists(_md_path), "45.7 MetaDoctor 模块在库（元数据医生）")
@@ -2572,18 +2580,18 @@ ok(os.path.exists(_ad_path), "45.12 AnnotationDigest 模块在库（标注速记
 _ad_src = io.open(_ad_path, encoding="utf-8").read() if os.path.exists(_ad_path) else ""
 ok("collect(" in _ad_src and "buildPrompt" in _ad_src and "MAX_NOTES" in _ad_src,
    "45.13 AnnotationDigest API（collect/buildPrompt/run 证据纪律契约）")
-ok('pref("extensions.zotero.paperpilot.annotationDigestEnabled", true)' in prefsdef,
+ok('pref("extensions.zotero.papilot.annotationDigestEnabled", true)' in prefsdef,
    "45.14 annotationDigestEnabled 默认开")
 ok('"features/annotation-digest.js"' in mainjs and "this.annotationDigest = AnnotationDigest" in mainjs,
    "45.15 main.js 装配并暴露 annotationDigest")
-ok('"paperpilot-itemmenu-annot-digest"' in menusjs_src and "menuAnnotDigest" in menusjs_src
+ok('"papilot-itemmenu-annot-digest"' in menusjs_src and "menuAnnotDigest" in menusjs_src
    and "AIClient.hasKey" in menusjs_src,
    "45.16 ★ 标注速记菜单（含 AI 未配置前置拦截）")
 ok("test/citation-context.test.js" in _preflight_src and "test/meta-doctor.test.js" in _preflight_src
    and "test/annotation-digest.test.js" in _preflight_src,
    "45.17 preflight 注册三个新测试套件")
-ok('preference="extensions.zotero.paperpilot.citationContextEnabled"' in prefs_xhtml
-   and 'preference="extensions.zotero.paperpilot.annotationDigestEnabled"' in prefs_xhtml,
+ok('preference="extensions.zotero.papilot.citationContextEnabled"' in prefs_xhtml
+   and 'preference="extensions.zotero.papilot.annotationDigestEnabled"' in prefs_xhtml,
    "45.18 设置面板两个新开关（声明式绑定）")
 
 # ---------- 46. 0.53.0（检索订阅 / 综述工作台） ----------
@@ -2592,8 +2600,8 @@ ok(os.path.exists(_ss_path), "46.1 SearchSubs 模块在库（检索订阅）")
 _ss_src = io.open(_ss_path, encoding="utf-8").read() if os.path.exists(_ss_path) else ""
 ok("checkDue" in _ss_src and "run(" in _ss_src and "_fingerprint" in _ss_src and "searchSubsSeen" in _ss_src,
    "46.2 SearchSubs API（checkDue/run/指纹去重/记账）")
-ok('pref("extensions.zotero.paperpilot.searchSubscriptions"' in prefsdef
-   and 'pref("extensions.zotero.paperpilot.searchSubsSeen"' in prefsdef,
+ok('pref("extensions.zotero.papilot.searchSubscriptions"' in prefsdef
+   and 'pref("extensions.zotero.papilot.searchSubsSeen"' in prefsdef,
    "46.3 prefs.js 订阅与记账默认值")
 ok('"features/search-subs.js"' in mainjs and "this.searchSubs = SearchSubs" in mainjs,
    "46.4 main.js 装配并暴露 searchSubs")
@@ -2623,11 +2631,11 @@ ok('"features/review-workbench.js"' in mainjs and "this.reviewWorkbench = Review
 ok('"review-workbench"' in menusjs_src and "menuReviewWorkbench" in menusjs_src
    and "menuReviewWorkbench" in io.open(os.path.join(ROOT, "chrome/content/scripts/core/utils.js"), encoding="utf-8").read(),
    "46.14 ★ 工作台菜单入口（笔记组 + 右键 + I18n）")
-ok('pref("extensions.zotero.paperpilot.reviewWorkbenchEnabled", true)' in prefsdef,
+ok('pref("extensions.zotero.papilot.reviewWorkbenchEnabled", true)' in prefsdef,
    "46.15 reviewWorkbenchEnabled 默认开")
 ok("test/search-subs.test.js" in _preflight_src and "test/review-workbench.test.js" in _preflight_src,
    "46.16 preflight 注册两个新测试套件")
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 17, "46.17 折叠卡共 17 张（订阅卡已计入）")
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 18, "46.17 折叠卡共 18 张（订阅卡、云同步卡已计入）")
 
 # ---------- 47. 0.54.0 审查修复（P0-P2 十项） ----------
 ok('addCondition("note", "contains"' in _at_js,
@@ -2701,8 +2709,8 @@ ok(mainjs.find('"ai/command-tags.js"') != -1 and
    "41.3 装载顺序：command-tags.js 在 skill-packs.js 之前（SkillPacks 惰性消费 CommandTags/NoteTemplates/TranslateSvc）")
 ok("this.skillPacks = SkillPacks" in mainjs,
    "41.4 main.js 暴露 this.skillPacks = SkillPacks（设置面板/商店窗口经此访问）")
-ok("openSkillStore" in mainjs and "paperpilot:skillstore" in mainjs,
-   "41.5 main.js 有 openSkillStore 与 paperpilot:skillstore（单例聚焦 + window.openDialog）")
+ok("openSkillStore" in mainjs and "papilot:skillstore" in mainjs,
+   "41.5 main.js 有 openSkillStore 与 papilot:skillstore（单例聚焦 + window.openDialog）")
 ok("prefs-skill.js" in mainjs,
    "41.6 main.js scripts 列表注册 prefs-skill.js（设置面板技能商店卡片）")
 SS_XHTML = os.path.join(ROOT, "chrome", "content", "skill-store.xhtml")
@@ -2713,8 +2721,8 @@ ok(os.path.exists(SS_XHTML) and
    (("no-native" in _ss_xhtml and "function boot()" in _ss_xhtml) or
     ("function boot()" in _ss_js and "readyState" in _ss_js)),
    "41.7 商店窗口引导齐备（xhtml no-native + boot，或 skill-store.js boot + readyState，其一）")
-ok("paperpilot:skillstore" in _ss_xhtml or "paperpilot:skillstore" in _ss_js,
-   "41.8 商店窗口 windowtype 为 paperpilot:skillstore（xhtml 或 js 声明其一）")
+ok("papilot:skillstore" in _ss_xhtml or "papilot:skillstore" in _ss_js,
+   "41.8 商店窗口 windowtype 为 papilot:skillstore（xhtml 或 js 声明其一）")
 ok("&nbsp;" not in _ss_xhtml,
    "41.9 skill-store.xhtml 无 &nbsp;（XML 实体纪律，同 §30 模式）")
 ok(os.path.exists(os.path.join(ROOT, "chrome", "content", "prefs-skill.js")),
@@ -2722,7 +2730,7 @@ ok(os.path.exists(os.path.join(ROOT, "chrome", "content", "prefs-skill.js")),
 ok(all(_e in xhtml_ids for _e in
        ("pp-sk-open", "pp-sk-import", "pp-sk-source", "pp-sk-installed", "pp-sk-refresh")),
    "41.11 prefs.xhtml 含技能商店卡片五 id（pp-sk-open / pp-sk-import / pp-sk-source / pp-sk-installed / pp-sk-refresh）")
-ok(all('pref("extensions.zotero.paperpilot.%s"' % _k in prefsdef for _k in
+ok(all('pref("extensions.zotero.papilot.%s"' % _k in prefsdef for _k in
        ("skillPacksInstalled", "skillPackRatings", "skillStoreSource")),
    "41.12 prefs.js 有 skillPacksInstalled / skillPackRatings / skillStoreSource 默认值")
 ok("openSkillStore" in hub_js,
@@ -2857,7 +2865,7 @@ ok("Test-PortOpen" in _restart_body and "Wait-Ui" in _restart_body
 _fc = re.search(r"\$form\.add_FormClosing\(\{[\s\S]*?\r?\n\}\)", ps)
 ok(_fc is not None and "Hide-ToTray" not in _fc.group(0),
    "46.5 ★ 关闭窗口 = 退出（旧行为静默最小化到托盘，用户眼里的「关不掉」）")
-_bat = io.open(os.path.join(ROOT, "启动PaperPilot后台.bat"), encoding="gbk", errors="replace").read()
+_bat = io.open(os.path.join(ROOT, "启动Papilot后台.bat"), encoding="gbk", errors="replace").read()
 ok("console-alive.ps1" in _bat and os.path.isfile(os.path.join(ROOT, "scripts", "console-alive.ps1")),
    "46.6 bat 用窗口应答探测控制台（进程活着 ≠ 能用）")
 _vbs = io.open(os.path.join(ROOT, "scripts", "start-server-hidden.vbs"), encoding="utf-8", errors="replace").read()
@@ -2868,6 +2876,72 @@ ok("pid: process.pid" in srv and "lagMs: _loop.lagMs" in srv,
    "46.8 服务端 /api/health 自报 pid + lagMs（控制台据此免查 WMI）")
 ok("uncaughtException" in srv and "unhandledRejection" in srv and "server-crash.log" in srv,
    "46.9 服务端崩溃兜底写 server-crash.log（无声消失可追溯）")
+
+# ==================== 47. 守护脚本健康判据（1.8.5 审查 P1-9） ====================
+# 端口在听 != 能干活：服务端被同步写盘堵死时 TCP 仍能握手，只判 Test-Port 的
+# 守护会永远沉默，而启动器显示「服务异常」——两边结论相反。
+_guard = io.open(os.path.join(ROOT, "scripts", "guard-papilot.ps1"),
+                 encoding="utf-8", errors="replace").read()
+ok("function Test-ServerHealthy" in _guard and "api/health" in _guard,
+   "47.1 守护用 /api/health 判活（不只 Test-Port）")
+ok("Get-HealthFails" in _guard and "guard-health-fails.txt" in _guard,
+   "47.2 连续失败计数（避免刚拉起/抖动时误杀）")
+ok("Stop-PortOwner" in _guard and "Get-NetTCPConnection" in _guard,
+   "47.3 端口被占但 health 不通时可强杀重启")
+ok("Test-ServerHealthy" in _guard.split("# ---------- pass 2")[0],
+   "47.4 pass1 主判据已切到 health（不是端口）")
+ok("C:\\Users\\Administrator" not in _guard,
+   "47.5 守护脚本不写死用户目录（$env:USERPROFILE）")
+
+# ---------- 48. 坚果云云同步（0.56.0） ----------
+# 三条关键接线：模块按依赖顺序装、面板脚本注册、密钥类 pref 不在快照白名单里。
+# 这三处任何一处断了，症状分别是：功能整体不可用 / 设置卡片空白 / 密钥被同步上云。
+_CLOUD_CORE = os.path.join(ROOT, "chrome", "content", "scripts", "core", "webdav.js")
+_CLOUD_SYNC = os.path.join(ROOT, "chrome", "content", "scripts", "features", "cloud-sync.js")
+_CLOUD_PREFS = os.path.join(ROOT, "chrome", "content", "prefs-cloud.js")
+ok(os.path.exists(_CLOUD_CORE), "48.1 core/webdav.js 存在（协议层）")
+ok(os.path.exists(_CLOUD_SYNC), "48.2 features/cloud-sync.js 存在（同步域）")
+ok(os.path.exists(_CLOUD_PREFS), "48.3 prefs-cloud.js 存在（设置面板脚本）")
+ok('"core/webdav.js"' in mainjs and '"features/cloud-sync.js"' in mainjs,
+   "48.4 main.js 装配了协议层与同步域")
+ok(mainjs.index('"core/webdav.js"') < mainjs.index('"features/cloud-sync.js"'),
+   "48.5 加载顺序：webdav.js 在 cloud-sync.js 之前（后者加载期就取 WebDAV.CODES）")
+ok("prefs-cloud.js" in mainjs, "48.6 main.js 注册了 prefs-cloud.js")
+ok('data-fold="cloud"' in prefs_xhtml and 'id="pp-cloud-email"' in prefs_xhtml
+   and 'id="pp-cloud-token"' in prefs_xhtml and 'id="pp-cloud-sync"' in prefs_xhtml,
+   "48.7 prefs.xhtml 有云同步卡片与关键控件")
+ok('pref("extensions.zotero.papilot.cloudSyncToken", "");' in prefsdef,
+   "48.8 prefs.js 有 cloudSyncToken 默认值（空 = 未登录）")
+_cloud_sync_js = io.open(_CLOUD_SYNC, encoding="utf-8").read() if os.path.exists(_CLOUD_SYNC) else ""
+_cloud_core_js = io.open(_CLOUD_CORE, encoding="utf-8").read() if os.path.exists(_CLOUD_CORE) else ""
+_cloud_panel_js = io.open(_CLOUD_PREFS, encoding="utf-8").read() if os.path.exists(_CLOUD_PREFS) else ""
+ok("SECRET_LEAF_RE" in _cloud_sync_js and 'shouldSyncPref' in _cloud_sync_js
+   and "aiChannels" in _cloud_sync_js,
+   "48.9 ★ 设置快照剔除密钥类键（aiChannels/apiKey/token/password）")
+ok("cloudSync" in _cloud_sync_js and 'leaf.indexOf("cloudSync") === 0' in _cloud_sync_js,
+   "48.10 ★ 同步自身配置不进快照（否则多机互相改配置）")
+ok("client.del(" not in _cloud_sync_js,
+   "48.11 ★ 同步过程从不调用 DELETE（删除不传播，避免误删传染）")
+ok("TOO_LARGE" in _cloud_sync_js and "QUOTA" in _cloud_core_js and "AUTH_EXPIRED" in _cloud_sync_js,
+   "48.12 ★ 错误分类齐全（超限/配额/授权过期）")
+ok("_uploadParts" in _cloud_sync_js and "ppmanifest" in _cloud_sync_js,
+   "48.13 ★ 大文件分卷 + 清单（断点续传基础）")
+ok("/Papilot" in _cloud_sync_js and '=== "/"' in _cloud_sync_js,
+   "48.14 同步根兜底：不允许把整个网盘当同步区")
+ok("appPassword" in _cloud_panel_js or "应用密码" in _cloud_panel_js,
+   "48.15 面板明确提示「应用密码」（登录密码直连会 401）")
+ok("pp-cloud-progress" in prefs_xhtml and "pp-cloud-log" in prefs_xhtml,
+   "48.16 面板有进度与日志位（状态反馈）")
+# 真机（2026-10-19）暴露的两个问题，必须留守卫，否则回归后极难定位：
+#  · 坚果云 ETag 是裸串，统一补引号 → 条件写 412；
+#  · 密集请求触发 503 BlockedTemporarily，短退避会继续撞墙。
+ok("etagRaw" in _cloud_core_js and "etagRaw" in _cloud_sync_js,
+   "48.17 ★ ETag 原样回传（etagRaw）：坚果云裸串补引号会 412")
+ok("minIntervalMs" in _cloud_core_js and "minIntervalMs" in _cloud_sync_js,
+   "48.18 ★ 客户端请求节流（minIntervalMs）防坚果云限流")
+ok("BlockedTemporarily" in _cloud_core_js and "retryAfterMs" in _cloud_core_js
+   and "retryAfterMs" in _cloud_sync_js,
+   "48.19 ★ 限流单独归因（BlockedTemporarily → RATE_LIMIT + 长等待）")
 
 print("=" * 60)
 for p in passes:

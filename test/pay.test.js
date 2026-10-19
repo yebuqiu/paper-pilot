@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 在线支付网关测试（服务端 1.7.0）
  *
  * 运行：node test/pay.test.js
@@ -298,7 +301,7 @@ function orderOnDisk(id) {
     // 默认状态：未启用
     let r = await req(PORT, 'GET', '/api/health');
     eq(r.json.onlinePay, false, 'C1 health：默认未开通在线支付');
-    eq(r.json.version, '1.8.4', 'C2 服务端版本 1.8.4');
+    eq(r.json.version, '1.8.5', 'C2 服务端版本 1.8.4');
     r = await req(PORT, 'GET', '/api/plans');
     eq(r.json.onlinePay.available, false, 'C3 /api/plans：未开通时 available=false');
 
@@ -398,7 +401,7 @@ function orderOnDisk(id) {
 
     /* ---- 免签网关加价兼容（领航智能Pay ljlliu.cn 实测：并发同额未完结订单被 +1 分递增
            加价以区分入账，notify 带加价后金额 → 多付侧留尾差窗口；少付仍拒；按本地额度入账。
-           注意 PaperPilot 定价带唯一对账尾数，订单实际金额必须读回计算，不能硬编码） ---- */
+           注意 Papilot 定价带唯一对账尾数，订单实际金额必须读回计算，不能硬编码） ---- */
     const ob = await req(PORT, 'POST', '/api/orders', { kind: 'credit', optionId: 'rc10' }, tok);
     const obCents = Math.round(Number(ob.json.order.amount) * 100);
     await req(PORT, 'POST', '/api/orders/' + ob.json.order.id + '/pay', { channel: 'alipay' }, tok);

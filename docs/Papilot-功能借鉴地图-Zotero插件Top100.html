@@ -2,7 +2,7 @@
 <html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PaperPilot 功能借鉴地图 · Zotero 插件生态 Top 100</title>
+<title>Papilot 功能借鉴地图 · Zotero 插件生态 Top 100</title>
 <style>
 :root{--bg:#0d1117;--panel:#161b22;--panel2:#1c2129;--line:#30363d;--fg:#e6edf3;--dim:#8b949e;--dim2:#6e7681;--accent:#58a6ff;--green:#3fb950;--orange:#f0883e;--red:#f85149}
 html[data-theme="light"]{--bg:#f6f8fa;--panel:#fff;--panel2:#eef1f4;--line:#d0d7de;--fg:#1f2328;--dim:#59636e;--dim2:#818b98;--accent:#0969da}
@@ -73,294 +73,294 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </style></head>
 <body><div class="wrap">
 <div class="top">
-<div><h1>PaperPilot 功能借鉴地图<br>Zotero 插件生态 Top 100 · 功能视角</h1>
-<p class="sub">本文只回答一个问题：<b>生态里已经存在的这些能力，哪些值得 PaperPilot 抄进功能清单、怎么抄、抄完长什么样</b>。不看代码复用、不谈许可证——那是实现细节，不是产品判断。<br>数据快照 2026-10-02 ｜ GitHub API 聚合 678 仓库 → Top 100 ｜ 目标项目 PaperPilot 文献副驾（Zotero 7–10）</p></div>
+<div><h1>Papilot 功能借鉴地图<br>Zotero 插件生态 Top 100 · 功能视角</h1>
+<p class="sub">本文只回答一个问题：<b>生态里已经存在的这些能力，哪些值得 Papilot 抄进功能清单、怎么抄、抄完长什么样</b>。不看代码复用、不谈许可证——那是实现细节，不是产品判断。<br>数据快照 2026-10-02 ｜ GitHub API 聚合 678 仓库 → Top 100 ｜ 目标项目 Papilot 文献副驾（Zotero 7–10）</p></div>
 <button class="toggle" onclick="var h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'">切换明/暗</button>
 </div>
 
 <div class="cards">
 <div class="card"><div class="k">纳入分析</div><div class="v">100 <small>个插件</small></div></div>
 <div class="card"><div class="k">划分功能域</div><div class="v">16 <small>个</small></div></div>
-<div class="card"><div class="k">PaperPilot 空白域</div><div class="v">3 <small>个（检索发现 / 集成互操作 / 插件生态）</small></div></div>
+<div class="card"><div class="k">Papilot 空白域</div><div class="v">3 <small>个（检索发现 / 集成互操作 / 插件生态）</small></div></div>
 <div class="card"><div class="k">强烈建议参考</div><div class="v">23 <small>项 ★★★</small></div></div>
 <div class="card"><div class="k">值得参考（排期）</div><div class="v">46 <small>项 ★★</small></div></div>
 </div>
 
 <div class="tldr"><b>三句话结论</b>
 <ul>
-<li><b>PaperPilot 的 AI 能力不缺「问答」，缺「范围」</b>：目前基本只能对着当前这篇问。生态已经验证的两条升级路径是——<b>跨全库知识库问答</b>（ai4paper）与<b>库内语义检索</b>（ZotSeek）。这两项与 PaperPilot 现成的模型通道直接复用，投入产出最高。</li>
-<li><b>三个真正的空白域，按价值排序是：检索与发现 &gt; 集成与互操作 &gt; 插件生态</b>。其中「基于库兴趣的 arXiv 每日推荐」把 PaperPilot 从读文献工具变成科研信息流；「MCP 对外供给」让 PaperPilot 从「用 AI 的工具」变成「被 AI 调用的工具」。</li>
-<li><b>已有功能里最该补的三块：「笔记关系图谱」「标签治理」「阅读行为统计」</b>。前两者是 PaperPilot 现有强项（生成笔记、AI 打标）的必要配套——不补的话，AI 产出越多，库越乱。</li>
+<li><b>Papilot 的 AI 能力不缺「问答」，缺「范围」</b>：目前基本只能对着当前这篇问。生态已经验证的两条升级路径是——<b>跨全库知识库问答</b>（ai4paper）与<b>库内语义检索</b>（ZotSeek）。这两项与 Papilot 现成的模型通道直接复用，投入产出最高。</li>
+<li><b>三个真正的空白域，按价值排序是：检索与发现 &gt; 集成与互操作 &gt; 插件生态</b>。其中「基于库兴趣的 arXiv 每日推荐」把 Papilot 从读文献工具变成科研信息流；「MCP 对外供给」让 Papilot 从「用 AI 的工具」变成「被 AI 调用的工具」。</li>
+<li><b>已有功能里最该补的三块：「笔记关系图谱」「标签治理」「阅读行为统计」</b>。前两者是 Papilot 现有强项（生成笔记、AI 打标）的必要配套——不补的话，AI 产出越多，库越乱。</li>
 </ul></div>
 
 <h2>一、建议优先落地的 12 个功能（按价值排序）</h2>
-<ol class="t12"><li><div class="t12h"><span class="t12n">1</span><h4>跨全库知识库问答 + 库内语义检索</h4><span class="t12src">wdcpclover/ai4paper、introfini/ZotSeek</span></div><p>PaperPilot 的 AI 目前基本是「对着当前这篇问」。用户真正的痛点是「我这个库讲过 XX 方法吗？」——关键词检索答不了，语义检索能答。这两个项目分别给出了产品形态（文库级问答）与工程路径（本地向量索引 + 增量更新）。与现有模型通道复用，是 AI 定位最自然的下一跳。</p></li><li><div class="t12h"><span class="t12n">2</span><h4>文献发现：基于库兴趣的 arXiv 每日推荐</h4><span class="t12src">TideDra/zotero-arxiv-daily</span></div><p>生态里需求验证最充分的空白域，也是 PaperPilot 从「读文献工具」升级为「科研信息流」的关键。可用同一套 AI 通道做兴趣向量与摘要生成，先做站内推荐，推送通道后置以控制隐私与运维成本。</p></li><li><div class="t12h"><span class="t12n">3</span><h4>入库自动精读：事件驱动的 AI 流水线</h4><span class="t12src">steven-jianhao-li/zotero-AI-Butler</span></div><p>把「手动点 AI 总结」变成「入库即自动生成结构化笔记（研究问题/方法/结论/局限）」。PaperPilot 的 AI 能力已经齐备，只差事件触发与成本节流（白名单/每日上限）这层工程。</p></li><li><div class="t12h"><span class="t12n">4</span><h4>笔记关系图谱与笔记大纲</h4><span class="t12src">windingwind/zotero-better-notes</span></div><p>PaperPilot 已能生成笔记，但笔记之间是孤岛。双向链接 + 关系图谱 + 大纲整理，是让用户把库沉淀成「第二大脑」的关键，也是笔记类插件公认的护城河功能。</p></li><li><div class="t12h"><span class="t12n">5</span><h4>附件补挂与附件健康闭环</h4><span class="t12src">MuiseDestiny/zotero-attanger、SciImage/zotero-attachment-scanner</span></div><p>「有条目没附件」「附件断链」是最普遍也最烦人的库健康问题。补上「扫描下载目录 → 相似度匹配 → 人工确认挂接」的流程，加上「全文是否可被 AI 读取」的扫描维度，PaperPilot 的库健康栏目会立刻变得有说服力。</p></li><li><div class="t12h"><span class="t12n">6</span><h4>标签体系治理</h4><span class="t12src">ganzoth/zotero-taxonomy-curator</span></div><p>AI 打标是 PaperPilot 的强项，但打出来的标签会越积越乱（大小写/同义词/层级缺失）。归一化、层级化、批量合并是打标能力的必要配套，缺了它 AI 打标的长期价值会打折。</p></li><li><div class="t12h"><span class="t12n">7</span><h4>阅读行为统计与阅读报告</h4><span class="t12src">volatile-static/Chartero</span></div><p>阅读时长、逐页热度、热力图日历、周报——PaperPilot 完全没有数据。这既是用户粘性来源，也能反哺 AI（「我最近读的这几篇有什么共同点」）。Chartero 已验证需求且实现路径清晰。</p></li><li><div class="t12h"><span class="t12n">8</span><h4>图表与公式速览</h4><span class="t12src">MuiseDestiny/zotero-figure</span></div><p>精读时最常翻回去看的就是图表。把图/表/公式抽出来集中浏览，并支持「选中图直接问 AI」，是把现有 AI 问答与 PDF 速览串起来的高价值增强。</p></li><li><div class="t12h"><span class="t12n">9</span><h4>可视化自动化引擎（触发-条件-动作）</h4><span class="t12src">windingwind/zotero-actions-tags</span></div><p>把 PaperPilot 的「规则打标」升级为通用自动化配置器：新条目入库 → 条件匹配 → 打标/改字段/跑 AI。这是「功能中心」里最有扩展性、最能形成用户自定义生态的一块（需要在脚本执行上设权限边界）。</p></li><li><div class="t12h"><span class="t12n">10</span><h4>MCP 对外能力供给</h4><span class="t12src">cookjohn/zotero-mcp</span></div><p>反向思路：不止让 PaperPilot 调用 AI，也让它成为一个「被 AI 调用」的文献能力提供方——用户在 Claude/Cursor 里就能检索自己的库。生态位稀缺（同类项目多数已停滞），且与自有 AI 功能互补不冲突。</p></li><li><div class="t12h"><span class="t12n">11</span><h4>元数据规则补齐（以 format-metadata 为验收清单）</h4><span class="t12src">northword/zotero-format-metadata</span></div><p>PaperPilot 已有规范清洗，建议直接用对方的规则清单逐条对照补漏：期刊缩写全称互转、标题大小写、页码/卷期格式、作者名归一化、DOI 有效性校验，并把交互改成「问题逐条列出 + 勾选修复」。</p></li><li><div class="t12h"><span class="t12n">12</span><h4>扫描版 PDF 的文本层补全（OCR）</h4><span class="t12src">UB-Mannheim/zotero-ocr</span></div><p>扫描版论文在 PaperPilot 里等于「AI 全瞎」——问答、翻译、综述全部失效。补上「检测缺文本层 → OCR → 回写」，AI 能力的覆盖面会明显扩大。建议做成可选外部依赖提供安装引导。</p></li></ol>
+<ol class="t12"><li><div class="t12h"><span class="t12n">1</span><h4>跨全库知识库问答 + 库内语义检索</h4><span class="t12src">wdcpclover/ai4paper、introfini/ZotSeek</span></div><p>Papilot 的 AI 目前基本是「对着当前这篇问」。用户真正的痛点是「我这个库讲过 XX 方法吗？」——关键词检索答不了，语义检索能答。这两个项目分别给出了产品形态（文库级问答）与工程路径（本地向量索引 + 增量更新）。与现有模型通道复用，是 AI 定位最自然的下一跳。</p></li><li><div class="t12h"><span class="t12n">2</span><h4>文献发现：基于库兴趣的 arXiv 每日推荐</h4><span class="t12src">TideDra/zotero-arxiv-daily</span></div><p>生态里需求验证最充分的空白域，也是 Papilot 从「读文献工具」升级为「科研信息流」的关键。可用同一套 AI 通道做兴趣向量与摘要生成，先做站内推荐，推送通道后置以控制隐私与运维成本。</p></li><li><div class="t12h"><span class="t12n">3</span><h4>入库自动精读：事件驱动的 AI 流水线</h4><span class="t12src">steven-jianhao-li/zotero-AI-Butler</span></div><p>把「手动点 AI 总结」变成「入库即自动生成结构化笔记（研究问题/方法/结论/局限）」。Papilot 的 AI 能力已经齐备，只差事件触发与成本节流（白名单/每日上限）这层工程。</p></li><li><div class="t12h"><span class="t12n">4</span><h4>笔记关系图谱与笔记大纲</h4><span class="t12src">windingwind/zotero-better-notes</span></div><p>Papilot 已能生成笔记，但笔记之间是孤岛。双向链接 + 关系图谱 + 大纲整理，是让用户把库沉淀成「第二大脑」的关键，也是笔记类插件公认的护城河功能。</p></li><li><div class="t12h"><span class="t12n">5</span><h4>附件补挂与附件健康闭环</h4><span class="t12src">MuiseDestiny/zotero-attanger、SciImage/zotero-attachment-scanner</span></div><p>「有条目没附件」「附件断链」是最普遍也最烦人的库健康问题。补上「扫描下载目录 → 相似度匹配 → 人工确认挂接」的流程，加上「全文是否可被 AI 读取」的扫描维度，Papilot 的库健康栏目会立刻变得有说服力。</p></li><li><div class="t12h"><span class="t12n">6</span><h4>标签体系治理</h4><span class="t12src">ganzoth/zotero-taxonomy-curator</span></div><p>AI 打标是 Papilot 的强项，但打出来的标签会越积越乱（大小写/同义词/层级缺失）。归一化、层级化、批量合并是打标能力的必要配套，缺了它 AI 打标的长期价值会打折。</p></li><li><div class="t12h"><span class="t12n">7</span><h4>阅读行为统计与阅读报告</h4><span class="t12src">volatile-static/Chartero</span></div><p>阅读时长、逐页热度、热力图日历、周报——Papilot 完全没有数据。这既是用户粘性来源，也能反哺 AI（「我最近读的这几篇有什么共同点」）。Chartero 已验证需求且实现路径清晰。</p></li><li><div class="t12h"><span class="t12n">8</span><h4>图表与公式速览</h4><span class="t12src">MuiseDestiny/zotero-figure</span></div><p>精读时最常翻回去看的就是图表。把图/表/公式抽出来集中浏览，并支持「选中图直接问 AI」，是把现有 AI 问答与 PDF 速览串起来的高价值增强。</p></li><li><div class="t12h"><span class="t12n">9</span><h4>可视化自动化引擎（触发-条件-动作）</h4><span class="t12src">windingwind/zotero-actions-tags</span></div><p>把 Papilot 的「规则打标」升级为通用自动化配置器：新条目入库 → 条件匹配 → 打标/改字段/跑 AI。这是「功能中心」里最有扩展性、最能形成用户自定义生态的一块（需要在脚本执行上设权限边界）。</p></li><li><div class="t12h"><span class="t12n">10</span><h4>MCP 对外能力供给</h4><span class="t12src">cookjohn/zotero-mcp</span></div><p>反向思路：不止让 Papilot 调用 AI，也让它成为一个「被 AI 调用」的文献能力提供方——用户在 Claude/Cursor 里就能检索自己的库。生态位稀缺（同类项目多数已停滞），且与自有 AI 功能互补不冲突。</p></li><li><div class="t12h"><span class="t12n">11</span><h4>元数据规则补齐（以 format-metadata 为验收清单）</h4><span class="t12src">northword/zotero-format-metadata</span></div><p>Papilot 已有规范清洗，建议直接用对方的规则清单逐条对照补漏：期刊缩写全称互转、标题大小写、页码/卷期格式、作者名归一化、DOI 有效性校验，并把交互改成「问题逐条列出 + 勾选修复」。</p></li><li><div class="t12h"><span class="t12n">12</span><h4>扫描版 PDF 的文本层补全（OCR）</h4><span class="t12src">UB-Mannheim/zotero-ocr</span></div><p>扫描版论文在 Papilot 里等于「AI 全瞎」——问答、翻译、综述全部失效。补上「检测缺文本层 → OCR → 回写」，AI 能力的覆盖面会明显扩大。建议做成可选外部依赖提供安装引导。</p></li></ol>
 
-<h2>二、功能地图：按功能域看生态全景与 PaperPilot 位置</h2>
-<p class="sub">每个功能域内按「对 PaperPilot 的参考价值」排序（★★★ 强烈建议参考 / ★★ 值得参考 / ★ 已覆盖或价值有限 / — 不建议）。点击项目名可跳转仓库。</p>
+<h2>二、功能地图：按功能域看生态全景与 Papilot 位置</h2>
+<p class="sub">每个功能域内按「对 Papilot 的参考价值」排序（★★★ 强烈建议参考 / ★★ 值得参考 / ★ 已覆盖或价值有限 / — 不建议）。点击项目名可跳转仓库。</p>
 <section class="dom">
 <header><h3>AI 阅读与问答<span class="dcount">11 项</span><span class="dverdict" style="--c:#d29922">🟡 已有但可升级</span><span class="dhi">其中 3 项强烈建议参考</span></h3>
-<p class="dadvice">PaperPilot 的问答/总结/综述已经很全，差距在「跨全库问答」「入库自动精读」「图表速览」和可自定义的 #命令体系——补完这四项，AI 能力才从「能用」变成「好用」。</p></header>
+<p class="dadvice">Papilot 的问答/总结/综述已经很全，差距在「跨全库问答」「入库自动精读」「图表速览」和可自定义的 #命令体系——补完这四项，AI 能力才从「能用」变成「好用」。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-gpt" target="_blank" rel="noopener">zotero-gpt</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">MuiseDestiny · 7,447★</span></div>
-<p class="dfunc">划词唤起 GPT 浮窗，支持多轮对话、「#标签」式 prompt 快捷命令与嵌入向量检索</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（划词浮窗、工作台 2.0 多会话）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/steven-jianhao-li/zotero-AI-Butler" target="_blank" rel="noopener">zotero-AI-Butler</a>
+<p class="dfunc">划词唤起 GPT 浮窗，支持多轮对话、「#标签」式 prompt 快捷命令与嵌入向量检索</p><p class="dpp"><b>Papilot 现状：</b>部分已有（划词浮窗、工作台 2.0 多会话）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/steven-jianhao-li/zotero-AI-Butler" target="_blank" rel="noopener">zotero-AI-Butler</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">steven-jianhao-li · 1,770★</span></div>
-<p class="dfunc">文献入库后自动触发大模型精读并生成结构化笔记，支持多平台模型</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（AI 总结/深度解读，需手动触发）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-figure" target="_blank" rel="noopener">zotero-figure</a>
+<p class="dfunc">文献入库后自动触发大模型精读并生成结构化笔记，支持多平台模型</p><p class="dpp"><b>Papilot 现状：</b>部分已有（AI 总结/深度解读，需手动触发）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-figure" target="_blank" rel="noopener">zotero-figure</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">MuiseDestiny · 567★</span></div>
-<p class="dfunc">从 PDF 中抽取图、表、公式并集中浏览/导出</p><p class="dpp"><b>PaperPilot 现状：</b>空白（PDF 速览以文本为主）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/yilewang/llm-for-zotero" target="_blank" rel="noopener">llm-for-zotero</a>
+<p class="dfunc">从 PDF 中抽取图、表、公式并集中浏览/导出</p><p class="dpp"><b>Papilot 现状：</b>空白（PDF 速览以文本为主）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/yilewang/llm-for-zotero" target="_blank" rel="noopener">llm-for-zotero</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">yilewang · 3,179★</span></div>
-<p class="dfunc">面向 Zotero 库的研究 agent：多步检索-推理-写作流程编排</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（工作台、AI 综述/矩阵）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/papersgpt/papersgpt-for-zotero" target="_blank" rel="noopener">papersgpt-for-zotero</a>
+<p class="dfunc">面向 Zotero 库的研究 agent：多步检索-推理-写作流程编排</p><p class="dpp"><b>Papilot 现状：</b>部分已有（工作台、AI 综述/矩阵）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/papersgpt/papersgpt-for-zotero" target="_blank" rel="noopener">papersgpt-for-zotero</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">papersgpt · 2,662★</span></div>
-<p class="dfunc">全能型 AI 助手：多模型问答、翻译、综述，并内置 MCP 支持</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（AI 问答、翻译、综述）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/jlegewie/beaver-zotero" target="_blank" rel="noopener">beaver-zotero</a>
+<p class="dfunc">全能型 AI 助手：多模型问答、翻译、综述，并内置 MCP 支持</p><p class="dpp"><b>Papilot 现状：</b>部分已有（AI 问答、翻译、综述）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/jlegewie/beaver-zotero" target="_blank" rel="noopener">beaver-zotero</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">jlegewie · 261★</span></div>
-<p class="dfunc">Zotero 内 AI 研究助手（2026 年新作，TypeScript 现代工程）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/ImperialSquid/zotero-zotts" target="_blank" rel="noopener">zotero-zotts</a>
+<p class="dfunc">Zotero 内 AI 研究助手（2026 年新作，TypeScript 现代工程）</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/ImperialSquid/zotero-zotts" target="_blank" rel="noopener">zotero-zotts</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">ImperialSquid · 211★</span></div>
-<p class="dfunc">文本朗读（TTS）：条目标题/摘要/PDF 正文转语音，含朗读高亮同步</p><p class="dpp"><b>PaperPilot 现状：</b>空白（PaperPilot 无语音能力）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/lifan0127/ai-research-assistant" target="_blank" rel="noopener">ai-research-assistant</a>
+<p class="dfunc">文本朗读（TTS）：条目标题/摘要/PDF 正文转语音，含朗读高亮同步</p><p class="dpp"><b>Papilot 现状：</b>空白（Papilot 无语音能力）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/lifan0127/ai-research-assistant" target="_blank" rel="noopener">ai-research-assistant</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">lifan0127 · 1,729★</span></div>
-<p class="dfunc">Aria 研究助手：GPT 驱动的检索与写作辅助（含 Zotero 集成）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/kazgu/zotero-chatgpt" target="_blank" rel="noopener">zotero-chatgpt</a>
+<p class="dfunc">Aria 研究助手：GPT 驱动的检索与写作辅助（含 Zotero 集成）</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/kazgu/zotero-chatgpt" target="_blank" rel="noopener">zotero-chatgpt</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">kazgu · 303★</span></div>
-<p class="dfunc">Zotero 内接入 ChatGPT 的早期实现</p><p class="dpp"><b>PaperPilot 现状：</b>已有（更完整的工作台）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/jadense-ai/jadense-in-zotero" target="_blank" rel="noopener">jadense-in-zotero</a>
+<p class="dfunc">Zotero 内接入 ChatGPT 的早期实现</p><p class="dpp"><b>Papilot 现状：</b>已有（更完整的工作台）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/jadense-ai/jadense-in-zotero" target="_blank" rel="noopener">jadense-in-zotero</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">jadense-ai · 172★</span></div>
-<p class="dfunc">Zotero 内 AI 研究助手（问答与阅读辅助）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/Visterainer/aidea-zotero" target="_blank" rel="noopener">aidea-zotero</a>
+<p class="dfunc">Zotero 内 AI 研究助手（问答与阅读辅助）</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/Visterainer/aidea-zotero" target="_blank" rel="noopener">aidea-zotero</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">Visterainer · 124★</span></div>
-<p class="dfunc">AI 助手：论文对话、划词翻译、整篇翻译</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li></ul></section><section class="dom">
+<p class="dfunc">AI 助手：论文对话、划词翻译、整篇翻译</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li></ul></section><section class="dom">
 <header><h3>检索与发现<span class="dcount">5 项</span><span class="dverdict" style="--c:#f85149">🔴 完全空白</span><span class="dhi">其中 3 项强烈建议参考</span></h3>
-<p class="dadvice">PaperPilot 目前只会「读」不会「找」。这是投入产出比最高的空白域：库兴趣向量 → arXiv 每日推荐，以及库内语义检索（关键词搜不到、语义搜得到）。两项都能与现有 AI 能力直接复用同一套模型通道。</p></header>
+<p class="dadvice">Papilot 目前只会「读」不会「找」。这是投入产出比最高的空白域：库兴趣向量 → arXiv 每日推荐，以及库内语义检索（关键词搜不到、语义搜得到）。两项都能与现有 AI 能力直接复用同一套模型通道。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/TideDra/zotero-arxiv-daily" target="_blank" rel="noopener">zotero-arxiv-daily</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">TideDra · 6,002★</span></div>
-<p class="dfunc">基于 Zotero 库兴趣每日推荐 arXiv 新论文，支持邮件/微信推送</p><p class="dpp"><b>PaperPilot 现状：</b>空白（PaperPilot 无文献发现能力）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wdcpclover/ai4paper" target="_blank" rel="noopener">ai4paper</a>
+<p class="dfunc">基于 Zotero 库兴趣每日推荐 arXiv 新论文，支持邮件/微信推送</p><p class="dpp"><b>Papilot 现状：</b>空白（Papilot 无文献发现能力）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wdcpclover/ai4paper" target="_blank" rel="noopener">ai4paper</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">wdcpclover · 3,585★</span></div>
-<p class="dfunc">AI 全文翻译 + 2.4 亿文献检索一键入库 + 文库知识库问答 + 精读综述 + 分区列</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（翻译/综述/分区列），空白（文献检索入库、文库知识库问答）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/introfini/ZotSeek" target="_blank" rel="noopener">ZotSeek</a>
+<p class="dfunc">AI 全文翻译 + 2.4 亿文献检索一键入库 + 文库知识库问答 + 精读综述 + 分区列</p><p class="dpp"><b>Papilot 现状：</b>部分已有（翻译/综述/分区列），空白（文献检索入库、文库知识库问答）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/introfini/ZotSeek" target="_blank" rel="noopener">ZotSeek</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">introfini · 215★</span></div>
-<p class="dfunc">本地语义搜索（向量索引）+ 内置 MCP 服务器供 AI agent 检索全文</p><p class="dpp"><b>PaperPilot 现状：</b>空白（PaperPilot 只有关键词检索）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/AllanChain/zotero-arxiv-workflow" target="_blank" rel="noopener">zotero-arxiv-workflow</a>
+<p class="dfunc">本地语义搜索（向量索引）+ 内置 MCP 服务器供 AI agent 检索全文</p><p class="dpp"><b>Papilot 现状：</b>空白（Papilot 只有关键词检索）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/AllanChain/zotero-arxiv-workflow" target="_blank" rel="noopener">zotero-arxiv-workflow</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">AllanChain · 389★</span></div>
-<p class="dfunc">arXiv 论文管理：预印本与正式版关联、版本追踪</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/fkguo/zotero-inspire" target="_blank" rel="noopener">zotero-inspire</a>
+<p class="dfunc">arXiv 论文管理：预印本与正式版关联、版本追踪</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/fkguo/zotero-inspire" target="_blank" rel="noopener">zotero-inspire</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">fkguo · 236★</span></div>
-<p class="dfunc">INSPIRE-HEP 深度集成：内置 arXiv 浏览器与高能物理论文元数据同步</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li></ul></section><section class="dom">
+<p class="dfunc">INSPIRE-HEP 深度集成：内置 arXiv 浏览器与高能物理论文元数据同步</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li></ul></section><section class="dom">
 <header><h3>笔记与卡片<span class="dcount">5 项</span><span class="dverdict" style="--c:#d29922">🟡 部分覆盖</span><span class="dhi">其中 1 项强烈建议参考</span></h3>
-<p class="dadvice">PaperPilot 已能「生成笔记」，但缺「管理笔记」：笔记之间的双向链接与关系图谱、笔记大纲整理。这是学术用户沉淀知识的关键一环。</p></header>
+<p class="dadvice">Papilot 已能「生成笔记」，但缺「管理笔记」：笔记之间的双向链接与关系图谱、笔记大纲整理。这是学术用户沉淀知识的关键一环。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/zotero-better-notes" target="_blank" rel="noopener">zotero-better-notes</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">windingwind · 8,281★</span></div>
-<p class="dfunc">笔记模板、笔记关系图谱、批注转笔记、笔记大纲与自动化操作</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（模板笔记、批注转笔记、AI 解读批注）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/018/zotcard" target="_blank" rel="noopener">zotcard</a>
+<p class="dfunc">笔记模板、笔记关系图谱、批注转笔记、笔记大纲与自动化操作</p><p class="dpp"><b>Papilot 现状：</b>部分已有（模板笔记、批注转笔记、AI 解读批注）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/018/zotcard" target="_blank" rel="noopener">zotcard</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">018 · 644★</span></div>
-<p class="dfunc">卡片式笔记增强：卡片模板、变量替换、批量生成</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（按模板新建笔记）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/zzlb0224/zotero-annotation-manage" target="_blank" rel="noopener">zotero-annotation-manage</a>
+<p class="dfunc">卡片式笔记增强：卡片模板、变量替换、批量生成</p><p class="dpp"><b>Papilot 现状：</b>部分已有（按模板新建笔记）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/zzlb0224/zotero-annotation-manage" target="_blank" rel="noopener">zotero-annotation-manage</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">zzlb0224 · 125★</span></div>
-<p class="dfunc">批注与笔记的整理、导出与统计</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（收集批注为笔记）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/frianasoa/Ze-Notes" target="_blank" rel="noopener">Ze-Notes</a>
+<p class="dfunc">批注与笔记的整理、导出与统计</p><p class="dpp"><b>Papilot 现状：</b>部分已有（收集批注为笔记）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/frianasoa/Ze-Notes" target="_blank" rel="noopener">Ze-Notes</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">frianasoa · 107★</span></div>
-<p class="dfunc">笔记可视化：按条目聚合笔记并以更直观的方式呈现</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/fei0810/markdownhere4zotero" target="_blank" rel="noopener">markdownhere4zotero</a>
+<p class="dfunc">笔记可视化：按条目聚合笔记并以更直观的方式呈现</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/fei0810/markdownhere4zotero" target="_blank" rel="noopener">markdownhere4zotero</a>
 <span class="dstar" style="--c:#6e7681">—</span><span class="downer">fei0810 · 177★</span></div>
-<p class="dfunc">在 Zotero 笔记中渲染 Markdown/LaTeX</p><p class="dpp"><b>PaperPilot 现状：</b>已有（Zotero 7 原生支持 Markdown/富文本）</p></li></ul></section><section class="dom">
+<p class="dfunc">在 Zotero 笔记中渲染 Markdown/LaTeX</p><p class="dpp"><b>Papilot 现状：</b>已有（Zotero 7 原生支持 Markdown/富文本）</p></li></ul></section><section class="dom">
 <header><h3>元数据与库健康<span class="dcount">21 项</span><span class="dverdict" style="--c:#3fb950">🟢 基础扎实，规则待补齐</span><span class="dhi">其中 6 项强烈建议参考</span></h3>
 <p class="dadvice">清洗/补全/中文识别都已具备，缺的是「覆盖深度」：DOI 有效性体检、期刊缩写、作者名归一化、扫描版 OCR 文本层、PubPeer 质量信号。建议把 format-metadata 的规则清单当验收表逐条对照。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/l0o0/jasminum" target="_blank" rel="noopener">jasminum</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">l0o0 · 7,267★</span></div>
-<p class="dfunc">中文文献元数据识别：知网/万方题录抓取、CNKI 附件下载与元数据补全</p><p class="dpp"><b>PaperPilot 现状：</b>已有（中文文件名识别元数据，知网/万方）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/northword/zotero-format-metadata" target="_blank" rel="noopener">zotero-format-metadata</a>
+<p class="dfunc">中文文献元数据识别：知网/万方题录抓取、CNKI 附件下载与元数据补全</p><p class="dpp"><b>Papilot 现状：</b>已有（中文文件名识别元数据，知网/万方）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/northword/zotero-format-metadata" target="_blank" rel="noopener">zotero-format-metadata</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">northword · 1,059★</span></div>
-<p class="dfunc">元数据规范 linter：标题大小写、期刊缩写、DOI/页码格式等大批规则 + 一键修复</p><p class="dpp"><b>PaperPilot 现状：</b>已有（元数据规范清洗）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/ChenglongMa/zoplicate" target="_blank" rel="noopener">zoplicate</a>
+<p class="dfunc">元数据规范 linter：标题大小写、期刊缩写、DOI/页码格式等大批规则 + 一键修复</p><p class="dpp"><b>Papilot 现状：</b>已有（元数据规范清洗）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/ChenglongMa/zoplicate" target="_blank" rel="noopener">zoplicate</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">ChenglongMa · 1,003★</span></div>
-<p class="dfunc">只做一件事：重复条目的检测、区分与合并（含预印本/正式版智能识别）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（智能清理）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/UB-Mannheim/zotero-ocr" target="_blank" rel="noopener">zotero-ocr</a>
+<p class="dfunc">只做一件事：重复条目的检测、区分与合并（含预印本/正式版智能识别）</p><p class="dpp"><b>Papilot 现状：</b>部分已有（智能清理）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/UB-Mannheim/zotero-ocr" target="_blank" rel="noopener">zotero-ocr</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">UB-Mannheim · 830★</span></div>
-<p class="dfunc">为扫描版 PDF 生成文本层（对接 OCR 引擎）</p><p class="dpp"><b>PaperPilot 现状：</b>空白（扫描版 PDF 会让 AI 问答/翻译失效）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/PubPeerFoundation/pubpeer_zotero_plugin" target="_blank" rel="noopener">pubpeer_zotero_plugin</a>
+<p class="dfunc">为扫描版 PDF 生成文本层（对接 OCR 引擎）</p><p class="dpp"><b>Papilot 现状：</b>空白（扫描版 PDF 会让 AI 问答/翻译失效）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/PubPeerFoundation/pubpeer_zotero_plugin" target="_blank" rel="noopener">pubpeer_zotero_plugin</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">PubPeerFoundation · 216★</span></div>
-<p class="dfunc">自动查询条目是否在 PubPeer 有质疑评论并提示</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（真假文献识别/AI 幻觉检测）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/SciImage/zotero-attachment-scanner" target="_blank" rel="noopener">zotero-attachment-scanner</a>
+<p class="dfunc">自动查询条目是否在 PubPeer 有质疑评论并提示</p><p class="dpp"><b>Papilot 现状：</b>部分已有（真假文献识别/AI 幻觉检测）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/SciImage/zotero-attachment-scanner" target="_blank" rel="noopener">zotero-attachment-scanner</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">SciImage · 135★</span></div>
-<p class="dfunc">附件扫描：识别断链/缺失/异常附件与全文可用性</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（智能清理）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wshanks/Zutilo" target="_blank" rel="noopener">Zutilo</a>
+<p class="dfunc">附件扫描：识别断链/缺失/异常附件与全文可用性</p><p class="dpp"><b>Papilot 现状：</b>部分已有（智能清理）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wshanks/Zutilo" target="_blank" rel="noopener">Zutilo</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">wshanks · 1,884★</span></div>
-<p class="dfunc">大量编辑增强小工具：快速编辑、期刊缩写、附件/标签快捷操作、条目复制</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（元数据清洗、附件重命名）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/bwiernik/zotero-shortdoi" target="_blank" rel="noopener">zotero-shortdoi</a>
+<p class="dfunc">大量编辑增强小工具：快速编辑、期刊缩写、附件/标签快捷操作、条目复制</p><p class="dpp"><b>Papilot 现状：</b>部分已有（元数据清洗、附件重命名）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/bwiernik/zotero-shortdoi" target="_blank" rel="noopener">zotero-shortdoi</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">bwiernik · 1,630★</span></div>
-<p class="dfunc">从 CrossRef 检索并校验 DOI / 短 DOI，批量修正条目标识</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（元数据补全）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/redleafnew/delitemwithatt" target="_blank" rel="noopener">delitemwithatt</a>
+<p class="dfunc">从 CrossRef 检索并校验 DOI / 短 DOI，批量修正条目标识</p><p class="dpp"><b>Papilot 现状：</b>部分已有（元数据补全）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/redleafnew/delitemwithatt" target="_blank" rel="noopener">delitemwithatt</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">redleafnew · 659★</span></div>
-<p class="dfunc">删除条目时连带清理附件与关联文件</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（智能清理）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-storage-scanner" target="_blank" rel="noopener">zotero-storage-scanner</a>
+<p class="dfunc">删除条目时连带清理附件与关联文件</p><p class="dpp"><b>Papilot 现状：</b>部分已有（智能清理）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-storage-scanner" target="_blank" rel="noopener">zotero-storage-scanner</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">retorquere · 548★</span></div>
-<p class="dfunc">扫描并清理失效/重复的附件链接与本地存储文件</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（智能清理）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-folder-import" target="_blank" rel="noopener">zotero-folder-import</a>
+<p class="dfunc">扫描并清理失效/重复的附件链接与本地存储文件</p><p class="dpp"><b>Papilot 现状：</b>部分已有（智能清理）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-folder-import" target="_blank" rel="noopener">zotero-folder-import</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">retorquere · 490★</span></div>
-<p class="dfunc">监控本地文件夹并自动导入其中的 PDF 生成条目</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/l0o0/tara" target="_blank" rel="noopener">tara</a>
+<p class="dfunc">监控本地文件夹并自动导入其中的 PDF 生成条目</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/l0o0/tara" target="_blank" rel="noopener">tara</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">l0o0 · 474★</span></div>
-<p class="dfunc">备份/恢复 Zotero 配置、插件、翻译器、样式与本地插件定位</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（分区配置导入导出）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/frangoud/ZoteroDuplicatesMerger" target="_blank" rel="noopener">ZoteroDuplicatesMerger</a>
+<p class="dfunc">备份/恢复 Zotero 配置、插件、翻译器、样式与本地插件定位</p><p class="dpp"><b>Papilot 现状：</b>部分已有（分区配置导入导出）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/frangoud/ZoteroDuplicatesMerger" target="_blank" rel="noopener">ZoteroDuplicatesMerger</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">frangoud · 414★</span></div>
-<p class="dfunc">自动识别并批量合并重复条目</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（智能清理）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/leonkt/zotero-memento" target="_blank" rel="noopener">zotero-memento</a>
+<p class="dfunc">自动识别并批量合并重复条目</p><p class="dpp"><b>Papilot 现状：</b>部分已有（智能清理）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/leonkt/zotero-memento" target="_blank" rel="noopener">zotero-memento</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">leonkt · 357★</span></div>
-<p class="dfunc">为条目链接做快照存档，对抗链接失效（对接 Wayback/archive.today）</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/bwiernik/zotero-tools" target="_blank" rel="noopener">zotero-tools</a>
+<p class="dfunc">为条目链接做快照存档，对抗链接失效（对接 Wayback/archive.today）</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/bwiernik/zotero-tools" target="_blank" rel="noopener">zotero-tools</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">bwiernik · 250★</span></div>
-<p class="dfunc">小工具集合：期刊缩写、条目类型转换、字段批量处理</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（元数据清洗）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/RoadToDream/ZotMeta" target="_blank" rel="noopener">ZotMeta</a>
+<p class="dfunc">小工具集合：期刊缩写、条目类型转换、字段批量处理</p><p class="dpp"><b>Papilot 现状：</b>部分已有（元数据清洗）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/RoadToDream/ZotMeta" target="_blank" rel="noopener">ZotMeta</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">RoadToDream · 210★</span></div>
-<p class="dfunc">批量更新已入库文献元数据，多数据源匹配与字段补全</p><p class="dpp"><b>PaperPilot 现状：</b>已有（元数据补全 S2）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/zoushucai/zotero-journalabbr" target="_blank" rel="noopener">zotero-journalabbr</a>
+<p class="dfunc">批量更新已入库文献元数据，多数据源匹配与字段补全</p><p class="dpp"><b>Papilot 现状：</b>已有（元数据补全 S2）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/zoushucai/zotero-journalabbr" target="_blank" rel="noopener">zotero-journalabbr</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">zoushucai · 180★</span></div>
-<p class="dfunc">自动生成/填充期刊缩写字段</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（元数据清洗）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-pmcid-fetcher" target="_blank" rel="noopener">zotero-pmcid-fetcher</a>
+<p class="dfunc">自动生成/填充期刊缩写字段</p><p class="dpp"><b>Papilot 现状：</b>部分已有（元数据清洗）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-pmcid-fetcher" target="_blank" rel="noopener">zotero-pmcid-fetcher</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">retorquere · 143★</span></div>
-<p class="dfunc">从 NCBI 补全 PMCID/PMID 标识</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（元数据补全）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/ydeng11/zotero-zotadata" target="_blank" rel="noopener">zotero-zotadata</a>
+<p class="dfunc">从 NCBI 补全 PMCID/PMID 标识</p><p class="dpp"><b>Papilot 现状：</b>部分已有（元数据补全）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/ydeng11/zotero-zotadata" target="_blank" rel="noopener">zotero-zotadata</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">ydeng11 · 91★</span></div>
-<p class="dfunc">元数据可视化与批量管理（字段统计、异常识别）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（元数据规范清洗）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-date-from-last-modified" target="_blank" rel="noopener">zotero-date-from-last-modified</a>
+<p class="dfunc">元数据可视化与批量管理（字段统计、异常识别）</p><p class="dpp"><b>Papilot 现状：</b>部分已有（元数据规范清洗）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-date-from-last-modified" target="_blank" rel="noopener">zotero-date-from-last-modified</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">retorquere · 123★</span></div>
-<p class="dfunc">按文件修改时间自动填充日期字段</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（元数据清洗）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-auto-index" target="_blank" rel="noopener">zotero-auto-index</a>
+<p class="dfunc">按文件修改时间自动填充日期字段</p><p class="dpp"><b>Papilot 现状：</b>部分已有（元数据清洗）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-auto-index" target="_blank" rel="noopener">zotero-auto-index</a>
 <span class="dstar" style="--c:#6e7681">—</span><span class="downer">retorquere · 154★</span></div>
-<p class="dfunc">自动为条目建立全文索引</p><p class="dpp"><b>PaperPilot 现状：</b>已有（Zotero 7+ 原生支持全文索引）</p></li></ul></section><section class="dom">
+<p class="dfunc">自动为条目建立全文索引</p><p class="dpp"><b>Papilot 现状：</b>已有（Zotero 7+ 原生支持全文索引）</p></li></ul></section><section class="dom">
 <header><h3>附件与文件管理<span class="dcount">5 项</span><span class="dverdict" style="--c:#d29922">🟡 部分覆盖</span><span class="dhi">其中 1 项强烈建议参考</span></h3>
 <p class="dadvice">重命名有了，缺「附件补挂」（扫描下载目录自动匹配挂接）和统一的「规则→预览→执行」安全交互范式。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-attanger" target="_blank" rel="noopener">zotero-attanger</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">MuiseDestiny · 1,372★</span></div>
-<p class="dfunc">附件管家：扫描下载目录、按相似度匹配并自动挂接到对应条目</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（智能清理、附件重命名）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/jlegewie/zotfile" target="_blank" rel="noopener">zotfile</a>
+<p class="dfunc">附件管家：扫描下载目录、按相似度匹配并自动挂接到对应条目</p><p class="dpp"><b>Papilot 现状：</b>部分已有（智能清理、附件重命名）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/jlegewie/zotfile" target="_blank" rel="noopener">zotfile</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">jlegewie · 4,378★</span></div>
-<p class="dfunc">附件自动重命名/移动/挂接，含平板与云盘同步规则</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（附件重命名）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wileyyugioh/zotmoov" target="_blank" rel="noopener">zotmoov</a>
+<p class="dfunc">附件自动重命名/移动/挂接，含平板与云盘同步规则</p><p class="dpp"><b>Papilot 现状：</b>部分已有（附件重命名）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wileyyugioh/zotmoov" target="_blank" rel="noopener">zotmoov</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">wileyyugioh · 1,535★</span></div>
-<p class="dfunc">附件自动移动/复制/链接到指定目录，支持按字段规则命名与状态标记</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-open-pdf" target="_blank" rel="noopener">zotero-open-pdf</a>
+<p class="dfunc">附件自动移动/复制/链接到指定目录，支持按字段规则命名与状态标记</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-open-pdf" target="_blank" rel="noopener">zotero-open-pdf</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">retorquere · 267★</span></div>
-<p class="dfunc">用系统默认或指定程序打开 PDF 附件</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-file-hierarchy" target="_blank" rel="noopener">zotero-file-hierarchy</a>
+<p class="dfunc">用系统默认或指定程序打开 PDF 附件</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-file-hierarchy" target="_blank" rel="noopener">zotero-file-hierarchy</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">retorquere · 103★</span></div>
-<p class="dfunc">在条目下列出完整的附件与子条目层级树</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li></ul></section><section class="dom">
+<p class="dfunc">在条目下列出完整的附件与子条目层级树</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li></ul></section><section class="dom">
 <header><h3>标签与自动化<span class="dcount">2 项</span><span class="dverdict" style="--c:#d29922">🟡 打标强、治理弱</span><span class="dhi">其中 2 项强烈建议参考</span></h3>
 <p class="dadvice">AI 打标做得不错，但没有标签治理（归一化/层级/同义词合并）。AI 打标跑久了标签必然爆炸，治理是刚需不是锦上添花。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/zotero-actions-tags" target="_blank" rel="noopener">zotero-actions-tags</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">windingwind · 2,837★</span></div>
-<p class="dfunc">动作 + 标签自动化：事件触发脚本、批量标签/字段处理、社区脚本库</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（规则打标、AI 自动打标签）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/ganzoth/zotero-taxonomy-curator" target="_blank" rel="noopener">zotero-taxonomy-curator</a>
+<p class="dfunc">动作 + 标签自动化：事件触发脚本、批量标签/字段处理、社区脚本库</p><p class="dpp"><b>Papilot 现状：</b>部分已有（规则打标、AI 自动打标签）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/ganzoth/zotero-taxonomy-curator" target="_blank" rel="noopener">zotero-taxonomy-curator</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">ganzoth · 159★</span></div>
-<p class="dfunc">标签体系治理：标签规范化、层级整理与批量重命名</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（AI 打标/规则打标）</p></li></ul></section><section class="dom">
+<p class="dfunc">标签体系治理：标签规范化、层级整理与批量重命名</p><p class="dpp"><b>Papilot 现状：</b>部分已有（AI 打标/规则打标）</p></li></ul></section><section class="dom">
 <header><h3>阅读状态与统计<span class="dcount">2 项</span><span class="dverdict" style="--c:#d29922">🟡 有状态、无行为</span><span class="dhi">其中 1 项强烈建议参考</span></h3>
 <p class="dadvice">状态流转有了，但没有任何「阅读行为数据」（时长/热力图/阅读报告）。这类数据既能做用户粘性，又能反过来喂给 AI 做个性化建议。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/volatile-static/Chartero" target="_blank" rel="noopener">Chartero</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">volatile-static · 519★</span></div>
-<p class="dfunc">阅读时长与行为统计图表：时间线、热力图、进度曲线、阅读报告</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（分类统计、文献统计图谱——偏库结构，不含阅读行为）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/Dominic-DallOsto/zotero-reading-list" target="_blank" rel="noopener">zotero-reading-list</a>
+<p class="dfunc">阅读时长与行为统计图表：时间线、热力图、进度曲线、阅读报告</p><p class="dpp"><b>Papilot 现状：</b>部分已有（分类统计、文献统计图谱——偏库结构，不含阅读行为）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/Dominic-DallOsto/zotero-reading-list" target="_blank" rel="noopener">zotero-reading-list</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">Dominic-DallOsto · 578★</span></div>
-<p class="dfunc">阅读状态跟踪（未读/在读/已读）+ 状态自动流转 + 列表列显示</p><p class="dpp"><b>PaperPilot 现状：</b>已有（阅读状态，自动流转）</p></li></ul></section><section class="dom">
+<p class="dfunc">阅读状态跟踪（未读/在读/已读）+ 状态自动流转 + 列表列显示</p><p class="dpp"><b>Papilot 现状：</b>已有（阅读状态，自动流转）</p></li></ul></section><section class="dom">
 <header><h3>指标与数据列<span class="dcount">12 项</span><span class="dverdict" style="--c:#3fb950">🟢 已领先</span><span class="dhi">其中 2 项强烈建议参考</span></h3>
 <p class="dadvice">分区列+被引量列已经到位。可优化的小点：被引量从只读列升级为可写字段（可排序/导出）、条目行内阅读进度条、列方案预设（一键切换「投稿模式/精读模式」）。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-style" target="_blank" rel="noopener">zotero-style</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">MuiseDestiny · 5,284★</span></div>
-<p class="dfunc">列表列增强：影响因子/分区/标签/阅读进度条等多列，条目行信息密度优化</p><p class="dpp"><b>PaperPilot 现状：</b>已有（分区列、被引量列、阅读状态）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/eschnett/zotero-citationcounts" target="_blank" rel="noopener">zotero-citationcounts</a>
+<p class="dfunc">列表列增强：影响因子/分区/标签/阅读进度条等多列，条目行信息密度优化</p><p class="dpp"><b>Papilot 现状：</b>已有（分区列、被引量列、阅读状态）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/eschnett/zotero-citationcounts" target="_blank" rel="noopener">zotero-citationcounts</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">eschnett · 931★</span></div>
-<p class="dfunc">聚合多源被引量（CrossRef/Scopus/S2/OpenAlex/INSPIRE）并写入条目字段</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（被引量列，仅展示）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/redleafnew/zotero-updateifsE" target="_blank" rel="noopener">zotero-updateifsE</a>
+<p class="dfunc">聚合多源被引量（CrossRef/Scopus/S2/OpenAlex/INSPIRE）并写入条目字段</p><p class="dpp"><b>Papilot 现状：</b>部分已有（被引量列，仅展示）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/redleafnew/zotero-updateifsE" target="_blank" rel="noopener">zotero-updateifsE</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">redleafnew · 923★</span></div>
-<p class="dfunc">基于 easyScholar 更新影响因子/分区并批量写入字段</p><p class="dpp"><b>PaperPilot 现状：</b>已有（分区列）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/scitedotai/scite-zotero-plugin" target="_blank" rel="noopener">scite-zotero-plugin</a>
+<p class="dfunc">基于 easyScholar 更新影响因子/分区并批量写入字段</p><p class="dpp"><b>Papilot 现状：</b>已有（分区列）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/scitedotai/scite-zotero-plugin" target="_blank" rel="noopener">scite-zotero-plugin</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">scitedotai · 870★</span></div>
-<p class="dfunc">在条目上显示 Scite 的「支持/反对/提及」引用上下文计数</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/FrLars21/ZoteroCitationCountsManager" target="_blank" rel="noopener">ZoteroCitationCountsManager</a>
+<p class="dfunc">在条目上显示 Scite 的「支持/反对/提及」引用上下文计数</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/FrLars21/ZoteroCitationCountsManager" target="_blank" rel="noopener">ZoteroCitationCountsManager</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">FrLars21 · 228★</span></div>
-<p class="dfunc">被引量批量获取与管理，字段映射可配置</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/SiriusXT/Zotero-Scholar-Rank" target="_blank" rel="noopener">Zotero-Scholar-Rank</a>
+<p class="dfunc">被引量批量获取与管理，字段映射可配置</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/SiriusXT/Zotero-Scholar-Rank" target="_blank" rel="noopener">Zotero-Scholar-Rank</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">SiriusXT · 165★</span></div>
-<p class="dfunc">分区列：CCF/JCR/中科院分区与影响因子显示</p><p class="dpp"><b>PaperPilot 现状：</b>已有（分区列）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/github-young/zotero-better-authors" target="_blank" rel="noopener">zotero-better-authors</a>
+<p class="dfunc">分区列：CCF/JCR/中科院分区与影响因子显示</p><p class="dpp"><b>Papilot 现状：</b>已有（分区列）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/github-young/zotero-better-authors" target="_blank" rel="noopener">zotero-better-authors</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">github-young · 164★</span></div>
-<p class="dfunc">定制条目列表中作者的显示方式（截断/加粗/去重）</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/daeh/zotero-citation-tally" target="_blank" rel="noopener">zotero-citation-tally</a>
+<p class="dfunc">定制条目列表中作者的显示方式（截断/加粗/去重）</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/daeh/zotero-citation-tally" target="_blank" rel="noopener">zotero-citation-tally</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">daeh · 135★</span></div>
-<p class="dfunc">汇总多源被引量并统一呈现（含列显示）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/beloglazov/zotero-scholar-citations" target="_blank" rel="noopener">zotero-scholar-citations</a>
+<p class="dfunc">汇总多源被引量并统一呈现（含列显示）</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/beloglazov/zotero-scholar-citations" target="_blank" rel="noopener">zotero-scholar-citations</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">beloglazov · 612★</span></div>
-<p class="dfunc">从 Google Scholar 抓取被引次数写入条目</p><p class="dpp"><b>PaperPilot 现状：</b>已有（S2 被引量）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/qnscholar/zotero-if" target="_blank" rel="noopener">zotero-if</a>
+<p class="dfunc">从 Google Scholar 抓取被引次数写入条目</p><p class="dpp"><b>Papilot 现状：</b>已有（S2 被引量）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/qnscholar/zotero-if" target="_blank" rel="noopener">zotero-if</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">qnscholar · 477★</span></div>
-<p class="dfunc">批量更新影响因子（Justscience 数据源）</p><p class="dpp"><b>PaperPilot 现状：</b>已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/justinribeiro/zotero-google-scholar-citation-count" target="_blank" rel="noopener">zotero-google-scholar-citation-count</a>
+<p class="dfunc">批量更新影响因子（Justscience 数据源）</p><p class="dpp"><b>Papilot 现状：</b>已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/justinribeiro/zotero-google-scholar-citation-count" target="_blank" rel="noopener">zotero-google-scholar-citation-count</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">justinribeiro · 424★</span></div>
-<p class="dfunc">从 Google Scholar 抓取被引次数展示</p><p class="dpp"><b>PaperPilot 现状：</b>已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/redleafnew/zotero-updateifs" target="_blank" rel="noopener">zotero-updateifs</a>
+<p class="dfunc">从 Google Scholar 抓取被引次数展示</p><p class="dpp"><b>Papilot 现状：</b>已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/redleafnew/zotero-updateifs" target="_blank" rel="noopener">zotero-updateifs</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">redleafnew · 394★</span></div>
-<p class="dfunc">从唯问更新影响因子与相关工具集</p><p class="dpp"><b>PaperPilot 现状：</b>已有</p></li></ul></section><section class="dom">
+<p class="dfunc">从唯问更新影响因子与相关工具集</p><p class="dpp"><b>Papilot 现状：</b>已有</p></li></ul></section><section class="dom">
 <header><h3>翻译<span class="dcount">4 项</span><span class="dverdict" style="--c:#3fb950">🟢 已有</span><span class="dhi">其中 1 项强烈建议参考</span></h3>
 <p class="dadvice">划词与全文对照翻译均已具备。可借鉴「多引擎结果并列由用户择优」和「保留版式的双语 PDF」两种更接近论文阅读习惯的形态。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/guaguastandup/zotero-pdf2zh" target="_blank" rel="noopener">zotero-pdf2zh</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">guaguastandup · 7,058★</span></div>
-<p class="dfunc">保留排版的整篇翻译：插件调用本地 Python 服务输出双语对照 PDF</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（全文对照翻译，偏文本流）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/zotero-pdf-translate" target="_blank" rel="noopener">zotero-pdf-translate</a>
+<p class="dfunc">保留排版的整篇翻译：插件调用本地 Python 服务输出双语对照 PDF</p><p class="dpp"><b>Papilot 现状：</b>部分已有（全文对照翻译，偏文本流）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/zotero-pdf-translate" target="_blank" rel="noopener">zotero-pdf-translate</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">windingwind · 11,959★</span></div>
-<p class="dfunc">20+ 引擎的划词/全文/元数据/批注翻译，支持 PDF 段落级双语对照</p><p class="dpp"><b>PaperPilot 现状：</b>已有（划词翻译 + 全文对照翻译）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/immersive-translate/zotero-immersivetranslate" target="_blank" rel="noopener">zotero-immersivetranslate</a>
+<p class="dfunc">20+ 引擎的划词/全文/元数据/批注翻译，支持 PDF 段落级双语对照</p><p class="dpp"><b>Papilot 现状：</b>已有（划词翻译 + 全文对照翻译）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/immersive-translate/zotero-immersivetranslate" target="_blank" rel="noopener">zotero-immersivetranslate</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">immersive-translate · 352★</span></div>
-<p class="dfunc">BabelDOC 的排版保留式 PDF 翻译（付费会员）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/WildDataX/suppr-zotero-plugin" target="_blank" rel="noopener">suppr-zotero-plugin</a>
+<p class="dfunc">BabelDOC 的排版保留式 PDF 翻译（付费会员）</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/WildDataX/suppr-zotero-plugin" target="_blank" rel="noopener">suppr-zotero-plugin</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">WildDataX · 2,015★</span></div>
-<p class="dfunc">云端翻译 PDF/Word/PPT，依赖扫码账号与免费额度</p><p class="dpp"><b>PaperPilot 现状：</b>已有（翻译能力）</p></li></ul></section><section class="dom">
+<p class="dfunc">云端翻译 PDF/Word/PPT，依赖扫码账号与免费额度</p><p class="dpp"><b>Papilot 现状：</b>已有（翻译能力）</p></li></ul></section><section class="dom">
 <header><h3>引文、导出与写作<span class="dcount">8 项</span><span class="dverdict" style="--c:#d29922">🟡 部分覆盖</span></h3>
 <p class="dadvice">引文追溯与参考文献入库有了，缺导出能力（citekey/BibTeX/模板化报告）。写作场景（Word/LibreOffice）成本高，可暂缓。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-better-bibtex" target="_blank" rel="noopener">zotero-better-bibtex</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">retorquere · 7,181★</span></div>
-<p class="dfunc">BibTeX/CSL 引用键生成、LaTeX 工作流、批量导出与 citekey 管理</p><p class="dpp"><b>PaperPilot 现状：</b>空白（PaperPilot 无导出/引用键功能）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-reference" target="_blank" rel="noopener">zotero-reference</a>
+<p class="dfunc">BibTeX/CSL 引用键生成、LaTeX 工作流、批量导出与 citekey 管理</p><p class="dpp"><b>Papilot 现状：</b>空白（Papilot 无导出/引用键功能）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-reference" target="_blank" rel="noopener">zotero-reference</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">MuiseDestiny · 2,821★</span></div>
-<p class="dfunc">PDF 参考文献抽取、库内已有文献识别、一键批量入库</p><p class="dpp"><b>PaperPilot 现状：</b>已有（参考文献一键入库、引文追溯）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/zotero-cita/zotero-cita" target="_blank" rel="noopener">zotero-cita</a>
+<p class="dfunc">PDF 参考文献抽取、库内已有文献识别、一键批量入库</p><p class="dpp"><b>Papilot 现状：</b>已有（参考文献一键入库、引文追溯）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/zotero-cita/zotero-cita" target="_blank" rel="noopener">zotero-cita</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">zotero-cita · 325★</span></div>
-<p class="dfunc">通过 Wikidata 获取并补全引文元数据，支持引用关系</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（引文追溯）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/inciteful-xyz/inciteful-zotero-plugin" target="_blank" rel="noopener">inciteful-zotero-plugin</a>
+<p class="dfunc">通过 Wikidata 获取并补全引文元数据，支持引用关系</p><p class="dpp"><b>Papilot 现状：</b>部分已有（引文追溯）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/inciteful-xyz/inciteful-zotero-plugin" target="_blank" rel="noopener">inciteful-zotero-plugin</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">inciteful-xyz · 297★</span></div>
-<p class="dfunc">集成 Inciteful 的引文网络探索（被引/参考文献关系图）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（引文追溯）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-report-customizer" target="_blank" rel="noopener">zotero-report-customizer</a>
+<p class="dfunc">集成 Inciteful 的引文网络探索（被引/参考文献关系图）</p><p class="dpp"><b>Papilot 现状：</b>部分已有（引文追溯）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/retorquere/zotero-report-customizer" target="_blank" rel="noopener">zotero-report-customizer</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">retorquere · 165★</span></div>
-<p class="dfunc">自定义条目报告模板（右键生成报告）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（文献矩阵、统计图谱报告）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-connected-papers" target="_blank" rel="noopener">zotero-connected-papers</a>
+<p class="dfunc">自定义条目报告模板（右键生成报告）</p><p class="dpp"><b>Papilot 现状：</b>部分已有（文献矩阵、统计图谱报告）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-connected-papers" target="_blank" rel="noopener">zotero-connected-papers</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">MuiseDestiny · 141★</span></div>
-<p class="dfunc">在 Zotero 内展示 Connected Papers 的相似文献图谱</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（引文追溯）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-citation" target="_blank" rel="noopener">zotero-citation</a>
+<p class="dfunc">在 Zotero 内展示 Connected Papers 的相似文献图谱</p><p class="dpp"><b>Papilot 现状：</b>部分已有（引文追溯）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/MuiseDestiny/zotero-citation" target="_blank" rel="noopener">zotero-citation</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">MuiseDestiny · 1,285★</span></div>
-<p class="dfunc">优化 Word 中的 Zotero 引用插入与文献表编辑体验</p><p class="dpp"><b>PaperPilot 现状：</b>空白（PaperPilot 无 Word 集成）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/egh/zotxt" target="_blank" rel="noopener">zotxt</a>
+<p class="dfunc">优化 Word 中的 Zotero 引用插入与文献表编辑体验</p><p class="dpp"><b>Papilot 现状：</b>空白（Papilot 无 Word 集成）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/egh/zotxt" target="_blank" rel="noopener">zotxt</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">egh · 380★</span></div>
-<p class="dfunc">为文本编辑器（Emacs/Vim）提供 Zotero 检索与引用插入服务</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li></ul></section><section class="dom">
+<p class="dfunc">为文本编辑器（Emacs/Vim）提供 Zotero 检索与引用插入服务</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li></ul></section><section class="dom">
 <header><h3>集成与互操作<span class="dcount">9 项</span><span class="dverdict" style="--c:#f85149">🔴 基本空白</span><span class="dhi">其中 1 项强烈建议参考</span></h3>
-<p class="dadvice">PaperPilot 的 AI 能力目前只在插件内部闭环。把库能力以 MCP 对外供给（给 Claude/Cursor 用）是最该补的生态位；其次是笔记工具（Notion/Obsidian）同步与待办任务外发。</p></header>
+<p class="dadvice">Papilot 的 AI 能力目前只在插件内部闭环。把库能力以 MCP 对外供给（给 Claude/Cursor 用）是最该补的生态位；其次是笔记工具（Notion/Obsidian）同步与待办任务外发。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/cookjohn/zotero-mcp" target="_blank" rel="noopener">zotero-mcp</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">cookjohn · 1,201★</span></div>
-<p class="dfunc">在 Zotero 内嵌 MCP 服务器，把文献库能力暴露给 Claude/Cursor 等外部 AI 客户端</p><p class="dpp"><b>PaperPilot 现状：</b>空白（PaperPilot 的 AI 能力只在插件内部使用）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/dvanoni/notero" target="_blank" rel="noopener">notero</a>
+<p class="dfunc">在 Zotero 内嵌 MCP 服务器，把文献库能力暴露给 Claude/Cursor 等外部 AI 客户端</p><p class="dpp"><b>Papilot 现状：</b>空白（Papilot 的 AI 能力只在插件内部使用）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/dvanoni/notero" target="_blank" rel="noopener">notero</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">dvanoni · 3,233★</span></div>
-<p class="dfunc">Zotero → Notion 双向同步：条目/笔记/标签变更监听与增量推送</p><p class="dpp"><b>PaperPilot 现状：</b>空白（PaperPilot 无外部笔记工具同步）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wbthomason/zotodo" target="_blank" rel="noopener">zotodo</a>
+<p class="dfunc">Zotero → Notion 双向同步：条目/笔记/标签变更监听与增量推送</p><p class="dpp"><b>Papilot 现状：</b>空白（Papilot 无外部笔记工具同步）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wbthomason/zotodo" target="_blank" rel="noopener">zotodo</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">wbthomason · 223★</span></div>
-<p class="dfunc">把新入库论文自动创建为 Todoist 任务</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/MunGell/ZotServer" target="_blank" rel="noopener">ZotServer</a>
+<p class="dfunc">把新入库论文自动创建为 Todoist 任务</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/MunGell/ZotServer" target="_blank" rel="noopener">ZotServer</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">MunGell · 118★</span></div>
-<p class="dfunc">把 Zotero 库暴露为本地 HTTP API 供外部脚本调用</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/argenos/zotero-mdnotes" target="_blank" rel="noopener">zotero-mdnotes</a>
+<p class="dfunc">把 Zotero 库暴露为本地 HTTP API 供外部脚本调用</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/argenos/zotero-mdnotes" target="_blank" rel="noopener">zotero-mdnotes</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">argenos · 1,399★</span></div>
-<p class="dfunc">把条目元数据与笔记导出为 Markdown 文件（Obsidian 工作流）</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/daeh/zotero-markdb-connect" target="_blank" rel="noopener">zotero-markdb-connect</a>
+<p class="dfunc">把条目元数据与笔记导出为 Markdown 文件（Obsidian 工作流）</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/daeh/zotero-markdb-connect" target="_blank" rel="noopener">zotero-markdb-connect</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">daeh · 681★</span></div>
-<p class="dfunc">打通本地 Markdown 知识库与 Zotero，双向跳转与链接生成</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/melat0nin/zotero-roam-export" target="_blank" rel="noopener">zotero-roam-export</a>
+<p class="dfunc">打通本地 Markdown 知识库与 Zotero，双向跳转与链接生成</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/melat0nin/zotero-roam-export" target="_blank" rel="noopener">zotero-roam-export</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">melat0nin · 175★</span></div>
-<p class="dfunc">导出条目/笔记到 Roam Research</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/Juris-M/zotero-odf-scan-plugin" target="_blank" rel="noopener">zotero-odf-scan-plugin</a>
+<p class="dfunc">导出条目/笔记到 Roam Research</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/Juris-M/zotero-odf-scan-plugin" target="_blank" rel="noopener">zotero-odf-scan-plugin</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">Juris-M · 108★</span></div>
-<p class="dfunc">RTF/ODF 文档的引用扫描（LibreOffice/OpenOffice 工作流）</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wshanks/lyz" target="_blank" rel="noopener">lyz</a>
+<p class="dfunc">RTF/ODF 文档的引用扫描（LibreOffice/OpenOffice 工作流）</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wshanks/lyz" target="_blank" rel="noopener">lyz</a>
 <span class="dstar" style="--c:#6e7681">—</span><span class="downer">wshanks · 116★</span></div>
-<p class="dfunc">LyX 与 Zotero 的引用集成</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li></ul></section><section class="dom">
+<p class="dfunc">LyX 与 Zotero 的引用集成</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li></ul></section><section class="dom">
 <header><h3>界面与主题<span class="dcount">6 项</span><span class="dverdict" style="--c:#3fb950">🟢 明显领先</span><span class="dhi">其中 1 项强烈建议参考</span></h3>
 <p class="dadvice">主题库/PDF 阅读主题/壁纸已远超生态平均水平。只建议补三个小点：PDF 反色时保持图片原色、阅读器快捷键方案、多标签页管理。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/tefkah/zotero-night" target="_blank" rel="noopener">zotero-night</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">tefkah · 2,452★</span></div>
-<p class="dfunc">Zotero UI 与 PDF 的夜间主题，含 PDF 反色与色彩校正</p><p class="dpp"><b>PaperPilot 现状：</b>已有（主题库、PDF 阅读主题、夜间反色）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/zotero-pdf-preview" target="_blank" rel="noopener">zotero-pdf-preview</a>
+<p class="dfunc">Zotero UI 与 PDF 的夜间主题，含 PDF 反色与色彩校正</p><p class="dpp"><b>Papilot 现状：</b>已有（主题库、PDF 阅读主题、夜间反色）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/zotero-pdf-preview" target="_blank" rel="noopener">zotero-pdf-preview</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">windingwind · 1,250★</span></div>
-<p class="dfunc">在列表内直接预览附件缩略图/文本的预览列</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（PDF 速览面板）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/bionic-for-zotero" target="_blank" rel="noopener">bionic-for-zotero</a>
+<p class="dfunc">在列表内直接预览附件缩略图/文本的预览列</p><p class="dpp"><b>Papilot 现状：</b>部分已有（PDF 速览面板）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/bionic-for-zotero" target="_blank" rel="noopener">bionic-for-zotero</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">windingwind · 395★</span></div>
-<p class="dfunc">仿生阅读：PDF 文本按词首加粗以提升阅读速度</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wangqian06/zotero-pdf-background" target="_blank" rel="noopener">zotero-pdf-background</a>
+<p class="dfunc">仿生阅读：PDF 文本按词首加粗以提升阅读速度</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/wangqian06/zotero-pdf-background" target="_blank" rel="noopener">zotero-pdf-background</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">wangqian06 · 268★</span></div>
-<p class="dfunc">修改 PDF 阅读背景色以护眼</p><p class="dpp"><b>PaperPilot 现状：</b>已有（PDF 阅读主题：护眼叠色）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/DrUsagi/Colorful-Bionic" target="_blank" rel="noopener">Colorful-Bionic</a>
+<p class="dfunc">修改 PDF 阅读背景色以护眼</p><p class="dpp"><b>Papilot 现状：</b>已有（PDF 阅读主题：护眼叠色）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/DrUsagi/Colorful-Bionic" target="_blank" rel="noopener">Colorful-Bionic</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">DrUsagi · 138★</span></div>
-<p class="dfunc">彩色仿生阅读：按词性高亮动词/名词</p><p class="dpp"><b>PaperPilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/iShareStuff/ZoteroTheme" target="_blank" rel="noopener">ZoteroTheme</a>
+<p class="dfunc">彩色仿生阅读：按词性高亮动词/名词</p><p class="dpp"><b>Papilot 现状：</b>空白</p></li><li class="ditem"><div class="dh"><a href="https://github.com/iShareStuff/ZoteroTheme" target="_blank" rel="noopener">ZoteroTheme</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">iShareStuff · 134★</span></div>
-<p class="dfunc">Zotero 界面主题定制（配色/夜间模式）</p><p class="dpp"><b>PaperPilot 现状：</b>已有（主题库更完善）</p></li></ul></section><section class="dom">
+<p class="dfunc">Zotero 界面主题定制（配色/夜间模式）</p><p class="dpp"><b>Papilot 现状：</b>已有（主题库更完善）</p></li></ul></section><section class="dom">
 <header><h3>插件生态<span class="dcount">4 项</span><span class="dverdict" style="--c:#8b949e">🔴 空白</span><span class="dhi">其中 1 项强烈建议参考</span></h3>
-<p class="dadvice">PaperPilot 有自己的更新通道，但没有「发现其他插件」的能力。可把「功能中心」升级为按场景推荐的能力集市（必须自带来源白名单，防供应链风险）。</p></header>
+<p class="dadvice">Papilot 有自己的更新通道，但没有「发现其他插件」的能力。可把「功能中心」升级为按场景推荐的能力集市（必须自带来源白名单，防供应链风险）。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/syt2/zotero-addons" target="_blank" rel="noopener">zotero-addons</a>
 <span class="dstar" style="--c:#f0883e">★★★</span><span class="downer">syt2 · 1,760★</span></div>
-<p class="dfunc">Zotero 内插件市场：浏览/搜索/一键安装/更新第三方插件</p><p class="dpp"><b>PaperPilot 现状：</b>空白（PaperPilot 只有自身的更新通道与「功能中心」）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/jackhanyuan/zotero-better-plugin" target="_blank" rel="noopener">zotero-better-plugin</a>
+<p class="dfunc">Zotero 内插件市场：浏览/搜索/一键安装/更新第三方插件</p><p class="dpp"><b>Papilot 现状：</b>空白（Papilot 只有自身的更新通道与「功能中心」）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/jackhanyuan/zotero-better-plugin" target="_blank" rel="noopener">zotero-better-plugin</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">jackhanyuan · 379★</span></div>
-<p class="dfunc">插件推荐与配置打包：一键安装推荐组合、笔记模板与标签体系</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（功能中心、预设主题/分区配置）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/dcartertod/zotero-plugins" target="_blank" rel="noopener">zotero-plugins</a>
+<p class="dfunc">插件推荐与配置打包：一键安装推荐组合、笔记模板与标签体系</p><p class="dpp"><b>Papilot 现状：</b>部分已有（功能中心、预设主题/分区配置）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/dcartertod/zotero-plugins" target="_blank" rel="noopener">zotero-plugins</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">dcartertod · 211★</span></div>
-<p class="dfunc">一组极小的独立功能插件合集（多仓库聚合）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/l0o0/ZoteroPlugins" target="_blank" rel="noopener">ZoteroPlugins</a>
+<p class="dfunc">一组极小的独立功能插件合集（多仓库聚合）</p><p class="dpp"><b>Papilot 现状：</b>部分已有</p></li><li class="ditem"><div class="dh"><a href="https://github.com/l0o0/ZoteroPlugins" target="_blank" rel="noopener">ZoteroPlugins</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">l0o0 · 183★</span></div>
-<p class="dfunc">Zotero 插件索引/合集仓库</p><p class="dpp"><b>PaperPilot 现状：</b>—</p></li></ul></section><section class="dom">
+<p class="dfunc">Zotero 插件索引/合集仓库</p><p class="dpp"><b>Papilot 现状：</b>—</p></li></ul></section><section class="dom">
 <header><h3>全文获取<span class="dcount">2 项</span><span class="dverdict" style="--c:#3fb950">🟢 已有合规方案</span></h3>
 <p class="dadvice">Unpaywall 链路已覆盖。Sci-Hub 类方案法律风险高，明确不做。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/ethanwillis/zotero-scihub" target="_blank" rel="noopener">zotero-scihub</a>
 <span class="dstar" style="--c:#6e7681">—</span><span class="downer">ethanwillis · 4,112★</span></div>
-<p class="dfunc">自动从 Sci-Hub 下载 PDF 全文</p><p class="dpp"><b>PaperPilot 现状：</b>已有替代方案（Unpaywall 合法补全文）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/syt2/zotero-scipdf" target="_blank" rel="noopener">zotero-scipdf</a>
+<p class="dfunc">自动从 Sci-Hub 下载 PDF 全文</p><p class="dpp"><b>Papilot 现状：</b>已有替代方案（Unpaywall 合法补全文）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/syt2/zotero-scipdf" target="_blank" rel="noopener">zotero-scipdf</a>
 <span class="dstar" style="--c:#6e7681">—</span><span class="downer">syt2 · 1,017★</span></div>
-<p class="dfunc">通过 Sci-Hub 镜像自动下载 PDF（Zotero 7 版）</p><p class="dpp"><b>PaperPilot 现状：</b>已有替代方案</p></li></ul></section><section class="dom">
+<p class="dfunc">通过 Sci-Hub 镜像自动下载 PDF（Zotero 7 版）</p><p class="dpp"><b>Papilot 现状：</b>已有替代方案</p></li></ul></section><section class="dom">
 <header><h3>分析与可视化<span class="dcount">2 项</span><span class="dverdict" style="--c:#d29922">🟡 部分覆盖</span></h3>
 <p class="dadvice">库结构统计（图谱）有了；若要更远一步，可做库级文本分析（词频/主题演化），优先级低。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/corajr/zotero-voyant-export" target="_blank" rel="noopener">zotero-voyant-export</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">corajr · 140★</span></div>
-<p class="dfunc">导出语料供 Voyant Tools 做文本分析</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（统计图谱）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/papermachines/papermachines" target="_blank" rel="noopener">papermachines</a>
+<p class="dfunc">导出语料供 Voyant Tools 做文本分析</p><p class="dpp"><b>Papilot 现状：</b>部分已有（统计图谱）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/papermachines/papermachines" target="_blank" rel="noopener">papermachines</a>
 <span class="dstar" style="--c:#6e7681">—</span><span class="downer">papermachines · 227★</span></div>
-<p class="dfunc">数字人文场景的库分析与可视化（Zotero 5 时代）</p><p class="dpp"><b>PaperPilot 现状：</b>部分已有（文献统计图谱）</p></li></ul></section><section class="dom">
+<p class="dfunc">数字人文场景的库分析与可视化（Zotero 5 时代）</p><p class="dpp"><b>Papilot 现状：</b>部分已有（文献统计图谱）</p></li></ul></section><section class="dom">
 <header><h3>开发工具<span class="dcount">2 项</span><span class="dverdict" style="--c:#8b949e">— 不适用</span></h3>
-<p class="dadvice">只影响 PaperPilot 自身的开发与维护效率，与用户功能无关。</p></header>
+<p class="dadvice">只影响 Papilot 自身的开发与维护效率，与用户功能无关。</p></header>
 <ul class="dlist"><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/zotero-plugin-toolkit" target="_blank" rel="noopener">zotero-plugin-toolkit</a>
 <span class="dstar" style="--c:#58a6ff">★★</span><span class="downer">windingwind · 200★</span></div>
-<p class="dfunc">Zotero 插件开发工具包：UI/菜单/偏好面板/通知/HTTP 的统一封装</p><p class="dpp"><b>PaperPilot 现状：</b>—（不影响用户功能，影响开发效率）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/zotero-plugin-template" target="_blank" rel="noopener">zotero-plugin-template</a>
+<p class="dfunc">Zotero 插件开发工具包：UI/菜单/偏好面板/通知/HTTP 的统一封装</p><p class="dpp"><b>Papilot 现状：</b>—（不影响用户功能，影响开发效率）</p></li><li class="ditem"><div class="dh"><a href="https://github.com/windingwind/zotero-plugin-template" target="_blank" rel="noopener">zotero-plugin-template</a>
 <span class="dstar" style="--c:#8b949e">★</span><span class="downer">windingwind · 847★</span></div>
-<p class="dfunc">Zotero 插件官方风格模板：构建、i18n、prefs 注册、热重载</p><p class="dpp"><b>PaperPilot 现状：</b>—</p></li></ul></section>
+<p class="dfunc">Zotero 插件官方风格模板：构建、i18n、prefs 注册、热重载</p><p class="dpp"><b>Papilot 现状：</b>—</p></li></ul></section>
 
 <h2>三、全量 100 项明细</h2>
-<p class="sub">点击任意一行展开「值得借鉴的功能点」与「实现注意 / 风险」。支持按功能域、PaperPilot 现状、参考优先级与关键词筛选。</p>
+<p class="sub">点击任意一行展开「值得借鉴的功能点」与「实现注意 / 风险」。支持按功能域、Papilot 现状、参考优先级与关键词筛选。</p>
 <div class="tools">
 <input id="q" placeholder="搜索项目名、功能或借鉴点…" oninput="flt()">
 <select id="fd" onchange="flt()"><option value="">全部功能域</option><option value="AI 阅读与问答">AI 阅读与问答 (11)</option><option value="检索与发现">检索与发现 (5)</option><option value="笔记与卡片">笔记与卡片 (5)</option><option value="元数据与库健康">元数据与库健康 (21)</option><option value="附件与文件管理">附件与文件管理 (5)</option><option value="标签与自动化">标签与自动化 (2)</option><option value="阅读状态与统计">阅读状态与统计 (2)</option><option value="指标与数据列">指标与数据列 (12)</option><option value="翻译">翻译 (4)</option><option value="引文、导出与写作">引文、导出与写作 (8)</option><option value="集成与互操作">集成与互操作 (9)</option><option value="界面与主题">界面与主题 (6)</option><option value="插件生态">插件生态 (4)</option><option value="全文获取">全文获取 (2)</option><option value="分析与可视化">分析与可视化 (2)</option><option value="开发工具">开发工具 (2)</option></select>
-<button class="fbtn" data-f="st" data-v="空白" onclick="tg(this)">仅看 PaperPilot 空白</button>
+<button class="fbtn" data-f="st" data-v="空白" onclick="tg(this)">仅看 Papilot 空白</button>
 <button class="fbtn" data-f="val" data-v="3" onclick="tg(this)">仅看 ★★★</button>
 <button class="fbtn" data-f="val" data-v="0" onclick="tg(this)">不建议参考</button>
 <button class="fbtn" onclick="clr()">重置</button>
 </div>
 <div class="tblwrap"><table id="tb">
 <thead><tr>
-<th class="no">#</th><th onclick="srt('dom')">功能域</th><th onclick="srt('name')">项目</th><th class="no">功能要点</th><th onclick="srt('st')">PaperPilot 现状</th><th onclick="srt('val')">参考优先级</th>
+<th class="no">#</th><th onclick="srt('dom')">功能域</th><th onclick="srt('name')">项目</th><th class="no">功能要点</th><th onclick="srt('st')">Papilot 现状</th><th onclick="srt('val')">参考优先级</th>
 </tr></thead><tbody><tr class="main" data-orig="1" data-dom="翻译" data-st="已有" data-val="2" data-s="11959" data-name="windingwind/zotero-pdf-translate 20+ 引擎的划词/全文/元数据/批注翻译，支持 pdf 段落级双语对照 两个可借鉴点：①同一段落多引擎结果并列展示、由用户择优（比自动选一个引擎更可靠）；②译文与原文的段落锚点映射，用于「点译文跳原文」。">
 <td class="num">1</td>
 <td class="dom">翻译</td>
@@ -376,7 +376,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/windingwind/zotero-pdf-translate" target="_blank" rel="noopener">windingwind/zotero-pdf-translate</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-10-01 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="2" data-dom="笔记与卡片" data-st="部分已有" data-val="3" data-s="8281" data-name="windingwind/zotero-better-notes 笔记模板、笔记关系图谱、批注转笔记、笔记大纲与自动化操作 paperpilot 最明显的空白在这里：①笔记之间的关系图谱/双向链接可视化；②笔记大纲与批量整理；③「模板变量 + 条件块」。学会它，paperpilot 的笔记能力才从「生成」走到「管理」。">
+<tr class="main" data-orig="2" data-dom="笔记与卡片" data-st="部分已有" data-val="3" data-s="8281" data-name="windingwind/zotero-better-notes 笔记模板、笔记关系图谱、批注转笔记、笔记大纲与自动化操作 papilot 最明显的空白在这里：①笔记之间的关系图谱/双向链接可视化；②笔记大纲与批量整理；③「模板变量 + 条件块」。学会它，papilot 的笔记能力才从「生成」走到「管理」。">
 <td class="num">2</td>
 <td class="dom">笔记与卡片</td>
 <td class="repo"><a href="https://github.com/windingwind/zotero-better-notes" target="_blank" rel="noopener">zotero-better-notes</a><span class="owner">windingwind · 8,281★ · AGPL-3.0</span></td>
@@ -386,7 +386,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="2"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>PaperPilot 最明显的空白在这里：①笔记之间的关系图谱/双向链接可视化；②笔记大纲与批量整理；③「模板变量 + 条件块」。学会它，PaperPilot 的笔记能力才从「生成」走到「管理」。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>Papilot 最明显的空白在这里：①笔记之间的关系图谱/双向链接可视化；②笔记大纲与批量整理；③「模板变量 + 条件块」。学会它，Papilot 的笔记能力才从「生成」走到「管理」。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>关系图谱需自建索引，大库（万条笔记）下必须分页懒加载；图谱渲染建议独立窗口而非塞进侧栏。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/windingwind/zotero-better-notes" target="_blank" rel="noopener">windingwind/zotero-better-notes</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-08-24 ｜ 维护中</div>
@@ -406,7 +406,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/MuiseDestiny/zotero-gpt" target="_blank" rel="noopener">MuiseDestiny/zotero-gpt</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-05-01 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="4" data-dom="元数据与库健康" data-st="已有" data-val="3" data-s="7267" data-name="l0o0/jasminum 中文文献元数据识别：知网/万方题录抓取、cnki 附件下载与元数据补全 可对照的功能点：①中文期刊题录的字段补全规则（含卷期页码的非常规格式）；②多源失败切换（知网→万方→维普）；③对中文 pdf 的文件名解析优先级。用于验收 paperpilot 中文链路的盲区。">
+<tr class="main" data-orig="4" data-dom="元数据与库健康" data-st="已有" data-val="3" data-s="7267" data-name="l0o0/jasminum 中文文献元数据识别：知网/万方题录抓取、cnki 附件下载与元数据补全 可对照的功能点：①中文期刊题录的字段补全规则（含卷期页码的非常规格式）；②多源失败切换（知网→万方→维普）；③对中文 pdf 的文件名解析优先级。用于验收 papilot 中文链路的盲区。">
 <td class="num">4</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/l0o0/jasminum" target="_blank" rel="noopener">jasminum</a><span class="owner">l0o0 · 7,267★ · AGPL-3.0</span></td>
@@ -416,22 +416,22 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="4"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>可对照的功能点：①中文期刊题录的字段补全规则（含卷期页码的非常规格式）；②多源失败切换（知网→万方→维普）；③对中文 PDF 的文件名解析优先级。用于验收 PaperPilot 中文链路的盲区。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>可对照的功能点：①中文期刊题录的字段补全规则（含卷期页码的非常规格式）；②多源失败切换（知网→万方→维普）；③对中文 PDF 的文件名解析优先级。用于验收 Papilot 中文链路的盲区。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>CNKI 风控频繁变动，任何方案都要有速率限制与手动兜底入口。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/l0o0/jasminum" target="_blank" rel="noopener">l0o0/jasminum</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-02 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="5" data-dom="引文、导出与写作" data-st="空白" data-val="2" data-s="7181" data-name="retorquere/zotero-better-bibtex bibtex/csl 引用键生成、latex 工作流、批量导出与 citekey 管理 如果 paperpilot 要覆盖「写论文」环节，citekey 生成规则（作者+年份+标题词，可配模板）与 latex 转义是最核心的两个能力点；也可只做「检测到 bbt 已安装则联动」的轻方案。">
+<tr class="main" data-orig="5" data-dom="引文、导出与写作" data-st="空白" data-val="2" data-s="7181" data-name="retorquere/zotero-better-bibtex bibtex/csl 引用键生成、latex 工作流、批量导出与 citekey 管理 如果 papilot 要覆盖「写论文」环节，citekey 生成规则（作者+年份+标题词，可配模板）与 latex 转义是最核心的两个能力点；也可只做「检测到 bbt 已安装则联动」的轻方案。">
 <td class="num">5</td>
 <td class="dom">引文、导出与写作</td>
 <td class="repo"><a href="https://github.com/retorquere/zotero-better-bibtex" target="_blank" rel="noopener">zotero-better-bibtex</a><span class="owner">retorquere · 7,181★ · MIT</span></td>
 <td class="func">BibTeX/CSL 引用键生成、LaTeX 工作流、批量导出与 citekey 管理</td>
-<td><span class="chip" style="--c:#f0883e">空白（PaperPilot 无导出/引用键功能）</span></td>
+<td><span class="chip" style="--c:#f0883e">空白（Papilot 无导出/引用键功能）</span></td>
 <td class="valcell"><span class="val" style="--c:#58a6ff">★★</span></td>
 </tr>
 <tr class="detail" data-for="5"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>如果 PaperPilot 要覆盖「写论文」环节，citekey 生成规则（作者+年份+标题词，可配模板）与 LaTeX 转义是最核心的两个能力点；也可只做「检测到 BBT 已安装则联动」的轻方案。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>如果 Papilot 要覆盖「写论文」环节，citekey 生成规则（作者+年份+标题词，可配模板）与 LaTeX 转义是最核心的两个能力点；也可只做「检测到 BBT 已安装则联动」的轻方案。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>体量大，重造性价比低；建议联动优先。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/retorquere/zotero-better-bibtex" target="_blank" rel="noopener">retorquere/zotero-better-bibtex</a> ｜ 许可证 MIT ｜ 最近提交 2026-09-30 ｜ 活跃</div>
@@ -447,21 +447,21 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <tr class="detail" data-for="6"><td colspan="6">
 <div class="dgrid">
 <div class="dbox"><h5>值得借鉴的功能点</h5><p>产品形态值得抄：「原版式 + 双语对照 PDF」比纯文本对照更贴近论文阅读习惯；其「插件负责交互 + 本地服务负责重活」的分工也解决了大模型在插件进程里跑不动的问题。</p></div>
-<div class="dbox warn"><h5>实现注意 / 风险</h5><p>需要外部署服务与模型，与 PaperPilot「零构建依赖」冲突，建议做成可选外部服务。</p></div>
+<div class="dbox warn"><h5>实现注意 / 风险</h5><p>需要外部署服务与模型，与 Papilot「零构建依赖」冲突，建议做成可选外部服务。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/guaguastandup/zotero-pdf2zh" target="_blank" rel="noopener">guaguastandup/zotero-pdf2zh</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-23 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="7" data-dom="检索与发现" data-st="空白" data-val="3" data-s="6002" data-name="tidedra/zotero-arxiv-daily 基于 zotero 库兴趣每日推荐 arxiv 新论文，支持邮件/微信推送 paperpilot 从「读文献」延伸到「找文献」的第一候选：把库内容做兴趣向量 → 每日增量检索 arxiv → 生成带摘要的推荐（站内 + 可选邮件推送）。与已有的 ai 综述/矩阵天然衔接，是提升日活最强的功能。">
+<tr class="main" data-orig="7" data-dom="检索与发现" data-st="空白" data-val="3" data-s="6002" data-name="tidedra/zotero-arxiv-daily 基于 zotero 库兴趣每日推荐 arxiv 新论文，支持邮件/微信推送 papilot 从「读文献」延伸到「找文献」的第一候选：把库内容做兴趣向量 → 每日增量检索 arxiv → 生成带摘要的推荐（站内 + 可选邮件推送）。与已有的 ai 综述/矩阵天然衔接，是提升日活最强的功能。">
 <td class="num">7</td>
 <td class="dom">检索与发现</td>
 <td class="repo"><a href="https://github.com/TideDra/zotero-arxiv-daily" target="_blank" rel="noopener">zotero-arxiv-daily</a><span class="owner">TideDra · 6,002★ · AGPL-3.0</span></td>
 <td class="func">基于 Zotero 库兴趣每日推荐 arXiv 新论文，支持邮件/微信推送</td>
-<td><span class="chip" style="--c:#f0883e">空白（PaperPilot 无文献发现能力）</span></td>
+<td><span class="chip" style="--c:#f0883e">空白（Papilot 无文献发现能力）</span></td>
 <td class="valcell"><span class="val" style="--c:#f0883e">★★★</span></td>
 </tr>
 <tr class="detail" data-for="7"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>PaperPilot 从「读文献」延伸到「找文献」的第一候选：把库内容做兴趣向量 → 每日增量检索 arXiv → 生成带摘要的推荐（站内 + 可选邮件推送）。与已有的 AI 综述/矩阵天然衔接，是提升日活最强的功能。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>Papilot 从「读文献」延伸到「找文献」的第一候选：把库内容做兴趣向量 → 每日增量检索 arXiv → 生成带摘要的推荐（站内 + 可选邮件推送）。与已有的 AI 综述/矩阵天然衔接，是提升日活最强的功能。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>需要常驻调度与推送通道，成本与隐私需设计（可只做站内推荐避免外发）。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/TideDra/zotero-arxiv-daily" target="_blank" rel="noopener">TideDra/zotero-arxiv-daily</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-10-01 ｜ 活跃</div>
@@ -477,11 +477,11 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <tr class="detail" data-for="8"><td colspan="6">
 <div class="dgrid">
 <div class="dbox"><h5>值得借鉴的功能点</h5><p>两点值得抄：①条目行内的「阅读进度条」可视化（比状态文字直观）；②列显示方案的「预设组合」——一键切换「投稿模式/精读模式」等不同列组合，而非让用户逐列勾选。</p></div>
-<div class="dbox warn"><h5>实现注意 / 风险</h5><p>列渲染要避免与 PaperPilot 现有 columns 双重刷新导致卡顿。</p></div>
+<div class="dbox warn"><h5>实现注意 / 风险</h5><p>列渲染要避免与 Papilot 现有 columns 双重刷新导致卡顿。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/MuiseDestiny/zotero-style" target="_blank" rel="noopener">MuiseDestiny/zotero-style</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-06-07 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="9" data-dom="附件与文件管理" data-st="部分已有" data-val="2" data-s="4378" data-name="jlegewie/zotfile 附件自动重命名/移动/挂接，含平板与云盘同步规则 其重命名规则模板语法（%a_%y_%t 这类变量占位）比固定格式灵活得多，paperpilot 可升级为「变量式命名规则 + 实时预览」。">
+<tr class="main" data-orig="9" data-dom="附件与文件管理" data-st="部分已有" data-val="2" data-s="4378" data-name="jlegewie/zotfile 附件自动重命名/移动/挂接，含平板与云盘同步规则 其重命名规则模板语法（%a_%y_%t 这类变量占位）比固定格式灵活得多，papilot 可升级为「变量式命名规则 + 实时预览」。">
 <td class="num">9</td>
 <td class="dom">附件与文件管理</td>
 <td class="repo"><a href="https://github.com/jlegewie/zotfile" target="_blank" rel="noopener">zotfile</a><span class="owner">jlegewie · 4,378★ · NOASSERTION</span></td>
@@ -491,12 +491,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="9"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>其重命名规则模板语法（%a_%y_%t 这类变量占位）比固定格式灵活得多，PaperPilot 可升级为「变量式命名规则 + 实时预览」。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>其重命名规则模板语法（%a_%y_%t 这类变量占位）比固定格式灵活得多，Papilot 可升级为「变量式命名规则 + 实时预览」。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>项目无维护但思路成熟；无许可证，仅参考语法设计。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/jlegewie/zotfile" target="_blank" rel="noopener">jlegewie/zotfile</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2024-04-16 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="10" data-dom="全文获取" data-st="已有替代方案" data-val="0" data-s="4112" data-name="ethanwillis/zotero-scihub 自动从 sci-hub 下载 pdf 全文 不建议参考：paperpilot 已有合规的补全文链路，接入 sci-hub 反而带来下架与法律风险。">
+<tr class="main" data-orig="10" data-dom="全文获取" data-st="已有替代方案" data-val="0" data-s="4112" data-name="ethanwillis/zotero-scihub 自动从 sci-hub 下载 pdf 全文 不建议参考：papilot 已有合规的补全文链路，接入 sci-hub 反而带来下架与法律风险。">
 <td class="num">10</td>
 <td class="dom">全文获取</td>
 <td class="repo"><a href="https://github.com/ethanwillis/zotero-scihub" target="_blank" rel="noopener">zotero-scihub</a><span class="owner">ethanwillis · 4,112★ · AGPL-3.0</span></td>
@@ -506,12 +506,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="10"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>不建议参考：PaperPilot 已有合规的补全文链路，接入 Sci-Hub 反而带来下架与法律风险。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>不建议参考：Papilot 已有合规的补全文链路，接入 Sci-Hub 反而带来下架与法律风险。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>涉版权侵权，明确排除。</p></div>
 </div>
 <div class="dmeta">不建议参考 ｜ <a href="https://github.com/ethanwillis/zotero-scihub" target="_blank" rel="noopener">ethanwillis/zotero-scihub</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-26 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="11" data-dom="检索与发现" data-st="部分已有" data-val="3" data-s="3585" data-name="wdcpclover/ai4paper ai 全文翻译 + 2.4 亿文献检索一键入库 + 文库知识库问答 + 精读综述 + 分区列 最值得对照的两个空白：①「从学术检索直接入库」把「找文献」和「存文献」连成一步；②「文库级知识库问答（跨全库 rag）」——不是问单篇，而是问整个库。这两项与 paperpilot 现有 ai 能力天然衔接，是产品升级的自然方向。">
+<tr class="main" data-orig="11" data-dom="检索与发现" data-st="部分已有" data-val="3" data-s="3585" data-name="wdcpclover/ai4paper ai 全文翻译 + 2.4 亿文献检索一键入库 + 文库知识库问答 + 精读综述 + 分区列 最值得对照的两个空白：①「从学术检索直接入库」把「找文献」和「存文献」连成一步；②「文库级知识库问答（跨全库 rag）」——不是问单篇，而是问整个库。这两项与 papilot 现有 ai 能力天然衔接，是产品升级的自然方向。">
 <td class="num">11</td>
 <td class="dom">检索与发现</td>
 <td class="repo"><a href="https://github.com/wdcpclover/ai4paper" target="_blank" rel="noopener">ai4paper</a><span class="owner">wdcpclover · 3,585★ · NOASSERTION</span></td>
@@ -521,22 +521,22 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="11"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>最值得对照的两个空白：①「从学术检索直接入库」把「找文献」和「存文献」连成一步；②「文库级知识库问答（跨全库 RAG）」——不是问单篇，而是问整个库。这两项与 PaperPilot 现有 AI 能力天然衔接，是产品升级的自然方向。</p></div>
-<div class="dbox warn"><h5>实现注意 / 风险</h5><p>其检索源依赖自建云服务，PaperPilot 需自选可商用数据源（如 OpenAlex/Crossref 免密钥接口）。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>最值得对照的两个空白：①「从学术检索直接入库」把「找文献」和「存文献」连成一步；②「文库级知识库问答（跨全库 RAG）」——不是问单篇，而是问整个库。这两项与 Papilot 现有 AI 能力天然衔接，是产品升级的自然方向。</p></div>
+<div class="dbox warn"><h5>实现注意 / 风险</h5><p>其检索源依赖自建云服务，Papilot 需自选可商用数据源（如 OpenAlex/Crossref 免密钥接口）。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/wdcpclover/ai4paper" target="_blank" rel="noopener">wdcpclover/ai4paper</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-10-02 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="12" data-dom="集成与互操作" data-st="空白" data-val="2" data-s="3233" data-name="dvanoni/notero zotero → notion 双向同步：条目/笔记/标签变更监听与增量推送 「notifier 事件 → 队列 → 远端幂等写入」的同步引擎设计，是 paperpilot 未来做 obsidian/notion/语雀同步可直接对标的架构；产品上它也说明「把库同步到笔记工具」是刚需。">
+<tr class="main" data-orig="12" data-dom="集成与互操作" data-st="空白" data-val="2" data-s="3233" data-name="dvanoni/notero zotero → notion 双向同步：条目/笔记/标签变更监听与增量推送 「notifier 事件 → 队列 → 远端幂等写入」的同步引擎设计，是 papilot 未来做 obsidian/notion/语雀同步可直接对标的架构；产品上它也说明「把库同步到笔记工具」是刚需。">
 <td class="num">12</td>
 <td class="dom">集成与互操作</td>
 <td class="repo"><a href="https://github.com/dvanoni/notero" target="_blank" rel="noopener">notero</a><span class="owner">dvanoni · 3,233★ · MIT</span></td>
 <td class="func">Zotero → Notion 双向同步：条目/笔记/标签变更监听与增量推送</td>
-<td><span class="chip" style="--c:#f0883e">空白（PaperPilot 无外部笔记工具同步）</span></td>
+<td><span class="chip" style="--c:#f0883e">空白（Papilot 无外部笔记工具同步）</span></td>
 <td class="valcell"><span class="val" style="--c:#58a6ff">★★</span></td>
 </tr>
 <tr class="detail" data-for="12"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「Notifier 事件 → 队列 → 远端幂等写入」的同步引擎设计，是 PaperPilot 未来做 Obsidian/Notion/语雀同步可直接对标的架构；产品上它也说明「把库同步到笔记工具」是刚需。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「Notifier 事件 → 队列 → 远端幂等写入」的同步引擎设计，是 Papilot 未来做 Obsidian/Notion/语雀同步可直接对标的架构；产品上它也说明「把库同步到笔记工具」是刚需。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>同步冲突处理简单，多端并发需加固；依赖用户授权第三方 API。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/dvanoni/notero" target="_blank" rel="noopener">dvanoni/notero</a> ｜ 许可证 MIT ｜ 最近提交 2026-08-20 ｜ 维护中</div>
@@ -556,7 +556,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/yilewang/llm-for-zotero" target="_blank" rel="noopener">yilewang/llm-for-zotero</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-29 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="14" data-dom="标签与自动化" data-st="部分已有" data-val="3" data-s="2837" data-name="windingwind/zotero-actions-tags 动作 + 标签自动化：事件触发脚本、批量标签/字段处理、社区脚本库 paperpilot 的「规则打标」可以升级为通用自动化引擎：可视化的「触发（如新条目入库）→ 条件（分类/类型/关键词）→ 动作（打标/改字段/调用 ai/运行脚本）」配置器，是功能中心里最有扩展性的一块。">
+<tr class="main" data-orig="14" data-dom="标签与自动化" data-st="部分已有" data-val="3" data-s="2837" data-name="windingwind/zotero-actions-tags 动作 + 标签自动化：事件触发脚本、批量标签/字段处理、社区脚本库 papilot 的「规则打标」可以升级为通用自动化引擎：可视化的「触发（如新条目入库）→ 条件（分类/类型/关键词）→ 动作（打标/改字段/调用 ai/运行脚本）」配置器，是功能中心里最有扩展性的一块。">
 <td class="num">14</td>
 <td class="dom">标签与自动化</td>
 <td class="repo"><a href="https://github.com/windingwind/zotero-actions-tags" target="_blank" rel="noopener">zotero-actions-tags</a><span class="owner">windingwind · 2,837★ · AGPL-3.0</span></td>
@@ -566,12 +566,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="14"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>PaperPilot 的「规则打标」可以升级为通用自动化引擎：可视化的「触发（如新条目入库）→ 条件（分类/类型/关键词）→ 动作（打标/改字段/调用 AI/运行脚本）」配置器，是功能中心里最有扩展性的一块。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>Papilot 的「规则打标」可以升级为通用自动化引擎：可视化的「触发（如新条目入库）→ 条件（分类/类型/关键词）→ 动作（打标/改字段/调用 AI/运行脚本）」配置器，是功能中心里最有扩展性的一块。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>开放脚本执行必须设计权限边界与沙箱，避免任意代码访问本地文件。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/windingwind/zotero-actions-tags" target="_blank" rel="noopener">windingwind/zotero-actions-tags</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-08-24 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="15" data-dom="引文、导出与写作" data-st="已有" data-val="2" data-s="2821" data-name="muisedestiny/zotero-reference pdf 参考文献抽取、库内已有文献识别、一键批量入库 可对照其参考文献段落的切分容错（不同期刊格式），提升 paperpilot 抽取准确率。">
+<tr class="main" data-orig="15" data-dom="引文、导出与写作" data-st="已有" data-val="2" data-s="2821" data-name="muisedestiny/zotero-reference pdf 参考文献抽取、库内已有文献识别、一键批量入库 可对照其参考文献段落的切分容错（不同期刊格式），提升 papilot 抽取准确率。">
 <td class="num">15</td>
 <td class="dom">引文、导出与写作</td>
 <td class="repo"><a href="https://github.com/MuiseDestiny/zotero-reference" target="_blank" rel="noopener">zotero-reference</a><span class="owner">MuiseDestiny · 2,821★ · AGPL-3.0</span></td>
@@ -581,12 +581,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="15"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>可对照其参考文献段落的切分容错（不同期刊格式），提升 PaperPilot 抽取准确率。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>可对照其参考文献段落的切分容错（不同期刊格式），提升 Papilot 抽取准确率。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>已转低活跃，新式排版覆盖下降。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/MuiseDestiny/zotero-reference" target="_blank" rel="noopener">MuiseDestiny/zotero-reference</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-03-27 ｜ 低活跃</div>
 </td></tr>
-<tr class="main" data-orig="16" data-dom="AI 阅读与问答" data-st="部分已有" data-val="2" data-s="2662" data-name="papersgpt/papersgpt-for-zotero 全能型 ai 助手：多模型问答、翻译、综述，并内置 mcp 支持 作为路线校准的标尺：可对照其功能矩阵，检查 paperpilot 在「多模型并行对比」「团队共享」「mcp 生态」上的缺口。">
+<tr class="main" data-orig="16" data-dom="AI 阅读与问答" data-st="部分已有" data-val="2" data-s="2662" data-name="papersgpt/papersgpt-for-zotero 全能型 ai 助手：多模型问答、翻译、综述，并内置 mcp 支持 作为路线校准的标尺：可对照其功能矩阵，检查 papilot 在「多模型并行对比」「团队共享」「mcp 生态」上的缺口。">
 <td class="num">16</td>
 <td class="dom">AI 阅读与问答</td>
 <td class="repo"><a href="https://github.com/papersgpt/papersgpt-for-zotero" target="_blank" rel="noopener">papersgpt-for-zotero</a><span class="owner">papersgpt · 2,662★ · AGPL-3.0</span></td>
@@ -596,12 +596,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="16"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>作为路线校准的标尺：可对照其功能矩阵，检查 PaperPilot 在「多模型并行对比」「团队共享」「MCP 生态」上的缺口。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>作为路线校准的标尺：可对照其功能矩阵，检查 Papilot 在「多模型并行对比」「团队共享」「MCP 生态」上的缺口。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>其核心能力走商业通道，可观测的部分有限。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/papersgpt/papersgpt-for-zotero" target="_blank" rel="noopener">papersgpt/papersgpt-for-zotero</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-29 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="17" data-dom="界面与主题" data-st="已有" data-val="3" data-s="2452" data-name="tefkah/zotero-night zotero ui 与 pdf 的夜间主题，含 pdf 反色与色彩校正 关键借鉴点：pdf 反色时「只反文本层、保持图片原色」（paperpilot 若整页反色会把图表也毁掉），以及跟随系统明暗的自动切换策略。这是深色阅读体验的胜负手。">
+<tr class="main" data-orig="17" data-dom="界面与主题" data-st="已有" data-val="3" data-s="2452" data-name="tefkah/zotero-night zotero ui 与 pdf 的夜间主题，含 pdf 反色与色彩校正 关键借鉴点：pdf 反色时「只反文本层、保持图片原色」（papilot 若整页反色会把图表也毁掉），以及跟随系统明暗的自动切换策略。这是深色阅读体验的胜负手。">
 <td class="num">17</td>
 <td class="dom">界面与主题</td>
 <td class="repo"><a href="https://github.com/tefkah/zotero-night" target="_blank" rel="noopener">zotero-night</a><span class="owner">tefkah · 2,452★ · GPL-3.0</span></td>
@@ -611,7 +611,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="17"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>关键借鉴点：PDF 反色时「只反文本层、保持图片原色」（PaperPilot 若整页反色会把图表也毁掉），以及跟随系统明暗的自动切换策略。这是深色阅读体验的胜负手。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>关键借鉴点：PDF 反色时「只反文本层、保持图片原色」（Papilot 若整页反色会把图表也毁掉），以及跟随系统明暗的自动切换策略。这是深色阅读体验的胜负手。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>仅参考策略与 CSS 思路，不涉及代码。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/tefkah/zotero-night" target="_blank" rel="noopener">tefkah/zotero-night</a> ｜ 许可证 GPL-3.0 ｜ 最近提交 2026-04-24 ｜ 维护中</div>
@@ -631,7 +631,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/WildDataX/suppr-zotero-plugin" target="_blank" rel="noopener">WildDataX/suppr-zotero-plugin</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-08-25 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="19" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="1884" data-name="wshanks/zutilo 大量编辑增强小工具：快速编辑、期刊缩写、附件/标签快捷操作、条目复制 把它的小工具清单当灵感池：筛出「paperpilot 缺且高频」的少数几项内置（如快速编辑字段、复制条目为纯文本引用）。">
+<tr class="main" data-orig="19" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="1884" data-name="wshanks/zutilo 大量编辑增强小工具：快速编辑、期刊缩写、附件/标签快捷操作、条目复制 把它的小工具清单当灵感池：筛出「papilot 缺且高频」的少数几项内置（如快速编辑字段、复制条目为纯文本引用）。">
 <td class="num">19</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/wshanks/Zutilo" target="_blank" rel="noopener">Zutilo</a><span class="owner">wshanks · 1,884★ · NOASSERTION</span></td>
@@ -641,12 +641,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="19"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>把它的小工具清单当灵感池：筛出「PaperPilot 缺且高频」的少数几项内置（如快速编辑字段、复制条目为纯文本引用）。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>把它的小工具清单当灵感池：筛出「Papilot 缺且高频」的少数几项内置（如快速编辑字段、复制条目为纯文本引用）。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>功能零散，切忌全盘照搬导致功能中心臃肿。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/wshanks/Zutilo" target="_blank" rel="noopener">wshanks/Zutilo</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-09-07 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="20" data-dom="AI 阅读与问答" data-st="部分已有" data-val="3" data-s="1770" data-name="steven-jianhao-li/zotero-ai-butler 文献入库后自动触发大模型精读并生成结构化笔记，支持多平台模型 「入库即自动精读」的事件驱动流水线是 paperpilot 可以直接补的能力；其结构化笔记的章节模板（研究问题/方法/结论/局限）也值得复用为默认模板。">
+<tr class="main" data-orig="20" data-dom="AI 阅读与问答" data-st="部分已有" data-val="3" data-s="1770" data-name="steven-jianhao-li/zotero-ai-butler 文献入库后自动触发大模型精读并生成结构化笔记，支持多平台模型 「入库即自动精读」的事件驱动流水线是 papilot 可以直接补的能力；其结构化笔记的章节模板（研究问题/方法/结论/局限）也值得复用为默认模板。">
 <td class="num">20</td>
 <td class="dom">AI 阅读与问答</td>
 <td class="repo"><a href="https://github.com/steven-jianhao-li/zotero-AI-Butler" target="_blank" rel="noopener">zotero-AI-Butler</a><span class="owner">steven-jianhao-li · 1,770★ · AGPL-3.0</span></td>
@@ -656,27 +656,27 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="20"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「入库即自动精读」的事件驱动流水线是 PaperPilot 可以直接补的能力；其结构化笔记的章节模板（研究问题/方法/结论/局限）也值得复用为默认模板。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「入库即自动精读」的事件驱动流水线是 Papilot 可以直接补的能力；其结构化笔记的章节模板（研究问题/方法/结论/局限）也值得复用为默认模板。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>自动批处理 token 成本不可控，必须提供白名单/节流/每日上限与「仅对新建分类生效」的开关。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/steven-jianhao-li/zotero-AI-Butler" target="_blank" rel="noopener">steven-jianhao-li/zotero-AI-Butler</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-28 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="21" data-dom="插件生态" data-st="空白" data-val="3" data-s="1760" data-name="syt2/zotero-addons zotero 内插件市场：浏览/搜索/一键安装/更新第三方插件 paperpilot 的「功能中心」可演进为「能力集市」：内置推荐插件索引、按 zotero 版本过滤兼容性、一键安装。这既服务用户，也能把 paperpilot 变成入口级产品。">
+<tr class="main" data-orig="21" data-dom="插件生态" data-st="空白" data-val="3" data-s="1760" data-name="syt2/zotero-addons zotero 内插件市场：浏览/搜索/一键安装/更新第三方插件 papilot 的「功能中心」可演进为「能力集市」：内置推荐插件索引、按 zotero 版本过滤兼容性、一键安装。这既服务用户，也能把 papilot 变成入口级产品。">
 <td class="num">21</td>
 <td class="dom">插件生态</td>
 <td class="repo"><a href="https://github.com/syt2/zotero-addons" target="_blank" rel="noopener">zotero-addons</a><span class="owner">syt2 · 1,760★ · AGPL-3.0</span></td>
 <td class="func">Zotero 内插件市场：浏览/搜索/一键安装/更新第三方插件</td>
-<td><span class="chip" style="--c:#f0883e">空白（PaperPilot 只有自身的更新通道与「功能中心」）</span></td>
+<td><span class="chip" style="--c:#f0883e">空白（Papilot 只有自身的更新通道与「功能中心」）</span></td>
 <td class="valcell"><span class="val" style="--c:#f0883e">★★★</span></td>
 </tr>
 <tr class="detail" data-for="21"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>PaperPilot 的「功能中心」可演进为「能力集市」：内置推荐插件索引、按 Zotero 版本过滤兼容性、一键安装。这既服务用户，也能把 PaperPilot 变成入口级产品。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>Papilot 的「功能中心」可演进为「能力集市」：内置推荐插件索引、按 Zotero 版本过滤兼容性、一键安装。这既服务用户，也能把 Papilot 变成入口级产品。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>供应链安全是最大风险（恶意插件）——必须做白名单/来源校验，不能盲目聚合。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/syt2/zotero-addons" target="_blank" rel="noopener">syt2/zotero-addons</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-08 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="22" data-dom="AI 阅读与问答" data-st="部分已有" data-val="1" data-s="1729" data-name="lifan0127/ai-research-assistant aria 研究助手：gpt 驱动的检索与写作辅助（含 zotero 集成） 可参考「网页端 + 插件端协同」的产品形态，评估 paperpilot 是否需要配套网页端承接长任务。">
+<tr class="main" data-orig="22" data-dom="AI 阅读与问答" data-st="部分已有" data-val="1" data-s="1729" data-name="lifan0127/ai-research-assistant aria 研究助手：gpt 驱动的检索与写作辅助（含 zotero 集成） 可参考「网页端 + 插件端协同」的产品形态，评估 papilot 是否需要配套网页端承接长任务。">
 <td class="num">22</td>
 <td class="dom">AI 阅读与问答</td>
 <td class="repo"><a href="https://github.com/lifan0127/ai-research-assistant" target="_blank" rel="noopener">ai-research-assistant</a><span class="owner">lifan0127 · 1,729★ · AGPL-3.0</span></td>
@@ -686,12 +686,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="22"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>可参考「网页端 + 插件端协同」的产品形态，评估 PaperPilot 是否需要配套网页端承接长任务。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>可参考「网页端 + 插件端协同」的产品形态，评估 Papilot 是否需要配套网页端承接长任务。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>已停滞，依赖旧模型接口。</p></div>
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/lifan0127/ai-research-assistant" target="_blank" rel="noopener">lifan0127/ai-research-assistant</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2025-04-01 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="23" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="1630" data-name="bwiernik/zotero-shortdoi 从 crossref 检索并校验 doi / 短 doi，批量修正条目标识 「doi 有效性校验 + 批量回填」是独立价值点：paperpilot 可增加「库级 doi 体检」，找出错误/缺失/失效的标识符。">
+<tr class="main" data-orig="23" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="1630" data-name="bwiernik/zotero-shortdoi 从 crossref 检索并校验 doi / 短 doi，批量修正条目标识 「doi 有效性校验 + 批量回填」是独立价值点：papilot 可增加「库级 doi 体检」，找出错误/缺失/失效的标识符。">
 <td class="num">23</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/bwiernik/zotero-shortdoi" target="_blank" rel="noopener">zotero-shortdoi</a><span class="owner">bwiernik · 1,630★ · MPL-2.0</span></td>
@@ -701,12 +701,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="23"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「DOI 有效性校验 + 批量回填」是独立价值点：PaperPilot 可增加「库级 DOI 体检」，找出错误/缺失/失效的标识符。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「DOI 有效性校验 + 批量回填」是独立价值点：Papilot 可增加「库级 DOI 体检」，找出错误/缺失/失效的标识符。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>CrossRef 限流较严，需退避与本地缓存。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/bwiernik/zotero-shortdoi" target="_blank" rel="noopener">bwiernik/zotero-shortdoi</a> ｜ 许可证 MPL-2.0 ｜ 最近提交 2024-08-10 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="24" data-dom="附件与文件管理" data-st="部分已有" data-val="2" data-s="1535" data-name="wileyyugioh/zotmoov 附件自动移动/复制/链接到指定目录，支持按字段规则命名与状态标记 「规则配置 → 预览待执行清单 → 执行」的安全交互范式，值得 paperpilot 所有批量文件操作统一采用。">
+<tr class="main" data-orig="24" data-dom="附件与文件管理" data-st="部分已有" data-val="2" data-s="1535" data-name="wileyyugioh/zotmoov 附件自动移动/复制/链接到指定目录，支持按字段规则命名与状态标记 「规则配置 → 预览待执行清单 → 执行」的安全交互范式，值得 papilot 所有批量文件操作统一采用。">
 <td class="num">24</td>
 <td class="dom">附件与文件管理</td>
 <td class="repo"><a href="https://github.com/wileyyugioh/zotmoov" target="_blank" rel="noopener">zotmoov</a><span class="owner">wileyyugioh · 1,535★ · GPL-3.0</span></td>
@@ -716,7 +716,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="24"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「规则配置 → 预览待执行清单 → 执行」的安全交互范式，值得 PaperPilot 所有批量文件操作统一采用。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「规则配置 → 预览待执行清单 → 执行」的安全交互范式，值得 Papilot 所有批量文件操作统一采用。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>与 ZotFile 迁移场景强绑定，通用性一般。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/wileyyugioh/zotmoov" target="_blank" rel="noopener">wileyyugioh/zotmoov</a> ｜ 许可证 GPL-3.0 ｜ 最近提交 2026-09-30 ｜ 活跃</div>
@@ -736,7 +736,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/argenos/zotero-mdnotes" target="_blank" rel="noopener">argenos/zotero-mdnotes</a> ｜ 许可证 GPL-3.0 ｜ 最近提交 2024-10-18 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="26" data-dom="附件与文件管理" data-st="部分已有" data-val="3" data-s="1372" data-name="muisedestiny/zotero-attanger 附件管家：扫描下载目录、按相似度匹配并自动挂接到对应条目 直接解决「有条目没附件」的高频痛点，paperpilot 可加「附件补挂」功能：扫描待挂文件 → 与库内条目相似度匹配 → 人工确认后挂接。这是库健康栏目很有说服力的一项。">
+<tr class="main" data-orig="26" data-dom="附件与文件管理" data-st="部分已有" data-val="3" data-s="1372" data-name="muisedestiny/zotero-attanger 附件管家：扫描下载目录、按相似度匹配并自动挂接到对应条目 直接解决「有条目没附件」的高频痛点，papilot 可加「附件补挂」功能：扫描待挂文件 → 与库内条目相似度匹配 → 人工确认后挂接。这是库健康栏目很有说服力的一项。">
 <td class="num">26</td>
 <td class="dom">附件与文件管理</td>
 <td class="repo"><a href="https://github.com/MuiseDestiny/zotero-attanger" target="_blank" rel="noopener">zotero-attanger</a><span class="owner">MuiseDestiny · 1,372★ · AGPL-3.0</span></td>
@@ -746,27 +746,27 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="26"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>直接解决「有条目没附件」的高频痛点，PaperPilot 可加「附件补挂」功能：扫描待挂文件 → 与库内条目相似度匹配 → 人工确认后挂接。这是库健康栏目很有说服力的一项。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>直接解决「有条目没附件」的高频痛点，Papilot 可加「附件补挂」功能：扫描待挂文件 → 与库内条目相似度匹配 → 人工确认后挂接。这是库健康栏目很有说服力的一项。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>文件名匹配对中文/特殊字符易误判，必须人工确认。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/MuiseDestiny/zotero-attanger" target="_blank" rel="noopener">MuiseDestiny/zotero-attanger</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-08-23 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="27" data-dom="引文、导出与写作" data-st="空白" data-val="1" data-s="1285" data-name="muisedestiny/zotero-citation 优化 word 中的 zotero 引用插入与文献表编辑体验 仅当 paperpilot 规划写作场景时参考。">
+<tr class="main" data-orig="27" data-dom="引文、导出与写作" data-st="空白" data-val="1" data-s="1285" data-name="muisedestiny/zotero-citation 优化 word 中的 zotero 引用插入与文献表编辑体验 仅当 papilot 规划写作场景时参考。">
 <td class="num">27</td>
 <td class="dom">引文、导出与写作</td>
 <td class="repo"><a href="https://github.com/MuiseDestiny/zotero-citation" target="_blank" rel="noopener">zotero-citation</a><span class="owner">MuiseDestiny · 1,285★ · AGPL-3.0</span></td>
 <td class="func">优化 Word 中的 Zotero 引用插入与文献表编辑体验</td>
-<td><span class="chip" style="--c:#f0883e">空白（PaperPilot 无 Word 集成）</span></td>
+<td><span class="chip" style="--c:#f0883e">空白（Papilot 无 Word 集成）</span></td>
 <td class="valcell"><span class="val" style="--c:#8b949e">★</span></td>
 </tr>
 <tr class="detail" data-for="27"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>仅当 PaperPilot 规划写作场景时参考。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>仅当 Papilot 规划写作场景时参考。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>需要文字处理器侧改造，超出插件边界。</p></div>
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/MuiseDestiny/zotero-citation" target="_blank" rel="noopener">MuiseDestiny/zotero-citation</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-08-24 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="28" data-dom="界面与主题" data-st="部分已有" data-val="2" data-s="1250" data-name="windingwind/zotero-pdf-preview 在列表内直接预览附件缩略图/文本的预览列 缩略图的「异步渲染 + 缓存 + 懒加载」策略值得抄，这是列表里加预览不卡的唯一办法；paperpilot 若在列表中做预览必须先解决这个。">
+<tr class="main" data-orig="28" data-dom="界面与主题" data-st="部分已有" data-val="2" data-s="1250" data-name="windingwind/zotero-pdf-preview 在列表内直接预览附件缩略图/文本的预览列 缩略图的「异步渲染 + 缓存 + 懒加载」策略值得抄，这是列表里加预览不卡的唯一办法；papilot 若在列表中做预览必须先解决这个。">
 <td class="num">28</td>
 <td class="dom">界面与主题</td>
 <td class="repo"><a href="https://github.com/windingwind/zotero-pdf-preview" target="_blank" rel="noopener">zotero-pdf-preview</a><span class="owner">windingwind · 1,250★ · GPL-3.0</span></td>
@@ -776,27 +776,27 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="28"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>缩略图的「异步渲染 + 缓存 + 懒加载」策略值得抄，这是列表里加预览不卡的唯一办法；PaperPilot 若在列表中做预览必须先解决这个。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>缩略图的「异步渲染 + 缓存 + 懒加载」策略值得抄，这是列表里加预览不卡的唯一办法；Papilot 若在列表中做预览必须先解决这个。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>基于旧版 Zotero 7 早期 API，不可直接用。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/windingwind/zotero-pdf-preview" target="_blank" rel="noopener">windingwind/zotero-pdf-preview</a> ｜ 许可证 GPL-3.0 ｜ 最近提交 2024-01-25 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="29" data-dom="集成与互操作" data-st="空白" data-val="3" data-s="1201" data-name="cookjohn/zotero-mcp 在 zotero 内嵌 mcp 服务器，把文献库能力暴露给 claude/cursor 等外部 ai 客户端 paperpilot 最值得补的生态位：把「库检索、读全文、读批注、写笔记」封装为 mcp 工具对外供给，让用户在自己的 ai 客户端里直接使用 paperpilot 的文献能力。与现有 ai 功能互补而非竞争。">
+<tr class="main" data-orig="29" data-dom="集成与互操作" data-st="空白" data-val="3" data-s="1201" data-name="cookjohn/zotero-mcp 在 zotero 内嵌 mcp 服务器，把文献库能力暴露给 claude/cursor 等外部 ai 客户端 papilot 最值得补的生态位：把「库检索、读全文、读批注、写笔记」封装为 mcp 工具对外供给，让用户在自己的 ai 客户端里直接使用 papilot 的文献能力。与现有 ai 功能互补而非竞争。">
 <td class="num">29</td>
 <td class="dom">集成与互操作</td>
 <td class="repo"><a href="https://github.com/cookjohn/zotero-mcp" target="_blank" rel="noopener">zotero-mcp</a><span class="owner">cookjohn · 1,201★ · MIT</span></td>
 <td class="func">在 Zotero 内嵌 MCP 服务器，把文献库能力暴露给 Claude/Cursor 等外部 AI 客户端</td>
-<td><span class="chip" style="--c:#f0883e">空白（PaperPilot 的 AI 能力只在插件内部使用）</span></td>
+<td><span class="chip" style="--c:#f0883e">空白（Papilot 的 AI 能力只在插件内部使用）</span></td>
 <td class="valcell"><span class="val" style="--c:#f0883e">★★★</span></td>
 </tr>
 <tr class="detail" data-for="29"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>PaperPilot 最值得补的生态位：把「库检索、读全文、读批注、写笔记」封装为 MCP 工具对外供给，让用户在自己的 AI 客户端里直接使用 PaperPilot 的文献能力。与现有 AI 功能互补而非竞争。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>Papilot 最值得补的生态位：把「库检索、读全文、读批注、写笔记」封装为 MCP 工具对外供给，让用户在自己的 AI 客户端里直接使用 Papilot 的文献能力。与现有 AI 功能互补而非竞争。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>MCP 协议仍在演进；本地端口必须限制 127.0.0.1 并加鉴权，否则是权限后门。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/cookjohn/zotero-mcp" target="_blank" rel="noopener">cookjohn/zotero-mcp</a> ｜ 许可证 MIT ｜ 最近提交 2026-09-09 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="30" data-dom="元数据与库健康" data-st="已有" data-val="3" data-s="1059" data-name="northword/zotero-format-metadata 元数据规范 linter：标题大小写、期刊缩写、doi/页码格式等大批规则 + 一键修复 把它的规则清单当作 paperpilot 的验收清单来用：逐条比对哪些规则尚未覆盖（尤其是期刊缩写表、标题大小写、页码范围补全）；其「问题逐条列出 → 勾选修复」的交互也比「一键全改」更让用户放心。">
+<tr class="main" data-orig="30" data-dom="元数据与库健康" data-st="已有" data-val="3" data-s="1059" data-name="northword/zotero-format-metadata 元数据规范 linter：标题大小写、期刊缩写、doi/页码格式等大批规则 + 一键修复 把它的规则清单当作 papilot 的验收清单来用：逐条比对哪些规则尚未覆盖（尤其是期刊缩写表、标题大小写、页码范围补全）；其「问题逐条列出 → 勾选修复」的交互也比「一键全改」更让用户放心。">
 <td class="num">30</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/northword/zotero-format-metadata" target="_blank" rel="noopener">zotero-format-metadata</a><span class="owner">northword · 1,059★ · AGPL-3.0</span></td>
@@ -806,7 +806,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="30"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>把它的规则清单当作 PaperPilot 的验收清单来用：逐条比对哪些规则尚未覆盖（尤其是期刊缩写表、标题大小写、页码范围补全）；其「问题逐条列出 → 勾选修复」的交互也比「一键全改」更让用户放心。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>把它的规则清单当作 Papilot 的验收清单来用：逐条比对哪些规则尚未覆盖（尤其是期刊缩写表、标题大小写、页码范围补全）；其「问题逐条列出 → 勾选修复」的交互也比「一键全改」更让用户放心。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>中文期刊缩写表需要自建或找可用数据源；批量修改必须有预览与撤销。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/northword/zotero-format-metadata" target="_blank" rel="noopener">northword/zotero-format-metadata</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-09 ｜ 活跃</div>
@@ -856,7 +856,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/eschnett/zotero-citationcounts" target="_blank" rel="noopener">eschnett/zotero-citationcounts</a> ｜ 许可证 MPL-2.0 ｜ 最近提交 2023-11-09 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="34" data-dom="指标与数据列" data-st="已有" data-val="2" data-s="923" data-name="redleafnew/zotero-updateifse 基于 easyscholar 更新影响因子/分区并批量写入字段 同为 easyscholar 使用者：对照其字段口径（jcr/中科院/ccf/esi/abdc）与徽章定义，验收 paperpilot 分区解析的覆盖率。">
+<tr class="main" data-orig="34" data-dom="指标与数据列" data-st="已有" data-val="2" data-s="923" data-name="redleafnew/zotero-updateifse 基于 easyscholar 更新影响因子/分区并批量写入字段 同为 easyscholar 使用者：对照其字段口径（jcr/中科院/ccf/esi/abdc）与徽章定义，验收 papilot 分区解析的覆盖率。">
 <td class="num">34</td>
 <td class="dom">指标与数据列</td>
 <td class="repo"><a href="https://github.com/redleafnew/zotero-updateifsE" target="_blank" rel="noopener">zotero-updateifsE</a><span class="owner">redleafnew · 923★ · AGPL-3.0</span></td>
@@ -866,12 +866,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="34"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>同为 easyScholar 使用者：对照其字段口径（JCR/中科院/CCF/ESI/ABDC）与徽章定义，验收 PaperPilot 分区解析的覆盖率。</p></div>
-<div class="dbox warn"><h5>实现注意 / 风险</h5><p>共享同一数据源存在配额竞争，PaperPilot 的缓存与节流更关键。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>同为 easyScholar 使用者：对照其字段口径（JCR/中科院/CCF/ESI/ABDC）与徽章定义，验收 Papilot 分区解析的覆盖率。</p></div>
+<div class="dbox warn"><h5>实现注意 / 风险</h5><p>共享同一数据源存在配额竞争，Papilot 的缓存与节流更关键。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/redleafnew/zotero-updateifsE" target="_blank" rel="noopener">redleafnew/zotero-updateifsE</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-08-20 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="35" data-dom="指标与数据列" data-st="空白" data-val="2" data-s="870" data-name="scitedotai/scite-zotero-plugin 在条目上显示 scite 的「支持/反对/提及」引用上下文计数 「引用语境」是比被引次数更高质量的信号（被多少人反对往往更关键）。paperpilot 可引入类似指标，或至少在文献矩阵中增加「争议度」维度。">
+<tr class="main" data-orig="35" data-dom="指标与数据列" data-st="空白" data-val="2" data-s="870" data-name="scitedotai/scite-zotero-plugin 在条目上显示 scite 的「支持/反对/提及」引用上下文计数 「引用语境」是比被引次数更高质量的信号（被多少人反对往往更关键）。papilot 可引入类似指标，或至少在文献矩阵中增加「争议度」维度。">
 <td class="num">35</td>
 <td class="dom">指标与数据列</td>
 <td class="repo"><a href="https://github.com/scitedotai/scite-zotero-plugin" target="_blank" rel="noopener">scite-zotero-plugin</a><span class="owner">scitedotai · 870★ · NOASSERTION</span></td>
@@ -881,7 +881,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="35"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「引用语境」是比被引次数更高质量的信号（被多少人反对往往更关键）。PaperPilot 可引入类似指标，或至少在文献矩阵中增加「争议度」维度。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「引用语境」是比被引次数更高质量的信号（被多少人反对往往更关键）。Papilot 可引入类似指标，或至少在文献矩阵中增加「争议度」维度。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>依赖商业 API，无免费稳定配额，需评估替代数据源。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/scitedotai/scite-zotero-plugin" target="_blank" rel="noopener">scitedotai/scite-zotero-plugin</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-02-02 ｜ 低活跃</div>
@@ -897,11 +897,11 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <tr class="detail" data-for="36"><td colspan="6">
 <div class="dgrid">
 <div class="dbox"><h5>值得借鉴的功能点</h5><p>工程实践参考（i18n 组织、发布流程），非功能参考。</p></div>
-<div class="dbox warn"><h5>实现注意 / 风险</h5><p>模板本身较重，与 PaperPilot 现有「改完即打包」流程冲突。</p></div>
+<div class="dbox warn"><h5>实现注意 / 风险</h5><p>模板本身较重，与 Papilot 现有「改完即打包」流程冲突。</p></div>
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/windingwind/zotero-plugin-template" target="_blank" rel="noopener">windingwind/zotero-plugin-template</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-03-09 ｜ 低活跃</div>
 </td></tr>
-<tr class="main" data-orig="37" data-dom="元数据与库健康" data-st="空白" data-val="3" data-s="830" data-name="ub-mannheim/zotero-ocr 为扫描版 pdf 生成文本层（对接 ocr 引擎） 这是 paperpilot ai 能力的一个真实盲区：「检测缺文本层 → 调用 ocr → 回写 pdf」，做完后扫描版文献也能进 ai 工作流。">
+<tr class="main" data-orig="37" data-dom="元数据与库健康" data-st="空白" data-val="3" data-s="830" data-name="ub-mannheim/zotero-ocr 为扫描版 pdf 生成文本层（对接 ocr 引擎） 这是 papilot ai 能力的一个真实盲区：「检测缺文本层 → 调用 ocr → 回写 pdf」，做完后扫描版文献也能进 ai 工作流。">
 <td class="num">37</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/UB-Mannheim/zotero-ocr" target="_blank" rel="noopener">zotero-ocr</a><span class="owner">UB-Mannheim · 830★ · AGPL-3.0</span></td>
@@ -911,12 +911,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="37"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>这是 PaperPilot AI 能力的一个真实盲区：「检测缺文本层 → 调用 OCR → 回写 PDF」，做完后扫描版文献也能进 AI 工作流。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>这是 Papilot AI 能力的一个真实盲区：「检测缺文本层 → 调用 OCR → 回写 PDF」，做完后扫描版文献也能进 AI 工作流。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>OCR 依赖外部二进制/服务，建议做成可选外部依赖并提供安装引导，不要内置。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/UB-Mannheim/zotero-ocr" target="_blank" rel="noopener">UB-Mannheim/zotero-ocr</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-09 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="38" data-dom="集成与互操作" data-st="空白" data-val="1" data-s="681" data-name="daeh/zotero-markdb-connect 打通本地 markdown 知识库与 zotero，双向跳转与链接生成 「本地文件 ↔ 条目」双向跳转（zotero://select 链接）是低成本高感知的功能，paperpilot 可加。">
+<tr class="main" data-orig="38" data-dom="集成与互操作" data-st="空白" data-val="1" data-s="681" data-name="daeh/zotero-markdb-connect 打通本地 markdown 知识库与 zotero，双向跳转与链接生成 「本地文件 ↔ 条目」双向跳转（zotero://select 链接）是低成本高感知的功能，papilot 可加。">
 <td class="num">38</td>
 <td class="dom">集成与互操作</td>
 <td class="repo"><a href="https://github.com/daeh/zotero-markdb-connect" target="_blank" rel="noopener">zotero-markdb-connect</a><span class="owner">daeh · 681★ · MIT</span></td>
@@ -926,12 +926,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="38"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「本地文件 ↔ 条目」双向跳转（zotero://select 链接）是低成本高感知的功能，PaperPilot 可加。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「本地文件 ↔ 条目」双向跳转（zotero://select 链接）是低成本高感知的功能，Papilot 可加。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>跨设备路径一致性需处理。</p></div>
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/daeh/zotero-markdb-connect" target="_blank" rel="noopener">daeh/zotero-markdb-connect</a> ｜ 许可证 MIT ｜ 最近提交 2026-08-19 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="39" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="659" data-name="redleafnew/delitemwithatt 删除条目时连带清理附件与关联文件 删除前的「占用统计 + 可恢复清单」交互值得照搬到 paperpilot 的清理流程。">
+<tr class="main" data-orig="39" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="659" data-name="redleafnew/delitemwithatt 删除条目时连带清理附件与关联文件 删除前的「占用统计 + 可恢复清单」交互值得照搬到 papilot 的清理流程。">
 <td class="num">39</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/redleafnew/delitemwithatt" target="_blank" rel="noopener">delitemwithatt</a><span class="owner">redleafnew · 659★ · AGPL-3.0</span></td>
@@ -941,12 +941,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="39"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>删除前的「占用统计 + 可恢复清单」交互值得照搬到 PaperPilot 的清理流程。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>删除前的「占用统计 + 可恢复清单」交互值得照搬到 Papilot 的清理流程。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>破坏性操作为主，必须二次确认。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/redleafnew/delitemwithatt" target="_blank" rel="noopener">redleafnew/delitemwithatt</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-08-10 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="40" data-dom="笔记与卡片" data-st="部分已有" data-val="2" data-s="644" data-name="018/zotcard 卡片式笔记增强：卡片模板、变量替换、批量生成 卡片模板的变量语法与「一篇文章批量拆成多张卡片」的交互值得对照，用于增强 paperpilot 的模板体系。">
+<tr class="main" data-orig="40" data-dom="笔记与卡片" data-st="部分已有" data-val="2" data-s="644" data-name="018/zotcard 卡片式笔记增强：卡片模板、变量替换、批量生成 卡片模板的变量语法与「一篇文章批量拆成多张卡片」的交互值得对照，用于增强 papilot 的模板体系。">
 <td class="num">40</td>
 <td class="dom">笔记与卡片</td>
 <td class="repo"><a href="https://github.com/018/zotcard" target="_blank" rel="noopener">zotcard</a><span class="owner">018 · 644★ · MIT</span></td>
@@ -956,8 +956,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="40"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>卡片模板的变量语法与「一篇文章批量拆成多张卡片」的交互值得对照，用于增强 PaperPilot 的模板体系。</p></div>
-<div class="dbox warn"><h5>实现注意 / 风险</h5><p>模板语法若与 PaperPilot 现有模板不兼容，需要做兼容层，否则用户迁移会混乱。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>卡片模板的变量语法与「一篇文章批量拆成多张卡片」的交互值得对照，用于增强 Papilot 的模板体系。</p></div>
+<div class="dbox warn"><h5>实现注意 / 风险</h5><p>模板语法若与 Papilot 现有模板不兼容，需要做兼容层，否则用户迁移会混乱。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/018/zotcard" target="_blank" rel="noopener">018/zotcard</a> ｜ 许可证 MIT ｜ 最近提交 2025-06-03 ｜ 停滞</div>
 </td></tr>
@@ -976,7 +976,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/beloglazov/zotero-scholar-citations" target="_blank" rel="noopener">beloglazov/zotero-scholar-citations</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2021-02-21 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="42" data-dom="阅读状态与统计" data-st="已有" data-val="2" data-s="578" data-name="dominic-dallosto/zotero-reading-list 阅读状态跟踪（未读/在读/已读）+ 状态自动流转 + 列表列显示 作为验收对照：重点看它的「何时算在读」判定边界（打开阅读器？停留时长？翻页数？），paperpilot 可据此细化自己的状态机。">
+<tr class="main" data-orig="42" data-dom="阅读状态与统计" data-st="已有" data-val="2" data-s="578" data-name="dominic-dallosto/zotero-reading-list 阅读状态跟踪（未读/在读/已读）+ 状态自动流转 + 列表列显示 作为验收对照：重点看它的「何时算在读」判定边界（打开阅读器？停留时长？翻页数？），papilot 可据此细化自己的状态机。">
 <td class="num">42</td>
 <td class="dom">阅读状态与统计</td>
 <td class="repo"><a href="https://github.com/Dominic-DallOsto/zotero-reading-list" target="_blank" rel="noopener">zotero-reading-list</a><span class="owner">Dominic-DallOsto · 578★ · GPL-3.0</span></td>
@@ -986,12 +986,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="42"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>作为验收对照：重点看它的「何时算在读」判定边界（打开阅读器？停留时长？翻页数？），PaperPilot 可据此细化自己的状态机。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>作为验收对照：重点看它的「何时算在读」判定边界（打开阅读器？停留时长？翻页数？），Papilot 可据此细化自己的状态机。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>已覆盖，无代码参考必要。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/Dominic-DallOsto/zotero-reading-list" target="_blank" rel="noopener">Dominic-DallOsto/zotero-reading-list</a> ｜ 许可证 GPL-3.0 ｜ 最近提交 2026-09-16 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="43" data-dom="AI 阅读与问答" data-st="空白" data-val="3" data-s="567" data-name="muisedestiny/zotero-figure 从 pdf 中抽取图、表、公式并集中浏览/导出 精读场景的强需求：把一篇论文的图/表/公式抽出来集中看，配合 ai 解说图表。paperpilot 可做「图表速览」视图，并与 ai 问答联动（选中图问这是什么）。">
+<tr class="main" data-orig="43" data-dom="AI 阅读与问答" data-st="空白" data-val="3" data-s="567" data-name="muisedestiny/zotero-figure 从 pdf 中抽取图、表、公式并集中浏览/导出 精读场景的强需求：把一篇论文的图/表/公式抽出来集中看，配合 ai 解说图表。papilot 可做「图表速览」视图，并与 ai 问答联动（选中图问这是什么）。">
 <td class="num">43</td>
 <td class="dom">AI 阅读与问答</td>
 <td class="repo"><a href="https://github.com/MuiseDestiny/zotero-figure" target="_blank" rel="noopener">zotero-figure</a><span class="owner">MuiseDestiny · 567★ · AGPL-3.0</span></td>
@@ -1001,12 +1001,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="43"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>精读场景的强需求：把一篇论文的图/表/公式抽出来集中看，配合 AI 解说图表。PaperPilot 可做「图表速览」视图，并与 AI 问答联动（选中图问这是什么）。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>精读场景的强需求：把一篇论文的图/表/公式抽出来集中看，配合 AI 解说图表。Papilot 可做「图表速览」视图，并与 AI 问答联动（选中图问这是什么）。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>版面识别对双栏/扫描件准确率有限，需要人工纠错入口。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/MuiseDestiny/zotero-figure" target="_blank" rel="noopener">MuiseDestiny/zotero-figure</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-18 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="44" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="548" data-name="retorquere/zotero-storage-scanner 扫描并清理失效/重复的附件链接与本地存储文件 「孤儿文件（无条目引用）vs 断链附件（条目指向不存在文件）」的分类处理策略可补齐 paperpilot 清理功能的完整性。">
+<tr class="main" data-orig="44" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="548" data-name="retorquere/zotero-storage-scanner 扫描并清理失效/重复的附件链接与本地存储文件 「孤儿文件（无条目引用）vs 断链附件（条目指向不存在文件）」的分类处理策略可补齐 papilot 清理功能的完整性。">
 <td class="num">44</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/retorquere/zotero-storage-scanner" target="_blank" rel="noopener">zotero-storage-scanner</a><span class="owner">retorquere · 548★ · NOASSERTION</span></td>
@@ -1016,12 +1016,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="44"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「孤儿文件（无条目引用）vs 断链附件（条目指向不存在文件）」的分类处理策略可补齐 PaperPilot 清理功能的完整性。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「孤儿文件（无条目引用）vs 断链附件（条目指向不存在文件）」的分类处理策略可补齐 Papilot 清理功能的完整性。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>删除文件风险高，需先出清单再执行。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/retorquere/zotero-storage-scanner" target="_blank" rel="noopener">retorquere/zotero-storage-scanner</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2024-12-06 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="45" data-dom="阅读状态与统计" data-st="部分已有" data-val="3" data-s="519" data-name="volatile-static/chartero 阅读时长与行为统计图表：时间线、热力图、进度曲线、阅读报告 paperpilot 功能上的真实空白：「阅读行为数据」——会自动记录阅读会话时长/翻页/停留，产出热力图与周报。这类数据能自然衔接到 paperpilot 的 ai（如「我最近读的这 10 篇有什么共同点」），是提升用户粘性的好抓手；apache-2.0 许可，实现路径也无法律障碍。">
+<tr class="main" data-orig="45" data-dom="阅读状态与统计" data-st="部分已有" data-val="3" data-s="519" data-name="volatile-static/chartero 阅读时长与行为统计图表：时间线、热力图、进度曲线、阅读报告 papilot 功能上的真实空白：「阅读行为数据」——会自动记录阅读会话时长/翻页/停留，产出热力图与周报。这类数据能自然衔接到 papilot 的 ai（如「我最近读的这 10 篇有什么共同点」），是提升用户粘性的好抓手；apache-2.0 许可，实现路径也无法律障碍。">
 <td class="num">45</td>
 <td class="dom">阅读状态与统计</td>
 <td class="repo"><a href="https://github.com/volatile-static/Chartero" target="_blank" rel="noopener">Chartero</a><span class="owner">volatile-static · 519★ · Apache-2.0</span></td>
@@ -1031,7 +1031,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="45"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>PaperPilot 功能上的真实空白：「阅读行为数据」——会自动记录阅读会话时长/翻页/停留，产出热力图与周报。这类数据能自然衔接到 PaperPilot 的 AI（如「我最近读的这 10 篇有什么共同点」），是提升用户粘性的好抓手；Apache-2.0 许可，实现路径也无法律障碍。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>Papilot 功能上的真实空白：「阅读行为数据」——会自动记录阅读会话时长/翻页/停留，产出热力图与周报。这类数据能自然衔接到 Papilot 的 AI（如「我最近读的这 10 篇有什么共同点」），是提升用户粘性的好抓手；Apache-2.0 许可，实现路径也无法律障碍。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>会话计时需处理窗口失焦/长时间挂着不动的假数据；统计口径要在 UI 上说明白。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/volatile-static/Chartero" target="_blank" rel="noopener">volatile-static/Chartero</a> ｜ 许可证 Apache-2.0 ｜ 最近提交 2026-04-22 ｜ 维护中</div>
@@ -1066,7 +1066,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/qnscholar/zotero-if" target="_blank" rel="noopener">qnscholar/zotero-if</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-06-28 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="48" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="474" data-name="l0o0/tara 备份/恢复 zotero 配置、插件、翻译器、样式与本地插件定位 升级为「一键备份 paperpilot 全部设置（含模型通道、主题、规则）」并支持跨设备迁移。">
+<tr class="main" data-orig="48" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="474" data-name="l0o0/tara 备份/恢复 zotero 配置、插件、翻译器、样式与本地插件定位 升级为「一键备份 papilot 全部设置（含模型通道、主题、规则）」并支持跨设备迁移。">
 <td class="num">48</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/l0o0/tara" target="_blank" rel="noopener">tara</a><span class="owner">l0o0 · 474★ · AGPL-3.0</span></td>
@@ -1076,7 +1076,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="48"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>升级为「一键备份 PaperPilot 全部设置（含模型通道、主题、规则）」并支持跨设备迁移。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>升级为「一键备份 Papilot 全部设置（含模型通道、主题、规则）」并支持跨设备迁移。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>备份文件含密钥时必须脱敏或加密，遵循项目的密钥纪律。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/l0o0/tara" target="_blank" rel="noopener">l0o0/tara</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-06-07 ｜ 维护中</div>
@@ -1107,7 +1107,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <tr class="detail" data-for="50"><td colspan="6">
 <div class="dgrid">
 <div class="dbox"><h5>值得借鉴的功能点</h5><p>其「字段择优合并规则表」可直接对标：不同来源（DOI 权威 / 完整度 / 最新修改）谁优先，是合并质量的关键。</p></div>
-<div class="dbox warn"><h5>实现注意 / 风险</h5><p>缺少撤销机制，PaperPilot 若实现需自带快照。</p></div>
+<div class="dbox warn"><h5>实现注意 / 风险</h5><p>缺少撤销机制，Papilot 若实现需自带快照。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/frangoud/ZoteroDuplicatesMerger" target="_blank" rel="noopener">frangoud/ZoteroDuplicatesMerger</a> ｜ 许可证 MPL-2.0 ｜ 最近提交 2024-08-13 ｜ 停滞</div>
 </td></tr>
@@ -1141,7 +1141,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/redleafnew/zotero-updateifs" target="_blank" rel="noopener">redleafnew/zotero-updateifs</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2022-12-10 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="53" data-dom="检索与发现" data-st="空白" data-val="2" data-s="389" data-name="allanchain/zotero-arxiv-workflow arxiv 论文管理：预印本与正式版关联、版本追踪 「文献版本管理」是 paperpilot 可补的细分能力：同一论文的 v1/v2/正式版自动关联，避免库内三份不同版本互不相干。">
+<tr class="main" data-orig="53" data-dom="检索与发现" data-st="空白" data-val="2" data-s="389" data-name="allanchain/zotero-arxiv-workflow arxiv 论文管理：预印本与正式版关联、版本追踪 「文献版本管理」是 papilot 可补的细分能力：同一论文的 v1/v2/正式版自动关联，避免库内三份不同版本互不相干。">
 <td class="num">53</td>
 <td class="dom">检索与发现</td>
 <td class="repo"><a href="https://github.com/AllanChain/zotero-arxiv-workflow" target="_blank" rel="noopener">zotero-arxiv-workflow</a><span class="owner">AllanChain · 389★ · AGPL-3.0</span></td>
@@ -1151,7 +1151,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="53"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「文献版本管理」是 PaperPilot 可补的细分能力：同一论文的 v1/v2/正式版自动关联，避免库内三份不同版本互不相干。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「文献版本管理」是 Papilot 可补的细分能力：同一论文的 v1/v2/正式版自动关联，避免库内三份不同版本互不相干。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>以 arXiv 为主，其他预印本平台需另做。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/AllanChain/zotero-arxiv-workflow" target="_blank" rel="noopener">AllanChain/zotero-arxiv-workflow</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-10-01 ｜ 活跃</div>
@@ -1186,7 +1186,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/jackhanyuan/zotero-better-plugin" target="_blank" rel="noopener">jackhanyuan/zotero-better-plugin</a> ｜ 许可证 GPL-3.0 ｜ 最近提交 2026-04-17 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="56" data-dom="元数据与库健康" data-st="空白" data-val="2" data-s="357" data-name="leonkt/zotero-memento 为条目链接做快照存档，对抗链接失效（对接 wayback/archive.today） 「文献可达性」是 paperpilot 库健康栏目可以新增的一环：自动为网页类条目存档，避免几年后链接 404。">
+<tr class="main" data-orig="56" data-dom="元数据与库健康" data-st="空白" data-val="2" data-s="357" data-name="leonkt/zotero-memento 为条目链接做快照存档，对抗链接失效（对接 wayback/archive.today） 「文献可达性」是 papilot 库健康栏目可以新增的一环：自动为网页类条目存档，避免几年后链接 404。">
 <td class="num">56</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/leonkt/zotero-memento" target="_blank" rel="noopener">zotero-memento</a><span class="owner">leonkt · 357★ · MIT</span></td>
@@ -1196,12 +1196,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="56"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「文献可达性」是 PaperPilot 库健康栏目可以新增的一环：自动为网页类条目存档，避免几年后链接 404。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「文献可达性」是 Papilot 库健康栏目可以新增的一环：自动为网页类条目存档，避免几年后链接 404。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>依赖第三方存档服务，已停滞需自行适配接口。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/leonkt/zotero-memento" target="_blank" rel="noopener">leonkt/zotero-memento</a> ｜ 许可证 MIT ｜ 最近提交 2022-06-08 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="57" data-dom="翻译" data-st="部分已有" data-val="2" data-s="352" data-name="immersive-translate/zotero-immersivetranslate babeldoc 的排版保留式 pdf 翻译（付费会员） 作为「排版保留」效果的对标上限，可用于验收 paperpilot 全文翻译的观感差距。">
+<tr class="main" data-orig="57" data-dom="翻译" data-st="部分已有" data-val="2" data-s="352" data-name="immersive-translate/zotero-immersivetranslate babeldoc 的排版保留式 pdf 翻译（付费会员） 作为「排版保留」效果的对标上限，可用于验收 papilot 全文翻译的观感差距。">
 <td class="num">57</td>
 <td class="dom">翻译</td>
 <td class="repo"><a href="https://github.com/immersive-translate/zotero-immersivetranslate" target="_blank" rel="noopener">zotero-immersivetranslate</a><span class="owner">immersive-translate · 352★ · AGPL-3.0</span></td>
@@ -1211,12 +1211,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="57"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>作为「排版保留」效果的对标上限，可用于验收 PaperPilot 全文翻译的观感差距。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>作为「排版保留」效果的对标上限，可用于验收 Papilot 全文翻译的观感差距。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>服务端闭源、需会员，无法作为能力来源。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/immersive-translate/zotero-immersivetranslate" target="_blank" rel="noopener">immersive-translate/zotero-immersivetranslate</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-08-21 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="58" data-dom="引文、导出与写作" data-st="部分已有" data-val="2" data-s="325" data-name="zotero-cita/zotero-cita 通过 wikidata 获取并补全引文元数据，支持引用关系 wikidata 是免密钥的开放数据源，可作为 paperpilot 引文追溯的补充源（尤其经典文献）。">
+<tr class="main" data-orig="58" data-dom="引文、导出与写作" data-st="部分已有" data-val="2" data-s="325" data-name="zotero-cita/zotero-cita 通过 wikidata 获取并补全引文元数据，支持引用关系 wikidata 是免密钥的开放数据源，可作为 papilot 引文追溯的补充源（尤其经典文献）。">
 <td class="num">58</td>
 <td class="dom">引文、导出与写作</td>
 <td class="repo"><a href="https://github.com/zotero-cita/zotero-cita" target="_blank" rel="noopener">zotero-cita</a><span class="owner">zotero-cita · 325★ · GPL-3.0</span></td>
@@ -1226,7 +1226,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="58"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>Wikidata 是免密钥的开放数据源，可作为 PaperPilot 引文追溯的补充源（尤其经典文献）。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>Wikidata 是免密钥的开放数据源，可作为 Papilot 引文追溯的补充源（尤其经典文献）。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>新论文覆盖极差，仅作补充。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/zotero-cita/zotero-cita" target="_blank" rel="noopener">zotero-cita/zotero-cita</a> ｜ 许可证 GPL-3.0 ｜ 最近提交 2026-10-02 ｜ 活跃</div>
@@ -1246,7 +1246,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/kazgu/zotero-chatgpt" target="_blank" rel="noopener">kazgu/zotero-chatgpt</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2025-11-20 ｜ 低活跃</div>
 </td></tr>
-<tr class="main" data-orig="60" data-dom="引文、导出与写作" data-st="部分已有" data-val="2" data-s="297" data-name="inciteful-xyz/inciteful-zotero-plugin 集成 inciteful 的引文网络探索（被引/参考文献关系图） 「以种子文献为中心分层扩展引文网络」的交互（力导向图 + 逐层展开）值得对标 paperpilot 的引文追溯呈现。">
+<tr class="main" data-orig="60" data-dom="引文、导出与写作" data-st="部分已有" data-val="2" data-s="297" data-name="inciteful-xyz/inciteful-zotero-plugin 集成 inciteful 的引文网络探索（被引/参考文献关系图） 「以种子文献为中心分层扩展引文网络」的交互（力导向图 + 逐层展开）值得对标 papilot 的引文追溯呈现。">
 <td class="num">60</td>
 <td class="dom">引文、导出与写作</td>
 <td class="repo"><a href="https://github.com/inciteful-xyz/inciteful-zotero-plugin" target="_blank" rel="noopener">inciteful-zotero-plugin</a><span class="owner">inciteful-xyz · 297★ · AGPL-3.0</span></td>
@@ -1256,7 +1256,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="60"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「以种子文献为中心分层扩展引文网络」的交互（力导向图 + 逐层展开）值得对标 PaperPilot 的引文追溯呈现。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「以种子文献为中心分层扩展引文网络」的交互（力导向图 + 逐层展开）值得对标 Papilot 的引文追溯呈现。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>第三方 API 配额有限，长会话成本高。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/inciteful-xyz/inciteful-zotero-plugin" target="_blank" rel="noopener">inciteful-xyz/inciteful-zotero-plugin</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-08-20 ｜ 维护中</div>
@@ -1306,7 +1306,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/jlegewie/beaver-zotero" target="_blank" rel="noopener">jlegewie/beaver-zotero</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-10-02 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="64" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="250" data-name="bwiernik/zotero-tools 小工具集合：期刊缩写、条目类型转换、字段批量处理 「期刊缩写」与「条目类型转换」是元数据清洗里 paperpilot 可能尚未覆盖的两条规则，值得补。">
+<tr class="main" data-orig="64" data-dom="元数据与库健康" data-st="部分已有" data-val="2" data-s="250" data-name="bwiernik/zotero-tools 小工具集合：期刊缩写、条目类型转换、字段批量处理 「期刊缩写」与「条目类型转换」是元数据清洗里 papilot 可能尚未覆盖的两条规则，值得补。">
 <td class="num">64</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/bwiernik/zotero-tools" target="_blank" rel="noopener">zotero-tools</a><span class="owner">bwiernik · 250★ · GPL-3.0</span></td>
@@ -1316,12 +1316,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="64"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「期刊缩写」与「条目类型转换」是元数据清洗里 PaperPilot 可能尚未覆盖的两条规则，值得补。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「期刊缩写」与「条目类型转换」是元数据清洗里 Papilot 可能尚未覆盖的两条规则，值得补。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>已停滞，部分依赖旧 API。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/bwiernik/zotero-tools" target="_blank" rel="noopener">bwiernik/zotero-tools</a> ｜ 许可证 GPL-3.0 ｜ 最近提交 2024-11-14 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="65" data-dom="检索与发现" data-st="空白" data-val="2" data-s="236" data-name="fkguo/zotero-inspire inspire-hep 深度集成：内置 arxiv 浏览器与高能物理论文元数据同步 「按学科接入专业数据库」的适配器模式值得借鉴——paperpilot 未来若做学科增强（如 pubmed、inspire、dblp），可复用这套结构。">
+<tr class="main" data-orig="65" data-dom="检索与发现" data-st="空白" data-val="2" data-s="236" data-name="fkguo/zotero-inspire inspire-hep 深度集成：内置 arxiv 浏览器与高能物理论文元数据同步 「按学科接入专业数据库」的适配器模式值得借鉴——papilot 未来若做学科增强（如 pubmed、inspire、dblp），可复用这套结构。">
 <td class="num">65</td>
 <td class="dom">检索与发现</td>
 <td class="repo"><a href="https://github.com/fkguo/zotero-inspire" target="_blank" rel="noopener">zotero-inspire</a><span class="owner">fkguo · 236★ · MPL-2.0</span></td>
@@ -1331,12 +1331,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="65"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「按学科接入专业数据库」的适配器模式值得借鉴——PaperPilot 未来若做学科增强（如 PubMed、INSPIRE、DBLP），可复用这套结构。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「按学科接入专业数据库」的适配器模式值得借鉴——Papilot 未来若做学科增强（如 PubMed、INSPIRE、DBLP），可复用这套结构。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>高度绑定高能物理，通用性差。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/fkguo/zotero-inspire" target="_blank" rel="noopener">fkguo/zotero-inspire</a> ｜ 许可证 MPL-2.0 ｜ 最近提交 2026-09-30 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="66" data-dom="指标与数据列" data-st="部分已有" data-val="2" data-s="228" data-name="frlars21/zoterocitationcountsmanager 被引量批量获取与管理，字段映射可配置 「字段映射可配置」让用户决定被引量写进哪个字段，适合与 paperpilot 的列方案联动。">
+<tr class="main" data-orig="66" data-dom="指标与数据列" data-st="部分已有" data-val="2" data-s="228" data-name="frlars21/zoterocitationcountsmanager 被引量批量获取与管理，字段映射可配置 「字段映射可配置」让用户决定被引量写进哪个字段，适合与 papilot 的列方案联动。">
 <td class="num">66</td>
 <td class="dom">指标与数据列</td>
 <td class="repo"><a href="https://github.com/FrLars21/ZoteroCitationCountsManager" target="_blank" rel="noopener">ZoteroCitationCountsManager</a><span class="owner">FrLars21 · 228★ · MPL-2.0</span></td>
@@ -1346,7 +1346,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="66"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「字段映射可配置」让用户决定被引量写进哪个字段，适合与 PaperPilot 的列方案联动。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「字段映射可配置」让用户决定被引量写进哪个字段，适合与 Papilot 的列方案联动。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>已停滞，数据源适配过时。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/FrLars21/ZoteroCitationCountsManager" target="_blank" rel="noopener">FrLars21/ZoteroCitationCountsManager</a> ｜ 许可证 MPL-2.0 ｜ 最近提交 2024-07-10 ｜ 停滞</div>
@@ -1366,7 +1366,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">不建议参考 ｜ <a href="https://github.com/papermachines/papermachines" target="_blank" rel="noopener">papermachines/papermachines</a> ｜ 许可证 BSD-2-Clause ｜ 最近提交 2017-05-19 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="68" data-dom="集成与互操作" data-st="空白" data-val="2" data-s="223" data-name="wbthomason/zotodo 把新入库论文自动创建为 todoist 任务 「阅读任务外发」范式：paperpilot 有阅读状态，若能一键把「待读清单」推送到用户的待办工具（todoist/滴答清单/飞书任务），闭环感会强很多。">
+<tr class="main" data-orig="68" data-dom="集成与互操作" data-st="空白" data-val="2" data-s="223" data-name="wbthomason/zotodo 把新入库论文自动创建为 todoist 任务 「阅读任务外发」范式：papilot 有阅读状态，若能一键把「待读清单」推送到用户的待办工具（todoist/滴答清单/飞书任务），闭环感会强很多。">
 <td class="num">68</td>
 <td class="dom">集成与互操作</td>
 <td class="repo"><a href="https://github.com/wbthomason/zotodo" target="_blank" rel="noopener">zotodo</a><span class="owner">wbthomason · 223★ · MIT</span></td>
@@ -1376,12 +1376,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="68"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「阅读任务外发」范式：PaperPilot 有阅读状态，若能一键把「待读清单」推送到用户的待办工具（Todoist/滴答清单/飞书任务），闭环感会强很多。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「阅读任务外发」范式：Papilot 有阅读状态，若能一键把「待读清单」推送到用户的待办工具（Todoist/滴答清单/飞书任务），闭环感会强很多。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>多平台需各写适配器；需用户授权。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/wbthomason/zotodo" target="_blank" rel="noopener">wbthomason/zotodo</a> ｜ 许可证 MIT ｜ 最近提交 2023-05-22 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="69" data-dom="元数据与库健康" data-st="部分已有" data-val="3" data-s="216" data-name="pubpeerfoundation/pubpeer_zotero_plugin 自动查询条目是否在 pubpeer 有质疑评论并提示 pubpeer 是权威的「论文被质疑」信号源，接入其公开 api 可让 paperpilot 的文献质量判断从「ai 判断」升级为「社区证据」，两者互补。">
+<tr class="main" data-orig="69" data-dom="元数据与库健康" data-st="部分已有" data-val="3" data-s="216" data-name="pubpeerfoundation/pubpeer_zotero_plugin 自动查询条目是否在 pubpeer 有质疑评论并提示 pubpeer 是权威的「论文被质疑」信号源，接入其公开 api 可让 papilot 的文献质量判断从「ai 判断」升级为「社区证据」，两者互补。">
 <td class="num">69</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/PubPeerFoundation/pubpeer_zotero_plugin" target="_blank" rel="noopener">pubpeer_zotero_plugin</a><span class="owner">PubPeerFoundation · 216★ · NOASSERTION</span></td>
@@ -1391,42 +1391,42 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="69"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>PubPeer 是权威的「论文被质疑」信号源，接入其公开 API 可让 PaperPilot 的文献质量判断从「AI 判断」升级为「社区证据」，两者互补。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>PubPeer 是权威的「论文被质疑」信号源，接入其公开 API 可让 Papilot 的文献质量判断从「AI 判断」升级为「社区证据」，两者互补。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>覆盖以生命科学为主，命中率有限；提示要克制避免误伤。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/PubPeerFoundation/pubpeer_zotero_plugin" target="_blank" rel="noopener">PubPeerFoundation/pubpeer_zotero_plugin</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-09-16 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="70" data-dom="检索与发现" data-st="空白" data-val="3" data-s="215" data-name="introfini/zotseek 本地语义搜索（向量索引）+ 内置 mcp 服务器供 ai agent 检索全文 「库内语义检索」是 paperpilot 的明显空白：用户问「有没有讲过 xx 方法的论文」，关键词搜不到但语义能搜到。其「本地索引 + 增量更新」的工程路径可参考。">
+<tr class="main" data-orig="70" data-dom="检索与发现" data-st="空白" data-val="3" data-s="215" data-name="introfini/zotseek 本地语义搜索（向量索引）+ 内置 mcp 服务器供 ai agent 检索全文 「库内语义检索」是 papilot 的明显空白：用户问「有没有讲过 xx 方法的论文」，关键词搜不到但语义能搜到。其「本地索引 + 增量更新」的工程路径可参考。">
 <td class="num">70</td>
 <td class="dom">检索与发现</td>
 <td class="repo"><a href="https://github.com/introfini/ZotSeek" target="_blank" rel="noopener">ZotSeek</a><span class="owner">introfini · 215★ · NOASSERTION</span></td>
 <td class="func">本地语义搜索（向量索引）+ 内置 MCP 服务器供 AI agent 检索全文</td>
-<td><span class="chip" style="--c:#f0883e">空白（PaperPilot 只有关键词检索）</span></td>
+<td><span class="chip" style="--c:#f0883e">空白（Papilot 只有关键词检索）</span></td>
 <td class="valcell"><span class="val" style="--c:#f0883e">★★★</span></td>
 </tr>
 <tr class="detail" data-for="70"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「库内语义检索」是 PaperPilot 的明显空白：用户问「有没有讲过 XX 方法的论文」，关键词搜不到但语义能搜到。其「本地索引 + 增量更新」的工程路径可参考。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「库内语义检索」是 Papilot 的明显空白：用户问「有没有讲过 XX 方法的论文」，关键词搜不到但语义能搜到。其「本地索引 + 增量更新」的工程路径可参考。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>本地索引占用磁盘与首次构建耗时，需做成可选并给进度反馈。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/introfini/ZotSeek" target="_blank" rel="noopener">introfini/ZotSeek</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-09-24 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="71" data-dom="AI 阅读与问答" data-st="空白" data-val="2" data-s="211" data-name="imperialsquid/zotero-zotts 文本朗读（tts）：条目标题/摘要/pdf 正文转语音，含朗读高亮同步 「听论文」是通勤/多任务场景的真实需求，可作为 paperpilot 的差异化小功能：系统 tts + 可选云端音色，配朗读高亮跟随。">
+<tr class="main" data-orig="71" data-dom="AI 阅读与问答" data-st="空白" data-val="2" data-s="211" data-name="imperialsquid/zotero-zotts 文本朗读（tts）：条目标题/摘要/pdf 正文转语音，含朗读高亮同步 「听论文」是通勤/多任务场景的真实需求，可作为 papilot 的差异化小功能：系统 tts + 可选云端音色，配朗读高亮跟随。">
 <td class="num">71</td>
 <td class="dom">AI 阅读与问答</td>
 <td class="repo"><a href="https://github.com/ImperialSquid/zotero-zotts" target="_blank" rel="noopener">zotero-zotts</a><span class="owner">ImperialSquid · 211★ · AGPL-3.0</span></td>
 <td class="func">文本朗读（TTS）：条目标题/摘要/PDF 正文转语音，含朗读高亮同步</td>
-<td><span class="chip" style="--c:#f0883e">空白（PaperPilot 无语音能力）</span></td>
+<td><span class="chip" style="--c:#f0883e">空白（Papilot 无语音能力）</span></td>
 <td class="valcell"><span class="val" style="--c:#58a6ff">★★</span></td>
 </tr>
 <tr class="detail" data-for="71"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「听论文」是通勤/多任务场景的真实需求，可作为 PaperPilot 的差异化小功能：系统 TTS + 可选云端音色，配朗读高亮跟随。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「听论文」是通勤/多任务场景的真实需求，可作为 Papilot 的差异化小功能：系统 TTS + 可选云端音色，配朗读高亮跟随。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>云端 TTS 有额度成本，建议默认走系统语音；长文朗读需分块与断点续听。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/ImperialSquid/zotero-zotts" target="_blank" rel="noopener">ImperialSquid/zotero-zotts</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-03-03 ｜ 低活跃</div>
 </td></tr>
-<tr class="main" data-orig="72" data-dom="插件生态" data-st="部分已有" data-val="2" data-s="211" data-name="dcartertod/zotero-plugins 一组极小的独立功能插件合集（多仓库聚合） 可作为「小功能灵感清单」逐项筛查：哪些是 paperpilot 该顺手内置的（例如短小但高频的操作增强）。">
+<tr class="main" data-orig="72" data-dom="插件生态" data-st="部分已有" data-val="2" data-s="211" data-name="dcartertod/zotero-plugins 一组极小的独立功能插件合集（多仓库聚合） 可作为「小功能灵感清单」逐项筛查：哪些是 papilot 该顺手内置的（例如短小但高频的操作增强）。">
 <td class="num">72</td>
 <td class="dom">插件生态</td>
 <td class="repo"><a href="https://github.com/dcartertod/zotero-plugins" target="_blank" rel="noopener">zotero-plugins</a><span class="owner">dcartertod · 211★ · Apache-2.0</span></td>
@@ -1436,12 +1436,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="72"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>可作为「小功能灵感清单」逐项筛查：哪些是 PaperPilot 该顺手内置的（例如短小但高频的操作增强）。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>可作为「小功能灵感清单」逐项筛查：哪些是 Papilot 该顺手内置的（例如短小但高频的操作增强）。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>单项功能碎，注意别把功能中心做成按钮堆砌。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/dcartertod/zotero-plugins" target="_blank" rel="noopener">dcartertod/zotero-plugins</a> ｜ 许可证 Apache-2.0 ｜ 最近提交 2026-01-02 ｜ 低活跃</div>
 </td></tr>
-<tr class="main" data-orig="73" data-dom="元数据与库健康" data-st="已有" data-val="2" data-s="210" data-name="roadtodream/zotmeta 批量更新已入库文献元数据，多数据源匹配与字段补全 多源匹配优先级（crossref → semantic scholar → openalex）与字段冲突消解策略值得对照，避免 paperpilot 单一依赖 s2 造成覆盖盲区。">
+<tr class="main" data-orig="73" data-dom="元数据与库健康" data-st="已有" data-val="2" data-s="210" data-name="roadtodream/zotmeta 批量更新已入库文献元数据，多数据源匹配与字段补全 多源匹配优先级（crossref → semantic scholar → openalex）与字段冲突消解策略值得对照，避免 papilot 单一依赖 s2 造成覆盖盲区。">
 <td class="num">73</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/RoadToDream/ZotMeta" target="_blank" rel="noopener">ZotMeta</a><span class="owner">RoadToDream · 210★ · MIT</span></td>
@@ -1451,12 +1451,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="73"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>多源匹配优先级（Crossref → Semantic Scholar → OpenAlex）与字段冲突消解策略值得对照，避免 PaperPilot 单一依赖 S2 造成覆盖盲区。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>多源匹配优先级（Crossref → Semantic Scholar → OpenAlex）与字段冲突消解策略值得对照，避免 Papilot 单一依赖 S2 造成覆盖盲区。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>多源结果不一致时需明确「谁覆盖谁」，否则字段会被反复改写。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/RoadToDream/ZotMeta" target="_blank" rel="noopener">RoadToDream/ZotMeta</a> ｜ 许可证 MIT ｜ 最近提交 2026-10-01 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="74" data-dom="开发工具" data-st="—" data-val="2" data-s="200" data-name="windingwind/zotero-plugin-toolkit zotero 插件开发工具包：ui/菜单/偏好面板/通知/http 的统一封装 虽与「功能借鉴」无关，但对 paperpilot 自身工程有实际价值：偏好面板注册、菜单注入、notifier 封装等样板可大幅收敛，长期维护成本下降。">
+<tr class="main" data-orig="74" data-dom="开发工具" data-st="—" data-val="2" data-s="200" data-name="windingwind/zotero-plugin-toolkit zotero 插件开发工具包：ui/菜单/偏好面板/通知/http 的统一封装 虽与「功能借鉴」无关，但对 papilot 自身工程有实际价值：偏好面板注册、菜单注入、notifier 封装等样板可大幅收敛，长期维护成本下降。">
 <td class="num">74</td>
 <td class="dom">开发工具</td>
 <td class="repo"><a href="https://github.com/windingwind/zotero-plugin-toolkit" target="_blank" rel="noopener">zotero-plugin-toolkit</a><span class="owner">windingwind · 200★ · MIT</span></td>
@@ -1466,7 +1466,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="74"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>虽与「功能借鉴」无关，但对 PaperPilot 自身工程有实际价值：偏好面板注册、菜单注入、Notifier 封装等样板可大幅收敛，长期维护成本下降。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>虽与「功能借鉴」无关，但对 Papilot 自身工程有实际价值：偏好面板注册、菜单注入、Notifier 封装等样板可大幅收敛，长期维护成本下降。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>引入依赖会改变「零构建依赖」现状，需评估打包方式与版本锁定。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/windingwind/zotero-plugin-toolkit" target="_blank" rel="noopener">windingwind/zotero-plugin-toolkit</a> ｜ 许可证 MIT ｜ 最近提交 2026-07-21 ｜ 维护中</div>
@@ -1546,7 +1546,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/jadense-ai/jadense-in-zotero" target="_blank" rel="noopener">jadense-ai/jadense-in-zotero</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-09-30 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="80" data-dom="引文、导出与写作" data-st="部分已有" data-val="2" data-s="165" data-name="retorquere/zotero-report-customizer 自定义条目报告模板（右键生成报告） 「模板化报告导出」（html/表格，可选字段）可作为 paperpilot 分析结果的输出形态补充。">
+<tr class="main" data-orig="80" data-dom="引文、导出与写作" data-st="部分已有" data-val="2" data-s="165" data-name="retorquere/zotero-report-customizer 自定义条目报告模板（右键生成报告） 「模板化报告导出」（html/表格，可选字段）可作为 papilot 分析结果的输出形态补充。">
 <td class="num">80</td>
 <td class="dom">引文、导出与写作</td>
 <td class="repo"><a href="https://github.com/retorquere/zotero-report-customizer" target="_blank" rel="noopener">zotero-report-customizer</a><span class="owner">retorquere · 165★ · NOASSERTION</span></td>
@@ -1556,12 +1556,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="80"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「模板化报告导出」（HTML/表格，可选字段）可作为 PaperPilot 分析结果的输出形态补充。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「模板化报告导出」（HTML/表格，可选字段）可作为 Papilot 分析结果的输出形态补充。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>项目停滞。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/retorquere/zotero-report-customizer" target="_blank" rel="noopener">retorquere/zotero-report-customizer</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2025-04-01 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="81" data-dom="指标与数据列" data-st="已有" data-val="2" data-s="165" data-name="siriusxt/zotero-scholar-rank 分区列：ccf/jcr/中科院分区与影响因子显示 作为分区体系覆盖度的对照项（检查 paperpilot 是否漏了某个体系）。">
+<tr class="main" data-orig="81" data-dom="指标与数据列" data-st="已有" data-val="2" data-s="165" data-name="siriusxt/zotero-scholar-rank 分区列：ccf/jcr/中科院分区与影响因子显示 作为分区体系覆盖度的对照项（检查 papilot 是否漏了某个体系）。">
 <td class="num">81</td>
 <td class="dom">指标与数据列</td>
 <td class="repo"><a href="https://github.com/SiriusXT/Zotero-Scholar-Rank" target="_blank" rel="noopener">Zotero-Scholar-Rank</a><span class="owner">SiriusXT · 165★ · NOASSERTION</span></td>
@@ -1571,7 +1571,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="81"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>作为分区体系覆盖度的对照项（检查 PaperPilot 是否漏了某个体系）。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>作为分区体系覆盖度的对照项（检查 Papilot 是否漏了某个体系）。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>已停滞，不可作为数据来源。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/SiriusXT/Zotero-Scholar-Rank" target="_blank" rel="noopener">SiriusXT/Zotero-Scholar-Rank</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2024-10-29 ｜ 停滞</div>
@@ -1591,7 +1591,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/github-young/zotero-better-authors" target="_blank" rel="noopener">github-young/zotero-better-authors</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-09-28 ｜ 活跃</div>
 </td></tr>
-<tr class="main" data-orig="83" data-dom="标签与自动化" data-st="部分已有" data-val="3" data-s="159" data-name="ganzoth/zotero-taxonomy-curator 标签体系治理：标签规范化、层级整理与批量重命名 paperpilot 打标能力强但「标签治理」是空白：标签大小写/分隔符/同义词归一化、层级标签（父/子）、批量重命名与合并——ai 打标跑久了标签必然混乱，这一环是刚需。">
+<tr class="main" data-orig="83" data-dom="标签与自动化" data-st="部分已有" data-val="3" data-s="159" data-name="ganzoth/zotero-taxonomy-curator 标签体系治理：标签规范化、层级整理与批量重命名 papilot 打标能力强但「标签治理」是空白：标签大小写/分隔符/同义词归一化、层级标签（父/子）、批量重命名与合并——ai 打标跑久了标签必然混乱，这一环是刚需。">
 <td class="num">83</td>
 <td class="dom">标签与自动化</td>
 <td class="repo"><a href="https://github.com/ganzoth/zotero-taxonomy-curator" target="_blank" rel="noopener">zotero-taxonomy-curator</a><span class="owner">ganzoth · 159★ · MIT</span></td>
@@ -1601,7 +1601,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="83"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>PaperPilot 打标能力强但「标签治理」是空白：标签大小写/分隔符/同义词归一化、层级标签（父/子）、批量重命名与合并——AI 打标跑久了标签必然混乱，这一环是刚需。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>Papilot 打标能力强但「标签治理」是空白：标签大小写/分隔符/同义词归一化、层级标签（父/子）、批量重命名与合并——AI 打标跑久了标签必然混乱，这一环是刚需。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>批量重命名不可逆，需先备份标签体系。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/ganzoth/zotero-taxonomy-curator" target="_blank" rel="noopener">ganzoth/zotero-taxonomy-curator</a> ｜ 许可证 MIT ｜ 最近提交 2026-05-08 ｜ 维护中</div>
@@ -1636,7 +1636,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/retorquere/zotero-pmcid-fetcher" target="_blank" rel="noopener">retorquere/zotero-pmcid-fetcher</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-08-24 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="86" data-dom="引文、导出与写作" data-st="部分已有" data-val="2" data-s="141" data-name="muisedestiny/zotero-connected-papers 在 zotero 内展示 connected papers 的相似文献图谱 「相似文献图谱」与 paperpilot 的引文追溯互补（一个看引用关系，一个看内容相似），可作为功能缺口记录。">
+<tr class="main" data-orig="86" data-dom="引文、导出与写作" data-st="部分已有" data-val="2" data-s="141" data-name="muisedestiny/zotero-connected-papers 在 zotero 内展示 connected papers 的相似文献图谱 「相似文献图谱」与 papilot 的引文追溯互补（一个看引用关系，一个看内容相似），可作为功能缺口记录。">
 <td class="num">86</td>
 <td class="dom">引文、导出与写作</td>
 <td class="repo"><a href="https://github.com/MuiseDestiny/zotero-connected-papers" target="_blank" rel="noopener">zotero-connected-papers</a><span class="owner">MuiseDestiny · 141★ · NOASSERTION</span></td>
@@ -1646,12 +1646,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="86"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「相似文献图谱」与 PaperPilot 的引文追溯互补（一个看引用关系，一个看内容相似），可作为功能缺口记录。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「相似文献图谱」与 Papilot 的引文追溯互补（一个看引用关系，一个看内容相似），可作为功能缺口记录。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>已停滞，第三方服务条款限制多。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/MuiseDestiny/zotero-connected-papers" target="_blank" rel="noopener">MuiseDestiny/zotero-connected-papers</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2023-09-10 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="87" data-dom="分析与可视化" data-st="部分已有" data-val="1" data-s="140" data-name="corajr/zotero-voyant-export 导出语料供 voyant tools 做文本分析 若 paperpilot 想做「库级文本分析」（词频/主题演化），可参考其语料导出格式。">
+<tr class="main" data-orig="87" data-dom="分析与可视化" data-st="部分已有" data-val="1" data-s="140" data-name="corajr/zotero-voyant-export 导出语料供 voyant tools 做文本分析 若 papilot 想做「库级文本分析」（词频/主题演化），可参考其语料导出格式。">
 <td class="num">87</td>
 <td class="dom">分析与可视化</td>
 <td class="repo"><a href="https://github.com/corajr/zotero-voyant-export" target="_blank" rel="noopener">zotero-voyant-export</a><span class="owner">corajr · 140★ · GPL-3.0</span></td>
@@ -1661,7 +1661,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="87"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>若 PaperPilot 想做「库级文本分析」（词频/主题演化），可参考其语料导出格式。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>若 Papilot 想做「库级文本分析」（词频/主题演化），可参考其语料导出格式。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>2019 年归档，用户面窄。</p></div>
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/corajr/zotero-voyant-export" target="_blank" rel="noopener">corajr/zotero-voyant-export</a> ｜ 许可证 GPL-3.0 ｜ 最近提交 2019-12-19 ｜ 停滞</div>
@@ -1681,7 +1681,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/DrUsagi/Colorful-Bionic" target="_blank" rel="noopener">DrUsagi/Colorful-Bionic</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2025-04-11 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="89" data-dom="元数据与库健康" data-st="部分已有" data-val="3" data-s="135" data-name="sciimage/zotero-attachment-scanner 附件扫描：识别断链/缺失/异常附件与全文可用性 「扫描 → 分类结果 → 批量修复」的完整闭环，以及把「全文是否可被 ai 读取」作为扫描维度（直接影响 paperpilot 的问答可用性）。">
+<tr class="main" data-orig="89" data-dom="元数据与库健康" data-st="部分已有" data-val="3" data-s="135" data-name="sciimage/zotero-attachment-scanner 附件扫描：识别断链/缺失/异常附件与全文可用性 「扫描 → 分类结果 → 批量修复」的完整闭环，以及把「全文是否可被 ai 读取」作为扫描维度（直接影响 papilot 的问答可用性）。">
 <td class="num">89</td>
 <td class="dom">元数据与库健康</td>
 <td class="repo"><a href="https://github.com/SciImage/zotero-attachment-scanner" target="_blank" rel="noopener">zotero-attachment-scanner</a><span class="owner">SciImage · 135★ · MIT</span></td>
@@ -1691,7 +1691,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="89"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「扫描 → 分类结果 → 批量修复」的完整闭环，以及把「全文是否可被 AI 读取」作为扫描维度（直接影响 PaperPilot 的问答可用性）。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「扫描 → 分类结果 → 批量修复」的完整闭环，以及把「全文是否可被 AI 读取」作为扫描维度（直接影响 Papilot 的问答可用性）。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>大库扫描耗时，需要增量扫描与进度可视化。</p></div>
 </div>
 <div class="dmeta">强烈建议参考 ｜ <a href="https://github.com/SciImage/zotero-attachment-scanner" target="_blank" rel="noopener">SciImage/zotero-attachment-scanner</a> ｜ 许可证 MIT ｜ 最近提交 2026-09-30 ｜ 活跃</div>
@@ -1726,7 +1726,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/iShareStuff/ZoteroTheme" target="_blank" rel="noopener">iShareStuff/ZoteroTheme</a> ｜ 许可证 GPL-3.0 ｜ 最近提交 2022-10-16 ｜ 停滞</div>
 </td></tr>
-<tr class="main" data-orig="92" data-dom="笔记与卡片" data-st="部分已有" data-val="2" data-s="125" data-name="zzlb0224/zotero-annotation-manage 批注与笔记的整理、导出与统计 批注分组（按颜色/标签/章节）与导出格式（表格/大纲）是 paperpilot 可补的细节。">
+<tr class="main" data-orig="92" data-dom="笔记与卡片" data-st="部分已有" data-val="2" data-s="125" data-name="zzlb0224/zotero-annotation-manage 批注与笔记的整理、导出与统计 批注分组（按颜色/标签/章节）与导出格式（表格/大纲）是 papilot 可补的细节。">
 <td class="num">92</td>
 <td class="dom">笔记与卡片</td>
 <td class="repo"><a href="https://github.com/zzlb0224/zotero-annotation-manage" target="_blank" rel="noopener">zotero-annotation-manage</a><span class="owner">zzlb0224 · 125★ · AGPL-3.0</span></td>
@@ -1736,7 +1736,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="92"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>批注分组（按颜色/标签/章节）与导出格式（表格/大纲）是 PaperPilot 可补的细节。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>批注分组（按颜色/标签/章节）与导出格式（表格/大纲）是 Papilot 可补的细节。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>功能较薄，仅作补充参考。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/zzlb0224/zotero-annotation-manage" target="_blank" rel="noopener">zzlb0224/zotero-annotation-manage</a> ｜ 许可证 AGPL-3.0 ｜ 最近提交 2026-01-27 ｜ 低活跃</div>
@@ -1771,7 +1771,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/retorquere/zotero-date-from-last-modified" target="_blank" rel="noopener">retorquere/zotero-date-from-last-modified</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-06-24 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="95" data-dom="集成与互操作" data-st="空白" data-val="2" data-s="118" data-name="mungell/zotserver 把 zotero 库暴露为本地 http api 供外部脚本调用 与 mcp 同源思路的早期形态：可参考其路由与鉴权设计，作为 paperpilot「本地能力开放」的备选方案。">
+<tr class="main" data-orig="95" data-dom="集成与互操作" data-st="空白" data-val="2" data-s="118" data-name="mungell/zotserver 把 zotero 库暴露为本地 http api 供外部脚本调用 与 mcp 同源思路的早期形态：可参考其路由与鉴权设计，作为 papilot「本地能力开放」的备选方案。">
 <td class="num">95</td>
 <td class="dom">集成与互操作</td>
 <td class="repo"><a href="https://github.com/MunGell/ZotServer" target="_blank" rel="noopener">ZotServer</a><span class="owner">MunGell · 118★ · NOASSERTION</span></td>
@@ -1781,7 +1781,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="95"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>与 MCP 同源思路的早期形态：可参考其路由与鉴权设计，作为 PaperPilot「本地能力开放」的备选方案。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>与 MCP 同源思路的早期形态：可参考其路由与鉴权设计，作为 Papilot「本地能力开放」的备选方案。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>已停滞，安全模型较弱。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/MunGell/ZotServer" target="_blank" rel="noopener">MunGell/ZotServer</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2022-07-11 ｜ 停滞</div>
@@ -1816,7 +1816,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </div>
 <div class="dmeta">参考价值低 ｜ <a href="https://github.com/Juris-M/zotero-odf-scan-plugin" target="_blank" rel="noopener">Juris-M/zotero-odf-scan-plugin</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-08-01 ｜ 维护中</div>
 </td></tr>
-<tr class="main" data-orig="98" data-dom="笔记与卡片" data-st="部分已有" data-val="2" data-s="107" data-name="frianasoa/ze-notes 笔记可视化：按条目聚合笔记并以更直观的方式呈现 「按条目聚合 + 时间线/列表双视图」的呈现方式可提升 paperpilot 笔记面板的可用性。">
+<tr class="main" data-orig="98" data-dom="笔记与卡片" data-st="部分已有" data-val="2" data-s="107" data-name="frianasoa/ze-notes 笔记可视化：按条目聚合笔记并以更直观的方式呈现 「按条目聚合 + 时间线/列表双视图」的呈现方式可提升 papilot 笔记面板的可用性。">
 <td class="num">98</td>
 <td class="dom">笔记与卡片</td>
 <td class="repo"><a href="https://github.com/frianasoa/Ze-Notes" target="_blank" rel="noopener">Ze-Notes</a><span class="owner">frianasoa · 107★ · NOASSERTION</span></td>
@@ -1826,7 +1826,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 </tr>
 <tr class="detail" data-for="98"><td colspan="6">
 <div class="dgrid">
-<div class="dbox"><h5>值得借鉴的功能点</h5><p>「按条目聚合 + 时间线/列表双视图」的呈现方式可提升 PaperPilot 笔记面板的可用性。</p></div>
+<div class="dbox"><h5>值得借鉴的功能点</h5><p>「按条目聚合 + 时间线/列表双视图」的呈现方式可提升 Papilot 笔记面板的可用性。</p></div>
 <div class="dbox warn"><h5>实现注意 / 风险</h5><p>维护转缓，且实现较简单，容易自行实现。</p></div>
 </div>
 <div class="dmeta">值得参考 ｜ <a href="https://github.com/frianasoa/Ze-Notes" target="_blank" rel="noopener">frianasoa/Ze-Notes</a> ｜ 许可证 NOASSERTION ｜ 最近提交 2026-07-14 ｜ 维护中</div>
@@ -1866,12 +1866,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--line);color:v
 <h2>四、数据口径与说明</h2>
 <div class="panel">
 <p><b>样本来源</b>：GitHub Search API 以 <code>topic:zotero-plugin</code>、<code>topic:zotero</code>、<code>zotero in:name</code> 等 7 组查询抓取 678 个去重仓库；再用社区官方插件索引 <code>zotero-chinese/zotero-plugins</code>（138 个在架插件）交叉核对并回补 4 个高星漏项（ai4paper、suppr、Aria、Beaver）。剔除客户端本体、数据集与库周边后，取按 Star 排序的前 100 个真实可安装插件。</p>
-<p><b>「PaperPilot 现状」判定依据</b>：以 README 功能总览（36 项 / 6 类）与项目文档为基准，逐项标注 已有 / 部分已有 / 空白。标「已有」不代表体验无改进空间，只表示该能力已在功能清单内。</p>
-<p><b>参考优先级定义</b>：★★★ 强烈建议参考——PaperPilot 空白或明显薄弱，且生态已验证需求；★★ 值得参考——可做得更好或补细节；★ 参考价值低——已有能力覆盖；— 不建议参考——法律风险或技术过时。</p>
+<p><b>「Papilot 现状」判定依据</b>：以 README 功能总览（36 项 / 6 类）与项目文档为基准，逐项标注 已有 / 部分已有 / 空白。标「已有」不代表体验无改进空间，只表示该能力已在功能清单内。</p>
+<p><b>参考优先级定义</b>：★★★ 强烈建议参考——Papilot 空白或明显薄弱，且生态已验证需求；★★ 值得参考——可做得更好或补细节；★ 参考价值低——已有能力覆盖；— 不建议参考——法律风险或技术过时。</p>
 <div class="note"><b>关于许可证</b>：本报告是功能参考，不涉及代码复用判断。但若后续要把某个项目的能力<b>直接接入</b>（调用其 API、内嵌其服务、复用其数据表/规则集），仍需单独确认其许可证与数据授权——例如以 AGPL-3.0 发布的服务端、以及部分规则集/缩写表的数据再分发条款。纯功能层借鉴不受此限。</div>
 </div>
 
-<footer>数据快照：2026-10-02 ｜ 由 GitHub API 自动聚合 + PaperPilot 功能视角人工评估 ｜ 交付文件：docs/PaperPilot-功能借鉴地图-Zotero插件Top100.html ｜ docs/PaperPilot-功能借鉴地图-Zotero插件Top100.csv</footer>
+<footer>数据快照：2026-10-02 ｜ 由 GitHub API 自动聚合 + Papilot 功能视角人工评估 ｜ 交付文件：docs/Papilot-功能借鉴地图-Zotero插件Top100.html ｜ docs/Papilot-功能借鉴地图-Zotero插件Top100.csv</footer>
 </div>
 <script>
 var T={};

@@ -1,7 +1,7 @@
-# Jasminum 中文文献获取机制深度解析 与 PaperPilot AI 增强方案
+# Jasminum 中文文献获取机制深度解析 与 Papilot AI 增强方案
 
 > 分析对象：<https://github.com/l0o0/jasminum>（main 分支，2026-10 快照）
-> 落点：为 PaperPilot 设计「AI 大模型辅助的中文文献（CNKI 为主）获取」改进方案。
+> 落点：为 Papilot 设计「AI 大模型辅助的中文文献（CNKI 为主）获取」改进方案。
 
 ---
 
@@ -146,7 +146,7 @@ signature = sha1([SECRET, timestamp, nonce].sort().join(""));
 
 ---
 
-## 四、PaperPilot 的 AI 增强方案：CNKI 文献智能获取
+## 四、Papilot 的 AI 增强方案：CNKI 文献智能获取
 
 ### 4.1 设计总原则
 
@@ -154,7 +154,7 @@ signature = sha1([SECRET, timestamp, nonce].sort().join(""));
 
 - 签名、Cookie 沙箱、KuaKuCode、QueryJson 构造——这些是**协议硬要求**，一个字都不能让模型碰，继续走确定性实现（直接借鉴 jasminum）。
 - 「查什么、选哪条、补哪些字段、失败后怎么办」——这些是**语义判断**，交给 LLM，但输出必须过三重把关：JSON Schema 校验 → 字段白名单（复用 RefImport 的 FIELD_PLAN 纪律）→ 数据库回验。
-- 复用 PaperPilot 现有资产：官方 AI 网关（按响应模型计价，auto 档恒免费）、TranslateSvc 的多引擎兜底模式、RefImport 的「AI 只填空不覆盖」纪律、preflight 门禁与迷你 DOM 测试技法。
+- 复用 Papilot 现有资产：官方 AI 网关（按响应模型计价，auto 档恒免费）、TranslateSvc 的多引擎兜底模式、RefImport 的「AI 只填空不覆盖」纪律、preflight 门禁与迷你 DOM 测试技法。
 
 ### 4.2 四层管线架构
 
@@ -213,7 +213,7 @@ PDF 附件/条目
 
 - 把本地证据（L1 提取的标题/作者/刊名/年份）与候选列表（含各自 dbname、被引、来源库）一起发给模型，要求输出 `{index, confidence, reason}`。
 - 解决 jasminum 环节 6 的痛点：副标题省略（「——以 XX 为例」被截断）、标题改写、同一文献在知网/万方重复收录、同名不同文。
-- 置信度分档策略保持人工可控：中间档在 PaperPilot 任务面板里给出「模型推荐理由」，用户一键确认——比 jasminum 的 `multiple_results` 干列表体验好一个量级。
+- 置信度分档策略保持人工可控：中间档在 Papilot 任务面板里给出「模型推荐理由」，用户一键确认——比 jasminum 的 `multiple_results` 干列表体验好一个量级。
 
 **L4 元数据融合与兜底（对齐 RefImport 纪律）**
 
@@ -235,7 +235,7 @@ PDF 附件/条目
 3. 检索词不再依赖文件名规范——用户随手拖进来的 `1.pdf` 也能从内容重建检索词；
 4. 自愈降级：CNKI 改版导致固定选择器/接口失效时，把返回 HTML 喂给模型做一次「结果行/导出链接提取」，撑到人工修复——把「整链断裂」降级为「单次变慢」。
 
-### 4.5 落地路线（对齐 PaperPilot 工程纪律）
+### 4.5 落地路线（对齐 Papilot 工程纪律）
 
 | 阶段 | 内容 | 风险 | 验证 |
 |---|---|---|---|
@@ -247,7 +247,7 @@ PDF 附件/条目
 
 ### 4.6 与 jasminum AI 方案的对位差异
 
-| 维度 | jasminum（现状） | PaperPilot（本方案） |
+| 维度 | jasminum（现状） | Papilot（本方案） |
 |---|---|---|
 | AI 角色 | 检索链上一个互斥的「源」：识别→直接入库 | 贯穿规划/裁决/融合三层的协作角色，最终以数据库记录为准 |
 | 幻觉防线 | prompts 纪律 + Schema 校验 | + 数据库回验 + FIELD_PLAN 白名单 + 未验证标记 |
@@ -259,4 +259,4 @@ PDF 附件/条目
 
 ## 五、结论
 
-jasminum 的价值在于把 CNKI 的**协议层**（cookie 沙箱、403 自愈、GetExport 兜底、双轨参数、PubScholar 签名逆向）蹚出了一条可复用的路；它的天花板在于**语义层**全部由字符级启发式支撑，且 AI 只被当作一条互斥支路。PaperPilot 的改进方向不是重造协议层，而是**把协议层原样接住，把语义层整体交给大模型**——检索词规划扩大召回、语义裁决提升精度、字段级融合补齐元数据、数据库回验压住幻觉。签名与验证码机制继续由确定性代码守护，模型永远不碰门票，只管判断。
+jasminum 的价值在于把 CNKI 的**协议层**（cookie 沙箱、403 自愈、GetExport 兜底、双轨参数、PubScholar 签名逆向）蹚出了一条可复用的路；它的天花板在于**语义层**全部由字符级启发式支撑，且 AI 只被当作一条互斥支路。Papilot 的改进方向不是重造协议层，而是**把协议层原样接住，把语义层整体交给大模型**——检索词规划扩大召回、语义裁决提升精度、字段级融合补齐元数据、数据库回验压住幻觉。签名与验证码机制继续由确定性代码守护，模型永远不碰门票，只管判断。

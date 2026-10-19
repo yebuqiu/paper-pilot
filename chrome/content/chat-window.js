@@ -1,6 +1,9 @@
-/* PaperPilot AI 问答分屏窗口（0.31.0 → 0.47.0 重构）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot AI 问答分屏窗口（0.31.0 → 0.47.0 重构）
  * 运行在窗口作用域：经 window.arguments 拿 Zotero 引用（workbench/lib-ask 同款）。
- * 会话与发送逻辑**单源**在 Zotero.PaperPilot.chatFloat（ChatFloat 模块）：
+ * 会话与发送逻辑**单源**在 Zotero.Papilot.chatFloat（ChatFloat 模块）：
  *   - 本窗口注册为 ChatFloat 的一个 UI entry（CF._wins），复用其 Prompt 标签
  *     渲染 / 长按编辑 / 上下文 chip 渲染 / 条目拖入（_bindItemDrop）；
  *   - 发送走 CF.runSend + 本窗口自己的 ui 回调（气泡带 hover 操作、流式光标）。
@@ -21,7 +24,7 @@
   const XHTML = "http://www.w3.org/1999/xhtml";
   const args = (window.arguments && window.arguments[0]) || {};
   const Z = args.Zotero || (window.opener && window.opener.Zotero);
-  const PP = Z && Z.PaperPilot;
+  const PP = Z && Z.Papilot;
   const CF = PP && PP.chatFloat;
   const zh = Z && (Z.locale || "").toLowerCase().startsWith("zh");
   const T = PP && PP.i18n ? PP.i18n.t : (k) => k;
@@ -56,7 +59,7 @@
 
     if (!CF || !rootEl) {
       if (msgsEl) {
-        msgsEl.textContent = zh ? "错误：无法访问 PaperPilot 模块" : "Error: PaperPilot module unavailable";
+        msgsEl.textContent = zh ? "错误：无法访问 Papilot 模块" : "Error: Papilot module unavailable";
       }
       return;
     }
@@ -96,7 +99,38 @@
       return n;
     }
 
-    function scrollBottom() { msgsEl.scrollTop = msgsEl.scrollHeight; }
+    /** 用户是否贴着底部（生成中向上翻阅时不强拉回，P1-7） */
+    function nearBottom() {
+      try {
+        const gap = (Number(msgsEl.scrollHeight) || 0) - (Number(msgsEl.scrollTop) || 0)
+          - (Number(msgsEl.clientHeight) || 0);
+        return gap <= 48;
+      } catch (e) { return true; }
+    }
+
+    function scrollBottom(force) {
+      if (!force && !nearBottom()) return;
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+    }
+
+    /** 渲染 Markdown 正文；innerHTML 重建会带走 hover 操作条，需挂回去 */
+    function paintMarkdown(bubble, text) {
+      if (!bubble) return;
+      bubble.__ppText = text;
+      try { bubble.innerHTML = PP.mdLite.toHtml(text); }
+      catch (e) { bubble.textContent = text; }
+      const acts = bubble.__ppActs;
+      if (acts && acts.parentNode !== bubble) {
+        try { bubble.appendChild(acts); } catch (e) { /* ignore */ }
+      }
+    }
+
+    /** 中断标记（onError / onAbort 保留已生成的部分内容，P1-2） */
+    function markInterrupted(bubble) {
+      if (!bubble || bubble.__ppInterrupted) return;
+      bubble.__ppInterrupted = true;
+      bubble.appendChild(el("div", "pp-cw-interrupted", zh ? "（已中断）" : "(interrupted)"));
+    }
 
     /* ==================== 气泡 ==================== */
 
@@ -121,6 +155,7 @@
           window.setTimeout(() => { btn.textContent = orig; }, 1200);
         }
       }));
+      bubble.__ppActs = acts;
       bubble.appendChild(acts);
     }
 
@@ -152,7 +187,7 @@
       }
       attachActions(b, role);
       msgsEl.appendChild(b);
-      scrollBottom();
+      scrollBottom(true);
       return b;
     }
 
@@ -165,6 +200,8 @@
 
     function renderHistory() {
       const s = CF.session;
+      // 重绘前先清掉待渲染文本，避免旧流式结果覆盖刚重建的历史
+      try { CF.flushRender(entry); } catch (e) { /* ignore */ }
       const title = (s.item && s.item.getDisplayTitle()) || T("chatFloatTitle");
       titleEl.textContent = title;
       titleEl.setAttribute("title", title);
@@ -177,7 +214,7 @@
         return;
       }
       for (const h of s.history) appendBubble(h.role, h.content);
-      scrollBottom();
+      scrollBottom(true);
       updateRegenButtons();
     }
 
@@ -212,6 +249,15 @@
       let streamBubble = null;
       let cursor = null;
 
+      // 流式渲染统一走 ChatFloat 的 100ms 节流（P1-7）：每 token 全量 Markdown
+      // 解析在这里是 O(n²)；paint 只负责把最新文本画进同一个气泡。
+      const paint = (bubble, text) => {
+        paintMarkdown(bubble, text);
+        if (cursor && cursor.parentNode !== bubble) {
+          try { bubble.appendChild(cursor); } catch (e) { /* ignore */ }
+        }
+      };
+
       CF.runSend(q, {
         onUser(text) { appendBubble("user", text); },
         onStatus(text) {
@@ -224,22 +270,18 @@
             streamBubble = appendBubble("assistant", "");
             cursor = el("span", "pp-cw-cursor");
           }
-          try { streamBubble.innerHTML = PP.mdLite.toHtml(acc); }
-          catch (e) { streamBubble.textContent = acc; }
-          streamBubble.appendChild(cursor);
-          scrollBottom();
+          // 先记最新全文：中断时即使节流帧还没画，也能保留已生成内容
+          streamBubble.__ppText = acc;
+          CF.queueRender(entry, streamBubble, acc, paint);
         },
         onDone(text) {
           if (statusBubble) { statusBubble.remove(); statusBubble = null; }
+          const follow = nearBottom();
+          CF.flushRender(entry);
           if (cursor) { cursor.remove(); cursor = null; }
-          if (streamBubble) {
-            streamBubble.__ppText = text;
-            try { streamBubble.innerHTML = PP.mdLite.toHtml(text); }
-            catch (e) { streamBubble.textContent = text; }
-          } else {
-            appendBubble("assistant", text);
-          }
-          scrollBottom();
+          if (streamBubble) paintMarkdown(streamBubble, text);
+          else appendBubble("assistant", text);
+          if (follow) scrollBottom(true);
           updateRegenButtons();
         },
         onCost(info) {
@@ -249,15 +291,25 @@
         },
         onError(msg) {
           if (statusBubble) { statusBubble.remove(); statusBubble = null; }
-          if (streamBubble) { streamBubble.remove(); streamBubble = null; }
           if (cursor) { cursor.remove(); cursor = null; }
+          // 保留已生成的部分内容（P1-2）：错误原因另起一条系统气泡
+          if (streamBubble) {
+            CF.flushRender(entry);
+            paintMarkdown(streamBubble, streamBubble.__ppText || "");
+            markInterrupted(streamBubble);
+          }
           sysNote(msg, true);
           updateRegenButtons();
         },
         onAbort() {
           if (statusBubble) { statusBubble.remove(); statusBubble = null; }
-          if (streamBubble) { streamBubble.remove(); streamBubble = null; }
           if (cursor) { cursor.remove(); cursor = null; }
+          // 中断不再 remove 整个气泡：半截回答对用户有价值（P1-2）
+          if (streamBubble) {
+            CF.flushRender(entry);
+            paintMarkdown(streamBubble, streamBubble.__ppText || "");
+            markInterrupted(streamBubble);
+          }
           updateRegenButtons();
         },
         onBusy(busy) { setBusy(busy); },
@@ -308,6 +360,10 @@
     try { CF._bindItemDrop(entry); } catch (e) { /* ignore */ }
 
     window.addEventListener("unload", () => {
+      // 关窗 = 停止本轮生成（P1-7）：会话是全局单例，窗口没了却继续生成
+      // 会把结果写进会话（悬浮窗下次打开会看到「幽灵回答」）。
+      try { CF.flushRender(entry); } catch (e) { /* ignore */ }
+      try { CF.stop(); } catch (e) { /* ignore */ }
       try { CF._wins.delete(window); } catch (e) { /* ignore */ }
     });
 
@@ -355,7 +411,7 @@
         }
       } else if (ev.key === "Escape" && !ev.isComposing) {
         // Esc：先关标签编辑层，再关窗口（会话保留在 ChatFloat.session）
-        const editor = document.getElementById("paperpilot-tag-editor");
+        const editor = document.getElementById("papilot-tag-editor");
         if (editor) editor.remove();
         else window.close();
       }

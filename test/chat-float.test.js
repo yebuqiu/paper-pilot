@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* AI 问答悬浮窗（ChatFloat）测试（插件 0.31.0）
  *
  * 悬浮窗是「AI 问答的入口本身」——渲染崩了或接线断了就是「快捷键没反应 /
@@ -179,7 +182,7 @@ function makeDoc() {
 /* ---------------- 桩环境 ---------------- */
 
 const PrefStore = new Map();
-const PREFIX = 'extensions.zotero.paperpilot.';
+const PREFIX = 'extensions.zotero.papilot.';
 const getPref = (k, d) => (PrefStore.has(PREFIX + k) ? PrefStore.get(PREFIX + k) : d);
 
 const itemA = { id: 101, isRegularItem: () => true, getDisplayTitle: () => '论文A',
@@ -220,6 +223,9 @@ let aiReady = true;
 let aiReply = '这是**AI**的回答';
 let aiThrows = null; // null=成功；Error=抛
 let chatStreamDelay = false;
+// 非流式门闩：置 true 后 AIClient.chat 会挂起，由测试手动放行（验证代际丢弃）
+let chatGate = false;
+const chatResolvers = [];
 // 0.37.0 价值感知只在官方通道触发，测试里可切换
 let activeChannelId = 'official';
 const streamHandles = [];
@@ -227,7 +233,11 @@ const AIClient = {
   hasKey: () => aiReady,
   guidance: () => '未登录/未配置',
   _config: () => ({ ok: true, channelId: activeChannelId }),
-  async chat() { if (aiThrows) throw aiThrows; return aiReply; },
+  async chat() {
+    if (aiThrows) throw aiThrows;
+    if (chatGate) await new Promise((r) => chatResolvers.push(r));
+    return aiReply;
+  },
   chatStream(messages, onDelta) {
     const h = {
       aborted: false,
@@ -469,6 +479,67 @@ async function tick(n = 4) { for (let i = 0; i < n; i++) await new Promise((r) =
   CF.stop();
   await slow;
   chatStreamDelay = false;
+
+  /* ---------------- ②.5 会话切换代际校验（0.54.x 审查 P1-6） ----------------
+   * 回归点：A 论文的回答在切到 B 之后才返回 → 绝不能写进 B 的 history / 存档。 */
+
+  const savedSessions = [];
+  sandbox.ChatSessions = {
+    MAX_SESSIONS: 50,
+    save(sess) { savedSessions.push(JSON.parse(JSON.stringify(sess))); return { id: 'cs-test' }; },
+    latestForItem() { return null; },
+    latest() { return null; },
+    remove() { return false; },
+  };
+
+  // ① 流式：delta 已到、切条目 → 中止 + 丢弃
+  CF.session.item = itemA; CF.session.history = []; savedSessions.length = 0;
+  chatStreamDelay = true;
+  ui = freshUI();
+  const switched = CF.runSend('A 论文的问题', ui);
+  await tick(1);
+  eq(CF.setSessionItem(itemB), '', '切条目时 A 会话尚无历史 → 不报 switched');
+  await switched;
+  eq(ui.aborted, true, '切条目：在途流式轮次走 onAbort');
+  eq(CF.session.history.length, 0, '切条目：旧回答不写进新会话 history');
+  eq(savedSessions.length, 0, '切条目：旧回答不落盘');
+  eq(CF.session.item, itemB, '切条目：会话已指向新条目');
+  chatStreamDelay = false;
+
+  // ② 非流式：没有可 abort 的句柄，只能靠代际校验丢弃（P1-6 核心）
+  PrefStore.set(PREFIX + 'readerPopupStream', false);
+  chatGate = true; chatResolvers.length = 0;
+  CF.session.item = itemA; CF.session.history = []; savedSessions.length = 0;
+  ui = freshUI();
+  const nonStream = CF.runSend('非流式问题', ui);
+  await tick(1);
+  CF.setSessionItem(itemB);
+  while (chatResolvers.length) chatResolvers.shift()();
+  await nonStream;
+  eq(ui.aborted, true, '非流式：切条目后迟到结果走 onAbort');
+  eq(ui.done, '', '非流式：切条目后不触发 onDone');
+  eq(CF.session.history.length, 0, '非流式：旧回答不写进新会话');
+  eq(savedSessions.length, 0, '非流式：旧回答不落盘');
+  PrefStore.delete(PREFIX + 'readerPopupStream');
+  chatGate = false;
+
+  // ③ /clear 在生成中：先停再清，旧答案不得清空后又写回来
+  PrefStore.set(PREFIX + 'readerPopupStream', false);
+  chatGate = true; chatResolvers.length = 0;
+  CF.session.item = itemA; CF.session.history = []; savedSessions.length = 0;
+  ui = freshUI();
+  const busyClear = CF.runSend('清空测试', ui);
+  await tick(1);
+  CF._clearHistory(null);
+  while (chatResolvers.length) chatResolvers.shift()();
+  await busyClear;
+  eq(ui.aborted, true, '/clear：生成中清空会中止在途轮次');
+  eq(CF.session.history.length, 0, '/clear：清空后旧答案不写回');
+  eq(savedSessions.length, 0, '/clear：清空后不落盘');
+  PrefStore.delete(PREFIX + 'readerPopupStream');
+  chatGate = false;
+
+  delete sandbox.ChatSessions;
 
   /* ---------------- ③ 几何 pref 解析与夹取 ---------------- */
 

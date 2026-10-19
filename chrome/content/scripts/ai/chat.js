@@ -1,4 +1,7 @@
-/* PaperPilot PDF 全文提取 + 问答逻辑 */
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 全文提取 + 问答逻辑 */
 /* global Zotero, IOUtils, Prefs, AIClient, TranslateSvc, TranslateX, I18n */
 
 var AIChat = {
@@ -32,7 +35,7 @@ var AIChat = {
     try {
       await Zotero.FullText.indexItems([att.id]);
     } catch (e) {
-      Zotero.debug("PaperPilot: 全文索引失败，尝试读取已有内容 " + e);
+      Zotero.debug("Papilot: 全文索引失败，尝试读取已有内容 " + e);
     }
     // Zotero 9 及以前
     if (typeof Zotero.FullText.getItemContent === "function") {
@@ -327,7 +330,7 @@ var AIChat = {
       if (typeof TranslateX === "undefined" || !TranslateX) return;
       await TranslateX.writeBackTranslations(item, translations || {});
     } catch (e) {
-      try { Zotero.debug("PaperPilot: 译文写回 extra 失败 " + (e && e.message || e)); } catch (e2) { /* ignore */ }
+      try { Zotero.debug("Papilot: 译文写回 extra 失败 " + (e && e.message || e)); } catch (e2) { /* ignore */ }
     }
   },
 

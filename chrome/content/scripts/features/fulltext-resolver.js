@@ -1,4 +1,7 @@
-/* PaperPilot 原生 Find Full Text 集成（0.43.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 原生 Find Full Text 集成（0.43.0）
  * 做法与开源插件 zotero-scipdf 相同：不造 UI，把 resolver 写进 Zotero 内置隐藏 pref
  *   extensions.zotero.findPDFs.resolvers（JSON 字符串数组），复用 Zotero 原生
  * 「查找全文」（右键无附件条目 → Find Full Text / Find Available PDF）与
@@ -12,7 +15,7 @@
  *   - url 只支持 {doi} 一个变量（无 {title}）。
  *
  * 本模块纪律：
- *   - 只增删 name 以 "PaperPilot - " 开头的条目，用户手写或其它插件的 resolver 原样保留；
+ *   - 只增删 name 以 "Papilot - " 开头的条目，用户手写或其它插件的 resolver 原样保留；
  *   - register() 幂等（先清掉自己旧条目再按当前开关/镜像重建），重复调用不产生重复；
  *   - Sci-Hub/Sci-Net 尊重现有开关（scihubEnabled / scinetEnabled），关则不注入；
  *   - 卸载/关闭时 unregister() 精确移除，不污染用户配置。
@@ -25,7 +28,7 @@
 var FullTextResolver = {
   // Zotero 原生 pref 全名（Zotero.Prefs.get/set 需 global=true 直传全名）
   PREF: "extensions.zotero.findPDFs.resolvers",
-  NAME_PREFIX: "PaperPilot - ",
+  NAME_PREFIX: "Papilot - ",
   // 与 scihub.js 保持一致（0.43.0 扩为 7 镜像；此处独立副本以保持模块自包含，改时两处同步）
   DEFAULT_MIRRORS: [
     "https://sci-hub.ru", "https://sci-hub.se", "https://sci-hub.st",
@@ -33,10 +36,10 @@ var FullTextResolver = {
     "https://sci-hub.hkvisa.net", "https://sci-hub.mksa.top",
   ],
   DEFAULT_SCINET: "https://sci-net.xyz",
-  DEFAULT_EMAIL: "paperpilot@users.noreply.local",
+  DEFAULT_EMAIL: "papilot@users.noreply.local",
 
   _debug(msg) {
-    try { Zotero.debug("PaperPilot fulltext-resolver: " + msg); } catch (e) { /* ignore */ }
+    try { Zotero.debug("Papilot fulltext-resolver: " + msg); } catch (e) { /* ignore */ }
   },
 
   /** 读取 Zotero resolver pref → 数组（容忍未设 / 坏 JSON / 单对象写法） */

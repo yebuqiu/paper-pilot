@@ -1,4 +1,7 @@
-/* PaperPilot 规则打标（0.6.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 规则打标（0.6.0 新增）
  * 无 AI 依赖：按用户定义的「标签 | 字段 | 操作 | 值」行规则批量打标签。
  * 行格式（每行一条，# 或 // 开头为注释，空行忽略）：
  *   #方法/面板数据 | abstractNote | contains | panel data
@@ -129,18 +132,18 @@ var RuleTag = {
     const rules = this.parseRules();
     const win = Zotero.getMainWindow();
     if (!rules.length) {
-      Services.prompt.alert(win, "PaperPilot",
-        I18n.isZh ? "还没有有效规则。请在 设置 → PaperPilot → 规则打标 中按格式添加。"
-                  : "No valid rules. Add rules in Settings → PaperPilot → Rule Tagging.");
+      Services.prompt.alert(win, "Papilot",
+        I18n.isZh ? "还没有有效规则。请在 设置 → Papilot → 规则打标 中按格式添加。"
+                  : "No valid rules. Add rules in Settings → Papilot → Rule Tagging.");
       return;
     }
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
+    pw.changeHeadline("Papilot");
     pw.show();
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         const added = await this.applyTo(item, rules);
         progress.setText(
@@ -190,7 +193,7 @@ var RuleTag = {
       notify: (event, type, ids) => {
         try { this._onNotify(event, type, ids); } catch (e) { Zotero.logError(e); }
       },
-    }, ["item"], "paperpilot-ruletag");
+    }, ["item"], "papilot-ruletag");
   },
 
   unregister() {

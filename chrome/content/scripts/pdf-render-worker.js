@@ -1,4 +1,7 @@
-/* PaperPilot PDF 页面渲染 worker（0.42.0，移植自 jasminum pdf-render-worker.js）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 页面渲染 worker（0.42.0，移植自 jasminum pdf-render-worker.js）
  * 仅供 CNAI 视觉识别路径使用（pref cnFetchAIVision 默认关）。
  * 复用 Zotero 内置 pdf.js 渲染器；Zotero 10+ 可用，低版本加载即抛错，
  * 调用方（CNAI._renderPagesPNG）已 try/catch 兜底返回 null。

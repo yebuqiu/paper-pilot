@@ -1,8 +1,8 @@
 # runtime/ —— 项目内置运行时
 
-本目录用于**存放项目自带的运行时**，让 PaperPilot 账号后台与公网通道脱离
+本目录用于**存放项目自带的运行时**，让 Papilot 账号后台与公网通道脱离
 WorkBuddy（或其托管运行时）也能运行 —— **移动硬盘插到任何一台电脑，
-双击 `启动PaperPilot后台.bat` 即可，不依赖系统目录、用户目录或注册表。**
+双击 `启动Papilot后台.bat` 即可，不依赖系统目录、用户目录或注册表。**
 
 ## 目录结构
 
@@ -14,10 +14,10 @@ runtime/
 └─ cloudflared/
    ├─ README.md                    ← 公网通道说明（入库）
    ├─ cloudflared.exe              ← Cloudflare 隧道客户端（不入库，随盘携带）
-   ├─ token.txt                    ← paperpilot 隧道令牌（不入库、敏感！）
-   ├─ cloudflared-run-paperpilot.bat        ← 隧道运行器
-   ├─ cloudflared-run-paperpilot-hidden.vbs ← 隐藏窗口启动器
-   └─ logs/cf-run-paperpilot.log   ← 隧道运行日志（>20MB 自动轮换，不入库）
+   ├─ token.txt                    ← papilot 隧道令牌（不入库、敏感！）
+   ├─ cloudflared-run-papilot.bat        ← 隧道运行器
+   ├─ cloudflared-run-papilot-hidden.vbs ← 隐藏窗口启动器
+   └─ logs/cf-run-papilot.log   ← 隧道运行日志（>20MB 自动轮换，不入库）
 ```
 
 ## 为什么只需要 node.exe 一个文件
@@ -33,7 +33,7 @@ runtime/
 2. 系统 `PATH` 里的 `node`
 3. `%USERPROFILE%\.workbuddy\binaries\node\versions\*`（历史兜底，取最新版）
 
-消费方清单：`scripts\launcher.ps1`、`scripts\guard-paperpilot.ps1`、
+消费方清单：`scripts\launcher.ps1`、`scripts\guard-papilot.ps1`、
 `scripts\start-account-server.ps1`、`scripts\start-server-hidden.vbs`。
 
 ## 还需要外部依赖的部分

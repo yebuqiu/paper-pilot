@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* Sci-Hub / Sci-Net / 出版商直连 补全文 测试（插件 0.27.0；0.43.0 扩充）
  *
  * 为什么要有它：补全文链路的外部世界（镜像模板、验证页、直链失效）变化极快，
@@ -52,7 +55,7 @@ const PrefStore = new Map([
   ['scinetUrl', 'https://sci-net.xyz'],
 ]);
 const Prefs = {
-  PREFIX: 'extensions.zotero.paperpilot.',
+  PREFIX: 'extensions.zotero.papilot.',
   get(k, d) { return PrefStore.has(k) ? PrefStore.get(k) : d; },
   set(k, v) { PrefStore.set(k, v); },
 };
@@ -154,7 +157,7 @@ SciHub.MIN_INTERVAL_MS = 0; // 测试关掉限速，避免每个请求睡 1.2s
 
 function pdfBytes(tag) {
   const head = [0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37, 0x0a]; // %PDF-1.7\n
-  const body = Array.from('paperpilot fake pdf body ' + (tag || '')).map((c) => c.charCodeAt(0));
+  const body = Array.from('papilot fake pdf body ' + (tag || '')).map((c) => c.charCodeAt(0));
   return new Uint8Array(head.concat(body));
 }
 
@@ -485,7 +488,7 @@ async function testFillChain() {
   r = await OAFetch.fill(makeItem({}), { email: 'a@b.c', scihub: true, scinet: true });
   eq(r.status, 'added-scihub', '④ Sci-Hub 补全文成功');
   eq(Zotero.Attachments.importedFile.length, 1, '④ 走 importFromFile 挂附件');
-  includes(Zotero.Attachments.importedFile[0].file, 'paperpilot-fulltext-', '④ 通过临时文件导入');
+  includes(Zotero.Attachments.importedFile[0].file, 'papilot-fulltext-', '④ 通过临时文件导入');
   eq(tmpFiles.size, 0, '⑤ 临时文件导入后已清理');
   includes(Zotero.Attachments.importedFile[0].titles[0], 'Sci-Hub', '⑤ 附件标题标注来源');
   eq(Zotero.Attachments.importedFile[0].saved, 1, '⑤ saveTx 已调用');

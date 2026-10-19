@@ -1,4 +1,7 @@
-/* PaperPilot 参考文献多源元数据层（0.33.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 参考文献多源元数据层（0.33.0 新增）
  *
  * 目标：让「一键入库」不再把命运押在单一数据源上。
  * 原有实现只走 Semantic Scholar，且**只认 DOI**——实测大多数中文文献与相当一部分
@@ -71,11 +74,11 @@ var RefSources = {
 
   _mailto() {
     const v = String(Prefs.get("refImportMailto", "") || "").trim();
-    return v || "paperpilot@dev.local";
+    return v || "papilot@dev.local";
   },
 
   _ua() {
-    return "PaperPilot/0.33 (Zotero reference importer; mailto:" + this._mailto() + ")";
+    return "Papilot/0.33 (Zotero reference importer; mailto:" + this._mailto() + ")";
   },
 
   _hostOf(url) {

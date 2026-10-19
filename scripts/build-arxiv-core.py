@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 # -*- coding: utf-8 -*-
 """把 tools/arxiv/src 的纯模块转成插件作用域模块（生成器）。
 
@@ -95,6 +98,8 @@ def transform(src_path, mod_name, deps):
 
     global_name = GLOBAL_OF[mod_name]
     header = (
+        "// SPDX-License-Identifier: Apache-2.0\n"
+        "// Copyright (c) 2026 Cassiuschen. All rights reserved.\n"
         "/* %s — 请勿手改。\n"
         " * 源：tools/arxiv/src/%s.js\n"
         " * 重新生成：python scripts/build-arxiv-core.py\n"

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""GitHub 版本 tag + Release（含 xpi 附件）—— PaperPilot 发版流程的 GitHub 侧。
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+"""GitHub 版本 tag + Release（含 xpi 附件）—— Papilot 发版流程的 GitHub 侧。
 
 为什么需要它：`sync-github.py` 只把**内容**镜像到 GitHub（走 REST，SHA 与本地不同），
 不建 tag / Release。而 GitHub 会把 Release 展示在仓库首页侧栏，别人也能直接下载 xpi。
@@ -31,7 +34,7 @@ import sys
 import urllib.error
 import urllib.request
 
-OWNER, REPO = "yebuqiu", "paper-pilot"
+OWNER, REPO = "yebuqiu", "zotero-papilot"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, "dist")
 
@@ -67,7 +70,7 @@ def api(path, method="GET", body=None, raw=None, ctype=None, base="https://api.g
     req = urllib.request.Request(base + path, data=data, method=method)
     req.add_header("Authorization", "Bearer " + TOK)
     req.add_header("Accept", "application/vnd.github+json")
-    req.add_header("User-Agent", "paperpilot-release")
+    req.add_header("User-Agent", "papilot-release")
     if ctype:
         req.add_header("Content-Type", ctype)
     elif data is not None:
@@ -87,8 +90,8 @@ def dist_versions():
         return []
     vs = []
     for f in os.listdir(DIST):
-        if f.startswith("paper-pilot-") and f.endswith(".xpi"):
-            vs.append(f[len("paper-pilot-"):-len(".xpi")])
+        if f.startswith("papilot-") and f.endswith(".xpi"):
+            vs.append(f[len("papilot-"):-len(".xpi")])
     def key(v):
         return [int(x) for x in v.split(".")]
     return sorted(set(vs), key=key)
@@ -148,15 +151,15 @@ def existing_tags():
 
 def release_notes(version, info):
     """Release 正文：拿提交消息当更新说明 + 安装指引 + 更新通道说明。"""
-    body = info.get("msg", "").strip() or ("PaperPilot %s" % version)
+    body = info.get("msg", "").strip() or ("Papilot %s" % version)
     return (
         body + "\n\n"
         "---\n\n"
         "### 下载安装\n"
-        "- 直接下载下面的 `paper-pilot-%s.xpi`，在 Zotero 里 **工具 → 附加组件 → 齿轮 → "
+        "- 直接下载下面的 `papilot-%s.xpi`，在 Zotero 里 **工具 → 附加组件 → 齿轮 → "
         "Install Add-on From File…** 选择该文件即可。\n"
         "- 已装旧版的用户**重启 Zotero** 会自动收到更新（更新通道：Gitee 的 "
-        "`paperpilot-update.json`）。\n\n"
+        "`papilot-update.json`）。\n\n"
         "### 说明\n"
         "- 本仓库是内容镜像；tag 由 `scripts/github-release.py` 按版本补建。\n"
         "- 提交时间：%s\n" % (version, info.get("date", ""))
@@ -167,9 +170,9 @@ def ensure_release(version, info, rels, tags, apply):
     tag = "v" + version
     if tag in rels:
         return "skip", "Release %s 已存在" % tag
-    asset = os.path.join(DIST, "paper-pilot-%s.xpi" % version)
+    asset = os.path.join(DIST, "papilot-%s.xpi" % version)
     if not os.path.exists(asset):
-        return "skip", "无产物 dist/paper-pilot-%s.xpi" % version
+        return "skip", "无产物 dist/papilot-%s.xpi" % version
     if not info:
         return "skip", "GitHub 上找不到 manifest 版本为 %s 的提交（历史遗留，跳过）" % version
     if not apply:
@@ -177,7 +180,7 @@ def ensure_release(version, info, rels, tags, apply):
 
     payload = {
         "tag_name": tag,
-        "name": "PaperPilot v" + version,
+        "name": "Papilot v" + version,
         "body": release_notes(version, info),
         "draft": False,
         "prerelease": False,

@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · AI 计费单价域（服务端 1.5.0，配合插件 0.26.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · AI 计费单价域（服务端 1.5.0，配合插件 0.26.0）
  *
  * 职责：模型单价表（元 / 千 token）+ 上游 usage 解析 + 成本折算。
  * 数据：{DATA_DIR}/pricing.json（JsonStore 原子写）

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 全文对照翻译 · 双栏对照窗口渲染测试（插件 0.25.2）
  *
  * 为什么要有它：双栏窗口脚本（chrome/content/bilingual-view.js）跑在独立 chrome 窗口里，

@@ -28,9 +28,9 @@ try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $cfDir       = Join-Path $projectRoot 'runtime\cloudflared'
 $cfExe       = Join-Path $cfDir 'cloudflared.exe'
-$cfBat       = Join-Path $cfDir 'cloudflared-run-paperpilot.bat'
+$cfBat       = Join-Path $cfDir 'cloudflared-run-papilot.bat'
 $tokenFile   = Join-Path $cfDir 'token.txt'
-$logFile     = Join-Path $cfDir 'logs\cf-run-paperpilot.log'
+$logFile     = Join-Path $cfDir 'logs\cf-run-papilot.log'
 
 $metricsPort = 20250
 $readyUrl    = "http://127.0.0.1:$metricsPort/ready"

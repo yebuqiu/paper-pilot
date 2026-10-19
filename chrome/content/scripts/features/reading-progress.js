@@ -1,4 +1,7 @@
-/* PaperPilot 阅读进度数据域（0.46.0，进度条 2.0 的地基）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 阅读进度数据域（0.46.0，进度条 2.0 的地基）
  *
  * 「阅读进度」的语义：**这篇文献我读到哪了**。三个信号源融合出「最远到过的页」：
  *   A. Zotero 原生上次阅读位置：reader 关页时自动持久化（Zotero.SyncedSettings，
@@ -31,7 +34,16 @@ var ReadingProgress = {
 
   _timer: null,
   _notifierID: null,
-  _snap: { raw: "", items: null },  // 快照缓存：raw pref 串没变就不重复 JSON.parse（渲染路径每行都读）
+  /* 0.54.1（审查 P1-5）：内存副本 + 防抖落盘。
+   * 旧实现每次心跳都要「读整串 587KB 级 pref → 解析 → 写回」，而渲染路径每行还要
+   * 再读一次整串 pref 做比较。现在：只解析一次，读路径零 pref 访问；写路径标脏，
+   * 最多 5 分钟落一次盘（分钟级累计数据，崩溃最多丢 5 分钟）。外部改动由 pref 观察者
+   * 触发 reloadFromPref()，语义不变。 */
+  FLUSH_MS: 300000,
+  _mem: null,
+  _dirty: false,
+  _flushTimer: null,
+  _prefObs: null,
 
   /* ================== 存储（纯函数） ================== */
 
@@ -54,10 +66,50 @@ var ReadingProgress = {
     try { return JSON.stringify(store || this._empty()); } catch (e) { return JSON.stringify(this._empty()); }
   },
 
-  load() { return this.parse(Prefs.get("readingProgress", "")); },
+  /** 从 pref 重新解析（外部改动 / 卸载前用） */
+  reloadFromPref() {
+    this._mem = this.parse(Prefs.get("readingProgress", ""));
+    return this._mem;
+  },
 
-  save(store) {
-    try { Prefs.set("readingProgress", this.stringify(store)); } catch (e) { Zotero.logError(e); }
+  _ensureMem() {
+    if (!this._mem) this._mem = this.parse(Prefs.get("readingProgress", ""));
+    return this._mem;
+  },
+
+  load() { return this._ensureMem(); },
+
+  /** 标脏 + 防抖落盘（心跳每分钟调用也不产生每分钟写）。
+   *  opts.immediate=true 时立刻落盘——位置第一次推进/回填这类「丢了会倒退」的改动用它，
+   *  纯时间累计（每分钟 +1）才走防抖。 */
+  save(store, opts) {
+    this._mem = (store && store.items) ? store : this._empty();
+    this._dirty = true;
+    if (opts && opts.immediate) { this.flush(); return; }
+    if (this._flushTimer) return;
+    const self = this;
+    this._flushTimer = setTimeout(function () {
+      self._flushTimer = null;
+      self.flush();
+    }, this.FLUSH_MS);
+    if (this._flushTimer && typeof this._flushTimer.unref === "function") this._flushTimer.unref();
+  },
+
+  /** 立即落盘（卸载 / 测试用）。返回是否真的写了 */
+  flush() {
+    if (this._flushTimer) {
+      try { clearTimeout(this._flushTimer); } catch (e) { /* ignore */ }
+      this._flushTimer = null;
+    }
+    if (!this._dirty || !this._mem) return false;
+    try {
+      Prefs.set("readingProgress", this.stringify(this._mem));
+      this._dirty = false;
+      return true;
+    } catch (e) {
+      Zotero.logError(e);
+      return false;
+    }
   },
 
   /**
@@ -96,7 +148,7 @@ var ReadingProgress = {
     e.d = e.d || {};
     e.d[page] = (Number(e.d[page]) || 0) + m;
     this._shrinkD(e);
-    return { store: r.store, changed: true };
+    return { store: r.store, changed: true, pageChanged: !!r.changed };
   },
 
   /** 每页时长条目上限：超了按「读得最少」的页淘汰（保住热点页，防超长 PDF 撑爆 pref） */
@@ -122,14 +174,10 @@ var ReadingProgress = {
   },
 
   /** 取某条目的位置记录（无记录返回 null；不触发任何写） */
-  /** items 快照（按 raw pref 串缓存：save() 换了 raw → 下次读自动重建） */
+  /** items 快照（内存副本：渲染路径每行调用也不碰 pref） */
   snapshot() {
-    const raw = String(Prefs.get("readingProgress", "") || "");
-    if (this._snap.raw !== raw || !this._snap.items) {
-      const s = this.parse(raw);
-      this._snap = { raw, items: s.items || {} };
-    }
-    return this._snap.items;
+    const s = this._ensureMem();
+    return (s && s.items) || {};
   },
 
   /** 取某条目的位置记录（无记录返回 null；走快照缓存——渲染路径每行一次也不贵） */
@@ -217,7 +265,8 @@ var ReadingProgress = {
       let r = this.bumpPage(this.load(), item.key, cap.page, 1, at, cap.total);
       r.store = this.prune(r.store, this.MAX_ITEMS);
       if (r.changed) {
-        this.save(r.store);
+        // 页位置推进 → 立刻落盘（丢了会倒退）；只有分钟累计走 5 分钟防抖
+        this.save(r.store, { immediate: r.pageChanged });
         // 正在读的这篇实时更新（60s 一跳：热图格变深/进度推进，不等人重开窗口）
         try { Zotero.Notifier.trigger("redraw", "item", [item.id], {}, true); } catch (e) { /* ignore */ }
       }
@@ -240,6 +289,8 @@ var ReadingProgress = {
 
   stop() {
     if (this._timer) { clearInterval(this._timer); this._timer = null; }
+    // 卸载/停止前把防抖中的改动落盘
+    try { this.flush(); } catch (e) { /* ignore */ }
   },
 
   /* ================== 采集：标注位置 ================== */
@@ -377,16 +428,36 @@ var ReadingProgress = {
           notify: (event, type, ids) => {
             try { if (event === "add") this._onAnnotations(ids); } catch (e) { Zotero.logError(e); }
           },
-        }, ["item"], "paperpilot-reading-progress");
+        }, ["item"], "papilot-reading-progress");
       } catch (e) {
         this._notifierID = null;
       }
+    }
+    // 外部改了 pref（另一个窗口/手工/测试）→ 内存副本跟着刷新；自己的脏数据优先
+    if (!this._prefObs && typeof Services !== "undefined" && Services.prefs
+      && typeof Services.prefs.addObserver === "function") {
+      const self = this;
+      this._prefObs = {
+        observe() {
+          if (self._dirty) return;
+          try { self.reloadFromPref(); } catch (e) { /* ignore */ }
+        },
+      };
+      try {
+        Services.prefs.addObserver("extensions.zotero.papilot.readingProgress", this._prefObs);
+      } catch (e) { this._prefObs = null; }
     }
     this.start();
   },
 
   unregister() {
     this.stop();
+    if (this._prefObs) {
+      try {
+        Services.prefs.removeObserver("extensions.zotero.papilot.readingProgress", this._prefObs);
+      } catch (e) { /* ignore */ }
+      this._prefObs = null;
+    }
     if (this._notifierID) {
       try { Zotero.Notifier.unregisterObserver(this._notifierID); } catch (e) { /* ignore */ }
       this._notifierID = null;

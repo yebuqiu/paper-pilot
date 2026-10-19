@@ -1,4 +1,7 @@
-/* PaperPilot 分类条目统计：递归统计当前分类（含子分类）的条目数
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 分类条目统计：递归统计当前分类（含子分类）的条目数
  * 0.46.0 起「与进度联动的统计」：统计同时汇总阅读状态分布（未读/在读/已读标签）
  * 与「有位置进度记录」的条目数（ReadingProgress 快照），一眼看出这个分类读了多少。
  */
@@ -66,7 +69,7 @@ var CollectionStats = {
     const zp = Zotero.getActiveZoteroPane();
     const col = zp && this._getSelectedCollection(zp);
     if (!col) {
-      Services.prompt.alert(win, "PaperPilot",
+      Services.prompt.alert(win, "Papilot",
         I18n.isZh ? "请先在左侧选中一个分类" : "Please select a collection first");
       return;
     }
@@ -78,6 +81,6 @@ var CollectionStats = {
       .map(l => `${"　".repeat(l.depth)}${l.name}：${l.own} 篇（含子分类共 ${l.total} 篇）`)
       .join("\n") + (lines.length > 40 ? `\n……（共 ${lines.length} 个分类，仅显示前 40 行）` : "")
       + this._readingLine(reading, I18n.isZh);
-    Services.prompt.alert(win, "PaperPilot · " + (I18n.isZh ? "分类条目统计" : "Collection Stats"), text);
+    Services.prompt.alert(win, "Papilot · " + (I18n.isZh ? "分类条目统计" : "Collection Stats"), text);
   },
 };

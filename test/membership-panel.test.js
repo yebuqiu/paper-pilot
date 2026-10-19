@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 会员面板渲染测试（插件 0.24.4）
  *
  * 为什么要有它：设置面板脚本（chrome/content/prefs-account.js）跑在 Zotero 设置窗口里，
@@ -196,7 +199,7 @@ function boot(accountOver) {
     document,
     Zotero: {
       locale: 'zh-CN',
-      PaperPilot: { account: fakeAccount(accountOver), channels: fakeChannels },
+      Papilot: { account: fakeAccount(accountOver), channels: fakeChannels },
       Prefs: { get: (k, d) => (prefs.has(k) ? prefs.get(k) : d), set: (k, v) => prefs.set(k, v) },
       getMainWindow: () => null,
       // 0.50.0 在线支付：记录被打开的收银台地址（断言用）
@@ -553,7 +556,7 @@ const flush = () => new Promise((r) => setImmediate(r));
       trial: { active: false, days: 7, daysLeft: 0, endsAt: endedAt },
       models: ['auto', 'glm-5.3-flash'], lockedModels: ['deepseek-v4-pro'], defaultModel: 'auto' }) });
     // 需要让 getChannel 返回一个「已被锁」的当前模型
-    c.sandbox.Zotero.PaperPilot.channels = Object.assign({}, fakeChannels, {
+    c.sandbox.Zotero.Papilot.channels = Object.assign({}, fakeChannels, {
       getChannel: () => ({ id: 'official', model: 'deepseek-v4-pro', models: ['auto', 'deepseek-v4-pro'] }),
       upsert: (d) => { upserts.push(d); return { ok: true }; },
     });
@@ -570,7 +573,7 @@ const flush = () => new Promise((r) => setImmediate(r));
     let upserts2 = [];
     const d = boot({ ai: () => ({ highTier: false, reason: 'none', trial: null,
       models: ['auto', 'glm-5.3-flash'], lockedModels: ['deepseek-v4-pro'], defaultModel: 'auto' }) });
-    d.sandbox.Zotero.PaperPilot.channels = Object.assign({}, fakeChannels, {
+    d.sandbox.Zotero.Papilot.channels = Object.assign({}, fakeChannels, {
       getChannel: () => ({ id: 'official', model: 'auto', models: ['auto', 'glm-5.3-flash'] }),
       upsert: (x) => { upserts2.push(x); return { ok: true }; },
     });
@@ -588,10 +591,10 @@ const flush = () => new Promise((r) => setImmediate(r));
     // ---- I24. 旧服务端（没有 ai 块）：不做任何锁定与回落 ----
     let upserts3 = [];
     const e = boot({});   // 基础 fakeAccount：ai() 已被上面的 stub 覆盖为 plan
-    e.sandbox.Zotero.PaperPilot.account = fakeAccount({
+    e.sandbox.Zotero.Papilot.account = fakeAccount({
       ai: () => ({ highTier: true, reason: 'unknown', trial: null, models: [], lockedModels: [], defaultModel: 'auto' }),
     });
-    e.sandbox.Zotero.PaperPilot.channels = Object.assign({}, fakeChannels, {
+    e.sandbox.Zotero.Papilot.channels = Object.assign({}, fakeChannels, {
       getChannel: () => ({ id: 'official', model: 'glm-5.3-flash', models: ['auto', 'glm-5.3-flash'] }),
       upsert: (x) => { upserts3.push(x); return { ok: true }; },
     });

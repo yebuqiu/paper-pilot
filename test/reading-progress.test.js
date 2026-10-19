@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot 阅读进度 2.0 测试（0.46.0；Node vm 桩，无 Zotero 环境）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 阅读进度 2.0 测试（0.46.0；Node vm 桩，无 Zotero 环境）
  *
  * 覆盖（数据域 features/reading-progress.js + 列 columns/progress-column.js）：
  *   ① 存储纯函数：parse 容错 / record 只进不退 + changed 语义 / prune LRU /
@@ -86,10 +89,21 @@ const miniDoc = {
 /* ---------------- 桩环境 ---------------- */
 
 const PrefStore = new Map();
+let statsGetCount = 0;   // 统计行渲染读 readingStats 的次数（P1-5 回归用）
+let sandboxRef = null;   // 由 makeSandbox 赋值：外部写 pref 时模拟 pref 观察者刷新内存副本
 const Prefs = {
-  PREFIX: 'extensions.zotero.paperpilot.',
-  get(k, d) { return PrefStore.has(k) ? PrefStore.get(k) : d; },
-  set(k, v) { PrefStore.set(k, v); },
+  PREFIX: 'extensions.zotero.papilot.',
+  get(k, d) {
+    if (k === 'readingStats') statsGetCount++;
+    return PrefStore.has(k) ? PrefStore.get(k) : d;
+  },
+  set(k, v) {
+    PrefStore.set(k, v);
+    try {
+      if (k === 'readingProgress' && sandboxRef && sandboxRef.ReadingProgress) sandboxRef.ReadingProgress.reloadFromPref();
+      if (k === 'readingStats' && sandboxRef && sandboxRef.ReadingStats) sandboxRef.ReadingStats.reloadFromPref();
+    } catch (e) { /* ignore */ }
+  },
 };
 
 const redrawCalls = [];
@@ -136,10 +150,14 @@ function makeSandbox(extra) {
   vm.createContext(sb);
   for (const f of [
     'features/reading-progress.js',
+    // 0.54.1：列渲染改走 ReadingStats.minutesByKey() 内存聚合，沙箱里必须一起加载，
+    // 否则测的是已不存在的「每行读整串 pref」旧路径。
+    'features/reading-stats.js',
     'columns/progress-column.js',
   ]) {
     vm.runInContext(fs.readFileSync(S(f), 'utf8'), sb, { filename: f });
   }
+  sandboxRef = sb;
   return sb;
 }
 
@@ -189,13 +207,17 @@ const flush = (ms) => new Promise((r) => setTimeout(r, ms || 15));
 
   // snapshot：pref 变了自动重建
   PrefStore.delete('readingProgress');
+  RP.reloadFromPref();
   eq(RP.entryOf('K1'), null, '① 无记录 entryOf → null');
   Prefs.set('readingProgress', JSON.stringify({ schema: 1, items: { K1: { p: 7, t: 24, a: 1 } } }));
+  RP.reloadFromPref();   // 真实环境由 pref 观察者触发；测试里显式刷新
   eq(RP.entryOf('K1').p, 7, '① snapshot 读到记录');
   eq(RP.entryOf('K2'), null, '① 无关条目 → null');
   Prefs.set('readingProgress', JSON.stringify({ schema: 1, items: { K1: { p: 9, t: 24, a: 2 } } }));
+  RP.reloadFromPref();
   eq(RP.entryOf('K1').p, 9, '① ★ pref 更新后快照自动重建（9 不是旧值 7）');
   PrefStore.delete('readingProgress');
+  RP.reloadFromPref();
 }
 
 /* ==================== ② 融合 compute ==================== */
@@ -321,13 +343,18 @@ const flush = (ms) => new Promise((r) => setTimeout(r, ms || 15));
   PC._pageCache.set(201, 20);
   eq(PC.lookup(itemA).minutes, 6, '③ ★ 时长缓存随 pref 更新（99 分钟旧值不残留）');
 
+  // P1-5：行渲染只读内存聚合，不再每次 Prefs.get 整串
+  const statsGetsBefore = statsGetCount;
+  for (let i = 0; i < 5; i++) PC.lookup(itemA);
+  eq(statsGetCount, statsGetsBefore, '③ ★ 多次行渲染不再读 readingStats pref（内存聚合）');
+
   // computeProgress 兼容委托（ReadingProgress 在场 → 单一真源）
   eq(PC.computeProgress(15, 20).pct, 0.5, '③ computeProgress 委托后数值不变');
   eq(PC.computeProgress(0, 20), null, '③ computeProgress 无记录仍 null');
 
   /* ==================== ④ 渲染三样式（迷你 DOM） ==================== */
 
-  const col = { className: 'paperpilot-readingProgress-column' };
+  const col = { className: 'papilot-readingProgress-column' };
   const progBar = PC._decorate({ pct: 0.42, page: 12, pages: 24, minutes: 45, basis: 'position', heuristic: false }, itemA);
   PrefStore.delete('progressBarStyle');
 

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 # -*- coding: utf-8 -*-
-"""PaperPilot 发版前一键门禁（preflight）。
+"""Papilot 发版前一键门禁（preflight）。
 
 把仓库里长期分散的验证脚本串成一条命令：任一环节失败即非零退出，
 并打印「哪一步失败 + 怎么单独复现」。目的：本仓库长期是**多会话并发**
@@ -113,6 +116,13 @@ NODE_SUITES = [
     ("用量趋势", "test/usage.test.js"),
     ("会员面板渲染", "test/membership-panel.test.js"),
     ("运维三件套", "test/server-ops.test.js"),
+    ("服务端规模与索引", "test/server-scale.test.js"),
+    ("管理面来源校验", "test/admin-origin.test.js"),
+    ("存储损坏维护模式", "test/store-corrupt.test.js"),
+    ("资金履约原子性", "test/pay-atomic.test.js"),
+    ("余额预留（并发透支）", "test/balance-hold.test.js"),
+    ("余额预留审计", "test/balance-hold-audit.test.js"),
+    ("网关断开处理", "test/gateway-abort.test.js"),
     ("管理操作审计", "test/audit.test.js"),
     ("永久会员与对账", "test/reconcile.test.js"),
     ("优惠券/折扣码", "test/coupon.test.js"),
@@ -133,9 +143,11 @@ NODE_SUITES = [
     ("更新提示", "test/update-notice.test.js"),
     ("翻译设置面板", "test/prefs-translate.test.js"),
     ("设置折叠分组", "test/prefs-fold.test.js"),
+    ("pref 命名空间", "test/pref-namespace.test.js"),
     ("顶部快捷按钮", "test/toolbar-quick.test.js"),
     ("阅读器翻译面板", "test/translate-pane.test.js"),
     ("AI 问答悬浮窗", "test/chat-float.test.js"),
+    ("分屏问答窗口流式", "test/chat-window-stream.test.js"),
     ("菜单注册表", "test/menu-registry.test.js"),
     ("参考文献入库", "test/ref-import.test.js"),
     ("Sci-Hub 补全文", "test/scihub-fetch.test.js"),
@@ -159,6 +171,8 @@ NODE_SUITES = [
     ("AI 打标签 v2", "test/auto-tag.test.js"),
     ("拖拽条目上下文", "test/chat-drag-context.test.js"),
     ("列视图组", "test/column-views.test.js"),
+    # 0.56.0 坚果云云同步：协议层 + 三向决策 + 密钥边界 + 端到端（内存 WebDAV）
+    ("坚果云云同步", "test/cloud-sync.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),
     ("全模块加载冒烟", "test/smoke-load.test.js"),
 ]
@@ -179,7 +193,7 @@ def main(argv):
         return 2
 
     say("")
-    say("PaperPilot preflight  ·  root=%s" % ROOT)
+    say("Papilot preflight  ·  root=%s" % ROOT)
     say("node: %s" % NODE)
     say("模式: %s" % ("fast（跳过浏览器 E2E）" if fast else "full"))
     say("-" * 68)

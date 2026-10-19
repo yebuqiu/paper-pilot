@@ -1,8 +1,11 @@
-/* PaperPilot 设置面板 · 第三方文献源卡片（实验性 · 0.45.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置面板 · 第三方文献源卡片（实验性 · 0.45.0）
  * 面板只做两件事：分组陈列公开入口（点一下就开）+ 可选检索词直达。
  * 文案纪律：不写任何来源/出处说明，只保留「实验功能」提示与门控状态。
  * 与 prefs-cnki.js 同构：Zotero 先跑脚本后插 DOM → init 探测节点、延迟重试；
- * 经 Zotero.PaperPilot.thirdSource 访问主模块（bootstrap 作用域）。
+ * 经 Zotero.Papilot.thirdSource 访问主模块（bootstrap 作用域）。
  */
 /* global Zotero, window, document */
 
@@ -10,7 +13,7 @@
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const $ = (id) => document.getElementById(id);
-  const TS = () => Zotero.PaperPilot && Zotero.PaperPilot.thirdSource;
+  const TS = () => Zotero.Papilot && Zotero.Papilot.thirdSource;
 
   const OK = "var(--pp-success, #2e7d32)";
   const ERR = "var(--pp-danger, #c0392b)";
@@ -173,7 +176,7 @@
   /* ---------- 初始化（DOM 就绪探测，同 prefs-cnki.js 模式） ---------- */
 
   function init() {
-    if (typeof Zotero === "undefined" || !Zotero.PaperPilot || !TS()) {
+    if (typeof Zotero === "undefined" || !Zotero.Papilot || !TS()) {
       window.setTimeout(init, 400);
       return;
     }

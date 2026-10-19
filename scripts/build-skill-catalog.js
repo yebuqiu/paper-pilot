@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 从「内置精选 + 社区包」双源生成在线目录 JSON（server/public/skill-catalog.json）
  *
  * 数据来源（0.48.3 起双源合并）：

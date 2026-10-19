@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* AI 技能包商店（SkillPacks）核心域模块测试
  *
  * 覆盖：validate 全字段/缺必填/坏 id/坏版本/坏 category/glossary 混合形态、
@@ -31,7 +34,7 @@ function eq(a, b, label) { return ok(a === b, label, { got: a, want: b }); }
 /* ---------------- 桩环境（方法一律普通函数，防 this 丢失） ---------------- */
 
 const PrefStore = new Map();
-const PP = 'extensions.zotero.paperpilot.'; // Prefs 封装的真实前缀
+const PP = 'extensions.zotero.papilot.'; // Prefs 封装的真实前缀
 
 // fetchCatalog 桩行为开关
 let HTTPBehavior = 'ok';   // 'ok' | 'throw'

@@ -1,10 +1,10 @@
 @echo off
 rem ============================================================
 rem  pp.xinglintools.top tunnel runner  (project-local / portable)
-rem  usage : cloudflared-run-paperpilot.bat [protocol] [edge-ip-version]
+rem  usage : cloudflared-run-papilot.bat [protocol] [edge-ip-version]
 rem          default: http2  4
 rem  token : read from token.txt via --token-file (never on the command line)
-rem  log   : logs\cf-run-paperpilot.log  (rotated when > 20 MB)
+rem  log   : logs\cf-run-papilot.log  (rotated when > 20 MB)
 rem  note  : single run; exit code mirrors cloudflared's. No auto-restart.
 rem ============================================================
 setlocal
@@ -15,7 +15,7 @@ if "%PROTO%"=="" set "PROTO=http2"
 if "%EDGE%"=="" set "EDGE=4"
 cd /d "%CFDIR%"
 if not exist "logs" mkdir "logs"
-set "LOG=%CFDIR%\logs\cf-run-paperpilot.log"
+set "LOG=%CFDIR%\logs\cf-run-papilot.log"
 
 if not exist "cloudflared.exe" (
   call :log "FATAL: cloudflared.exe not found in %CFDIR%"

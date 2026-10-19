@@ -1,4 +1,7 @@
-/* PaperPilot 中文元数据网络抓取（0.14.5，茉莉花「抓取期刊元数据」同等能力）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 中文元数据网络抓取（0.14.5，茉莉花「抓取期刊元数据」同等能力）
  * 适用场景：拖入 Zotero 的知网/万方中文 PDF 只有文件名、没有元数据。
  * 流程：文件名/标题 → 搜索链 → 选中匹配 → 回填完整元数据（保留原附件）。
  *
@@ -481,7 +484,7 @@ var CNFetch = {
       (r.journal ? " · " + r.journal : "") + (r.year ? " " + r.year : ""));
     const ps = Services.prompt;
     const sel = {};
-    const ok = ps.select(win, "PaperPilot · " + (I18n.isZh ? "选择匹配的文献" : "Select match"),
+    const ok = ps.select(win, "Papilot · " + (I18n.isZh ? "选择匹配的文献" : "Select match"),
       I18n.isZh
         ? "找到 " + results.length + " 条候选，请选择最匹配的一条（取消则跳过该条目）："
         : "Found " + results.length + " candidates, pick the best match (Cancel skips this item):",
@@ -621,7 +624,7 @@ var CNFetch = {
 
   /** bytes → 临时文件 → 导入为条目附件并命名 */
   async _importPDF(item, bytes, title) {
-    const tmp = PathUtils.join(PathUtils.tempDir, "paperpilot-" + Date.now() + ".pdf");
+    const tmp = PathUtils.join(PathUtils.tempDir, "papilot-" + Date.now() + ".pdf");
     await IOUtils.write(tmp, bytes);
     try {
       const att = await Zotero.Attachments.importFromFile({ file: tmp, parentItemID: item.id });
@@ -890,14 +893,14 @@ var CNFetch = {
     this._batchBlocked = false; // 批次级风控状态（软拦/滑块确认后整批短路 CNKI）
     this._cnkiSeeded = false;
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + (zh ? "抓取中文元数据" : "Fetch CN metadata"));
+    pw.changeHeadline("Papilot · " + (zh ? "抓取中文元数据" : "Fetch CN metadata"));
     pw.show();
     let nOk = 0, nSkip = 0, nEmpty = 0;
     let blockedHit = false;
     for (const item of items) {
       let title = "";
       try { title = item.getDisplayTitle() || ""; } catch (e) { /* ignore */ }
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         progress.setProgress(30);
         const r = await this._fetchForItem(item, { force: false });
@@ -930,7 +933,7 @@ var CNFetch = {
         Zotero.logError(e);
       }
     }
-    const summary = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    const summary = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       (zh ? "合计：回填 " : "Done: filled ") + nOk +
       (zh ? "，未找到 " : ", not found ") + nEmpty +
       (zh ? "，跳过 " : ", skipped ") + nSkip);
@@ -942,12 +945,12 @@ var CNFetch = {
       const win = Zotero.getMainWindow();
       if (CNVerify.recentlyPassed()) {
         // 5 分钟内刚验证过仍被拦：大概率是频次限制，再开验证窗无济于事
-        Zotero.alert(win, "PaperPilot · " + (zh ? "知网验证" : "CNKI verification"),
+        Zotero.alert(win, "Papilot · " + (zh ? "知网验证" : "CNKI verification"),
           zh ? "5 分钟内刚完成过知网验证，但仍被拦截——可能是访问频次限制，请几分钟后再试。"
              : "Verified within the last 5 minutes but still blocked — likely rate limiting; try again later.");
       } else {
         const go = Services.prompt.confirm(win,
-          "PaperPilot · " + (zh ? "知网验证" : "CNKI verification"),
+          "Papilot · " + (zh ? "知网验证" : "CNKI verification"),
           zh
             ? "知网触发了安全验证（滑块/风控拦截）。\n是否现在打开知网页面完成验证？验证通过后会自动继续本次抓取。"
             : "CNKI is blocking requests (slider/risk control). Open the CNKI page to verify? Fetching will resume automatically afterwards.");
@@ -1004,17 +1007,17 @@ var CNFetch = {
         if (/\.(pdf|caj|kdh|nh)$/i.test(name) && /[一-龥]/.test(name)) files.push(p);
       }
     } catch (e) {
-      Zotero.alert(null, "PaperPilot", (zh ? "无法读取下载目录：" : "Cannot read downloads dir: ") + dir);
+      Zotero.alert(null, "Papilot", (zh ? "无法读取下载目录：" : "Cannot read downloads dir: ") + dir);
       return;
     }
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + (zh ? "下载文件夹匹配附件" : "Match attachments"));
+    pw.changeHeadline("Papilot · " + (zh ? "下载文件夹匹配附件" : "Match attachments"));
     pw.show();
     let nOk = 0, nNone = 0, nHas = 0;
     for (const item of items) {
       const title = (item.getDisplayTitle() || "").slice(0, 30);
-      const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+      const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
       try {
         // 已有 PDF 附件 → 跳过
         let hasPDF = false;
@@ -1043,7 +1046,7 @@ var CNFetch = {
         Zotero.logError(e);
       }
     }
-    const summary = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    const summary = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       (zh ? "合计：关联 " : "Attached ") + nOk +
       (zh ? "，无匹配 " : ", none ") + nNone +
       (zh ? "，已有附件 " : ", had PDF ") + nHas);
@@ -1107,9 +1110,9 @@ var CNFetch = {
       } catch (e) { Zotero.logError(e); }
     }
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
+    pw.changeHeadline("Papilot");
     pw.show();
-    const line = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    const line = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       (mode === "merge" ? (zh ? "已合并姓名：" : "Merged: ") : (zh ? "已拆分姓名：" : "Split: ")) +
       n + (zh ? " 条" : " item(s)"));
     line.setProgress(100);
@@ -1218,8 +1221,8 @@ var CNVerify = {
     }
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: false });
-    pw.changeHeadline("PaperPilot · " + (zh ? "知网验证" : "CNKI verification"));
-    const line = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    pw.changeHeadline("Papilot · " + (zh ? "知网验证" : "CNKI verification"));
+    const line = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       zh ? "请在打开的知网页面完成滑块验证（若弹出）；若是搜索页，等搜索结果正常显示后，点页面右上角「我已完成验证」（最长 5 分钟）…"
          : "Complete the slider if shown; for the search page, wait until results load, then click the confirm button (up to 5 min)…");
     pw.show();
@@ -1307,8 +1310,8 @@ var CNVerify = {
           "background:#ffffff;border:2px solid #c0392b;border-radius:8px;" +
           "box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:sans-serif;");
         const hint = doc.createElementNS(XHTML, "div");
-        hint.textContent = zh ? "PaperPilot：完成滑块（若弹出）或等搜索结果正常显示后，点击按钮"
-                              : "PaperPilot: finish the slider (if shown) or wait for search results, then click";
+        hint.textContent = zh ? "Papilot：完成滑块（若弹出）或等搜索结果正常显示后，点击按钮"
+                              : "Papilot: finish the slider (if shown) or wait for search results, then click";
         hint.setAttribute("style", "font-size:12px;color:#333;margin-bottom:8px;max-width:230px;");
         const btn = doc.createElementNS(XHTML, "button");
         btn.textContent = zh ? "我已完成验证" : "Done verifying";
@@ -1349,19 +1352,19 @@ var CNVerify = {
   async interactive() {
     const zh = I18n.isZh;
     if (await this.probe()) {
-      Zotero.alert(null, "PaperPilot",
+      Zotero.alert(null, "Papilot",
         zh ? "知网访问正常，无需验证。" : "CNKI is accessible — no verification needed.");
       return;
     }
     if (this.recentlyPassed()) {
-      Zotero.alert(null, "PaperPilot",
+      Zotero.alert(null, "Papilot",
         zh ? "5 分钟内刚完成过验证但仍被拦截——可能是知网访问频次限制，请几分钟后自动解除再试。"
            : "Verified within the last 5 minutes but still blocked — likely rate limiting; try again in a few minutes.");
       return;
     }
     await this.openAndWait(() => {
       try {
-        Zotero.alert(null, "PaperPilot",
+        Zotero.alert(null, "Papilot",
           zh ? "✓ 知网验证已通过，可以重新抓取了。" : "✓ CNKI verification passed — fetch again now.");
       } catch (e) { /* ignore */ }
     });
@@ -1555,7 +1558,7 @@ var CNAuth = {
   sm2() {
     if (this._sm2Lib) return this._sm2Lib;
     try {
-      const rootURI = (Zotero.PaperPilot && Zotero.PaperPilot.rootURI) || "";
+      const rootURI = (Zotero.Papilot && Zotero.Papilot.rootURI) || "";
       if (!rootURI) throw new Error("no rootURI");
       const scope = { module: undefined, exports: undefined, define: undefined, self: undefined };
       Services.scriptloader.loadSubScript(
@@ -1881,7 +1884,7 @@ var CNAuth = {
     const user = { value: saved ? saved.u : "" };
     const pass = { value: saved ? saved.p : "" };
     const ok = Services.prompt.promptUsernameAndPassword(win,
-      "PaperPilot · " + (zh ? "知网账号登录" : "CNKI account login"),
+      "Papilot · " + (zh ? "知网账号登录" : "CNKI account login"),
       zh ? "输入知网账号密码（仅存本机，用于登录后抓取 PDF 全文；如遇滑块请在打开的页面中完成）："
          : "Enter your CNKI credentials (stored locally only; complete the slider if shown):",
       user, pass, null, {});
@@ -1923,8 +1926,8 @@ var CNAuth = {
           "box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:sans-serif;");
         const hint = doc.createElementNS(XHTML, "div");
         hint.textContent = zh
-          ? "PaperPilot：账号密码已自动填好——请点击页面上的「登 录」按钮；若弹出滑块请完成拖动。登录成功后本窗口会自动关闭。"
-          : "PaperPilot: credentials filled — click the login button; complete the slider if shown.";
+          ? "Papilot：账号密码已自动填好——请点击页面上的「登 录」按钮；若弹出滑块请完成拖动。登录成功后本窗口会自动关闭。"
+          : "Papilot: credentials filled — click the login button; complete the slider if shown.";
         hint.setAttribute("style", "font-size:12px;color:#333;max-width:240px;");
         box.appendChild(hint);
         (doc.documentElement || doc.body).appendChild(box);
@@ -1939,8 +1942,8 @@ var CNAuth = {
 
     // cookie 观察驱动（与 CNVerify._waitSession 同款）：c_m_Lin 出现 = 登录成功
     const pw = new Zotero.ProgressWindow({ closeOnClick: false });
-    pw.changeHeadline("PaperPilot · " + (zh ? "知网登录" : "CNKI login"));
-    const line = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+    pw.changeHeadline("Papilot · " + (zh ? "知网登录" : "CNKI login"));
+    const line = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
       zh ? "请在打开的知网页面完成登录（滑块若弹出请拖动）…最长等待 5 分钟"
          : "Complete the login in the opened page (drag slider if shown)… up to 5 min");
     pw.show();
@@ -1972,8 +1975,8 @@ var CNAuth = {
     const zh = I18n.isZh;
     try {
       const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-      pw.changeHeadline("PaperPilot · " + (zh ? "知网登录" : "CNKI login"));
-      const line = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg",
+      pw.changeHeadline("Papilot · " + (zh ? "知网登录" : "CNKI login"));
+      const line = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg",
         ok ? (zh ? "✓ 登录成功，抓取全文将使用账号权限" : "✓ Logged in — fetch will use account access")
            : (zh ? "✗ 登录未完成" : "✗ Login not completed"));
       line.setProgress(ok ? 100 : 0);

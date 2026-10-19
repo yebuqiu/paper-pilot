@@ -1,4 +1,7 @@
-/* PaperPilot · 检索订阅（Saved query → 定时检索 → 自动入库 + 速递笔记）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot · 检索订阅（Saved query → 定时检索 → 自动入库 + 速递笔记）
  *
  * 解决什么：arXiv 有新论文，但「每天手动开 Discovery、改关键词、挑几条入库」这件事
  * 没人愿意天天做。本模块把一条「关键词/分类」检索保存成订阅，按天定时跑一次，
@@ -55,7 +58,7 @@ var SearchSubs = {
       }
     } catch (e) { /* 走 Zotero.Prefs 回落 */ }
     try {
-      const v = Zotero.Prefs.get("extensions.zotero.paperpilot." + key, true);
+      const v = Zotero.Prefs.get("extensions.zotero.papilot." + key, true);
       return v === undefined || v === null ? fallback : v;
     } catch (e) {
       return fallback;
@@ -70,7 +73,7 @@ var SearchSubs = {
       }
     } catch (e) { /* 走 Zotero.Prefs 回落 */ }
     try {
-      Zotero.Prefs.set("extensions.zotero.paperpilot." + key, value, true);
+      Zotero.Prefs.set("extensions.zotero.papilot." + key, value, true);
       return true;
     } catch (e) {
       this._log("pref write failed: " + key, e);
@@ -84,14 +87,14 @@ var SearchSubs = {
     let text = "search-subs: " + msg;
     if (err) text += " :: " + ((err && (err.stack || err.message)) || err);
     try {
-      if (Zotero && Zotero.PaperPilot && typeof Zotero.PaperPilot._diag === "function") {
-        const r = Zotero.PaperPilot._diag(text);
+      if (Zotero && Zotero.Papilot && typeof Zotero.Papilot._diag === "function") {
+        const r = Zotero.Papilot._diag(text);
         if (r && typeof r.catch === "function") r.catch(function () { /* ignore */ });
       } else if (Zotero && typeof Zotero.logError === "function") {
-        Zotero.logError(new Error("PaperPilot " + text));
+        Zotero.logError(new Error("Papilot " + text));
       }
     } catch (e) { /* ignore */ }
-    try { if (Zotero && typeof Zotero.debug === "function") Zotero.debug("PaperPilot " + text); }
+    try { if (Zotero && typeof Zotero.debug === "function") Zotero.debug("Papilot " + text); }
     catch (e) { /* ignore */ }
   },
 
@@ -550,7 +553,7 @@ var SearchSubs = {
       }, this);
     }
     lines.push("");
-    lines.push("> 由 PaperPilot 订阅检索生成于 " + this._stamp(at) + "。");
+    lines.push("> 由 Papilot 订阅检索生成于 " + this._stamp(at) + "。");
     return lines.join("\n");
   },
 
@@ -759,9 +762,9 @@ var SearchSubs = {
   },
 };
 
-// 与 related-papers 同款：main.js 装配完成后可直接 Zotero.PaperPilot.searchSubs 取到
+// 与 related-papers 同款：main.js 装配完成后可直接 Zotero.Papilot.searchSubs 取到
 try {
-  if (typeof Zotero !== "undefined" && Zotero.PaperPilot && !Zotero.PaperPilot.searchSubs) {
-    Zotero.PaperPilot.searchSubs = SearchSubs;
+  if (typeof Zotero !== "undefined" && Zotero.Papilot && !Zotero.Papilot.searchSubs) {
+    Zotero.Papilot.searchSubs = SearchSubs;
   }
 } catch (e) { /* ignore */ }

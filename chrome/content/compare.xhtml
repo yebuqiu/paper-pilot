@@ -1,15 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
-<!-- PaperPilot 多篇 PDF 并排对比（0.21.3）
+<!-- Papilot 多篇 PDF 并排对比（0.21.3）
      舞台用「绝对定位 + 百分比」摆放面板：切换布局只改 CSS，绝不重挂 <browser>
      （重新挂载会让内嵌阅读器整只重建、PDF 重新解码）。 -->
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot 多篇 PDF 对比"
-        windowtype="paperpilot:compare"
+        title="Papilot 多篇 PDF 对比"
+        windowtype="papilot:compare"
         width="1440" height="920"
         persist="screenX screenY width height sizemode">
-  <script src="chrome://paperpilot/content/compare.js"/>
+  <script src="chrome://papilot/content/compare.js"/>
 
   <vbox flex="1" style="min-height:0;">
     <!-- 工具栏 -->

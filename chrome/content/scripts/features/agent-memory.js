@@ -1,4 +1,7 @@
-/* PaperPilot Agent 长期记忆（agent-memory.js，0.51.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot Agent 长期记忆（agent-memory.js，0.51.0）
  *
  * 目的：给 Agent 一份跨会话的记忆（研究方向 / 已得结论 / 用户偏好），
  * 由 memory_write 写入、memory_read 读取，asPromptBlock 供 system prompt 注入。

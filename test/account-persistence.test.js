@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot 会话持久化回归测试（0.23.0 重写版账号仓库）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 会话持久化回归测试（0.23.0 重写版账号仓库）
  *
  * 为什么要有这个文件：用户长期反馈「每次更新 xpi 后登录信息就丢失」。旧实现有
  * 四个结构性缺陷，本测试把它们逐条变成可执行的回归断言：
@@ -133,7 +136,7 @@ function boot() {
       prompt: { alert() { sandbox.__alerts = (sandbox.__alerts || 0) + 1; } },
     },
     Prefs: {
-      PREFIX: 'extensions.zotero.paperpilot.',
+      PREFIX: 'extensions.zotero.papilot.',
       get: (k, d) => d,                    // 未设置 → 回落官方默认服务器地址
       set: (k, v) => { prefsWrites.push({ k, v }); },
     },
@@ -152,7 +155,7 @@ function boot() {
 
 /* ---------------- 文件检查工具 ---------------- */
 
-const ACCT_RE = /^paperpilot-account(\.\d+)?\.json$/;
+const ACCT_RE = /^papilot-account(\.\d+)?\.json$/;
 function acctFiles(dir) {
   return fs.readdirSync(dir).filter((n) => ACCT_RE.test(n)).sort();
 }
@@ -199,8 +202,8 @@ function put(dir, name, doc) {
     ok(/copies=6/.test(snap), 'T2.4 自检报告 6 份副本', snap);
 
     /* ===== T3 最新副本被删 → 从旧代际恢复（缺陷③回归） ===== */
-    fs.rmSync(path.join(DATA_DIR, 'paperpilot-account.json'));
-    fs.rmSync(path.join(PROF_DIR, 'paperpilot-account.json'));
+    fs.rmSync(path.join(DATA_DIR, 'papilot-account.json'));
+    fs.rmSync(path.join(PROF_DIR, 'papilot-account.json'));
     app = boot();
     await app.Account.restore();
     ok(app.Account.isLoggedIn(), 'T3.1 第 0 代被删仍能从第 1 代恢复');
@@ -217,11 +220,11 @@ function put(dir, name, doc) {
     /* ===== T5 双落点不同步 + 本地已过期 → 取最新（缺陷①回归） =====
      * 旧实现在数据目录读到「本地已过期」的旧副本就 return，永远看不到 ProfD 的新副本。 */
     clearStores();
-    put(DATA_DIR, 'paperpilot-account.json', {
+    put(DATA_DIR, 'papilot-account.json', {
       token: 'tok-old', expiresAt: Date.now() - 86400e3,
       savedAt: Date.now() - 10_000, user: { email: 'old@b.c' },
     });
-    put(PROF_DIR, 'paperpilot-account.json', {
+    put(PROF_DIR, 'papilot-account.json', {
       schemaVersion: 2, token: 'tok-new', expiresAt: Date.now() + 30 * 86400e3,
       savedAt: Date.now(), user: { email: 'new@b.c' },
     });
@@ -232,7 +235,7 @@ function put(dir, name, doc) {
 
     /* ===== T6 v1 旧格式自动迁移 ===== */
     clearStores();
-    put(DATA_DIR, 'paperpilot-account.json', {   // 无 schemaVersion = 0.22.0 及更早的格式
+    put(DATA_DIR, 'papilot-account.json', {   // 无 schemaVersion = 0.22.0 及更早的格式
       token: 'tok-legacy', expiresAt: Date.now() + 30 * 86400e3,
       savedAt: Date.now() - 5000, user: { email: 'legacy@b.c' },
     });
@@ -242,10 +245,10 @@ function put(dir, name, doc) {
     await app.Account._diagChain;                 // 等落盘 + 诊断写完
     const migrated = readAll(DATA_DIR);
     eq(migrated.length, 3, 'T6.2 迁移后补齐 3 代');
-    const gen0 = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'paperpilot-account.json'), 'utf8'));
+    const gen0 = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'papilot-account.json'), 'utf8'));
     eq(gen0.schemaVersion, 2, 'T6.3 最新副本已升级为 v2 信封');
     eq(gen0.user.email, 'a@b.c', 'T6.4 最新副本是服务端刷新后的用户信息');
-    const legacyCopy = fs.readFileSync(path.join(DATA_DIR, 'paperpilot-account.1.json'), 'utf8');
+    const legacyCopy = fs.readFileSync(path.join(DATA_DIR, 'papilot-account.1.json'), 'utf8');
     ok(legacyCopy.includes('tok-legacy'), 'T6.5 旧内容作为备份保留在上一代（可回滚）');
     eq(legacyCopy.includes('schemaVersion'), false, 'T6.6 上一代仍是原样的 v1 文档（未被改写）');
 
@@ -290,7 +293,7 @@ function put(dir, name, doc) {
     /* ===== T9 根因守卫：不再向 IOUtils.writeUTF8 传非字符串 mode ===== */
     const badMode = writeCalls.filter((c) => c.opts && c.opts.mode !== undefined && typeof c.opts.mode !== 'string');
     eq(badMode.length, 0, 'T9.1 所有 writeUTF8 调用的 options.mode 均为字符串或未传');
-    ok(writeCalls.every((c) => c.path.includes('paperpilot-')), 'T9.2 只写自己的文件');
+    ok(writeCalls.every((c) => c.path.includes('papilot-')), 'T9.2 只写自己的文件');
     ok(writeCalls.some((c) => c.opts && c.opts.tmpPath), 'T9.3 优先走 tmpPath 原子写');
 
     /* ===== T10 tmpPath 失败 → 回退无选项直写 ===== */
@@ -315,7 +318,7 @@ function put(dir, name, doc) {
       await cur;
       if (cur === app.Account._diagChain) break;
     }
-    const logPath = path.join(DATA_DIR, 'paperpilot-account.log');
+    const logPath = path.join(DATA_DIR, 'papilot-account.log');
     let logText = '';
     // 轮询到「日志已落盘**且含落盘/恢复结论**」为止（有界）：只等「非空」不够——
     // 串行队列是逐行 flush 的，第一行到达时后面的「session saved …」可能还没写完，

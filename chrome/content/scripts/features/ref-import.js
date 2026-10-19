@@ -1,4 +1,7 @@
-/* PaperPilot 参考文献一键入库 · 编排层（0.33.0 重写）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 参考文献一键入库 · 编排层（0.33.0 重写）
  *
  * ── 为什么重写 ────────────────────────────────────────────────
  * 旧实现（citation-trace.js 的 importForSelected，0.8.0 起）有三个硬伤，合起来导致
@@ -24,13 +27,13 @@
 /* global Zotero, Services, Components, IOUtils, Prefs, I18n, RefFormat, RefSources, CitationColumn, ItemSel, AIClient, S2Client, MdLite */
 
 var RefImport = {
-  DLOG_URL: "chrome://paperpilot/content/ref-import.xhtml",
+  DLOG_URL: "chrome://papilot/content/ref-import.xhtml",
   // 两个名字不是一回事：openDialog 的第二个参数是**窗口名**，
   // 而 Services.wm.getEnumerator 匹配的是 **windowtype 属性**。
   // 把它们写成同一个字符串（很容易顺手这么干）会让「单实例」永远失效——
   // 表现是每点一次菜单就开一个新窗口（真机才会发现，静态单测看不出来）。
-  WINDOW_NAME: "paperpilot-ref-import",
-  WINDOW_TYPE: "paperpilot:ref-import",
+  WINDOW_NAME: "papilot-ref-import",
+  WINDOW_TYPE: "papilot:ref-import",
 
   /* ================= 库内索引与判重 ================= */
 
@@ -181,7 +184,7 @@ var RefImport = {
     if (rec.pmcid) extra.push("PMCID: " + rec.pmcid);
     if (rec.arxivId && itemType !== "preprint") extra.push("arXiv: " + rec.arxivId);
     if (rec.year && !src.dateOrYear) extra.push("Year: " + rec.year);
-    if (rec.ai) extra.push("Metadata assisted by AI (PaperPilot) — verify before citing");
+    if (rec.ai) extra.push("Metadata assisted by AI (Papilot) — verify before citing");
     if (typeof rec.citationCount === "number" && rec.citationCount > 0) extra.push("Citations (Semantic Scholar): " + rec.citationCount);
     return { itemType, fields, creators, extra: extra.join("\n") };
   },
@@ -734,8 +737,8 @@ var RefImport = {
       if (en.hasMoreElements()) {
         const w = en.getNext();
         try { w.focus(); } catch (e) { /* ignore */ }
-        if (typeof w.PaperPilotSetPayload === "function") {
-          try { w.PaperPilotSetPayload(payload); } catch (e) { /* ignore */ }
+        if (typeof w.PapilotSetPayload === "function") {
+          try { w.PapilotSetPayload(payload); } catch (e) { /* ignore */ }
         }
         return w;
       }

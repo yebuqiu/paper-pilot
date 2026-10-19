@@ -1,4 +1,7 @@
-/* PaperPilot 星标评级列
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 星标评级列
  * 显示 features/rating.js 存储的「★」×n 标签（0-5 星）。
  * 注册/注销/pref 开关与 rank-column.js 同构：
  * main.js 按 pref ratingColumnEnabled 调 register/unregister。
@@ -6,7 +9,7 @@
 /* global Zotero, Prefs, I18n, Rating */
 
 var RatingColumn = {
-  COLUMN_KEY: "paperpilot-rating",
+  COLUMN_KEY: "papilot-rating",
   _registered: false,
 
   _enabled() {

@@ -1,4 +1,7 @@
-/* PaperPilot 阅读器右侧栏 · 翻译面板（0.30.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 阅读器右侧栏 · 翻译面板（0.30.0）
  *
  * 为什么要有它：0.28.0 起翻译引擎已经很多（13 个），但入口散在「右键菜单 + 设置面板」
  * 里 —— 想换引擎要开设置、想看译文要在浮窗里看、想做全文对照要另开窗口。用户在
@@ -27,8 +30,8 @@
 /* global Zotero, Services, Prefs, TranslateSvc, AIChat, BilingualTranslate, Notes, I18n */
 
 var TranslatePane = {
-  PANE_ID: "paperpilot-translate",
-  ICON: "chrome://paperpilot/content/icons/translate.svg",
+  PANE_ID: "papilot-translate",
+  ICON: "chrome://papilot/content/icons/translate.svg",
 
   _panes: new Map(),      // paneID -> 状态
   _registered: false,
@@ -105,11 +108,11 @@ var TranslatePane = {
       paneID: this.PANE_ID,
       pluginID,
       header: {
-        l10nID: "paperpilot-translate-section-header",
+        l10nID: "papilot-translate-section-header",
         icon: this.ICON,
       },
       sidenav: {
-        l10nID: "paperpilot-translate-section-sidenav",
+        l10nID: "papilot-translate-section-sidenav",
         icon: this.ICON,
       },
       // onRender 必填（Z10 schema）：缺了会静默返回 false
@@ -326,7 +329,7 @@ var TranslatePane = {
     taBtn.addEventListener("click", () => { if (!st.busy) self._translateTitleAbstract(paneID); });
     setBtn.addEventListener("click", () => self._openSettings());
     hubBtn.addEventListener("click", () => {
-      try { Zotero.PaperPilot.openHub(); } catch (e) { /* ignore */ }
+      try { Zotero.Papilot.openHub(); } catch (e) { /* ignore */ }
     });
 
     this._refresh(paneID, { resetText: true });
@@ -536,7 +539,7 @@ var TranslatePane = {
     const text = String((st.refs && st.refs.input.value) || "").trim();
     if (!text) { this._setResult(paneID, I18n.t("tpNoText"), { warn: true }); return; }
     try {
-      const PP = Zotero.PaperPilot || {};
+      const PP = Zotero.Papilot || {};
       if (!PP.translateCompare || typeof PP.translateCompare.openWindow !== "function") {
         throw new Error(I18n.isZh ? "对比模块未加载" : "Compare module not loaded");
       }
@@ -550,7 +553,7 @@ var TranslatePane = {
     const st = this._state(paneID);
     if (!st.item) return;
     try {
-      const PP = Zotero.PaperPilot || {};
+      const PP = Zotero.Papilot || {};
       PP.pdfDual.openForItem(st.item);
     } catch (e) {
       this._toast(paneID, (I18n.isZh ? "打开双栏窗口失败：" : "Failed: ") + ((e && e.message) || e), true);
@@ -599,7 +602,7 @@ var TranslatePane = {
 
   _openSettings() {
     try {
-      const paneID = (Zotero.PaperPilot && Zotero.PaperPilot._paneID) || "paperpilot-prefs";
+      const paneID = (Zotero.Papilot && Zotero.Papilot._paneID) || "papilot-prefs";
       Zotero.Utilities.Internal.openPreferences(paneID);
     } catch (e) {
       try { Zotero.logError(e); } catch (_) { /* ignore */ }

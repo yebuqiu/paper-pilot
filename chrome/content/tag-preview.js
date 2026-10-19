@@ -1,4 +1,7 @@
-/* PaperPilot 标签勾选对话框逻辑（modal，经 window.arguments 传参）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 标签勾选对话框逻辑（modal，经 window.arguments 传参）
  * io = { tags: string[], detail?: [{tag, reason, confidence}],
  *        paperTitle: string, existing?: string[],
  *        threshold?: number, selected: string[]|null }
@@ -23,7 +26,7 @@
     if (!list) {
       // DOM 就绪后仍找不到列表容器 = 文档结构异常：按「取消」语义收场，
       // 不让调用方拿到 undefined 卡住（selected 保持 null → runForSelected 视为已取消）
-      try { console.error("[PaperPilot] tag-preview: pp-tag-list missing"); } catch (e) { /* ignore */ }
+      try { console.error("[Papilot] tag-preview: pp-tag-list missing"); } catch (e) { /* ignore */ }
       io.selected = null;
       window.close();
       return;

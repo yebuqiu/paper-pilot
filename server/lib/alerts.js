@@ -1,4 +1,7 @@
-/* PaperPilot 账号后台 · 订单积压告警（1.4.2）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号后台 · 订单积压告警（1.4.2）
  *
  * 为什么需要：用户付款后在插件里点「我已完成支付」→ 订单变 claimed → 等管理员核销。
  * 这一步全靠人主动点开后台看，夜里下单就可能干等到早上——"付了钱没人管"是最伤信任的故障。
@@ -86,7 +89,7 @@ function buildMail(backlog, platform) {
   const m = backlog.oldestMinutes % 60;
   const waited = h > 0 ? (h + ' 小时 ' + m + ' 分钟') : (m + ' 分钟');
   return {
-    subject: '【PaperPilot】有 ' + backlog.count + ' 笔订单待核销，最久已等 ' + waited,
+    subject: '【Papilot】有 ' + backlog.count + ' 笔订单待核销，最久已等 ' + waited,
     text: '有已付款订单在等待核销：\n\n'
       + '· 待核销订单数：' + backlog.count + '\n'
       + '· 最老订单：' + backlog.oldestId + '\n'

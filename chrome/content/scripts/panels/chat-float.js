@@ -1,8 +1,11 @@
-/* PaperPilot AI 问答悬浮窗（0.31.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot AI 问答悬浮窗（0.31.0）
  *
  * 参考 zotero-gpt（可拖动悬浮窗 + Esc 关闭 + ↑↓ 历史 + 点击标签发模板）
  * 与 papersgpt-for-zotero（阅读器工具栏按钮 + Ctrl/Cmd+Enter 唤起 + 独立窗口分屏）
- * 的交互设计，整合进 PaperPilot 既有 AI 基建（AIChat 全文注入 / AIClient 流式 /
+ * 的交互设计，整合进 Papilot 既有 AI 基建（AIChat 全文注入 / AIClient 流式 /
  * Prompts 模板库 / MdLite 富文本 / Notes 存笔记）。
  *
  * 唤起方式（四处入口）：
@@ -19,7 +22,7 @@
  *     会话（session）为全局单例，悬浮窗/独立窗口/划词注入共享同一份历史。
  *
  * 发送逻辑单源化：runSend(question, ui) 供悬浮窗与独立窗口（chat-window.js
- * 经 Zotero.PaperPilot.chatFloat 访问本模块）共用；全文缺失时回退摘要
+ * 经 Zotero.Papilot.chatFloat 访问本模块）共用；全文缺失时回退摘要
  * （AIChat.buildMessages），比侧栏更宽容。
  *
  * 生命周期：register(pluginID) / unregister()。UI 惰性构建：首次唤起才建 DOM。
@@ -27,11 +30,11 @@
 /* global Zotero, Services, Prefs, AIClient, AIChat, I18n, Prompts, MdLite, Notes, CommandTags, ChatSessions, AgentTools, Hotkeys, Components */
 
 var ChatFloat = {
-  ROOT_ID: "paperpilot-chat-float",
-  STYLE_ID: "paperpilot-chat-float-style",
-  KEY_ID: "paperpilot-key-chat-float",
-  READER_BTN_ID: "paperpilot-chat-reader-button",
-  WINDOW_TYPE: "paperpilot:chatwin",
+  ROOT_ID: "papilot-chat-float",
+  STYLE_ID: "papilot-chat-float-style",
+  KEY_ID: "papilot-key-chat-float",
+  READER_BTN_ID: "papilot-chat-reader-button",
+  WINDOW_TYPE: "papilot:chatwin",
   XHTML: "http://www.w3.org/1999/xhtml",
   XUL: "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
 
@@ -59,6 +62,7 @@ var ChatFloat = {
     inputHistory: [],  // 输入历史（↑↓ 导航）
     histIdx: -1,
     contextItems: [],  // 0.44.0 拖入的上下文条目 itemID 列表（chip；存在时优先于 item）
+    _epoch: 0,         // 0.54.x 代际：切条目 / 停止 / 清空时自增，作废在途轮次
   },
 
   /* ==================== 工具 ==================== */
@@ -127,6 +131,9 @@ var ChatFloat = {
     if (!item) return "";
     if (!s.item || s.item.id !== item.id) {
       const hadHistory = s.history.length > 0;
+      // 0.54.x（审查 P1-6）：切条目 = 换会话。先中止在途轮次、作废其代际并清掉
+      // 待渲染文本，否则 A 论文的回答会在 await 返回后写进 B 的 history 并落盘。
+      this._abortInFlight();
       s.item = item;
       s.history = [];
       s.inputHistory = [];
@@ -134,6 +141,22 @@ var ChatFloat = {
       return hadHistory ? "switched" : "";
     }
     return "";
+  },
+
+  /**
+   * 作废在途轮次：中止流式句柄 + 代际自增 + 清掉各窗口待渲染定时器。
+   * 非流式 / Agent 取不到句柄的阶段只能靠 runSend 的代际校验丢弃结果。
+   */
+  _abortInFlight() {
+    this.stop();
+    this._flushAllRenders();
+  },
+
+  /** 清掉所有窗口 entry 上的待渲染定时器（切会话 / 卸载时用） */
+  _flushAllRenders() {
+    for (const [, en] of this._wins) {
+      try { this.flushRender(en); } catch (e) { /* ignore */ }
+    }
   },
 
   /** 会话条目显示名 */
@@ -241,11 +264,14 @@ var ChatFloat = {
   /** 清空会话：内存 + 存档（save 会跳过空 history，故显式 remove 最近一条） */
   _clearHistory(entry) {
     const s = this.session;
+    // 0.54.x（审查 P1-6）：生成中清空 = 先停再清，避免在途回答清空后又写回来
+    if (s.busy || s.handle) this._abortInFlight();
     s.history = [];
     s.inputHistory = [];
     s.histIdx = -1;
     this._forgetSavedSession();
     if (entry) {
+      try { this.flushRender(entry); } catch (e) { /* ignore */ }
       try { this._renderHistory(entry); } catch (e) { /* ignore */ }
     }
   },
@@ -596,23 +622,45 @@ var ChatFloat = {
    * 0.54.0（审查 P1-4）：流式渲染节流——攒 100ms 只渲染一次。
    * 每 token 全量 Markdown 解析 + innerHTML 重建 + 强制 reflow 是 O(n²)，
    * 长回答（>1000 字）会明显掉帧；收敛后 onDone 再精确渲染一次。
+   * 0.54.x（审查 P1-7）：提为公共方法供分屏窗口（chat-window.js）共用；
+   * paint 可选（自定义渲染函数），缺省走 _renderAssistant。
    */
-  _queueRender(entry, bubble, text) {
+  queueRender(entry, bubble, text, paint) {
     if (!entry || !bubble) { return; }
-    entry._pendingRender = { bubble: bubble, text: text };
+    entry._pendingRender = { bubble: bubble, text: text, paint: paint || null };
     if (entry._renderTimer) { return; }
     entry._renderTimer = setTimeout(() => {
       entry._renderTimer = null;
       const p = entry._pendingRender;
       entry._pendingRender = null;
       if (!p || !p.bubble) { return; }
-      try { this._renderAssistant(entry, p.bubble, p.text); } catch (e) { /* 渲染失败不影响流 */ }
-      try { entry.refs.msgs.scrollTop = entry.refs.msgs.scrollHeight; } catch (e) { /* ignore */ }
+      // 贴底跟随：用户向上翻阅时不打断（滚动位置需在渲染前采，渲染会改 scrollHeight）
+      const follow = this._nearBottom(entry.refs && entry.refs.msgs);
+      try {
+        if (p.paint) p.paint(p.bubble, p.text);
+        else this._renderAssistant(entry, p.bubble, p.text);
+      } catch (e) { /* 渲染失败不影响流 */ }
+      if (follow) {
+        try { entry.refs.msgs.scrollTop = entry.refs.msgs.scrollHeight; } catch (e) { /* ignore */ }
+      }
     }, 100);
   },
 
-  /** 清掉待渲染定时器（onDone / 中断时用，避免旧文本覆盖最终结果） */
-  _flushRender(entry) {
+  /** 兼容旧调用点（0.54.0 私有名） */
+  _queueRender(entry, bubble, text) { this.queueRender(entry, bubble, text); },
+
+  /** 消息区是否贴着底部（48px 容差；读不到尺寸按「是」处理，保持旧行为） */
+  _nearBottom(msgs) {
+    try {
+      if (!msgs) return true;
+      const gap = (Number(msgs.scrollHeight) || 0) - (Number(msgs.scrollTop) || 0)
+        - (Number(msgs.clientHeight) || 0);
+      return gap <= 48;
+    } catch (e) { return true; }
+  },
+
+  /** 清掉待渲染定时器（onDone / 中断 / 关窗时用，避免旧文本覆盖最终结果） */
+  flushRender(entry) {
     if (!entry) { return; }
     if (entry._renderTimer) {
       try { clearTimeout(entry._renderTimer); } catch (e) { /* ignore */ }
@@ -620,6 +668,9 @@ var ChatFloat = {
     }
     entry._pendingRender = null;
   },
+
+  /** 兼容旧调用点（0.54.0 私有名） */
+  _flushRender(entry) { this.flushRender(entry); },
 
   /** 给已渲染的引用片段挂点击（innerHTML 重建后需重新挂） */
   _bindCiteClicks(entry, bubble) {
@@ -704,6 +755,10 @@ var ChatFloat = {
     s.busy = true;
     if (ui.onBusy) ui.onBusy(true);
     if (ui.onUser) ui.onUser(question);
+    // 0.54.x（审查 P1-6）：本轮代际快照。切条目 / 停止 / 清空都会让 _epoch 自增，
+    // 之后每个 await 返回点都要校验；迟到结果一律丢弃（不写 history、不落盘）。
+    const epoch = s._epoch || 0;
+    const turnItemID = s.item && s.item.id ? s.item.id : 0;
     try {
       if (ui.onStatus) ui.onStatus(I18n.t("chatReading"));
       let messages;
@@ -712,6 +767,10 @@ var ChatFloat = {
       } else {
         const fullText = await AIChat.getFullText(s.item);
         messages = await AIChat.buildMessages(s.item, question, s.history, fullText || undefined);
+      }
+      if (this._isStaleTurn(s, epoch, turnItemID)) {
+        if (ui.onAbort) ui.onAbort();
+        return;
       }
 
       let acc = "";
@@ -723,6 +782,7 @@ var ChatFloat = {
         acc = await this._runAgentTurn(messages, ui);
       } else if (useStream) {
         const handle = AIClient.chatStream(messages, (chunk) => {
+          if (this._isStaleTurn(s, epoch, turnItemID)) return; // 停不掉的流也别污染新会话
           acc += chunk;
           if (ui.onDelta) ui.onDelta(acc);
         });
@@ -730,6 +790,11 @@ var ChatFloat = {
         acc = await handle.promise;
       } else {
         acc = await AIClient.chat(messages);
+      }
+      // 旧会话的答案绝不能写进新会话：落盘 / onDone 之前再校验一次
+      if (this._isStaleTurn(s, epoch, turnItemID)) {
+        if (ui.onAbort) ui.onAbort();
+        return;
       }
       s.history.push({ role: "user", content: question });
       s.history.push({ role: "assistant", content: acc });
@@ -791,9 +856,18 @@ var ChatFloat = {
     } catch (e) { /* 静默 */ }
   },
 
-  /** 停止当前生成（流式 abort；非流式在 runSend 侧无句柄，忽略） */
+  /** 本轮是否已被切条目 / 停止 / 会话重置作废（P1-6 代际校验） */
+  _isStaleTurn(s, epoch, itemID) {
+    if (!s || s !== this.session) return true;
+    if ((s._epoch || 0) !== epoch) return true;
+    const cur = s.item && s.item.id ? s.item.id : 0;
+    return cur !== itemID;
+  },
+
+  /** 停止当前生成：中止流式句柄 + 代际自增（无句柄的非流式阶段也能让结果作废） */
   stop() {
     const s = this.session;
+    s._epoch = (s._epoch || 0) + 1;
     if (s.handle) {
       try { s.handle.abort(); } catch (e) { /* ignore */ }
     }
@@ -1115,6 +1189,13 @@ var ChatFloat = {
     this._bindHeadDrag(entry);
     this._bindResize(entry);
     this._bindEsc(win);
+    // 0.54.x（审查 P2-13）：窗口关闭时清掉挂在 entry 上的渲染定时器，
+    // 避免 100ms 后触达已脱离文档的节点（测试桩窗口可能没有 addEventListener）
+    try {
+      if (win && typeof win.addEventListener === "function") {
+        win.addEventListener("unload", () => this.flushRender(entry));
+      }
+    } catch (e) { /* ignore */ }
 
     const self = this;
     const doSend = () => this._doSend(entry);
@@ -1504,14 +1585,14 @@ var ChatFloat = {
     const zh = I18n.isZh;
     const self = this;
     // 已开则先关（幂等）
-    const old = entry.root.querySelector("#paperpilot-tag-editor");
+    const old = entry.root.querySelector("#papilot-tag-editor");
     if (old) old.remove();
 
     const tag = tagId ? (CommandTags.get(tagId) || { id: tagId }) : null;
     const isNew = !tagId;
 
     const overlay = this._h(doc, "div", {
-      id: "paperpilot-tag-editor",
+      id: "papilot-tag-editor",
       style: "position:absolute;inset:0;z-index:10;display:flex;flex-direction:column;" +
         "background:var(--material-surface,#ffffff);color:inherit;padding:10px;gap:6px;overflow-y:auto;",
     });
@@ -1844,7 +1925,7 @@ var ChatFloat = {
       }
       try { entry.refs.input.focus(); } catch (e) { /* ignore */ }
     } catch (e) {
-      this._err(new Error("PaperPilot: AI 悬浮窗打开失败"));
+      this._err(new Error("Papilot: AI 悬浮窗打开失败"));
       this._err(e);
     }
   },
@@ -2045,8 +2126,8 @@ var ChatFloat = {
     if (!win) return null;
     try {
       return win.openDialog(
-        "chrome://paperpilot/content/chat-window.xhtml",
-        "paperpilot-chat-window",
+        "chrome://papilot/content/chat-window.xhtml",
+        "papilot-chat-window",
         "chrome,centerscreen,resizable,dialog=no",
         { Zotero, Services }
       );
@@ -2059,7 +2140,7 @@ var ChatFloat = {
   /* ==================== 唤起注册 ==================== */
 
   register(pluginID) {
-    this._pluginID = pluginID || "paperpilot@dev.local";
+    this._pluginID = pluginID || "papilot@dev.local";
 
     // ① 阅读器工具栏按钮 + Ctrl/Cmd+Enter（renderToolbar 官方扩展位）
     if (Zotero.Reader && typeof Zotero.Reader.registerEventListener === "function") {
@@ -2127,7 +2208,7 @@ var ChatFloat = {
     let keyset = doc.getElementById("mainKeyset");
     if (!keyset) {
       keyset = this._xul(doc, "keyset");
-      keyset.id = "paperpilot-chat-keyset";
+      keyset.id = "papilot-chat-keyset";
       doc.documentElement.appendChild(keyset);
     }
     const key = this._xul(doc, "key");
@@ -2222,6 +2303,7 @@ var ChatFloat = {
 
     // 全部悬浮窗 DOM
     for (const [win, entry] of this._wins) {
+      try { this.flushRender(entry); } catch (e) { /* ignore */ }
       try {
         if (entry.root && entry.root.parentNode) entry.root.parentNode.removeChild(entry.root);
         const doc = win.document;
@@ -2244,7 +2326,7 @@ var ChatFloat = {
 
     this.session = {
       item: null, history: [], busy: false, handle: null,
-      inputHistory: [], histIdx: -1, contextItems: [],
+      inputHistory: [], histIdx: -1, contextItems: [], _epoch: 0,
     };
   },
 };

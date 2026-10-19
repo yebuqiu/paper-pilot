@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot PDF 文本结构化分析 测试（插件 0.33.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 文本结构化分析 测试（插件 0.33.0）
  *
  * 为什么要有它：全文对照翻译的「结构化单元」依赖 PdfText 的词法判定与段落装配。
  * 判定全是纯函数，这里逐类钉死：

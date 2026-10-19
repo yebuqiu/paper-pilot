@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 可编辑 #命令标签体系（CommandTags）测试
  *
  * 覆盖：首次启动播种内置默认、pref 合并（同 id 覆盖 / 自定义追加 / 缺失默认补齐）、

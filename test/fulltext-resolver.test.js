@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 原生 Find Full Text 集成（fulltext-resolver.js）测试
  *
  * 覆盖：
@@ -7,7 +10,7 @@
  *      + Sci-Net ×2；每条都过 Zotero 的校验规则（name/method/url 含 {doi}/mode/selector）；
  *   ③ 用户手写与其它插件的 resolver 原样保留且排在本插件条目之前；
  *   ④ 幂等：register 连调两次内容不变、无重复；
- *   ⑤ 精确移除：unregister 只删 "PaperPilot - " 前缀条目，不动其它；
+ *   ⑤ 精确移除：unregister 只删 "Papilot - " 前缀条目，不动其它；
  *   ⑥ 开关：scihubEnabled=false → 无 Sci-Hub/Sci-Net 仍有 Unpaywall；
  *      scinetEnabled=false → 有 Sci-Hub 无 Sci-Net；
  *      fulltextResolverEnabled=false → register 退化为只清不加；
@@ -99,30 +102,30 @@ const hasName = (list, frag) => list.some((r) => String(r.name).indexOf(frag) >=
   eq(n, list.length, 'register 返回注入条数');
   // 默认：1 Unpaywall + 7 镜像×2 + Sci-Net×2 + 出版商直连×1 = 18
   eq(list.length, 18, '默认注入 18 条（1 + 7*2 + 1*2 + 1）', names(list));
-  eq(list[0].name, 'PaperPilot - Unpaywall', 'Unpaywall 排最前（合法优先）');
+  eq(list[0].name, 'Papilot - Unpaywall', 'Unpaywall 排最前（合法优先）');
   ok(list.every(validByZotero), '每条都通过 Zotero 的 resolver 校验', names(list));
   ok(list.every((r) => r.automatic === true), '全部 automatic:true（参与自动下载 PDF）');
   const up = list[0];
   eq(up.mode, 'json', 'Unpaywall 用 json 模式');
   includes(up.url, 'https://api.unpaywall.org/v2/{doi}?email=', 'Unpaywall URL 模板');
   eq(up.mappings && up.mappings.url, 'url_for_pdf', 'Unpaywall mappings.url');
-  const sh = list.find((r) => r.name === 'PaperPilot - Sci-Hub (sci-hub.ru)');
+  const sh = list.find((r) => r.name === 'Papilot - Sci-Hub (sci-hub.ru)');
   eq(sh && sh.selector, '#pdf', 'Sci-Hub 主 selector #pdf');
   eq(sh && sh.attribute, 'src', 'Sci-Hub 主 attribute src');
-  const meta = list.find((r) => r.name === 'PaperPilot - Sci-Hub (sci-hub.ru) (meta)');
+  const meta = list.find((r) => r.name === 'Papilot - Sci-Hub (sci-hub.ru) (meta)');
   eq(meta && meta.selector, "meta[name='citation_pdf_url']", 'Sci-Hub meta 兜底 selector');
   eq(meta && meta.attribute, 'content', 'Sci-Hub meta attribute content');
   ok(hasName(list, 'Sci-Hub (sci-hub.ren)'), '默认链含 .ren（0.43.0 扩充）');
   ok(hasName(list, 'Sci-Hub (sci-hub.hkvisa.net)'), '默认链含 .hkvisa.net');
   ok(hasName(list, 'Sci-Net (sci-net.xyz)'), '含 Sci-Net');
   // 出版商直连：doi.org 跳转落地页取 citation_pdf_url，排链尾（Sci-Hub 之后兜底）
-  const pub = list.find((r) => r.name === 'PaperPilot - Publisher (doi.org)');
+  const pub = list.find((r) => r.name === 'Papilot - Publisher (doi.org)');
   ok(!!pub, '含出版商直连条目');
   eq(pub && pub.url, 'https://doi.org/{doi}', '出版商直连 URL 模板（{doi} 跳转）');
   eq(pub && pub.selector, "meta[name='citation_pdf_url']", '出版商直连 selector');
   eq(pub && pub.attribute, 'content', '出版商直连 attribute content');
   eq(list.indexOf(pub), list.length - 1, '出版商直连排链尾（Sci-Hub 未命中才走）');
-  ok(list.every((r) => r.name.indexOf('PaperPilot - ') === 0), '全部带本插件前缀');
+  ok(list.every((r) => r.name.indexOf('Papilot - ') === 0), '全部带本插件前缀');
 }
 
 /* ---------------- ③ 保留用户/他插件条目 ---------------- */
@@ -187,8 +190,8 @@ const hasName = (list, frag) => list.some((r) => String(r.name).indexOf(frag) >=
   env.F.register();
   const list = env.read();
   eq(list.length, 2, 'scihubEnabled=false → Unpaywall + 出版商直连（出版商独立于 Sci-Hub 开关）', names(list));
-  eq(list[0].name, 'PaperPilot - Unpaywall', 'Unpaywall 仍在');
-  eq(list[1].name, 'PaperPilot - Publisher (doi.org)', '出版商直连仍在（独立开关）');
+  eq(list[0].name, 'Papilot - Unpaywall', 'Unpaywall 仍在');
+  eq(list[1].name, 'Papilot - Publisher (doi.org)', '出版商直连仍在（独立开关）');
 }
 {
   const env = makeEnv();
@@ -230,7 +233,7 @@ const hasName = (list, frag) => list.some((r) => String(r.name).indexOf(frag) >=
   ok(hasName(list, 'Sci-Hub (mirror-a.org)'), '裸域名自动补 https://');
   ok(hasName(list, 'Sci-Hub (mirror-b.net)'), '尾斜杠去除');
   ok(hasName(list, 'Sci-Net (sci-net.example.org)'), 'scinetUrl 覆盖生效');
-  const mb = list.find((r) => r.name === 'PaperPilot - Sci-Hub (mirror-b.net)');
+  const mb = list.find((r) => r.name === 'Papilot - Sci-Hub (mirror-b.net)');
   includes(mb.url, 'https://mirror-b.net/{doi}', '镜像 URL 模板拼 {doi}');
 }
 

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 拖拽条目作为 AI 问答上下文（chip）测试（0.44.0）
  *
  * 覆盖（参考 chat-float.test.js 的 Node vm + 迷你 DOM 桩写法）：
@@ -182,7 +185,7 @@ function makeWin() {
 /* ---------------- 桩环境 ---------------- */
 
 const PrefStore = new Map();
-const PREFIX = 'extensions.zotero.paperpilot.';
+const PREFIX = 'extensions.zotero.papilot.';
 const getPref = (k, d) => (PrefStore.has(PREFIX + k) ? PrefStore.get(PREFIX + k) : d);
 
 // 条目表：101..107（上限测试）+ 201..207（第二组 id）；901 是 101 的 PDF 附件

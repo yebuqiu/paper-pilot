@@ -1,16 +1,19 @@
-/* PaperPilot 被引量列（0.6.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 被引量列（0.6.0 新增）
  * 数据来源：Semantic Scholar Graph API（免费公开）。
  * 架构与期刊分区列同构：查询队列 + 本地持久缓存 + 负缓存 + 限速。
  *  - 优先按 DOI 批量查询（/paper/batch，每批最多 50，~1 批/秒）
  *  - 无 DOI 的条目（可选）走标题检索，逐条 ~1 req/s，要求标题归一化后完全匹配
- * 缓存文件：DataDirectory/paperpilot-s2-citations.json
+ * 缓存文件：DataDirectory/papilot-s2-citations.json
  * 缓存键："doi:<规范化doi>" 或 "title:<规范化标题>"
  * 值：{c: 被引量, ic: 高影响被引, venue, year, t} 或 {neg:1, t, retryAfter}
  */
 /* global Zotero, IOUtils, PathUtils, Prefs, I18n, S2Client, ItemSel */
 
 var CitationColumn = {
-  COLUMN_KEY: "paperpilot-citations",
+  COLUMN_KEY: "papilot-citations",
 
   _cache: new Map(),        // cacheKey -> 上述值
   _lookupCache: new Map(),  // itemID -> 显示值
@@ -43,7 +46,7 @@ var CitationColumn = {
   /* ================= 持久缓存 ================= */
 
   _cacheFile() {
-    return PathUtils.join(Zotero.DataDirectory.dir, "paperpilot-s2-citations.json");
+    return PathUtils.join(Zotero.DataDirectory.dir, "papilot-s2-citations.json");
   },
 
   async loadCache() {
@@ -52,7 +55,7 @@ var CitationColumn = {
     try {
       const obj = JSON.parse(await IOUtils.readUTF8(this._cacheFile()));
       for (const k of Object.keys(obj || {})) this._cache.set(k, obj[k]);
-      Zotero.debug(`PaperPilot: S2 被引量缓存 ${this._cache.size} 条`);
+      Zotero.debug(`Papilot: S2 被引量缓存 ${this._cache.size} 条`);
     } catch (e) { /* 无缓存文件属正常 */ }
   },
 
@@ -65,7 +68,7 @@ var CitationColumn = {
         for (const [k, v] of this._cache) obj[k] = v;
         await IOUtils.writeUTF8(this._cacheFile(), JSON.stringify(obj));
       } catch (e) {
-        Zotero.debug("PaperPilot: S2 被引量缓存写入失败 " + e);
+        Zotero.debug("Papilot: S2 被引量缓存写入失败 " + e);
       }
     }, 3000);
   },
@@ -172,7 +175,7 @@ var CitationColumn = {
 
   _handleFetchError(entries, e) {
     const status = e && e.xmlhttp && e.xmlhttp.status;
-    Zotero.debug(`PaperPilot: S2 查询失败（${status || e.message || e}），${entries.length} 条`);
+    Zotero.debug(`Papilot: S2 查询失败（${status || e.message || e}），${entries.length} 条`);
     if (status === 429) {
       // 限流：整批重新入队，全局退避 10s 起
       this._backoffUntil = Date.now() + 10000;
@@ -266,9 +269,9 @@ var CitationColumn = {
     }
     this._refreshColumns();
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot");
+    pw.changeHeadline("Papilot");
     const prog = new pw.ItemProgress(
-      "chrome://paperpilot/content/icons/chat.svg",
+      "chrome://papilot/content/icons/chat.svg",
       (I18n.isZh ? "已重新排队 " : "Re-queued ") + n + (I18n.isZh ? " 篇的被引量查询" : " item(s) for citation lookup")
     );
     prog.setProgress(100);

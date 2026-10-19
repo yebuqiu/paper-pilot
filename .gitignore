@@ -19,3 +19,7 @@ runtime/cloudflared/logs/
 # 发行版安装包（Gitee raw 可直链下载；其余构建产物仍不入库）
 !dist/
 !dist/*.xpi
+
+# 一次性修补脚本（其它会话的临时产物，禁止入库）
+scripts/_tmp_*.py
+scripts/_tmp_*.js

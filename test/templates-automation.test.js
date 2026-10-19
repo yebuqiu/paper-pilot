@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 笔记模板导入导出 + 自动化规则快捷键/菜单字段 测试（0.39.0）
  *
  * 为什么要有它：这次改动全是「静默失败高发区」——

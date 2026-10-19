@@ -1,4 +1,7 @@
-/* PaperPilot AI 思维导图（0.11.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot AI 思维导图（0.11.0）
  * 轻量路线：AI 生成 Markdown 大纲（标题+嵌套列表），存为笔记；
  * 可选导出 .md 文件（markmap/Obsidian 可直接渲染为导图）。
  * 不内嵌 markmap 渲染器（CDN 依赖与 CSP 风险），导出走标准格式。
@@ -21,12 +24,12 @@ var MindMap = {
     const items = ItemSel.regularOnly(zp.getSelectedItems() || []);
     if (!items.length) { ItemSel.alertEmpty(); return; }
     if (items.length > 1) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         I18n.isZh ? "思维导图一次请只选一篇" : "Select only one item at a time");
       return;
     }
     if (!AIClient.hasKey()) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot", I18n.t("chatNoKey"));
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot", I18n.t("chatNoKey"));
       return;
     }
 
@@ -37,8 +40,8 @@ var MindMap = {
     const win = Zotero.getMainWindow();
 
     const pw = new Zotero.ProgressWindow({ closeOnClick: true });
-    pw.changeHeadline("PaperPilot · " + I18n.t("menuMindmap"));
-    const progress = new pw.ItemProgress("chrome://paperpilot/content/icons/chat.svg", title);
+    pw.changeHeadline("Papilot · " + I18n.t("menuMindmap"));
+    const progress = new pw.ItemProgress("chrome://papilot/content/icons/chat.svg", title);
     pw.show();
 
     let md;
@@ -60,7 +63,7 @@ var MindMap = {
 
     // 可选导出 .md（markmap 兼容）
     try {
-      if (Services.prompt.confirm(win, "PaperPilot",
+      if (Services.prompt.confirm(win, "Papilot",
         zh ? "笔记已生成。是否再导出一份 .md 文件（可用 markmap/Obsidian 渲染为导图）？"
            : "Note created. Also export a .md file (markmap/Obsidian compatible)?")) {
         const nsIFilePicker = Components.interfaces.nsIFilePicker;

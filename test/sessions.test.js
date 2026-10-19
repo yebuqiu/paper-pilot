@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 登录设备与会话可观测（服务端 1.4.7）
  *
  * 运行：node test/sessions.test.js
@@ -250,7 +253,7 @@ const DEV_B = { 'X-PP-Device': 'bbbb1111-2222-3333-4444-555566667777', 'X-PP-Pla
   ok(!!tA && !!tB && !!tC, 'F1 三台设备各自登录成功');
 
   const h0 = await req('GET', '/api/health');
-  eq(h0.json.version, '1.8.4', 'F2 服务端版本 1.8.1');
+  eq(h0.json.version, '1.8.5', 'F2 服务端版本 1.8.1');
   eq(h0.json.sessionsActive, 3, 'F3 health 报告 3 个活跃会话');
   eq(h0.json.devicesOverLimit, 1, 'F4 health 报告 1 个账号设备超限');
 

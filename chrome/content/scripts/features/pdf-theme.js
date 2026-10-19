@@ -1,4 +1,7 @@
-/* PaperPilot PDF 阅读主题（0.16.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 阅读主题（0.16.0）
  * 借鉴设计来源（详见 docs/0.16.0-theme-credits.md）：
  *  - q77190858/zotero-pdf-background（wangqian06 转移，无 LICENSE 声明——机制思路
  *    借鉴、代码原创重写）：核心洞察是 Zotero 内置 pdf.js 的 .textLayer 覆盖在
@@ -17,7 +20,7 @@
 /* global Zotero, Prefs */
 
 var PdfTheme = {
-  STYLE_ID: "paperpilot-pdf-theme",
+  STYLE_ID: "papilot-pdf-theme",
   PREF_KEY: "pdfTheme",           // default / careeye / sepia / sakura / mint / night / night-warm / custom
   PREF_CUSTOM_COLOR: "pdfThemeCustomColor",
   PREF_CUSTOM_OPACITY: "pdfThemeCustomOpacity", // 0.05-0.6（int，百分数×100）
@@ -65,7 +68,7 @@ var PdfTheme = {
         ? "invert(1) hue-rotate(180deg) sepia(0.12)"
         : "invert(1) hue-rotate(180deg)";
       return (
-        "/* PaperPilot PDF 主题 · " + theme.name + " */\n" +
+        "/* Papilot PDF 主题 · " + theme.name + " */\n" +
         "body { background-color: #1c1c1e !important; }\n" +
         "#viewerContainer { background-color: #1c1c1e !important; }\n" +
         ".pdfViewer .page canvas { filter: " + filter + " !important; }\n" +
@@ -75,7 +78,7 @@ var PdfTheme = {
     }
     const tint = this._tint(theme);
     return (
-      "/* PaperPilot PDF 主题 · " + theme.name + " */\n" +
+      "/* Papilot PDF 主题 · " + theme.name + " */\n" +
       // 叠色法：textLayer 半透明背景盖在白底 canvas 上，黑字透出
       ".pdfViewer .page > .textLayer { display: block !important; background-color: " +
       tint.color + " !important; opacity: " + tint.opacity + " !important; }\n"
@@ -223,7 +226,7 @@ var PdfTheme = {
             })();
           }
         },
-      }, ["tab"], "paperpilot-pdf-theme");
+      }, ["tab"], "papilot-pdf-theme");
     } catch (e) {
       try { Zotero.logError(e); } catch (_) { /* ignore */ }
     }

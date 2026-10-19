@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""Gitee 版本 Release（含 xpi 附件）—— PaperPilot 发版流程的 Gitee 侧。
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+"""Gitee 版本 Release（含 xpi 附件）—— Papilot 发版流程的 Gitee 侧。
 
 为什么需要它：GitHub 侧由 `github-release.py` 管 tag + Release + xpi 附件；
-Gitee 是主仓库与国内下载通道（更新通道 `paperpilot-update.json` 也走 Gitee raw），
+Gitee 是主仓库与国内下载通道（更新通道 `papilot-update.json` 也走 Gitee raw），
 但「发行版」页不会自动带上 xpi —— 需要按版本补建 release 并上传附件，
 否则用户点开发行版看不到最新安装包（实踩：2026-10-07 时 Gitee 上只有
 v0.13.0/v0.13.1 两个远古发行版，0.14+ 全部缺失）。
@@ -36,7 +39,7 @@ import urllib.parse
 import urllib.request
 import uuid
 
-OWNER, REPO = "cassiuschen9261", "paper-pilot"
+OWNER, REPO = "cassiuschen9261", "zotero-papilot"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, "dist")
 API = "https://gitee.com/api/v5"
@@ -74,7 +77,7 @@ def api(path, method="GET", body=None, raw=None, ctype=None):
     elif raw is not None:
         data = raw
     req = urllib.request.Request(url, data=data, method=method)
-    req.add_header("User-Agent", "paperpilot-release")
+    req.add_header("User-Agent", "papilot-release")
     if ctype:
         req.add_header("Content-Type", ctype)
     elif data is not None:
@@ -99,8 +102,8 @@ def dist_versions():
         return []
     vs = []
     for f in os.listdir(DIST):
-        if f.startswith("paper-pilot-") and f.endswith(".xpi"):
-            vs.append(f[len("paper-pilot-"):-len(".xpi")])
+        if f.startswith("papilot-") and f.endswith(".xpi"):
+            vs.append(f[len("papilot-"):-len(".xpi")])
 
     def key(v):
         return [int(x) for x in v.split(".")]
@@ -149,7 +152,7 @@ def existing_releases():
 
 
 def has_xpi_asset(rel, version):
-    name = "paper-pilot-%s.xpi" % version
+    name = "papilot-%s.xpi" % version
     for a in rel.get("assets") or []:
         if a.get("name") == name:
             return True
@@ -157,15 +160,15 @@ def has_xpi_asset(rel, version):
 
 
 def release_notes(version, info):
-    body = info.get("msg", "").strip() or ("PaperPilot %s" % version)
+    body = info.get("msg", "").strip() or ("Papilot %s" % version)
     return (
         body + "\n\n"
         "---\n\n"
         "### 下载安装\n"
-        "- 直接下载下面的 `paper-pilot-%s.xpi`，在 Zotero 里 **工具 → 附加组件 → 齿轮 → "
+        "- 直接下载下面的 `papilot-%s.xpi`，在 Zotero 里 **工具 → 附加组件 → 齿轮 → "
         "Install Add-on From File…** 选择该文件即可。\n"
         "- 已装旧版的用户**重启 Zotero** 会自动收到更新（更新通道：本仓库的 "
-        "`paperpilot-update.json`）。\n\n"
+        "`papilot-update.json`）。\n\n"
         "### 说明\n"
         "- 提交时间：%s\n" % (version, info.get("date", ""))
     )
@@ -185,7 +188,7 @@ def _multipart(field, filename, data):
 
 
 def upload_xpi(release_id, version):
-    asset = os.path.join(DIST, "paper-pilot-%s.xpi" % version)
+    asset = os.path.join(DIST, "papilot-%s.xpi" % version)
     with open(asset, "rb") as f:
         data = f.read()
     payload, ctype = _multipart("file", os.path.basename(asset), data)
@@ -201,9 +204,9 @@ def verify_asset(rel_id, version):
 
 def ensure_release(version, info, rels, apply):
     tag = "v" + version
-    asset = os.path.join(DIST, "paper-pilot-%s.xpi" % version)
+    asset = os.path.join(DIST, "papilot-%s.xpi" % version)
     if not os.path.exists(asset):
-        return "skip", "无产物 dist/paper-pilot-%s.xpi" % version
+        return "skip", "无产物 dist/papilot-%s.xpi" % version
     rel = rels.get(tag)
     if rel:
         if has_xpi_asset(rel, version):
@@ -221,7 +224,7 @@ def ensure_release(version, info, rels, apply):
             tag, os.path.getsize(asset), info["sha"][:10])
     rel = api("/repos/%s/%s/releases" % (OWNER, REPO), "POST", {
         "tag_name": tag,
-        "name": "PaperPilot v" + version,
+        "name": "Papilot v" + version,
         "body": release_notes(version, info),
         "target_commitish": "main",
         "prerelease": False,

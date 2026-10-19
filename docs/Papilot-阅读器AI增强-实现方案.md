@@ -1,7 +1,7 @@
-# PaperPilot 阅读器 AI 增强 · 实现方案
+# Papilot 阅读器 AI 增强 · 实现方案
 
 > 版本：v1.0（2026-09-30）
-> 目标版本：PaperPilot 0.10.0
+> 目标版本：Papilot 0.10.0
 > 范围：划词翻译 2.0 + 选区精读问答联动（对照 zotero-pdf-translate 10.5k★ / zotero-gpt 7k★ 的核心体验）
 
 ---
@@ -111,11 +111,11 @@ async chatStream(messages, onDelta)
 `prefs.js` 新增：
 
 ```js
-pref("extensions.zotero.paperpilot.readerPopupAutoTranslate", false);
-pref("extensions.zotero.paperpilot.readerPopupTargetLang", "中文");
-pref("extensions.zotero.paperpilot.readerPopupStream", true);
-pref("extensions.zotero.paperpilot.readerPopupWriteBack", true);
-pref("extensions.zotero.paperpilot.readerPopupDailyCount", "");
+pref("extensions.zotero.papilot.readerPopupAutoTranslate", false);
+pref("extensions.zotero.papilot.readerPopupTargetLang", "中文");
+pref("extensions.zotero.papilot.readerPopupStream", true);
+pref("extensions.zotero.papilot.readerPopupWriteBack", true);
+pref("extensions.zotero.papilot.readerPopupDailyCount", "");
 ```
 
 `prefs.xhtml` 阅读器分区新增：自动翻译开关、目标语言下拉、流式开关、写回批注开关。`prefs-pane.js` 按现有绑定模式登记。

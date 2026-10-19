@@ -1,8 +1,11 @@
-/* PaperPilot 期刊分区列（0.18.1：中文/机构评级体系解析 + 配色全覆盖 + 离线数据降级兜底）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 期刊分区列（0.18.1：中文/机构评级体系解析 + 配色全覆盖 + 离线数据降级兜底）
  * 数据来源（按优先级）：
  *  1. 用户自定义 JSON（设置中指定，最高优先级——用户自己的数据最可信）
  *  2. easyScholar 开放接口 getPublicationRank（在线主源），结果本地缓存
- *     （DataDirectory/paperpilot-easyscholar.json），查询队列限速 ~3 req/s，
+ *     （DataDirectory/papilot-easyscholar.json），查询队列限速 ~3 req/s，
  *     失败 30 分钟负缓存
  *  3. 内置示例数据（随包分发的演示数据，仅当在线无数据/未启用时兜底）
  *
@@ -34,7 +37,7 @@
 /* global Zotero, IOUtils, PathUtils, Prefs, I18n */
 
 var RankColumn = {
-  COLUMN_KEY: "paperpilot-journalRank",
+  COLUMN_KEY: "papilot-journalRank",
   _data: {},        // 内置示例数据（真兜底）
   _customData: {},  // 用户自定义 JSON（最高优先级）
   _lookupCache: new Map(), // itemID -> {text, badges, detail}（空结果不缓存，见 lookup）
@@ -44,14 +47,12 @@ var RankColumn = {
   /* easyScholar 状态 */
   ES_ENDPOINT: "https://www.easyscholar.cc/open/getPublicationRank",
 
-  /* 内置官方默认 SecretKey（0.15.0）。
-   * - 用户填了自定义 Key 时优先使用用户值（走用户自有额度，且不受套餐限制）。
-   * - 0.41.0 起改为**仅「已登录 + 专业版 / 新用户试用期」**可用（见 _officialKeyAllowed）；
-   *   免费版（试用结束后）与未登录用户需自带 Key —— 在线数据停止更新，内置数据集仍兜底。
-   * - ⚠️ 此值随插件**明文分发**，且已在「已泄漏待轮换」清单里 ⇒ 它只是**产品层分层**，
-   *   不是安全边界；要真防提取必须改走服务端代理（docs/Pro专属功能候选与实现建议.md 方案 B）。
+  /* 0.56.0：移除内置官方 SecretKey。
+   * 该 Key 属于第三方（easyscholar）授权账号，随插件明文分发给终端用户使用
+   * 不具备可转让的商用授权；转为商业项目后必须由使用者自备（easyscholar.cn 免费注册），
+   * 或改走服务端代理（由服务端持有 Key，不随客户端分发）。
+   * 兼容性：旧版遗留在 pref 里的用户自有 Key 继续生效；不再有任何「内置 Key」分支。
    */
-  ES_OFFICIAL_KEY: "0ad3dcb704e74f6780c6f66d868d8a23",
 
   _esCache: new Map(),     // 规范化刊名 -> {text, badges, detail, neg, t, retryAfter}
   _esQueue: [],
@@ -132,44 +133,18 @@ var RankColumn = {
   /* ================= easyScholar 在线源 ================= */
 
   /**
-   * 内置官方 Key 的使用资格（0.41.0）。规则：
-   *   · 自带 Key → 永远优先、不限套餐（免费版也能用，只是走自己的额度）；
-   *   · **已登录 +（专业版 或 新用户试用期内）** → 可用内置官方 Key（运营者替你垫付配额）；
-   *   · 未登录 / 试用结束后仍免费 → 不再使用内置 Key，须自带 Key。
-   *
-   * ★ 两条纪律：
-   *   1) **账号模块未加载、或套餐判定抛错时一律放行** —— 客户端不知道时绝不自作主张锁用户
-   *      （同「模型分级」的既有约定）。只有「已登录且明确判定为非 Pro 非试用」才拒绝。
-   *   2) 内置 Key 是 xpi 内的**明文常量**，这只是**产品层分层**、不是安全边界。
+   * 取用的 easyScholar Key：**只认用户自备的 Key**（0.56.0 起不再有内置 Key）。
+   * 无 Key 时在线查询自动停用，分区列回落到内置离线数据集。
    */
-  _officialKeyAllowed() {
-    try {
-      if (typeof Account === "undefined" || !Account) return true;
-      // 未登录：无法判定 Pro / 试用（试用也挂在账号的 createdAt 上）⇒ 须自带 Key
-      if (typeof Account.isLoggedIn === "function" && !Account.isLoggedIn()) return false;
-      if (typeof Account.isPro === "function" && Account.isPro()) return true;
-      if (typeof Account.ai !== "function") return true;
-      const a = Account.ai();
-      if (a && a.reason === "trial") return true;      // 新用户全模型试用期
-      if (!a || a.reason === "unknown") return true;   // 旧服务端：探测不到就不锁
-      return false;
-    } catch (e) {
-      return true;
-    }
-  },
-
   esKey() {
-    const custom = String(Prefs.get("easyScholarKey", "") || "").trim();
-    if (custom) return custom;
-    if (!this._officialKeyAllowed()) return "";
-    return String(this.ES_OFFICIAL_KEY || "").trim();
+    return String(Prefs.get("easyScholarKey", "") || "").trim();
   },
 
   /**
    * 在线源状态（供设置页给出**可执行**的指引，而不是让用户看到空白以为坏了）：
-   *   "ok" = 可用（自有 Key，或已获得内置 Key 资格）
+   *   "ok" = 可用（用户已填写自己的 Key）
    *   "off" = 用户自己关了在线查询
-   *   "need_key" = 未登录 / 免费版试用结束 ⇒ 需要填写自己的 easyScholar Key
+   *   "need_key" = 未填写 Key ⇒ 需要去 easyscholar.cn 免费注册后填入
    */
   esStatus() {
     if (!Prefs.get("easyScholarEnabled", true)) return "off";
@@ -182,7 +157,7 @@ var RankColumn = {
   },
 
   _esCacheFile() {
-    return PathUtils.join(Zotero.DataDirectory.dir, "paperpilot-easyscholar.json");
+    return PathUtils.join(Zotero.DataDirectory.dir, "papilot-easyscholar.json");
   },
 
   async _esLoadCache() {
@@ -198,7 +173,7 @@ var RankColumn = {
         if (v && !v.neg && !v.badges) { dropped++; continue; }
         this._esCache.set(k, v);
       }
-      Zotero.debug(`PaperPilot: easyScholar 缓存 ${this._esCache.size} 条（迁移丢弃旧格式 ${dropped} 条）`);
+      Zotero.debug(`Papilot: easyScholar 缓存 ${this._esCache.size} 条（迁移丢弃旧格式 ${dropped} 条）`);
       if (dropped) this._esSaveCacheSoon();
     } catch (e) { /* 无缓存文件属正常 */ }
   },
@@ -212,7 +187,7 @@ var RankColumn = {
         for (const [k, v] of this._esCache) obj[k] = v;
         await IOUtils.writeUTF8(this._esCacheFile(), JSON.stringify(obj));
       } catch (e) {
-        Zotero.debug("PaperPilot: easyScholar 缓存写入失败 " + e);
+        Zotero.debug("Papilot: easyScholar 缓存写入失败 " + e);
       }
     }, 3000);
   },
@@ -434,7 +409,7 @@ var RankColumn = {
           ? { text: fmt.text, badges: fmt.badges, detail: fmt.detail, t: Date.now() }
           : { neg: 1, t: Date.now(), failReason: "easyScholar 无此期刊分区数据" });
       } catch (e) {
-        Zotero.debug(`PaperPilot: easyScholar 查询失败 '${name}': ${e && e.message || e}`);
+        Zotero.debug(`Papilot: easyScholar 查询失败 '${name}': ${e && e.message || e}`);
         this._esCache.set(norm, {
           neg: 1, t: Date.now(), retryAfter: Date.now() + 30 * 60 * 1000,
           failReason: "查询失败: " + (e && e.message || e),
@@ -570,9 +545,9 @@ var RankColumn = {
           this._customData = custom;
           delete this._customData._comment;
         }
-        Zotero.debug(`PaperPilot: 已加载自定义分区数据 ${customPath}`);
+        Zotero.debug(`Papilot: 已加载自定义分区数据 ${customPath}`);
       } catch (e) {
-        Zotero.logError(new Error("PaperPilot: 自定义分区数据加载失败 " + customPath));
+        Zotero.logError(new Error("Papilot: 自定义分区数据加载失败 " + customPath));
         Zotero.logError(e);
       }
     }
@@ -599,7 +574,7 @@ var RankColumn = {
       if (!changed) return;
       const ordered = this.DATASETS.map((d) => d.kind).filter((k) => set.has(k));
       Prefs.set("rankDataSets", ordered.join(","));
-    } catch (e) { Zotero.debug("PaperPilot: rankDataSets 迁移失败 " + e); }
+    } catch (e) { Zotero.debug("Papilot: rankDataSets 迁移失败 " + e); }
   },
 
   async reload() {

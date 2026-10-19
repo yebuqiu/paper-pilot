@@ -1,5 +1,8 @@
 #!/usr/bin/env node
-/* PaperPilot PDF 对照翻译 · 左原右译双栏窗口 测试（插件 0.36.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 对照翻译 · 左原右译双栏窗口 测试（插件 0.36.0）
  *
  * 为什么要有它：这个窗口的行为全在「两个 reader 预览 + 同步滚动 + 回插件作用域」上，
  * 而它跑在独立 chrome 窗口里，无人环境点不了。这里用「迷你 DOM + 假 reader 预览」

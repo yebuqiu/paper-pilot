@@ -1,8 +1,8 @@
 @echo off
 chcp 936 >nul
 setlocal
-set "SRC=%~dp0dist\paper-pilot-0.19.0.xpi"
-set "DST=%APPDATA%\Zotero\Zotero\Profiles\swc79sqh.default\extensions\paperpilot@dev.local.xpi"
+set "SRC=%~dp0dist\papilot-0.19.0.xpi"
+set "DST=%APPDATA%\Zotero\Zotero\Profiles\swc79sqh.default\extensions\papilot@dev.local.xpi"
 
 copy /Y "%SRC%" "%DST%" >nul 2>&1
 if errorlevel 1 (
@@ -14,7 +14,7 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo   [成功] PaperPilot 已更新到 0.19.0（主题视觉重做 + 在线美图）。
+echo   [成功] Papilot 已更新到 0.19.0（主题视觉重做 + 在线美图）。
 echo   现在打开 Zotero 即可看到新主题库。
 echo.
 pause

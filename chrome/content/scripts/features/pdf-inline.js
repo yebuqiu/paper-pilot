@@ -1,4 +1,7 @@
-/* PaperPilot PDF 原位对照翻译（0.34.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot PDF 原位对照翻译（0.34.0）
  *
  * 与「双栏对照窗口」（bilingual.xhtml，提取文本另开窗口逐段罗列）的区别：
  * 本模块**不动原版页面排版**，把每段译文按**原文段落的真实坐标**叠加回 PDF 页面，
@@ -36,7 +39,7 @@ var PdfInline = (function () {
   "use strict";
 
   const STYLE_ID = "pp-pit-style";
-  const BTN_ID = "paperpilot-inline-reader-button";
+  const BTN_ID = "papilot-inline-reader-button";
   const LAYER_CLS = "pp-pit-layer";
   const CARD_CLS = "pp-pit-card";
   const SRC_CLS = "pp-pit-src";          // 加在原文 span 上（按模式淡化）
@@ -772,13 +775,26 @@ var PdfInline = (function () {
   const CONCURRENCY = 2;
 
   function enqueue(state, task) {
+    // ★ P1-8：stop/dispose 之后一律丢弃 —— 否则「停止 → 重新开始」会先把上一轮
+    //   残留的旧任务跑一遍（重复计费），并把 dom 已作废的卡片重画一遍。
+    if (!state || state.stopped) return;
     const q = queueFor(state);
     q.items.push(task);
     if (!q.running) drain(state);
   }
 
+  /** 清空待办队列，并作废在飞的 drain（gen 递增 → 旧 drain 收尾时不再改写 running） */
+  function dropQueue(state) {
+    const q = state && state.queue;
+    if (!q) return;
+    try { q.items.length = 0; } catch (e) { /* ignore */ }
+    q.running = false;
+    q.gen = (q.gen || 0) + 1;
+  }
+
   async function drain(state) {
     const q = queueFor(state);
+    const gen = (q.gen = (q.gen || 0) + 1);
     q.running = true;
     updateButton(state);
     // 2 路并行：整篇译文壁纸式铺满的等待时间直接砍半（原位翻译是逐段独立请求，
@@ -802,6 +818,8 @@ var PdfInline = (function () {
     try {
       await Promise.all(workers);
     } catch (e) { /* 单任务失败已在 worker 内吞掉 */ }
+    // 期间被 stop/dispose 过（gen 已变）→ running 早被它们复位，别再覆盖回去
+    if (q.gen !== gen) return;
     q.running = false;
     updateButton(state);
   }
@@ -1117,6 +1135,8 @@ var PdfInline = (function () {
     if (!state) return;
     state.stopped = true;
     state.active = false;
+    // ★ P1-8：停 = 真的停 —— 同时丢掉待办队列（见 dropQueue/enqueue 的注释）
+    dropQueue(state);
     unbindBus(state);
     unbindPoll(state);
     clearAll(state);
@@ -1129,6 +1149,34 @@ var PdfInline = (function () {
     state.mode = null;
     state.onProgress = null;
     updateButton(state);
+  }
+
+  /** 彻底释放某 reader 的状态（P1-8）：stop 只停 UI/定时器，state 本身仍以 reader 为键
+   *  常驻在 `states` 里 —— 里面还挂着页面 DOM 引用（已随标签关闭 detach）与每页字符数组
+   *  （charsByPage），开一篇关一篇就永久多一份。这里在 stop 之上清队列/字符缓存/页块，
+   *  最后摘键。幂等：已释放（或从未建立）返回 false。 */
+  function disposeState(reader) {
+    const state = reader ? states.get(reader) : null;
+    if (!state) return false;
+    try { stop(reader, { keepPref: true }); } catch (e) { /* 视图已销毁也要继续清数据 */ }
+    dropQueue(state);
+    for (const m of [state.pages, state.pageBlocks, state.charJobs, state.charsByPage]) {
+      try { if (m && typeof m.clear === "function") m.clear(); } catch (e) { /* ignore */ }
+    }
+    state.noTextPages = [];
+    state.blockCount = 0;
+    state.doneCount = 0;
+    state.onProgress = null;
+    states.delete(reader);
+    return true;
+  }
+
+  /** 释放全部 reader 状态（插件卸载兜底；main.js destroy 也可直接调） */
+  function disposeAll() {
+    for (const reader of Array.from(states.keys())) {
+      try { disposeState(reader); } catch (e) { /* 单个失败不挡其它 */ }
+    }
+    states.clear();
   }
 
   function setPref(key, value) {
@@ -1238,6 +1286,7 @@ var PdfInline = (function () {
 
   let _handler = null;
   let _pluginID = null;
+  let _tabNotifierID = null;
 
   function readerFromEvent(event) {
     try {
@@ -1292,13 +1341,13 @@ var PdfInline = (function () {
     if (!ready()) {
       const hint = (typeof TranslateSvc !== "undefined" && TranslateSvc)
         ? (TranslateSvc.unavailableHint() || "") : "";
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot", hint || "翻译引擎不可用");
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot", hint || "翻译引擎不可用");
       return false;
     }
     let att = null;
     try { att = await AIChat.getPdfAttachment(item); } catch (e) { att = null; }
     if (!att) {
-      Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+      Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
         I18n && I18n.isZh ? "该条目没有可用的 PDF 附件" : "No PDF attachment");
       return false;
     }
@@ -1326,7 +1375,7 @@ var PdfInline = (function () {
       const items = ItemSel.regularOnly(zp.getSelectedItems() || []);
       if (!items.length) { ItemSel.alertEmpty(); return false; }
       if (items.length > 1) {
-        Services.prompt.alert(Zotero.getMainWindow(), "PaperPilot",
+        Services.prompt.alert(Zotero.getMainWindow(), "Papilot",
           I18n && I18n.isZh ? "PDF 原位对照翻译一次请只选一篇" : "Select only one item at a time");
         return false;
       }
@@ -1338,12 +1387,51 @@ var PdfInline = (function () {
     return startForItem(item);
   }
 
+  /** tabID → 本模块已建 state 的 reader 列表。
+   *  优先走 Zotero.Reader.getByTabID（reading-state.js 同款用法）；拿不到时退化为
+   *  按 tabID 扫 states 的键 —— 只关心「自己开过的 reader」，不必去枚举全库 reader。 */
+  function readersOfTab(tabID) {
+    const out = [];
+    try {
+      const r = (Zotero.Reader && Zotero.Reader.getByTabID) ? Zotero.Reader.getByTabID(tabID) : null;
+      if (r) out.push(r);
+    } catch (e) { /* ignore */ }
+    for (const [reader] of states) {
+      try {
+        if (reader && reader.tabID == tabID && out.indexOf(reader) < 0) out.push(reader);
+      } catch (e) { /* ignore */ }
+    }
+    return out;
+  }
+
+  /** tab close 观察者（P1-8 的唯一自动释放点）：关闭标签 → 释放该 reader 的 state。
+   *  没有它，state 只在插件 unregister 时才清 —— 用户关一篇开一篇即泄漏一份。 */
+  const _tabObserver = {
+    notify: (event, type, ids) => {
+      if (event !== "close" || type !== "tab") return;
+      try {
+        for (const tabID of (ids || [])) {
+          for (const reader of readersOfTab(tabID)) {
+            try { disposeState(reader); } catch (e) { /* ignore */ }
+          }
+        }
+      } catch (e) { /* ignore */ }
+    },
+  };
+
   /** 0.36.0：**不再注入阅读器工具栏按钮**。
    *  用户明确要的是「左原 PDF / 右译文」的双栏对照（见 PdfDual），页内叠加（overlay/mono）
    *  降级为**内核能力**：由 PdfDual 的右栏复用（mono = 译文版页面）。
-   *  这里只保留 pluginID 记录与清理钩子，不再调 registerEventListener。 */
+   *  这里只记录 pluginID、挂 tab close 释放钩子，不再调 registerEventListener。 */
   function register(pluginID) {
-    _pluginID = pluginID || "paperpilot@dev.local";
+    _pluginID = pluginID || "papilot@dev.local";
+    if (_tabNotifierID) return;                    // 幂等（重复 register 不重复挂）
+    try {
+      _tabNotifierID = Zotero.Notifier.registerObserver(
+        _tabObserver, ["tab"], "papilot-pdf-inline-tab");
+    } catch (e) {
+      _tabNotifierID = null;                       // 老版本无 Notifier：不影响主流程
+    }
   }
 
   function unregister() {
@@ -1353,13 +1441,18 @@ var PdfInline = (function () {
       }
     } catch (e) { /* ignore */ }
     _handler = null;
-    for (const [reader, state] of states) {
-      try { stop(reader, { keepPref: true }); } catch (e) { /* ignore */ }
+    if (_tabNotifierID) {
+      try { Zotero.Notifier.unregisterObserver(_tabNotifierID); } catch (e) { /* ignore */ }
+      _tabNotifierID = null;
+    }
+    // 先摘样式/按钮（要 doc），再用 disposeState 连 state 一起释放（stop 不清 state）
+    for (const [reader, state] of Array.from(states.entries())) {
       try { removeStyle(state.doc); } catch (e) { /* ignore */ }
       try {
         const btn = state.doc.getElementById(BTN_ID);
         if (btn) btn.remove();
       } catch (e) { /* ignore */ }
+      try { disposeState(reader); } catch (e) { /* ignore */ }
     }
     states.clear();
   }
@@ -1415,79 +1508,87 @@ var PdfInline = (function () {
     if (!viewer || !container) { out.error = "no-pdf-viewer"; return out; }
     const total = Number(viewer.pagesCount) || 0;
     const limit = o.maxPages ? Math.min(total, o.maxPages) : total;
+    // ★ P2-10：整篇翻译靠**逐页滚动**驱动渲染，结束（含提前 return / 异常）必须把
+    //   视图还给用户 —— 0.42.x 之前只恢复 scrollTop 且没有 finally，用户读完点「翻译全文」
+    //   就被拖到末页，currentPageNumber 也停在最后一页。
+    const enterPage = Number(viewer.currentPageNumber) || 1;
     const keep = Number(container.scrollTop) || 0;
     out.totalPages = total;
-
-    for (let i = 1; i <= limit; i++) {
-      if (state.stopped) break;
-      out.pages = i;
-      // ① 把该页滚进视口（触发 pdf.js 渲染，含 textLayer）
-      try { viewer.currentPageNumber = i; } catch (e) { /* ignore */ }
-      try {
-        const pe0 = state.doc.querySelector('.page[data-page-number="' + i + '"]');
-        if (pe0 && container) {
-          const top = pageOffsetTopIn(container, pe0);
-          if (top !== null) container.scrollTop = Math.max(0, Math.round(top) - 4);
-        }
-      } catch (e) { /* ignore */ }
-      // ② 等该页 textLayer 出现（pdf.js 渲染是异步的）；waitTicks 可调（测试/慢机器）
-      //  ★ 0.38.3 自适应：本站一旦确认走兜底（charFetches > 0 且尚无 textLayer 渲染），
-      //  后续页不再干等 24 拍（24×160ms = 3.84s/页；31 页纯等待近 2 分钟 —— 用户
-      //  实测「解析很慢」）。兜底走 worker 取字符，比等渲染确定得多。
-      let pe = null;
-      let got = false;
-      const baseTicks = o.waitTicks ? Math.max(1, Number(o.waitTicks)) : 24;
-      const fallbackMode = !o.waitTicks && state.stat
-        && (state.stat.charFetches || 0) > 0 && (state.stat.textRenders || 0) === 0;
-      const ticks = fallbackMode ? Math.min(baseTicks, 2) : baseTicks;
-      for (let w = 0; w < ticks; w++) {
+    try {
+      for (let i = 1; i <= limit; i++) {
         if (state.stopped) break;
-        try { pe = state.doc.querySelector('.page[data-page-number="' + i + '"]'); } catch (e) { pe = null; }
-        if (pe && pe.querySelector(".textLayer")) { got = true; break; }
-        await new Promise((r) => setTimeout(r, 160));
-      }
-      // ③ 无 textLayer（预览翻转失败/未渲染）→ getPageData 兜底：worker 取字符+坐标，
-      //    不依赖渲染；真扫描页（无字符）才计入 skipped（0.38.1：此前一律误报「无文本层」）
-      if (!got) {
-        let laid = false;
-        try { laid = await charFallbackFor(state, i); } catch (e) { laid = false; }
-        if (!laid) {
-          out.skipped++;
-          if (o.onProgress) { try { o.onProgress({ page: i, total: limit, phase: "skip" }); } catch (e) { /* ignore */ } }
+        out.pages = i;
+        // ① 把该页滚进视口（触发 pdf.js 渲染，含 textLayer）
+        try { viewer.currentPageNumber = i; } catch (e) { /* ignore */ }
+        try {
+          const pe0 = state.doc.querySelector('.page[data-page-number="' + i + '"]');
+          if (pe0 && container) {
+            const top = pageOffsetTopIn(container, pe0);
+            if (top !== null) container.scrollTop = Math.max(0, Math.round(top) - 4);
+          }
+        } catch (e) { /* ignore */ }
+        // ② 等该页 textLayer 出现（pdf.js 渲染是异步的）；waitTicks 可调（测试/慢机器）
+        //  ★ 0.38.3 自适应：本站一旦确认走兜底（charFetches > 0 且尚无 textLayer 渲染），
+        //  后续页不再干等 24 拍（24×160ms = 3.84s/页；31 页纯等待近 2 分钟 —— 用户
+        //  实测「解析很慢」）。兜底走 worker 取字符，比等渲染确定得多。
+        let pe = null;
+        let got = false;
+        const baseTicks = o.waitTicks ? Math.max(1, Number(o.waitTicks)) : 24;
+        const fallbackMode = !o.waitTicks && state.stat
+          && (state.stat.charFetches || 0) > 0 && (state.stat.textRenders || 0) === 0;
+        const ticks = fallbackMode ? Math.min(baseTicks, 2) : baseTicks;
+        for (let w = 0; w < ticks; w++) {
+          if (state.stopped) break;
+          try { pe = state.doc.querySelector('.page[data-page-number="' + i + '"]'); } catch (e) { pe = null; }
+          if (pe && pe.querySelector(".textLayer")) { got = true; break; }
+          await new Promise((r) => setTimeout(r, 160));
         }
-        continue;
-      }
-      // ④ 抽段落 + 翻译（复用页处理；命中缓存时零请求）
-      try { await processPage(state, pe); } catch (e) { /* 单页失败不拖垮整篇 */ }
-      if (o.onProgress) {
-        try { o.onProgress({ page: i, total: limit, phase: "page", blocks: state.blockCount, done: state.doneCount }); }
-        catch (e) { /* ignore */ }
-      }
-      await new Promise((r) => setTimeout(r, 60));
-    }
-    // 等翻译队列收敛：判据是「没有还没落定的段」（dst == null），
-    // 成功与**失败**都算落定 —— 引擎不可用时不能白等 60 秒（自检/用户都等不起）
-    const settled = () => {
-      for (const [, bs] of state.pageBlocks) {
-        for (const b of bs) {
-          if (b.kind === "formula") continue;
-          if (b.dst == null) return false;
+        // ③ 无 textLayer（预览翻转失败/未渲染）→ getPageData 兜底：worker 取字符+坐标，
+        //    不依赖渲染；真扫描页（无字符）才计入 skipped（0.38.1：此前一律误报「无文本层」）
+        if (!got) {
+          let laid = false;
+          try { laid = await charFallbackFor(state, i); } catch (e) { laid = false; }
+          if (!laid) {
+            out.skipped++;
+            if (o.onProgress) { try { o.onProgress({ page: i, total: limit, phase: "skip" }); } catch (e) { /* ignore */ } }
+          }
+          continue;
         }
+        // ④ 抽段落 + 翻译（复用页处理；命中缓存时零请求）
+        try { await processPage(state, pe); } catch (e) { /* 单页失败不拖垮整篇 */ }
+        if (o.onProgress) {
+          try { o.onProgress({ page: i, total: limit, phase: "page", blocks: state.blockCount, done: state.doneCount }); }
+          catch (e) { /* ignore */ }
+        }
+        await new Promise((r) => setTimeout(r, 60));
       }
-      return true;
-    };
-    const deadline = Date.now() + 60000;
-    while (Date.now() < deadline && !state.stopped) {
-      if (settled()) break;
-      await new Promise((r) => setTimeout(r, 400));
+      // 等翻译队列收敛：判据是「没有还没落定的段」（dst == null），
+      // 成功与**失败**都算落定 —— 引擎不可用时不能白等 60 秒（自检/用户都等不起）
+      const settled = () => {
+        for (const [, bs] of state.pageBlocks) {
+          for (const b of bs) {
+            if (b.kind === "formula") continue;
+            if (b.dst == null) return false;
+          }
+        }
+        return true;
+      };
+      const deadline = Date.now() + 60000;
+      while (Date.now() < deadline && !state.stopped) {
+        if (settled()) break;
+        await new Promise((r) => setTimeout(r, 400));
+      }
+      out.blocks = state.blockCount;
+      out.done = state.doneCount;
+      out.mode = sm;
+      return out;
+    } finally {
+      // keepScroll:false 是自检/排障专用（要看末页状态）；正常调用一律还原视口
+      if (o.keepScroll !== false) {
+        try { viewer.currentPageNumber = enterPage; } catch (e) { /* ignore */ }
+        try { container.scrollTop = keep; } catch (e) { /* ignore */ }
+      }
     }
-    out.blocks = state.blockCount;
-    out.done = state.doneCount;
-    out.mode = sm;
-    if (o.keepScroll !== false) {
-      try { container.scrollTop = keep; } catch (e) { /* ignore */ }
-    }
-    return out;
   }
 
   /** 页元素相对滚动容器的文档坐标（整篇翻译用；与 pdf-dual-view 的算法同源） */
@@ -1518,7 +1619,7 @@ var PdfInline = (function () {
   /**
    * 自检（pref `pdfInlineSelfTest`，默认关）：找库里第一个带 PDF 的条目 →
    * 开原位对照 → 等若干秒 → 收集**每页的段落数/卡片数/首卡落点**写回调用方
-   * （main.js 写进 paperpilot-boot.log）。「原地坐标对不对、段落有没有抽出来」
+   * （main.js 写进 papilot-boot.log）。「原地坐标对不对、段落有没有抽出来」
    * 这类问题只有真实 PDF 才能暴露，单测的迷你 DOM 覆盖不到 pdf.js 的真实实现。
    * @returns {Promise<object>} 诊断对象（永不抛异常）
    */
@@ -1627,13 +1728,16 @@ var PdfInline = (function () {
     // 0.38.1：getPageData 兜底（纯函数部分）
     rectToCssBox, charsToLineSpans, blocksFromCharsCore,
     // 运行时
-    register, unregister, start, stop, startForItem, startForSelected, refresh, snapshot, selfTest,
+    register, unregister, start, stop, disposeState, disposeAll,
+    startForItem, startForSelected, refresh, snapshot, selfTest,
     // 0.36.0：供 PdfDual 复用（右栏 = 同一 PDF 的 mono 译文视图）
     attach: start, extractBlocks, stateMode,
     // 0.37.0：整篇翻译（逐页滚动触发渲染 → 抽段 → 翻译 → 落卡）
     translateAll,
     // 供测试/排障读取内部状态
     _states: states, _textCache: textCache,
+    // P1-8：队列生命周期（单测钉「stop 后任务被丢弃」）
+    _enqueue: enqueue,
     _mode: mode, _fontScale: fontScale,
   };
 })();

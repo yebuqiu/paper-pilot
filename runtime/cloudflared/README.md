@@ -3,8 +3,8 @@
 本目录让「公网通道」随项目一起走：**移动硬盘插到任何一台电脑，双击即可上线，
 不依赖 `~/.cloudflared`、不依赖 `_brain` 保险库、不依赖用户目录。**
 
-> 历史沿革：此前该隧道（paperpilot，a445d5c2）由 `~/.cloudflared`（用户目录）承载，
-> 令牌解析经 `E:\project\_brain` 保险库 + `PaperPilotGuard` 计划任务；
+> 历史沿革：此前该隧道（papilot，a445d5c2）由 `~/.cloudflared`（用户目录）承载，
+> 令牌解析经 `E:\project\_brain` 保险库 + `PapilotGuard` 计划任务；
 > 项目迁入移动硬盘后整链失效（公网 530）。2026-10-16 迁移为项目内自包含版本
 > （对齐「心血管科药物」项目 cvmech.top 的成熟模式）。
 
@@ -14,11 +14,11 @@
 runtime/cloudflared/
 ├─ README.md                          ← 本文件（入库）
 ├─ cloudflared.exe                    ← Cloudflare 隧道客户端（~55MB，不入库，随盘携带）
-├─ token.txt                          ← paperpilot 隧道运行令牌（不入库、敏感！）
+├─ token.txt                          ← papilot 隧道运行令牌（不入库、敏感！）
 ├─ .brain-config.json                 ← 便携取令牌用的 _brain 配置（不入库）
-├─ cloudflared-run-paperpilot.bat     ← 运行器（单次运行；可传协议与 edge 版本两个参数）
-├─ cloudflared-run-paperpilot-hidden.vbs ← 隐藏窗口启动器（供自启/守护用）
-└─ logs/cf-run-paperpilot.log         ← 隧道运行日志（>20MB 自动轮换）
+├─ cloudflared-run-papilot.bat     ← 运行器（单次运行；可传协议与 edge 版本两个参数）
+├─ cloudflared-run-papilot-hidden.vbs ← 隐藏窗口启动器（供自启/守护用）
+└─ logs/cf-run-papilot.log         ← 隧道运行日志（>20MB 自动轮换）
 ```
 
 ## 日常使用
@@ -31,14 +31,14 @@ runtime/cloudflared/
 | 重启 | 同上，`restart` | 停止后重新启动（换网络后连不上先用它） |
 | 刷新令牌 | `powershell -File scripts\tunnel\refresh-token.ps1` | 从同级 `..\_brain` vault 重新提取 token.txt |
 
-> 控制台（`启动PaperPilot后台.bat`）的「公网通道（pp.xinglintools.top）」组 ——
+> 控制台（`启动Papilot后台.bat`）的「公网通道（pp.xinglintools.top）」组 ——
 > 启动/停止/测试访问/日志按钮均已指向本目录。
 
 ## 关键参数（固定）
 
 | 项 | 值 | 说明 |
 |---|---|---|
-| 隧道 | paperpilot（`a445d5c2-01e0-4d8b-b704-2b483f393d81`） | Cloudflare 侧 remotely-managed，ingress 在云端管理 |
+| 隧道 | papilot（`a445d5c2-01e0-4d8b-b704-2b483f393d81`） | Cloudflare 侧 remotely-managed，ingress 在云端管理 |
 | 回源 | `http://127.0.0.1:8000` | 即账号后台（`server/`，端口 8000） |
 | 公网域名 | https://pp.xinglintools.top | 插件内 `account.js` 的 `SERVER_DEFAULT` 硬编码此地址 |
 | metrics | `127.0.0.1:20250` | 健康判据 = `/ready` 的 readyConnections > 0（端口通 ≠ 健康） |
@@ -50,7 +50,7 @@ runtime/cloudflared/
 前提：项目目录（或整个移动硬盘）原样携带。
 
 1. 插上硬盘，确认 `runtime\cloudflared\` 下 `cloudflared.exe` 与 `token.txt` 都在（随项目一起走）；
-2. 双击根目录 `启动PaperPilot后台.bat` → 控制台窗口 → 「启动后台」（账号服务，8000）；
+2. 双击根目录 `启动Papilot后台.bat` → 控制台窗口 → 「启动后台」（账号服务，8000）；
 3. 控制台「公网通道」组点「启动」，等状态灯变绿「运行中（隧道已连接）」；
 4. 浏览器打开 https://pp.xinglintools.top/api/health 验证（应返回 `{"ok":true,...}`）。
 
@@ -62,7 +62,7 @@ runtime/cloudflared/
 
 | 现象 | 排查 |
 |---|---|
-| 公网 530 | 隧道没起或未建连：双击 `启动公网隧道.bat` 看提示；或看 `logs\cf-run-paperpilot.log` |
+| 公网 530 | 隧道没起或未建连：双击 `启动公网隧道.bat` 看提示；或看 `logs\cf-run-papilot.log` |
 | 公网 502 | 隧道正常、后台没起：在控制台点「启动后台」（8000） |
 | 控制台显示通道「未运行」 | 与 `tunnel.ps1 status` 同判据（20250 /ready）；确认 cloudflared.exe 未被安全软件拦截 |
 | 换网络后连不上 | `tunnel.ps1 restart`（会自动换连接参数重试） |

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 标注 → 论点速记（AnnotationDigest，0.52.0）测试
  *
  * 覆盖：

@@ -1,4 +1,7 @@
-/* PaperPilot 标题译文列
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 标题译文列
  * 数据源：条目 extra 中的「PP Title Translation: <译文>」行
  * （由 ai/translate-writeback.js 在「翻译标题与摘要」成功后写回）。
  * 无该行则留空。注册/注销/pref 开关与 rank-column.js 完全同构：
@@ -7,7 +10,7 @@
 /* global Zotero, Prefs, I18n, TranslateX */
 
 var TitleTranslationColumn = {
-  COLUMN_KEY: "paperpilot-titleTranslation",
+  COLUMN_KEY: "papilot-titleTranslation",
   _registered: false,
 
   _enabled() {

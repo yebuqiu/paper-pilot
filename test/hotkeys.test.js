@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 快捷键中央注册表（Hotkeys）测试
  *
  * 覆盖：combo 字符串规范化（Ctrl/Cmd/Shift 顺序归一）、comboFromEvent 合成、

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>注册 PaperPilot 账号</title>
+<title>注册 Papilot 账号</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root {
@@ -35,16 +35,20 @@
   .msg { margin: 12px 0 0; font-size: 13px; min-height: 22px; }
   .msg.ok { color: var(--ok); } .msg.err { color: var(--bad); }
   .foot { color: var(--muted); font-size: 12.5px; margin-top: 16px; text-align: center; }
+  .agree { display:flex; gap:8px; align-items:flex-start; font-size:12.5px;
+    color:var(--muted); margin:8px 0 10px; line-height:1.6; }
+  .agree input { width:auto; margin-top:3px; flex:0 0 auto; }
+  .agree a { color:var(--brand); }
 </style>
 </head>
 <body>
 <header>
   <div class="logo">P</div>
-  <h1>PaperPilot 账号注册</h1>
+  <h1>Papilot 账号注册</h1>
 </header>
 <main>
   <div class="card">
-    <p class="sub">注册后即可在 Zotero 插件（设置 → PaperPilot）登录，免费使用官方 AI 模型。</p>
+    <p class="sub">注册后即可在 Zotero 插件（设置 → Papilot）登录，免费使用官方 AI 模型。</p>
     <div class="field"><label>邮箱 *</label>
       <input id="r-email" type="email" autocomplete="email" placeholder="you@example.com"></div>
     <div class="field"><label>密码 *（至少 8 位）</label>
@@ -53,10 +57,14 @@
       <input id="r-password2" type="password" autocomplete="new-password" placeholder="再输入一次"></div>
     <div class="field"><label>昵称（可选）</label>
       <input id="r-nickname" placeholder="怎么称呼你"></div>
+    <label class="agree">
+      <input id="r-agree" type="checkbox">
+      <span>我已阅读并同意<a href="/terms" target="_blank" rel="noopener">《用户协议》</a>与<a href="/privacy" target="_blank" rel="noopener">《隐私政策》</a>，知悉 AI 请求会发送至第三方模型服务商</span>
+    </label>
     <button id="r-submit" type="button" onclick="submitRegister()">注 册</button>
     <button id="r-resend" type="button" onclick="resendVerify()" style="display:none;background:#eef2f7;color:#2563eb;">重新发送验证邮件</button>
     <div class="msg" id="r-msg"></div>
-    <div class="foot">已有账号？直接在 Zotero → 设置 → PaperPilot 中登录即可。忘记密码点<a href="/forgot" style="color:#2563eb">这里</a>。</div>
+    <div class="foot">已有账号？直接在 Zotero → 设置 → Papilot 中登录即可。忘记密码点<a href="/forgot" style="color:#2563eb">这里</a>。<br>付费服务条款见<a href="/terms" style="color:#2563eb">用户协议</a>与<a href="/privacy" style="color:#2563eb">隐私政策</a>。</div>
   </div>
 </main>
 <script>
@@ -78,20 +86,22 @@ function submitRegister() {
   if (!email) return msg('请填写邮箱', false);
   if (pw.length < 8) return msg('密码至少 8 位', false);
   if (pw !== pw2) return msg('两次输入的密码不一致', false);
+  if (!$('r-agree').checked) return msg('请先阅读并勾选同意《用户协议》与《隐私政策》', false);
   var btn = $('r-submit');
   btn.disabled = true; btn.textContent = '注册中…';
   fetch('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email, password: pw, nickname: nickname }),
+    body: JSON.stringify({ email: email, password: pw, nickname: nickname, acceptedTerms: 'v1.0' }),
   }).then(function (r) { return r.json(); }).then(function (j) {
     if (j.ok) {
       lastEmail = email;
       var pending = j.user && j.user.status === 'pending';
-      msg('✓ ' + (j.notice || '注册成功！请打开 Zotero → 设置 → PaperPilot，用该邮箱登录。'), true);
+      msg('✓ ' + (j.notice || '注册成功！请打开 Zotero → 设置 → Papilot，用该邮箱登录。'), true);
       btn.textContent = pending ? '✓ 已发送验证邮件' : '✓ 注册成功';
       if (pending) $('r-resend').style.display = '';
       ['r-email', 'r-password', 'r-password2', 'r-nickname'].forEach(function (id) { $(id).value = ''; });
+      $('r-agree').checked = false;
     } else {
       msg('✗ ' + (j.error || '注册失败'), false);
       btn.disabled = false; btn.textContent = '注 册';

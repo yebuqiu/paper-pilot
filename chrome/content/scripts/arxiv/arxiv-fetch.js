@@ -1,4 +1,4 @@
-/* PaperPilot arXiv 抓取适配层（0.25.0）
+/* Papilot arXiv 抓取适配层（0.25.0）
  *
  * 这是「Node 工具包 → Zotero 插件」的**唯一接缝**。
  *
@@ -20,7 +20,7 @@
 
 var ArxivFetch = {
   API: "https://export.arxiv.org/api/query",
-  UA: "PaperPilot/1.0 (+https://github.com/yebuqiu/paper-pilot)",
+  UA: "Papilot/1.0 (+https://github.com/yebuqiu/zotero-papilot)",
 
   DEFAULTS: {
     minIntervalMs: 3000,
@@ -162,7 +162,7 @@ var ArxivFetch = {
         this._stats.retries++;
         const delay = this._backoff(attempt);
         try {
-          Zotero.debug("[paperpilot] arxiv retry " + attempt + "/" + maxRetries + " in " + Math.round(delay) + "ms: " + (e && e.message));
+          Zotero.debug("[papilot] arxiv retry " + attempt + "/" + maxRetries + " in " + Math.round(delay) + "ms: " + (e && e.message));
         } catch (ignored) { /* ignore */ }
         await this._sleep(delay);
       }

@@ -1,4 +1,7 @@
-/* PaperPilot 界面主题系统（0.17.0 重构：主题库 + 动态壁纸 + 视频壁纸）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 界面主题系统（0.17.0 重构：主题库 + 动态壁纸 + 视频壁纸）
  * 设计来源（详见 docs/0.16.0-theme-credits.md）：
  *  - Sum-su/yaobian-zotero（MIT）：CSS 变量映射换肤契约（--material- 系 / --fill- 系）；
  *    壁纸图层体系（#zotero-pane-stack 底层图层 + GLASS 面板透明清单 +
@@ -18,11 +21,11 @@
 /* global Zotero, Services, Prefs, Components */
 
 var UiTheme = {
-  STYLE_ID: "paperpilot-ui-theme-style",
+  STYLE_ID: "papilot-ui-theme-style",
   // 0.25.0：阅读器界面（reader.html）自己的注入点。阅读器是独立文档（iframe），
   // 主窗口的 #main-window 规则够不到，必须单独往 reader 文档 :root 上打一遍变量。
-  READER_STYLE_ID: "paperpilot-ui-theme-reader",
-  WALLPAPER_ID: "paperpilot-ui-wallpaper",
+  READER_STYLE_ID: "papilot-ui-theme-reader",
+  WALLPAPER_ID: "papilot-ui-wallpaper",
   PREF_KEY: "uiTheme",           // "" = 原生；"custom"；主题库 id
   PREF_CUSTOM: "uiThemeCustom",  // 自定义主题色板 JSON
   PREF_WP: "uiWallpaper",        // "theme"（跟随主题包）/"off"/"custom"
@@ -872,7 +875,7 @@ var UiTheme = {
   _wpSurface(hex, wp) { return wp ? this._rgba(hex, (100 - wp.opacity) / 100) : hex; },
   _wpBar(hex, wp) { return wp ? this._rgba(hex, 1 - wp.opacity / 200) : hex; },
 
-  /** PaperPilot 设置面板变量组（0.17.1 修复：--pp- 从主题色板派生，
+  /** Papilot 设置面板变量组（0.17.1 修复：--pp- 从主题色板派生，
    *  覆盖 prefs.css 里只跟 prefers-color-scheme 的默认值——主题强制深/浅色
    *  与系统明暗不一致时，设置卡片不再与窗口背景割裂） */
   _ppVars(theme) {
@@ -1062,29 +1065,29 @@ var UiTheme = {
     const ppRootDecls = ppDecls.map((d) => d + " !important;").join("\n  ");
 
     let css =
-      "/* PaperPilot 主题 · " + theme.name + (wp ? " + 壁纸 " + wp.kind : "") + " */\n" +
+      "/* Papilot 主题 · " + theme.name + (wp ? " + 壁纸 " + wp.kind : "") + " */\n" +
       "#main-window {\n  " + mainDecls + "\n}\n" +
       "#zotero-prefs {\n  " + decls.map((d) => d + " !important;").join("\n  ") + "\n}\n" +
       "#zotero-prefs .pp-root {\n  " + ppRootDecls + "\n}\n" +
       // 功能中心 + 小对话框窗口（0.17.1 纳入主题作用域）+ 双栏对照窗口（0.25.2）
       // + 参考文献入库窗口（0.33.0）+ AI 问答分屏窗口（0.47.0）：decls + pp 变量组
-      "window[windowtype='paperpilot:hub'],\n" +
-      "window[windowtype='paperpilot:dialog'],\n" +
-      "window[windowtype='paperpilot:ref-import'],\n" +
-      "window[windowtype='paperpilot:bilingual'],\n" +
-      "window[windowtype='paperpilot:chatwin'] {\n  " + prefsDecls + "\n}\n" +
+      "window[windowtype='papilot:hub'],\n" +
+      "window[windowtype='papilot:dialog'],\n" +
+      "window[windowtype='papilot:ref-import'],\n" +
+      "window[windowtype='papilot:bilingual'],\n" +
+      "window[windowtype='papilot:chatwin'] {\n  " + prefsDecls + "\n}\n" +
       // 对话框表单控件：深色主题下原生白底输入框突兀，随主题化
-      "window[windowtype='paperpilot:dialog'] textarea,\n" +
-      "window[windowtype='paperpilot:dialog'] input:not([type='checkbox']):not([type='radio']),\n" +
-      "window[windowtype='paperpilot:ref-import'] textarea,\n" +
-      "window[windowtype='paperpilot:ref-import'] input:not([type='checkbox']):not([type='radio']),\n" +
-      "window[windowtype='paperpilot:ref-import'] select,\n" +
-      "window[windowtype='paperpilot:bilingual'] textarea,\n" +
-      "window[windowtype='paperpilot:bilingual'] input:not([type='checkbox']):not([type='radio']),\n" +
-      "window[windowtype='paperpilot:hub'] textarea,\n" +
-      "window[windowtype='paperpilot:hub'] input:not([type='checkbox']):not([type='radio']),\n" +
-      "window[windowtype='paperpilot:chatwin'] textarea,\n" +
-      "window[windowtype='paperpilot:chatwin'] input:not([type='checkbox']):not([type='radio']) {\n" +
+      "window[windowtype='papilot:dialog'] textarea,\n" +
+      "window[windowtype='papilot:dialog'] input:not([type='checkbox']):not([type='radio']),\n" +
+      "window[windowtype='papilot:ref-import'] textarea,\n" +
+      "window[windowtype='papilot:ref-import'] input:not([type='checkbox']):not([type='radio']),\n" +
+      "window[windowtype='papilot:ref-import'] select,\n" +
+      "window[windowtype='papilot:bilingual'] textarea,\n" +
+      "window[windowtype='papilot:bilingual'] input:not([type='checkbox']):not([type='radio']),\n" +
+      "window[windowtype='papilot:hub'] textarea,\n" +
+      "window[windowtype='papilot:hub'] input:not([type='checkbox']):not([type='radio']),\n" +
+      "window[windowtype='papilot:chatwin'] textarea,\n" +
+      "window[windowtype='papilot:chatwin'] input:not([type='checkbox']):not([type='radio']) {\n" +
       "  background-color: " + c.surface + " !important;\n" +
       "  color: " + c.ink + " !important;\n" +
       "  border-color: " + c.line + " !important;\n}\n";
@@ -1265,9 +1268,9 @@ var UiTheme = {
       // 0.33.0：参考文献入库窗口一并纳入
       // 0.47.0：AI 问答分屏窗口一并纳入（自持 --pp-* 令牌 + 引用注入的 --color-accent 等）
       const wtype = root.getAttribute("windowtype") || "";
-      const isThemedWindow = wtype === "paperpilot:hub" || wtype === "paperpilot:dialog"
-        || wtype === "paperpilot:bilingual" || wtype === "paperpilot:ref-import"
-        || wtype === "paperpilot:chatwin";
+      const isThemedWindow = wtype === "papilot:hub" || wtype === "papilot:dialog"
+        || wtype === "papilot:bilingual" || wtype === "papilot:ref-import"
+        || wtype === "papilot:chatwin";
       if (!isMain && !isPrefs && !isThemedWindow) return;
       const theme = this.current();
       let style = win.document.getElementById(this.STYLE_ID);

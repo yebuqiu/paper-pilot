@@ -1,4 +1,7 @@
-/* PaperPilot 定时任务（研究晨报 / 阅读周报 / 库体检）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 定时任务（研究晨报 / 阅读周报 / 库体检）
  *
  * 为什么不用系统 cron：Zotero 插件没有系统级定时器，只有主窗口的 setInterval。
  * 所以这里用「60s 轮询 + 启动时立即检查一次」的轻量模型：
@@ -65,7 +68,7 @@ var Scheduler = {
       }
     } catch (e) { /* 走 Zotero.Prefs 回落 */ }
     try {
-      const v = Zotero.Prefs.get("extensions.zotero.paperpilot." + key, true);
+      const v = Zotero.Prefs.get("extensions.zotero.papilot." + key, true);
       return v === undefined || v === null ? fallback : v;
     } catch (e) {
       return fallback;
@@ -80,7 +83,7 @@ var Scheduler = {
       }
     } catch (e) { /* 走 Zotero.Prefs 回落 */ }
     try {
-      Zotero.Prefs.set("extensions.zotero.paperpilot." + key, value, true);
+      Zotero.Prefs.set("extensions.zotero.papilot." + key, value, true);
       return true;
     } catch (e) {
       this._log("pref write failed: " + key, e);
@@ -94,14 +97,14 @@ var Scheduler = {
     let text = "scheduler: " + msg;
     if (err) text += " :: " + ((err && (err.stack || err.message)) || err);
     try {
-      if (Zotero && Zotero.PaperPilot && typeof Zotero.PaperPilot._diag === "function") {
-        const r = Zotero.PaperPilot._diag(text);
+      if (Zotero && Zotero.Papilot && typeof Zotero.Papilot._diag === "function") {
+        const r = Zotero.Papilot._diag(text);
         if (r && typeof r.catch === "function") r.catch(function () { /* ignore */ });
       } else if (Zotero && typeof Zotero.logError === "function") {
-        Zotero.logError(new Error("PaperPilot " + text));
+        Zotero.logError(new Error("Papilot " + text));
       }
     } catch (e) { /* ignore */ }
-    try { if (Zotero && typeof Zotero.debug === "function") Zotero.debug("PaperPilot " + text); }
+    try { if (Zotero && typeof Zotero.debug === "function") Zotero.debug("Papilot " + text); }
     catch (e) { /* ignore */ }
   },
 
@@ -543,7 +546,7 @@ var Scheduler = {
 
     if (!recent.length) {
       const md = "**今日无新增文献**（过去 24 小时）。\n\n"
-        + "> 由 PaperPilot 定时任务生成于 " + this._stamp(at) + "。";
+        + "> 由 Papilot 定时任务生成于 " + this._stamp(at) + "。";
       return await this._saveNote(title, md);
     }
 
@@ -566,7 +569,7 @@ var Scheduler = {
       lines.push(line);
     }
     lines.push("");
-    lines.push("> 由 PaperPilot 定时任务生成于 " + this._stamp(at) + "。");
+    lines.push("> 由 Papilot 定时任务生成于 " + this._stamp(at) + "。");
     return await this._saveNote(title, lines.join("\n"));
   },
 
@@ -641,7 +644,7 @@ var Scheduler = {
     lines.push("- 条目总数：" + totalItems);
     lines.push("- 本月新增：" + addedThisMonth);
     lines.push("");
-    lines.push("> 由 PaperPilot 定时任务生成于 " + this._stamp(at) + "。");
+    lines.push("> 由 Papilot 定时任务生成于 " + this._stamp(at) + "。");
     return await this._saveNote(title, lines.join("\n"));
   },
 
@@ -731,7 +734,7 @@ var Scheduler = {
     }
     lines.push("");
     lines.push("> 说明：无附件 / 缺 DOI / 重复标题均为粗筛，请按需人工确认；"
-      + "由 PaperPilot 定时任务生成于 " + this._stamp(at) + "。");
+      + "由 Papilot 定时任务生成于 " + this._stamp(at) + "。");
     return await this._saveNote(title, lines.join("\n"));
   },
 };

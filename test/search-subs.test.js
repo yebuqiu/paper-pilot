@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 检索订阅模块测试（Saved query → 定时检索 → 自动入库 + 速递笔记）
  *
  * 为什么要有它：订阅的失败模式几乎全是「静默」的——指纹算错导致天天重复入库、
@@ -15,7 +18,7 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'chrome', 'content', 'scripts', 'features', 'search-subs.js');
-const PREFIX = 'extensions.zotero.paperpilot.';
+const PREFIX = 'extensions.zotero.papilot.';
 
 let pass = 0;
 const fails = [];
@@ -142,9 +145,9 @@ function makeEnv(opts) {
       getByDOI(doi) { return opts.byDoi ? opts.byDoi(doi) : null; },
     },
     Item: FakeItem,
-    PaperPilot: {
+    Papilot: {
       diags: [],
-      _diag(msg) { Zotero.PaperPilot.diags.push(String(msg)); return Promise.resolve(); },
+      _diag(msg) { Zotero.Papilot.diags.push(String(msg)); return Promise.resolve(); },
     },
     logError(e) { errors.push(e); },
     debug() {},
@@ -210,7 +213,7 @@ function makeEnv(opts) {
     notes: notes,
     intervals: intervals,
     errors: errors,
-    diags: Zotero.PaperPilot.diags,
+    diags: Zotero.Papilot.diags,
     arxiv: opts.arxiv || null,
     failNext: () => { failNextSave = true; },
     prefs: (k) => store.get(PREFIX + k),

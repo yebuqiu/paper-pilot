@@ -1,5 +1,8 @@
-/* PaperPilot 功能中心逻辑（0.12.0）
- * 只负责导航与调用分发：所有功能动作都经 Zotero.PaperPilot 暴露的
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 功能中心逻辑（0.12.0）
+ * 只负责导航与调用分发：所有功能动作都经 Zotero.Papilot 暴露的
  * 模块引用调起现有 runForSelected()/run() 入口，核心逻辑零改动。
  * 数据通道与 workbench 相同：Zotero/Services 经 window.arguments 传入。
  */
@@ -109,7 +112,7 @@
       {
         id: "integrate", icon: "🔌",
         title: zh ? "集成与互操作" : "Integration",
-        desc: zh ? "把 PaperPilot 的能力交给外部 AI 客户端使用（本地、带鉴权）" : "Expose PaperPilot's abilities to external AI clients",
+        desc: zh ? "把 Papilot 的能力交给外部 AI 客户端使用（本地、带鉴权）" : "Expose Papilot's abilities to external AI clients",
         features: [
           { t: zh ? "MCP 对外供给" : "MCP server", d: zh ? "把「库检索 / 读全文 / 读批注 / 写笔记 / 分类统计」封装为 MCP 工具，供 Claude Desktop、Cursor 或自建 Agent 调用；仅监听 127.0.0.1 且需 Bearer 令牌，默认关闭" : "Expose library tools over MCP (localhost + token, off by default)", run: () => PP.mcp.openDialog() },
         ],
@@ -137,8 +140,8 @@
       Services = (args && args.Services) || window.Services;
       Zotero = (args && args.Zotero) || (window.opener && window.opener.Zotero);
       opener = window.opener;
-      if (!Services || !Zotero || !Zotero.PaperPilot) return;
-      PP = Zotero.PaperPilot;
+      if (!Services || !Zotero || !Zotero.Papilot) return;
+      PP = Zotero.Papilot;
       zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
     } catch (e) { return; }
 

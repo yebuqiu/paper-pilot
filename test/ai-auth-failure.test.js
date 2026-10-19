@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 官方通道 401 判别测试（1.8.x 修复）：
  * 客户端只有收到网关自身的「登录已过期」401 才清除本地会话；
  * 上游通道 401（旧服务端原样透传：密钥失效/模型未授权）绝不清会话——

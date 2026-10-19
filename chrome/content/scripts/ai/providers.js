@@ -1,9 +1,12 @@
-/* PaperPilot 国产大模型接入增强（0.5.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 国产大模型接入增强（0.5.0 新增）
  * - 12 家国产/本地服务商目录 + 自定义 OpenAI 兼容接口
  * - 输入 API Key 自动探测上游服务商（并发请求各 /models，首个授权成功即上游）
  * - 模型下拉（探测结果）+ 自定义模型名
  * - 配置快照（profiles）：保存多套配置，一键切换
- * 设置面板脚本经 Zotero.PaperPilot.providers 访问本模块（面板脚本访问不到 bootstrap 作用域）。
+ * 设置面板脚本经 Zotero.Papilot.providers 访问本模块（面板脚本访问不到 bootstrap 作用域）。
  */
 /* global Zotero, Prefs */
 
@@ -12,7 +15,7 @@ var AIProviders = {
     // 0.13.2: 账号系统网关(本地) - 统一多模型入口, Key 在账号系统个人中心生成
     // /v1/models 自动返回可用模型(auto + 各渠道模型); model 支持:
     //   auto / 纯模型名(默认渠道透传) / provider:model 指定渠道
-    { id: "account", name: "PaperPilot 账号系统（本地网关）",
+    { id: "account", name: "Papilot 账号系统（本地网关）",
       base: "http://127.0.0.1:8000/v1", models: ["auto"] },
     { id: "deepseek", name: "DeepSeek 深度求索", base: "https://api.deepseek.com/v1",
       models: ["deepseek-chat", "deepseek-reasoner"] },
@@ -99,13 +102,13 @@ var AIProviders = {
     return (req.response && (req.response.model || req.response.id)) || model;
   },
 
-  /** 应用配置到 PaperPilot（AIClient 直接消费这些 pref，全部 AI 功能即时生效） */
+  /** 应用配置到 Papilot（AIClient 直接消费这些 pref，全部 AI 功能即时生效） */
   apply({ base, apiKey, model, providerId }) {
     Prefs.set("aiBaseUrl", base);
     Prefs.set("aiApiKey", apiKey || "");
     Prefs.set("aiModel", model);
     if (providerId !== undefined) Prefs.set("aiProvider", providerId);
-    Zotero.debug(`PaperPilot: applied provider config base=${base} model=${model}`);
+    Zotero.debug(`Papilot: applied provider config base=${base} model=${model}`);
   },
 
   /* ---------- 配置快照 ---------- */

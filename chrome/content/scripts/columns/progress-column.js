@@ -1,4 +1,7 @@
-/* PaperPilot 阅读进度列（0.46.0 升级：进度条 2.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 阅读进度列（0.46.0 升级：进度条 2.0）
  * ★ 主显示形态 = **标题列内嵌进度**（对齐 zotero-style 的高能进度条挂法）：
  *   进度画在条目标题背后，不需要用户勾选任何列，装完即见。「阅读进度」数据列
  *   保留注册但默认隐藏（Zotero 原生行为），仅作可选的「按进度排序」位。
@@ -28,7 +31,7 @@
 /* global Zotero, Prefs, I18n, ReadingStats, ReadingProgress, ReadingState */
 
 var ProgressColumn = {
-  COLUMN_KEY: "paperpilot-readingProgress",   // 0.42.0 起不变：继承老用户的列可见性
+  COLUMN_KEY: "papilot-readingProgress",   // 0.42.0 起不变：继承老用户的列可见性
   XHTML: "http://www.w3.org/1999/xhtml",
 
   // 时长口径的折算参数（与 ReadingProgress 同值；此处保留一份是给
@@ -82,11 +85,16 @@ var ProgressColumn = {
 
   /** readingStats 全量聚合一次 → {key: 累计分钟}（raw pref 串不变不重算） */
   _minutesMap() {
+    // 0.54.1（审查 P1-5）：优先走 ReadingStats 的内存聚合（一次构建、save 时失效），
+    // 不再每行 `Prefs.get("readingStats")` + JSON.parse 整串。
+    const RS = (typeof ReadingStats !== "undefined") ? ReadingStats : null;
+    if (RS && typeof RS.minutesByKey === "function") {
+      try { return RS.minutesByKey(); } catch (e) { /* 退化到下面的旧路径 */ }
+    }
     const raw = String(Prefs.get("readingStats", "") || "");
     if (this._minSnap.raw !== raw || !this._minSnap.map) {
       const map = new Map();
-      const store = (typeof ReadingStats !== "undefined" && ReadingStats)
-        ? ReadingStats.parse(raw) : { days: {} };
+      const store = RS ? RS.parse(raw) : { days: {} };
       for (const day of Object.keys(store.days || {})) {
         const rec = store.days[day] || {};
         for (const k of Object.keys(rec)) {

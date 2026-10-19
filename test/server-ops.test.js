@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 服务端运维三件套集成测试（服务端 1.4.2）：数据快照/回滚 · 订单积压告警 · 账号级登录风控
  *
  * 运行：node test/server-ops.test.js
@@ -345,7 +348,7 @@ function rewindOrder(orderId, minutes) {
 
     /* ================= D. 既有能力不回归 ================= */
     r = await req('GET', '/api/health');
-    eq(r.json.version, '1.8.4', 'D1 服务端版本');
+    eq(r.json.version, '1.8.5', 'D1 服务端版本');
     ok(/Free/.test((r.json.plans || []).join(',')), 'D2 套餐仍在');
     r = await req('GET', '/api/admin/prices');
     ok(r.json.items.length >= 5, 'D3 价格表仍可用（含 A24 新增的两条）', r.json.items.length);

@@ -1,4 +1,7 @@
-/* PaperPilot · 相关文献推荐（0.51.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot · 相关文献推荐（0.51.0 新增）
  *
  * 解决什么：读完一篇文献最自然的下一步是「顺藤摸瓜」找同领域的下一批——现在得
  * 复制标题、去 S2/Google Scholar、挑一篇、再回 Zotero 手工建条目，五次操作。
@@ -23,8 +26,8 @@
 /* global Zotero, Services, Prefs, I18n, S2Client */
 
 var RelatedPapers = {
-  PANE_ID: "paperpilot-related",
-  ICON: "chrome://paperpilot/content/icons/refs.svg",
+  PANE_ID: "papilot-related",
+  ICON: "chrome://papilot/content/icons/refs.svg",
   LIMIT: 5,
   TAG: "#来源/S2推荐",
 
@@ -112,8 +115,8 @@ var RelatedPapers = {
       handle = IPM.registerSection({
         paneID: this.PANE_ID,
         pluginID,
-        header: { l10nID: "paperpilot-related-section-header", icon: this.ICON },
-        sidenav: { l10nID: "paperpilot-related-section-sidenav", icon: this.ICON },
+        header: { l10nID: "papilot-related-section-header", icon: this.ICON },
+        sidenav: { l10nID: "papilot-related-section-sidenav", icon: this.ICON },
         // 坑①：onRender 必填；渲染异常自己兜住，不能把 section 宿主拖垮
         onRender({ paneID, doc, body }) {
           try {
@@ -557,9 +560,9 @@ var RelatedPapers = {
   },
 };
 
-// 与 ref-pane 同款：main.js 装配完成后可直接 Zotero.PaperPilot.RelatedPapers 取到
+// 与 ref-pane 同款：main.js 装配完成后可直接 Zotero.Papilot.RelatedPapers 取到
 try {
-  if (typeof Zotero !== "undefined" && Zotero.PaperPilot && !Zotero.PaperPilot.RelatedPapers) {
-    Zotero.PaperPilot.RelatedPapers = RelatedPapers;
+  if (typeof Zotero !== "undefined" && Zotero.Papilot && !Zotero.Papilot.RelatedPapers) {
+    Zotero.Papilot.RelatedPapers = RelatedPapers;
   }
 } catch (e) { /* ignore */ }

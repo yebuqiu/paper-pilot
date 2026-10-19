@@ -1,7 +1,10 @@
-/* PaperPilot 账号系统（0.14.0 新增；0.15.0 收口服务器入口；0.23.0 持久化层重写 + 会员体系）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 账号系统（0.14.0 新增；0.15.0 收口服务器入口；0.23.0 持久化层重写 + 会员体系）
  *
  * 一、登录与鉴权
- * - 邮箱密码登录 PaperPilot 官方账号服务器（地址内置固定 https://pp.xinglintools.top，
+ * - 邮箱密码登录 Papilot 官方账号服务器（地址内置固定 https://pp.xinglintools.top，
  *   设置界面不提供服务器入口，不开放自建后台）
  * - 令牌只出现在 Authorization 头；密码只进请求体，永不落盘、不进日志
  * - 登录过期：本地 expiresAt 判断 + 服务端 401 双保险；任何官方模型调用遇 401
@@ -17,9 +20,9 @@
  *   ④ _diag 用「读全文再写回」且写失败静默丢弃 —— 掉登录时拿不到任何证据。
  *
  * 新布局：2 个落点 × 3 代滚动副本 = 最多 6 份，按 savedAt 取最新有效者。
- *   <落点>/paperpilot-account.json      第 0 代（最新）
- *   <落点>/paperpilot-account.1.json    第 1 代
- *   <落点>/paperpilot-account.2.json    第 2 代
+ *   <落点>/papilot-account.json      第 0 代（最新）
+ *   <落点>/papilot-account.1.json    第 1 代
+ *   <落点>/papilot-account.2.json    第 2 代
  *   落点 = Zotero 数据目录（Zotero.DataDirectory.dir）+ 配置目录（ProfD）
  * 写入：滚动代际 → 写第 0 代（tmp+rename）→ 回读校验 → 失败自动回退直写；
  *       全程带硬超时（杜绝「写操作永不 resolve」导致登录卡死且无日志）。
@@ -74,9 +77,13 @@ var Account = {
   // 本地会话有效期（0.15.1）：与服务端 TOKEN_TTL 对齐（30 天滑动）
   SESSION_TTL_MS: 30 * 86400e3,
 
+  // 用户协议版本（2026-10-19）：与 server/public/terms.html 顶部版本号对应，改条款必须同步升版本
+  // 下单时随请求体上报，服务端写进订单做条款留痕（termsVersion / termsAcceptedAt）
+  TERMS_VERSION: "v1.0",
+
   /* ---------- 持久化布局常量 ---------- */
   SCHEMA_VERSION: 2,
-  FILE_BASE: "paperpilot-account",   // 第 0 代 = paperpilot-account.json（兼容旧版）
+  FILE_BASE: "papilot-account",   // 第 0 代 = papilot-account.json（兼容旧版）
   GENERATIONS: 3,                    // 每落点保留 3 代
   WRITE_TIMEOUT_MS: 8000,            // 单次文件读写硬上限
   DIAG_MAX_LINES: 400,               // 诊断日志上限（防止无限增长）
@@ -167,7 +174,7 @@ var Account = {
    * 0.23.0：改为串行队列 + 行数上限（旧实现并发读-改-写会互相覆盖、无上限增长）。
    */
   _diag(msg) {
-    try { Zotero.debug("PaperPilot account: " + msg); } catch (e) { /* ignore */ }
+    try { Zotero.debug("Papilot account: " + msg); } catch (e) { /* ignore */ }
     const line = new Date().toISOString() + " " + msg + "\n";
     this._diagChain = this._diagChain
       .then(() => this._appendLog(line))
@@ -312,7 +319,7 @@ var Account = {
   _sessionDoc(reason) {
     return {
       schemaVersion: this.SCHEMA_VERSION,
-      app: "paperpilot",
+      app: "papilot",
       token: this._session.token,
       expiresAt: this._session.expiresAt || 0,
       user: this._session.user || {},
@@ -340,7 +347,7 @@ var Account = {
    */
   async _wipe(reason) {
     const doc = {
-      schemaVersion: this.SCHEMA_VERSION, app: "paperpilot",
+      schemaVersion: this.SCHEMA_VERSION, app: "papilot",
       revoked: true, savedAt: Date.now(), reason: reason || "logout",
     };
     const body = JSON.stringify(doc);
@@ -445,7 +452,7 @@ var Account = {
     // 落盘结果如实上报（旧实现在此静默吞掉写失败 → 用户看到「登录成功」却掉登录）
     const saved = await this._save("login");
     this._notify();
-    try { Zotero.debug("PaperPilot: account login ok (" + this._mask(j.token) + "), persisted=" + saved); } catch (_) { /* ignore */ }
+    try { Zotero.debug("Papilot: account login ok (" + this._mask(j.token) + "), persisted=" + saved); } catch (_) { /* ignore */ }
     return this._session.user;
   },
 
@@ -488,7 +495,7 @@ var Account = {
       try { await this._request("POST", "/api/auth/logout", null, token, 2000); } catch (e) { /* 服务端登出失败不影响本地登出 */ }
     }
     if (!silent) {
-      try { Zotero.debug("PaperPilot: account logout"); } catch (_) { /* ignore */ }
+      try { Zotero.debug("Papilot: account logout"); } catch (_) { /* ignore */ }
     }
   },
 
@@ -554,8 +561,8 @@ var Account = {
       try {
         Services.prompt.alert(
           Zotero.getMainWindow(),
-          "PaperPilot 账号",
-          "登录已过期或已失效：" + (reason || "请重新登录") + "\n\n请到 设置 → PaperPilot 重新登录后继续使用官方模型。"
+          "Papilot 账号",
+          "登录已过期或已失效：" + (reason || "请重新登录") + "\n\n请到 设置 → Papilot 重新登录后继续使用官方模型。"
         );
       } catch (e) { /* ignore */ }
     }
@@ -800,7 +807,9 @@ var Account = {
    */
   async createCreditOrder(optionId) {
     const resp = await this._request("POST", "/api/orders",
-      { kind: "credit", optionId: String(optionId || "") }, this.token(), 15000);
+      // termsVersion：用户协议版本留痕（服务端写进订单；旧服务端忽略该字段）
+      { kind: "credit", optionId: String(optionId || ""), termsVersion: this.TERMS_VERSION },
+      this.token(), 15000);
     const j = resp.json || {};
     if (!j.ok || !j.order) throw new Error(j.error || "充值下单失败");
     return j.order;
@@ -808,7 +817,7 @@ var Account = {
 
   /** 下单：返回 {order}（含订单号、金额、收款信息与状态）。cycle==='perpetual' 表示永久会员 */
   async createOrder(plan, months, cycle, couponCode) {
-    const body = { plan: String(plan || "Pro") };
+    const body = { plan: String(plan || "Pro"), termsVersion: this.TERMS_VERSION };
     if (cycle === "perpetual") body.cycle = "perpetual";   // 永久：不传 months（不适用）
     else body.months = Number(months) || 1;
     // 0.24.6 优惠码：服务端会**重新校验**（不信客户端），此刻才真正占住券的名额

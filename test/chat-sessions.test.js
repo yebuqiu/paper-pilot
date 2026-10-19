@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 浮窗会话持久化（ChatSessions）+ Agent 决策模型路由 测试
  *
  * 覆盖三层：
@@ -41,7 +44,7 @@ function has(hay, needle, label) {
 /* ---------------- 桩环境 ---------------- */
 
 const store = new Map();
-const PREF = (k) => 'extensions.zotero.paperpilot.' + k;
+const PREF = (k) => 'extensions.zotero.papilot.' + k;
 
 const itemA = { id: 101, isRegularItem: () => true, getDisplayTitle: () => '论文A' };
 const itemB = { id: 202, isRegularItem: () => true, getDisplayTitle: () => '论文B' };

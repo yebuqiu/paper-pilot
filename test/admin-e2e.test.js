@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* admin.html 会员管理端到端验证：真实账号服务器 + 无头 Chrome 真点击。
  * 验证「后台 webui 能管理会员」：概览 KPI / 订单核销 / 激活码生成 / 价格表 CRUD /
  * 套餐配置保存 / 用户行「开通·续期」，并检查控制台无 JS 报错。
@@ -145,7 +148,7 @@ function req(method, p, body, token, extraHeaders) {
     const dl = page.waitForEvent('download', { timeout: 8000 });
     await page.click('button:has-text("导出用量 CSV")');
     const download = await dl;
-    ok(/^paperpilot-usage-\d{4}-\d{2}-\d{2}\.csv$/.test(download.suggestedFilename()),
+    ok(/^papilot-usage-\d{4}-\d{2}-\d{2}\.csv$/.test(download.suggestedFilename()),
       'E5.6 导出 CSV 文件名规范', download.suggestedFilename());
     const csv = fs.readFileSync(await download.path(), 'utf8');
     ok(csv.charCodeAt(0) === 0xFEFF, 'E5.7 CSV 带 BOM（Excel 里中文不乱码）');
@@ -434,7 +437,7 @@ function req(method, p, body, token, extraHeaders) {
     const dl2 = page.waitForEvent('download', { timeout: 8000 });
     await page.click('button:has-text("导出 CSV")');
     const auditDl = await dl2;
-    ok(/^paperpilot-audit-\d{4}-\d{2}-\d{2}\.csv$/.test(auditDl.suggestedFilename()),
+    ok(/^papilot-audit-\d{4}-\d{2}-\d{2}\.csv$/.test(auditDl.suggestedFilename()),
       'E20.8 审计 CSV 文件名规范', auditDl.suggestedFilename());
     const auditCsv = fs.readFileSync(await auditDl.path(), 'utf8');
     ok(auditCsv.indexOf('时间,操作,动作代码') > 0, 'E20.9 审计 CSV 表头正确',

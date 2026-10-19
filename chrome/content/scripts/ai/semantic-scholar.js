@@ -1,4 +1,7 @@
-/* PaperPilot Semantic Scholar Graph API 客户端（0.6.0 新增，0.8.0 加应用层超时）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot Semantic Scholar Graph API 客户端（0.6.0 新增，0.8.0 加应用层超时）
  * 免费公开接口，无需注册；有 API Key 限速更高（在设置中填写 s2ApiKey）。
  * 文档：https://api.semanticscholar.org/api-docs/
  * 端点：

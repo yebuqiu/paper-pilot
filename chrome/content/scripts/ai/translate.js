@@ -1,6 +1,9 @@
-/* PaperPilot 多引擎翻译（0.28.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 多引擎翻译（0.28.0）
  *
- * 定位：**独立于 AI 大模型**的翻译引擎接入层。此前 PaperPilot 的所有翻译
+ * 定位：**独立于 AI 大模型**的翻译引擎接入层。此前 Papilot 的所有翻译
  * （划词浮窗 / 全文对照 / 标题摘要 / 对比窗口整页）都只能走 OpenAI 兼容大模型，
  * 一旦没登录官方模型、没配自己的模型通道，翻译就完全不可用。
  * 本模块参考 zotero-pdf-translate 的「翻译服务注册表」形态，把翻译拆成
@@ -1836,7 +1839,7 @@ var TranslateSvc = (function () {
       const r = resolveSecret(svc.id, secretOf(svc.id));
       return "翻译引擎「" + svc.name + "」" + (r.error || "未配置");
     }
-    return "请在 设置 → PaperPilot → 翻译引擎 中选择并配置一个翻译引擎";
+    return "请在 设置 → Papilot → 翻译引擎 中选择并配置一个翻译引擎";
   }
 
   function activeEngine() {

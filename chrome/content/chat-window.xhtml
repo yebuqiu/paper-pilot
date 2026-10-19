@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
 <!DOCTYPE window>
-<!-- PaperPilot · AI 问答分屏窗口（0.47.0 重构）
+<!-- Papilot · AI 问答分屏窗口（0.47.0 重构）
      ★ 根因修复「输入框一片蓝色、无法输入/发送」：chrome 文档里未显式定型的
      html:textarea / html:button 会被平台层样式接管（Windows 平台皮肤里是
      height:26px + 透明底 + :focus 蓝色渐变 + ::selection 蓝底、button 被压到
@@ -10,17 +12,17 @@
        ② 所有表单控件用 ID 选择器显式写 appearance/background/color/border
          （workbench 同款：显式作者样式压过一切平台规则）；
        ③ 布局全部走 html:div 的现代 flexbox，不再依赖 XUL 盒模型排表单控件。
-     会话仍与悬浮窗共享 Zotero.PaperPilot.chatFloat.session（runSend 单源）；
+     会话仍与悬浮窗共享 Zotero.Papilot.chatFloat.session（runSend 单源）；
      本窗口在 chat-window.js 里注册为 ChatFloat 的一个 UI entry，复用其
      Prompt 标签渲染/长按编辑、上下文 chip、条目拖入。
      persist 记忆窗口位置/尺寸/最大化状态；拖拽窗口边缘即可自由调节大小。 -->
 <window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         xmlns:html="http://www.w3.org/1999/xhtml"
-        title="PaperPilot · AI 问答"
-        windowtype="paperpilot:chatwin"
+        title="Papilot · AI 问答"
+        windowtype="papilot:chatwin"
         width="620" height="800"
         persist="screenX screenY width height sizemode">
-  <script src="chrome://paperpilot/content/chat-window.js"></script>
+  <script src="chrome://papilot/content/chat-window.js"></script>
   <html:style><![CDATA[
     /* ===== 设计令牌（自定义界面主题注入的 --color-accent 等变量优先） ===== */
     #pp-cw-root {
@@ -145,9 +147,9 @@
     #pp-cw-hint { margin-top:5px; font-size:10.5px; color:var(--pp-muted); text-align:center; }
 
     /* ===== ChatFloat 标签编辑层（渲染进本窗口时的配色校正） ===== */
-    #pp-cw-root #paperpilot-tag-editor { background:var(--pp-surface) !important; color:var(--pp-text) !important; }
-    #pp-cw-root #paperpilot-tag-editor input,
-    #pp-cw-root #paperpilot-tag-editor textarea {
+    #pp-cw-root #papilot-tag-editor { background:var(--pp-surface) !important; color:var(--pp-text) !important; }
+    #pp-cw-root #papilot-tag-editor input,
+    #pp-cw-root #papilot-tag-editor textarea {
       appearance:none; background:var(--pp-bg) !important; color:var(--pp-text) !important;
       border:1px solid var(--pp-border) !important; border-radius:4px; max-height:none !important;
     }

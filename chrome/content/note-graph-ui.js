@@ -1,5 +1,8 @@
-/* PaperPilot 笔记关系图谱窗口（0.23.0）
- * 只做渲染与交互：构图/布局全部由 Zotero.PaperPilot.noteGraph 完成（便于单测）。
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 笔记关系图谱窗口（0.23.0）
+ * 只做渲染与交互：构图/布局全部由 Zotero.Papilot.noteGraph 完成（便于单测）。
  * 数据通道与其它窗口一致：Zotero/Services 经 window.arguments 传入。
  */
 /* global window, document */
@@ -8,7 +11,7 @@
   const XHTML = "http://www.w3.org/1999/xhtml";
   const args = (window.arguments && window.arguments[0]) || {};
   const Z = args.Zotero || (window.opener && window.opener.Zotero);
-  const PP = Z && Z.PaperPilot;
+  const PP = Z && Z.Papilot;
   const zh = Z && (Z.locale || "").toLowerCase().startsWith("zh");
 
   const $ = (id) => document.getElementById(id);
@@ -17,7 +20,7 @@
   const legendEl = $("pp-ng-legend");
 
   if (!PP || !PP.noteGraph) {
-    statusEl.textContent = zh ? "错误：无法访问 PaperPilot 模块" : "Error: module unavailable";
+    statusEl.textContent = zh ? "错误：无法访问 Papilot 模块" : "Error: module unavailable";
     return;
   }
   const NG = PP.noteGraph;

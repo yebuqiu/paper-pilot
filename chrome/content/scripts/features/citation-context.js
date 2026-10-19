@@ -1,4 +1,7 @@
-/* PaperPilot · 引文上下文（Scite 风格，0.52.0 新增）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot · 引文上下文（Scite 风格，0.52.0 新增）
  *
  * 解决什么：判断一篇文献「是否站得住」，最省力的一步是看后来者**怎么引用它**——
  * 是「与之一致」还是「指出其局限」。现在这些引用句散落在几百篇 PDF 里，没人会去翻。
@@ -65,13 +68,13 @@ var CC_GROUPS = {
 var CC_RANK = { critique: 0, contrast: 1, support: 2, neutral: 3 };
 
 var CitationContext = {
-  PANE_ID: "paperpilot-citecon",
-  ICON: "chrome://paperpilot/content/icons/refs.svg",
+  PANE_ID: "papilot-citecon",
+  ICON: "chrome://papilot/content/icons/refs.svg",
   LIMIT: 20,        // 向 S2 请求的条数
   SHOW_MAX: 8,      // 面板最多展示条数（按倾向排序后截断）
   CONTEXT_MAX: 200, // 引用句截断长度
-  _l10nID: "paperpilot-citecon-section-header",
-  _sidenavID: "paperpilot-citecon-section-sidenav",
+  _l10nID: "papilot-citecon-section-header",
+  _sidenavID: "papilot-citecon-section-sidenav",
 
   _registered: false,
   _registeredPaneID: null,
@@ -561,9 +564,9 @@ var CitationContext = {
   },
 };
 
-// 与 related-papers 同款：main.js 装配完成后可直接 Zotero.PaperPilot.CitationContext 取到
+// 与 related-papers 同款：main.js 装配完成后可直接 Zotero.Papilot.CitationContext 取到
 try {
-  if (typeof Zotero !== "undefined" && Zotero.PaperPilot && !Zotero.PaperPilot.CitationContext) {
-    Zotero.PaperPilot.CitationContext = CitationContext;
+  if (typeof Zotero !== "undefined" && Zotero.Papilot && !Zotero.Papilot.CitationContext) {
+    Zotero.Papilot.CitationContext = CitationContext;
   }
 } catch (e) { /* ignore */ }

@@ -20,7 +20,7 @@
 
 - [ ] 已运行 `node scripts/validate-pack.js community-packs/<id>.json` 且通过
 - [ ] 文件名与 id 一致（`community-packs/<id>.json`）
-- [ ] author 填的是我自己（非 PaperPilot）
+- [ ] author 填的是我自己（非 Papilot）
 - [ ] 提示词遵循「结构化输出 + 证据纪律」（要求具体位置/数字，不写空泛套话）
 - [ ] 术语为自编或已获授权译法，未搬运版权受限词库
 - [ ] 与商店现有 45+ 技能包不重复

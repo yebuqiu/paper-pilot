@@ -1,4 +1,7 @@
-/* PaperPilot 多篇 PDF 并排对比 · 窗口逻辑（0.21.0）
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 多篇 PDF 并排对比 · 窗口逻辑（0.21.0）
  *
  * 结构：
  *   stage（position:relative）里放 N 个 .pp-cmp-pane（position:absolute，百分比定位）
@@ -1312,8 +1315,8 @@
     }
     panes.length = 0;
     try {
-      if (Zotero && Zotero.PaperPilot && Zotero.PaperPilot.pdfCompare) {
-        Zotero.PaperPilot.pdfCompare.onWindowClosed();
+      if (Zotero && Zotero.Papilot && Zotero.Papilot.pdfCompare) {
+        Zotero.Papilot.pdfCompare.onWindowClosed();
       }
     } catch (e) { /* ignore */ }
   });

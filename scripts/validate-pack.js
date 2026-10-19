@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
 /* 技能包独立校验器（社区贡献工作流，0.48.3）
  *
  * 用途：
@@ -8,7 +11,7 @@
  *
  * 校验内容 = SkillPacks.validate 的完整规则（id kebab-case / 必填字段 / 三段版本号 /
  * category 枚举 / tags 0-6 / 四内容槽形状）+ 社区包附加规则：
- *   · author 必填非 "PaperPilot"（官方署名保留）——只警告不拦截
+ *   · author 必填非 "Papilot"（官方署名保留）——只警告不拦截
  *   · 提示词内 {input} 占位符给出 trigger 建议提醒——只警告
  *   · id 与内置目录 / 已有社区包冲突 → 报错（防覆盖官方包）
  *
@@ -67,8 +70,8 @@ function checkFile(file) {
     if (myId && myFile !== '_TEMPLATE.json' && myFile !== myId + '.json') {
       warns.push('建议文件名与 id 一致：' + myId + '.json（当前 ' + myFile + '）');
     }
-    if (String(pack.author || '') === 'PaperPilot') {
-      warns.push('author 请署你自己的名字（PaperPilot 保留给官方内置包）');
+    if (String(pack.author || '') === 'Papilot') {
+      warns.push('author 请署你自己的名字（Papilot 保留给官方内置包）');
     }
     const prompts = (pack.contents && pack.contents.prompts) || [];
     for (const p of prompts) {
@@ -95,7 +98,7 @@ function main() {
   const args = process.argv.slice(2);
   if (!args.length || args[0] === '--help' || args[0] === '-h') {
     console.log('用法：node scripts/validate-pack.js <pack.json> [more.json ...]');
-    console.log('校验技能包 manifest 是否符合 PaperPilot 技能商店规范。');
+    console.log('校验技能包 manifest 是否符合 Papilot 技能商店规范。');
     process.exit(args.length ? 0 : 1);
   }
   let allOk = true;

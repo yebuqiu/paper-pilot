@@ -1,5 +1,8 @@
-/* PaperPilot 设置窗格脚本·快捷键卡片 + 锚点目录 + 模板导入导出（0.42.0 新增）
- * 与 prefs-menu.js 同窗格运行；经 Zotero.PaperPilot.hotkeys / noteTemplates 访问
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 Cassiuschen. All rights reserved.
+
+/* Papilot 设置窗格脚本·快捷键卡片 + 锚点目录 + 模板导入导出（0.42.0 新增）
+ * 与 prefs-menu.js 同窗格运行；经 Zotero.Papilot.hotkeys / noteTemplates 访问
  * bootstrap 作用域的中央快捷键注册表与模板中心。
  *
  * 渲染内容：
@@ -17,7 +20,7 @@
   const HTML_NS = "http://www.w3.org/1999/xhtml";
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const $ = (id) => document.getElementById(id);
-  const PP = () => Zotero.PaperPilot || {};
+  const PP = () => Zotero.Papilot || {};
   const HK = () => PP().hotkeys;
   const NT = () => PP().noteTemplates;
 
