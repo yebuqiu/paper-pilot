@@ -62,6 +62,7 @@ var CloudSync = (function () {
     maxFiles: "cloudSyncMaxFiles",
     maxDepth: "cloudSyncMaxDepth",
     keepOldParts: "cloudSyncKeepOldParts",
+    propagateDelete: "cloudSyncPropagateDelete",
     indexOwner: "cloudSyncIndexOwner",
   };
 
@@ -83,6 +84,8 @@ var CloudSync = (function () {
     maxFiles: 2000,
     maxDepth: 6,
     keepOldParts: false,
+    // 删除传播默认开，但只对目录型数据集（packages）生效；另有"修改晚于删除""大批删除"两道闸
+    propagateDelete: true,
   };
 
   /** 数据集：新增同步对象只需往这里加一条（或在运行期 registerDataset） */
@@ -259,6 +262,7 @@ var CloudSync = (function () {
         maxFiles: Math.max(50, Number(g(K.maxFiles, DEFAULTS.maxFiles)) || DEFAULTS.maxFiles),
         maxDepth: Math.max(1, Number(g(K.maxDepth, DEFAULTS.maxDepth)) || DEFAULTS.maxDepth),
         keepOldParts: !!g(K.keepOldParts, DEFAULTS.keepOldParts),
+        propagateDelete: !!g(K.propagateDelete, DEFAULTS.propagateDelete),
         deviceId: this.deviceId(),
         lastSyncAt: Number(g(K.lastSyncAt, 0)) || 0,
       };
@@ -274,6 +278,7 @@ var CloudSync = (function () {
         partMB: K.partMB, timeoutSec: K.timeoutSec, deviceName: K.deviceName,
         snapshotMaxKB: K.snapshotMaxKB, assembleMaxMB: K.assembleMaxMB,
         maxFiles: K.maxFiles, maxDepth: K.maxDepth,
+        propagateDelete: K.propagateDelete,
       };
       var policyOk = { keepBoth: 1, local: 1, remote: 1 };
       var dirOk = { both: 1, up: 1, down: 1 };
@@ -298,8 +303,8 @@ var CloudSync = (function () {
             var list = String(v || "").split(",").map(function (s) { return s.trim(); })
               .filter(function (s) { return !!this.datasetOf(s); }, this);
             Prefs.set(K.datasets, list.join(",") || DEFAULTS.datasets);
-          } else if (key === "enabled" || key === "remember" || key === "keepOldParts") {
-            Prefs.set(key === "keepOldParts" ? K.keepOldParts : map[key], !!v);
+          } else if (key === "enabled" || key === "remember" || key === "keepOldParts" || key === "propagateDelete") {
+            Prefs.set(map[key], !!v);
           } else if (key === "email") {
             Prefs.set(K.email, String(v || "").trim().slice(0, 200));
           } else if (key === "deviceName") {
@@ -523,7 +528,7 @@ var CloudSync = (function () {
       var self = this;
       var result = {
         ok: true, startedAt: Date.now(), finishedAt: 0, dryRun: !!opts.dryRun,
-        uploaded: 0, downloaded: 0, skipped: 0, conflicts: 0, failed: 0,
+        uploaded: 0, downloaded: 0, skipped: 0, conflicts: 0, failed: 0, deleted: 0,
         bytesUp: 0, bytesDown: 0, errors: [], warnings: [], datasets: {},
       };
 
@@ -531,6 +536,15 @@ var CloudSync = (function () {
         var client = this._clientFor(cfg);
         this._setState({ state: "scanning", phase: "scan", message: "检查云端同步目录…", file: "", current: 0, total: 0, bytesDone: 0, bytesTotal: 0, lastError: null });
         await client.ensureDir(cfg.root);
+
+        // 墓碑是跨设备共享的删除记录：先合并，再逐个数据集应用
+        if (cfg.propagateDelete) {
+          try {
+            await this._syncTombstoneFile(client, cfg);
+          } catch (eT) {
+            this._log("warn", "同步删除墓碑失败（不影响本轮）：" + (eT && eT.message || eT));
+          }
+        }
 
         var index = await this._readIndex();
         var list = this._selectDatasets(opts.datasets);
@@ -554,7 +568,8 @@ var CloudSync = (function () {
 
         result.finishedAt = Date.now();
         var summary = "上传 " + result.uploaded + " · 下载 " + result.downloaded +
-          " · 跳过 " + result.skipped + (result.conflicts ? " · 冲突 " + result.conflicts : "") +
+          " · 跳过 " + result.skipped + (result.deleted ? " · 删除 " + result.deleted : "") +
+          (result.conflicts ? " · 冲突 " + result.conflicts : "") +
           (result.failed ? " · 失败 " + result.failed : "") +
           (result.warnings.length ? " · 告警 " + result.warnings.length : "");
         this._log("info", (opts.dryRun ? "预演完成：" : "同步完成：") + summary);
@@ -684,7 +699,7 @@ var CloudSync = (function () {
 
     _syncDataset: async function (client, cfg, ds, index, opts, result) {
       var dir = WebDAV.join(cfg.root, ds.remoteDir);
-      var stat = { uploaded: 0, downloaded: 0, skipped: 0, conflicts: 0, failed: 0 };
+      var stat = { uploaded: 0, downloaded: 0, skipped: 0, conflicts: 0, failed: 0, deleted: 0 };
       result.datasets[ds.key] = stat;
       var direction = opts.direction || cfg.direction || "both";
 
@@ -723,6 +738,16 @@ var CloudSync = (function () {
         if (only && remote[only]) picked[only] = remote[only];
         remote = picked;
       }
+      // 本地删除检测（仅目录型数据集），返回 dataset::rel → {at}
+      var tombMap = null;
+      if (ds.kind === "dir" && cfg.propagateDelete) {
+        try {
+          tombMap = await this._collectLocalDeletions(ds, index, local, remote, result);
+        } catch (eD) {
+          this._log("warn", "收集删除墓碑失败：" + (eD && eD.message || eD));
+        }
+      }
+
       var keys = Object.keys(local).concat(Object.keys(remote).filter(function (k) { return !local[k]; })).sort();
       var total = keys.length;
 
@@ -735,6 +760,16 @@ var CloudSync = (function () {
         var r = remote[rel] || null;
         var idxKey = ds.key + "::" + rel;
         var entry = index.entries[idxKey] || null;
+
+        // 墓碑优先：删除传播只对目录型数据集启用
+        var tomb = tombMap && tombMap[idxKey];
+        if (tomb) {
+          var handled = await this._applyTombstone(client, cfg, ds, {
+            rel: rel, local: l, remote: r, tomb: tomb, idxKey: idxKey,
+            index: index, stat: stat, result: result,
+          });
+          if (handled) continue;
+        }
 
         var d = this.decideAction({ local: l, remote: r, entry: entry, policy: cfg.policy, direction: direction });
 
@@ -764,16 +799,19 @@ var CloudSync = (function () {
           if (d.action === "upload") {
             var up = await this._uploadOne(client, cfg, ds, { rel: rel, local: l, remote: r, entry: entry });
             index.entries[idxKey] = up.entry;
+            if (ds.kind === "pref") this._rememberSnapshot(index, l, null);
             stat.uploaded++; result.uploaded++;
             result.bytesUp += up.entry.size || 0;
           } else if (d.action === "download") {
             var down = await this._downloadOne(client, cfg, ds, { rel: rel, local: l, remote: r, entry: entry });
             index.entries[idxKey] = down.entry;
+            if (ds.kind === "pref") this._rememberSnapshot(index, null, down.snapshot);
             stat.downloaded++; result.downloaded++;
             result.bytesDown += (r && r.size) || 0;
           } else if (d.action === "conflict") {
-            var res = await this._resolveConflict(client, cfg, ds, { rel: rel, local: l, remote: r, entry: entry });
+            var res = await this._resolveConflict(client, cfg, ds, { rel: rel, local: l, remote: r, entry: entry, index: index });
             index.entries[idxKey] = res.entry;
+            if (ds.kind === "pref" && res.snapshot) this._rememberSnapshot(index, null, res.snapshot);
             stat.conflicts++; result.conflicts++;
             if (res.uploaded) { stat.uploaded++; result.uploaded++; }
             if (res.downloaded) { stat.downloaded++; result.downloaded++; }
@@ -1074,9 +1112,19 @@ var CloudSync = (function () {
         if (ctx.local) await this._backupLocalBytes(ds, rel, bytes);
         var applied = this.applySnapshot(snap);
         this._log("info", "已应用云端设置项 " + applied + " 条");
-        return { entry: this._makeEntry({ size: bytes.byteLength, mtime: Date.now(), hash: hash }, { etag: remote.etag, etagRaw: remote.etagRaw, size: bytes.byteLength }, hash) };
+        return {
+          entry: this._makeEntry({ size: bytes.byteLength, mtime: Date.now(), hash: hash },
+            { etag: remote.etag, etagRaw: remote.etagRaw, size: bytes.byteLength }, hash),
+          snapshot: snap,
+        };
       }
 
+      var safeRel = String(rel).split("/").map(function (seg) {
+        return CS.sanitizeName(seg);
+      }).join("/");
+      if (safeRel !== rel) {
+        throw err(CODES.CONFIG, "文件名含 Windows 非法字符（" + rel + "），已跳过；请在云端重命名后再同步");
+      }
       var target = this._localPathFor(ds, rel);
       if (!target) throw err(CODES.IO, "无法确定本地落点：" + rel);
       await this._ensureLocalDir(this._localParent(target));
@@ -1166,6 +1214,254 @@ var CloudSync = (function () {
       return out;
     },
 
+    /* ---------- 删除墓碑（只对目录型数据集） ---------- */
+
+    _tombPath: function () {
+      return this._localJoin(this._localCloudDir(), "tombstones.json");
+    },
+
+    async _readTombstones() {
+      var out = { version: 1, entries: {} };
+      try {
+        if (!(await this._exists(this._tombPath()))) return out;
+        var v = JSON.parse(await IOUtils.readUTF8(this._tombPath()));
+        if (v && typeof v === "object" && v.entries && typeof v.entries === "object") {
+          v.version = 1;
+          return v;
+        }
+      } catch (e) { /* 损坏则重建 */ }
+      return out;
+    },
+
+    async _writeTombstones(store) {
+      try {
+        await this._ensureLocalDir(this._localCloudDir());
+        await IOUtils.writeUTF8(this._tombPath(), JSON.stringify(store, null, 2));
+      } catch (e) {
+        this._log("warn", "写墓碑失败：" + (e && e.message || e));
+      }
+    },
+
+    _tombKey: function (datasetKey, rel) { return datasetKey + "::" + rel; },
+
+    /** 合并远端墓碑（多设备共享一份），顺带清理过期项 */
+    async _syncTombstoneFile(client, cfg) {
+      var local = await this._readTombstones();
+      var remotePath = WebDAV.join(cfg.root, "data", ".tombstones.json");
+      var changed = false;
+      try {
+        var res = await client.getBuffer(remotePath, { abortToken: this._abortToken });
+        var remote = JSON.parse(decodeText(new Uint8Array(res.body || new ArrayBuffer(0))));
+        if (remote && remote.entries) {
+          for (var k in remote.entries) {
+            if (!Object.prototype.hasOwnProperty.call(remote.entries, k)) continue;
+            var r = remote.entries[k] || {};
+            var l = local.entries[k];
+            if (!l || Number(r.at) > Number(l.at)) {
+              local.entries[k] = { at: Number(r.at) || Date.now(), device: String(r.device || "") };
+              changed = true;
+            }
+          }
+        }
+      } catch (e) {
+        if (e.code !== CODES.NOT_FOUND) this._log("warn", "读取云端墓碑失败（不影响本轮）：" + (e && e.message || e));
+      }
+
+      var cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+      var keys = Object.keys(local.entries);
+      for (var i = 0; i < keys.length; i++) {
+        if (Number(local.entries[keys[i]].at) < cutoff) { delete local.entries[keys[i]]; changed = true; }
+      }
+      keys = Object.keys(local.entries);
+      if (keys.length > 500) {
+        keys.sort(function (a, b) { return Number(local.entries[a].at) - Number(local.entries[b].at); });
+        for (var j = 0; j < keys.length - 500; j++) { delete local.entries[keys[j]]; changed = true; }
+      }
+      if (changed) {
+        await this._writeTombstones(local);
+        try {
+          await client.ensureDir(WebDAV.join(cfg.root, "data"));
+          await client.put(remotePath, encodeText(JSON.stringify(local, null, 2)), {
+            contentType: "application/json", abortToken: this._abortToken,
+          });
+        } catch (e2) {
+          this._log("warn", "上传墓碑失败（下次重试）：" + (e2 && e2.message || e2));
+        }
+      }
+      return local;
+    },
+
+    /**
+     * 把"本地删掉但索引里还有"的文件记成墓碑。
+     * 两道闸：① 只对目录型数据集；② 大批缺失（>60% 且 >20 个）视为目录不可用，整批跳过。
+     */
+    async _collectLocalDeletions(ds, index, local, remote, result) {
+      var store = await this._readTombstones();
+      var prefix = ds.key + "::";
+      var missing = [];
+      var keys = Object.keys(index.entries);
+      for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        if (k.indexOf(prefix) !== 0) continue;
+        var rel = k.slice(prefix.length);
+        if (local[rel]) continue;
+        missing.push(rel);
+      }
+      if (!missing.length) return store.entries;
+
+      // 本地一个文件都没扫到、云端却有 → 多半是同步目录暂时不可用（盘没挂/被改名），
+      // 这时绝不能把"看不到"当成"用户删了"。
+      if (!Object.keys(local).length && Object.keys(remote).length) {
+        var msgGone = "「" + ds.name + "」本地目录为空但云端有文件，已跳过删除传播（可能是目录暂不可用）";
+        result.warnings.push({ dataset: ds.key, code: "LOCAL_EMPTY", message: msgGone });
+        this._log("warn", msgGone);
+        return store.entries;
+      }
+
+      var totalEntries = keys.filter(function (x) { return x.indexOf(prefix) === 0; }).length;
+      if (missing.length > 20 && missing.length > totalEntries * 0.6) {
+        var msg = "「" + ds.name + "」有 " + missing.length + "/" + totalEntries + " 个文件本地缺失（疑似目录不可用或大批删除），已跳过删除传播";
+        result.warnings.push({ dataset: ds.key, code: "MASS_DELETE", message: msg });
+        this._log("warn", msg);
+        return store.entries;
+      }
+
+      var changed = false;
+      for (var m = 0; m < missing.length; m++) {
+        var rel2 = missing[m];
+        store.entries[this._tombKey(ds.key, rel2)] = { at: Date.now(), device: this.deviceId() };
+        delete index.entries[prefix + rel2];
+        changed = true;
+      }
+      if (changed) await this._writeTombstones(store);
+      if (missing.length) this._log("info", "「" + ds.name + "」记录删除墓碑 " + missing.length + " 个");
+      return store.entries;
+    },
+
+    /**
+     * 应用墓碑。返回 true = 已处理（跳过常规决策）。
+     * 规则：删除后对端**又改过**的，一律保留对端（宁可复活也不误删）。
+     */
+    async _applyTombstone(client, cfg, ds, ctx) {
+      var rel = ctx.rel, l = ctx.local, r = ctx.remote, tomb = ctx.tomb;
+      var at = Number(tomb.at) || 0;
+      var grace = 2000;
+      var self = this;
+      var drop = async function () {
+        var store = await self._readTombstones();
+        delete store.entries[self._tombKey(ds.key, rel)];
+        await self._writeTombstones(store);
+      };
+
+      if (l && !r) {
+        if (Number(l.mtime) > at + grace) {
+          await drop();
+          this._log("info", "「" + rel + "」删除后本机又改过，保留并重新上传");
+          return false;
+        }
+        await this._removeLocal(ds, rel);
+        await drop();
+        ctx.stat.deleted = (ctx.stat.deleted || 0) + 1;
+        ctx.result.deleted++;
+        this._log("info", "已按墓碑删除本机文件：" + rel);
+        return true;
+      }
+
+      if (!l && r) {
+        if (Number(r.mtime) > at + grace) {
+          await drop();
+          this._log("info", "「" + rel + "」删除后云端又改过，保留云端（不复活本机）");
+          return false;
+        }
+        try {
+          await client.del(WebDAV.join(cfg.root, ds.remoteDir, rel));
+          ctx.stat.deleted = (ctx.stat.deleted || 0) + 1;
+          ctx.result.deleted++;
+          this._log("info", "已按墓碑删除云端文件：" + rel);
+        } catch (e) {
+          this._log("warn", "删除云端文件失败：" + rel + "（" + (e && e.message || e) + "）");
+        }
+        await drop();
+        delete ctx.index.entries[ctx.idxKey];
+        return true;
+      }
+
+      if (l && r) {
+        if (Number(l.mtime) <= at + grace && Number(r.mtime) <= at + grace) {
+          await this._removeLocal(ds, rel);
+          try { await client.del(WebDAV.join(cfg.root, ds.remoteDir, rel)); } catch (e2) { /* ignore */ }
+          ctx.result.deleted++;
+          await drop();
+          delete ctx.index.entries[ctx.idxKey];
+          return true;
+        }
+        await drop();
+        return false;
+      }
+
+      await drop();
+      delete ctx.index.entries[ctx.idxKey];
+      return true;
+    },
+
+    async _removeLocal(ds, rel) {
+      try {
+        var p = this._localPathFor(ds, rel);
+        if (p && (await this._exists(p))) await IOUtils.remove(p);
+      } catch (e) { /* ignore */ }
+    },
+
+    /* ---------- 设置快照三向合并 ---------- */
+
+    /** 逐键三向合并：base 为上次同步基线。返回 merged / conflicts / fromRemote */
+    mergeSnapshots: function (base, local, remote) {
+      var b = base || {}, l = local || {}, r = remote || {};
+      var keys = {};
+      [b, l, r].forEach(function (o) { Object.keys(o).forEach(function (k) { keys[k] = 1; }); });
+      var merged = {}, conflicts = [], fromRemote = [];
+      var same = function (x, y) { return JSON.stringify(x) === JSON.stringify(y); };
+      Object.keys(keys).forEach(function (k) {
+        var hasL = Object.prototype.hasOwnProperty.call(l, k);
+        var hasR = Object.prototype.hasOwnProperty.call(r, k);
+        var hasB = Object.prototype.hasOwnProperty.call(b, k);
+        var lv = l[k], rv = r[k], bv = b[k];
+        var lc = hasB ? !same(lv, bv) : hasL;
+        var rc = hasB ? !same(rv, bv) : hasR;
+        if (lc && rc) {
+          if (same(lv, rv)) { if (hasL) merged[k] = lv; return; }
+          merged[k] = hasL ? lv : rv;
+          conflicts.push(k);
+          return;
+        }
+        if (lc) { if (hasL) merged[k] = lv; return; }
+        if (rc) { if (hasR) { merged[k] = rv; fromRemote.push(k); } return; }
+        if (hasL) merged[k] = lv;
+      });
+      return { merged: merged, conflicts: conflicts, fromRemote: fromRemote };
+    },
+
+    /* ---------- 文件名兼容 ---------- */
+
+    /** Windows 非法字符 / 保留名 / 末尾点空格 → 安全文件名 */
+    sanitizeName: function (name) {
+      var s = String(name == null ? "" : name).replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/, "");
+      if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$/i.test(s)) s = "_" + s;
+      return s || "_";
+    },
+
+    /** 记录设置快照基线（下次冲突时做三向合并） */
+    _rememberSnapshot: function (index, localItem, snap) {
+      try {
+        if (!index.snapshots) index.snapshots = {};
+        var prefs = snap && snap.prefs;
+        if (!prefs && localItem && localItem.data) {
+          var j = JSON.parse(decodeText(localItem.data));
+          prefs = j && j.prefs;
+        }
+        if (prefs) index.snapshots.settings = { prefs: prefs, at: Date.now() };
+      } catch (e) { /* 基线失败只影响合并降级，不阻塞同步 */ }
+    },
+
     /* ---------- 冲突 ---------- */
 
     /** 冲突副本名：`foo.json` → `foo (冲突 本机 20261019-103000).json` */
@@ -1181,10 +1477,38 @@ var CloudSync = (function () {
       var rel = ctx.rel;
       var policy = cfg.policy;
 
-      // 设置快照不合并：本机为准 + 云端留档（逐键合并的语义边界太多，宁可人工看）
+      // 设置快照：有基线就逐键三向合并（A 机改提示词、B 机改主题 → 两份都保住）
       if (ds.kind === "pref") {
-        this._log("warn", "设置项冲突：以本机为准上传，云端旧版已留档");
         if (ctx.remote) await this._backupRemote(client, cfg, ds, rel);
+        var base = ctx.index && ctx.index.snapshots && ctx.index.snapshots.settings
+          ? ctx.index.snapshots.settings.prefs : null;
+        var localSnap = null;
+        try { localSnap = JSON.parse(decodeText(ctx.local.data)); } catch (e) { localSnap = null; }
+        var remoteSnap = null;
+        if (ctx.remote) {
+          try {
+            var rr = await client.getBuffer(WebDAV.join(cfg.root, ds.remoteDir, rel), { abortToken: this._abortToken });
+            remoteSnap = JSON.parse(decodeText(new Uint8Array(rr.body || new ArrayBuffer(0))));
+          } catch (e2) { remoteSnap = null; }
+        }
+        if (base && localSnap && localSnap.prefs && remoteSnap && remoteSnap.prefs) {
+          var m = this.mergeSnapshots(base, localSnap.prefs, remoteSnap.prefs);
+          this.applySnapshot({ version: 1, prefs: m.merged });
+          var mergedBytes = encodeText(JSON.stringify({ version: 1, prefs: m.merged }, null, 2));
+          var upM = await this._uploadOne(client, cfg, ds, {
+            rel: rel,
+            local: { data: mergedBytes, size: mergedBytes.byteLength, mtime: Date.now() },
+            remote: ctx.remote,
+            entry: null,
+          });
+          if (m.conflicts.length) {
+            this._log("warn", "设置项冲突已合并，同一键两边都改过（保留本机）：" + m.conflicts.join(", "));
+          } else {
+            this._log("info", "设置项冲突已逐键合并（采用云端 " + m.fromRemote.length + " 项）");
+          }
+          return { entry: upM.entry, uploaded: true, downloaded: true, snapshot: { prefs: m.merged } };
+        }
+        this._log("warn", "设置项冲突且无合并基线：以本机为准上传，云端旧版已留档");
         var up = await this._uploadOne(client, cfg, ds, { rel: rel, local: ctx.local, remote: ctx.remote, entry: null });
         return { entry: up.entry, uploaded: true, downloaded: false };
       }
@@ -1411,6 +1735,21 @@ var CloudSync = (function () {
       var manifests = {};
       await this._walkRemote(client, dir, "", out, manifests, 0, budget);
 
+      // 大小写不敏感平台（Windows/macOS）上 A.json 与 a.json 会互相覆盖 → 两个都不碰，交给用户改名
+      var lowerMap = {};
+      var caseDup = [];
+      Object.keys(out).forEach(function (k) {
+        var lk = k.toLowerCase();
+        if (lowerMap[lk]) { caseDup.push(lowerMap[lk]); caseDup.push(k); }
+        else lowerMap[lk] = k;
+      });
+      if (caseDup.length) {
+        for (var ci = 0; ci < caseDup.length; ci++) {
+          delete out[caseDup[ci]];
+          this._log("warn", "云端存在仅大小写不同的文件，已跳过：" + caseDup[ci]);
+        }
+      }
+
       // 有清单没有正式文件 → 视为"分卷文件"，取清单补全逻辑条目
       var keys = Object.keys(manifests);
       for (var i = 0; i < keys.length; i++) {
@@ -1591,7 +1930,7 @@ var CloudSync = (function () {
 
     _readIndex: async function () {
       var p = this._indexPath();
-      var empty = { version: 1, updatedAt: 0, entries: {} };
+      var empty = { version: 1, updatedAt: 0, entries: {}, snapshots: {} };
       if (!(await this._exists(p))) {
         await this._migrateLegacyIndex(p);
         if (!(await this._exists(p))) return empty;
@@ -1601,6 +1940,7 @@ var CloudSync = (function () {
         var v = JSON.parse(text);
         if (!v || typeof v !== "object" || !v.entries || typeof v.entries !== "object") return empty;
         v.version = 1;
+        if (!v.snapshots || typeof v.snapshots !== "object") v.snapshots = {};
         return v;
       } catch (e) {
         // 索引损坏 → 不阻塞同步，只是这一轮会退化成"无基线"（冲突可能变多）
@@ -1782,6 +2122,38 @@ var CloudSync = (function () {
         }
       } catch (e) { /* 返回空列表 */ }
       return out.sort(function (a, b) { return String(a.rel).localeCompare(String(b.rel)); });
+    },
+
+    /** 列出本机冲突留档（最近 50 条） */
+    listConflicts: async function () {
+      var out = [];
+      var root = this._localJoin(this._localCloudDir(), "conflicts");
+      var self = this;
+      async function walk(dir, prefix, depth) {
+        if (depth > 3) return;
+        var names = [];
+        try { names = await IOUtils.getChildren(dir); } catch (e) { return; }
+        for (var i = 0; i < names.length; i++) {
+          var full = names[i];
+          var name = WebDAV.basename(full);
+          var rel = prefix ? prefix + "/" + name : name;
+          var st = null;
+          try { st = await IOUtils.stat(full); } catch (e2) { continue; }
+          if (!st) continue;
+          if (st.type === "directory") await walk(full, rel, depth + 1);
+          else out.push({ rel: rel, size: Number(st.size) || 0, mtime: Number(st.lastModified) || 0, path: full });
+        }
+      }
+      await walk(root, "", 0);
+      out.sort(function (a, b) { return b.mtime - a.mtime; });
+      return out.slice(0, 50);
+    },
+
+    openConflictsDir: async function () {
+      var dir = this._localJoin(this._localCloudDir(), "conflicts");
+      await this._ensureLocalDir(dir);
+      try { Zotero.launchFile(dir); return dir; }
+      catch (e) { throw err(CODES.IO, "无法打开冲突目录：" + (e && e.message || e)); }
     },
 
     openCloudDir: async function () {

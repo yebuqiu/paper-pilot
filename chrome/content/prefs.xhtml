@@ -198,6 +198,8 @@
               <html:img id="pp-mb-qr" class="pp-mb-qr" style="display:none;"/>
               <html:div class="pp-row pp-row-tight">
                 <html:button id="pp-mb-claim" class="pp-btn pp-btn-primary pp-btn-sm">我已完成支付</html:button>
+                <!-- 0.60.0 会员订单在线支付（服务端 1.8.7+ 开通时出现）：扫码后回调自动开通，无需人工核销 -->
+                <html:button id="pp-mb-online" class="pp-btn pp-btn-primary pp-btn-sm" style="display:none;">在线支付（扫码）</html:button>
                 <html:button id="pp-mb-poll" class="pp-btn pp-btn-sm">刷新订单状态</html:button>
                 <html:button id="pp-mb-cancel" class="pp-btn pp-btn-sm">取消订单</html:button>
                 <!-- 0.49.0 付款单弹窗：自动弹出只在生成订单时发生一次，这里可随时重开 -->
@@ -1571,6 +1573,22 @@
       <html:div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;">
         <html:label class="pp-check"><html:input type="checkbox" id="pp-cloud-keep-parts"/> 保留旧分卷（排障用）</html:label>
         <html:span class="pp-hint">超限时整数据集跳过，不做"只同步看到的部分"（漏扫会误判成云端独有）。</html:span>
+      </html:div>
+
+      <html:div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;">
+        <html:label class="pp-check"><html:input type="checkbox" id="pp-cloud-propagate"/> 传播删除（仅技能包/安装包）</html:label>
+        <html:span class="pp-hint">对端在删除之后没改过的文件才会一起删；改过的保留。</html:span>
+      </html:div>
+
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">冲突留档</html:div>
+        <html:div class="pp-sub-desc">两边同时修改时，旧版本留在本机（不自动删），可在这里查看</html:div>
+        <html:div id="pp-cloud-conflicts" class="pp-datasets"></html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:4px;">
+          <html:button id="pp-cloud-conflict-open" class="pp-btn pp-btn-sm">打开冲突目录</html:button>
+          <html:button id="pp-cloud-conflict-refresh" class="pp-btn pp-btn-sm">↻ 刷新</html:button>
+          <html:span id="pp-cloud-conflict-msg" class="pp-msg"></html:span>
+        </html:div>
       </html:div>
 
       <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:12px;">

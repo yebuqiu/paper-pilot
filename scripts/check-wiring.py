@@ -813,7 +813,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.8.5'" in srv, "18.31 服务端版本号已随批次更新（1.8.5）")
+ok("version: '1.8.7'" in srv, "18.31 服务端版本号已随批次更新（1.8.7）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -902,8 +902,8 @@ ok("if (!c.enforce) return { allowed: true" in bal_src, "19.7 ★ 观察模式�
 ok("const okPaid = avail > 0 && avail >= c.minBalanceMicro;" in bal_src,
    "19.8 ★ 高级模型要求订阅额度+充值过阈值且 > 0（注册赠送限基础模型）")
 # ★ 订阅额度：不结转 —— 只认期号，本期发过就不再补（否则"花完自动续杯"）
-ok("if (b.planPeriodKey === key) return null;" in srv,
-   "19.8b ★ 订阅额度只按期号判重（花完不补，落实不结转）")
+ok("if (b.planPeriodKey === key) {" in srv and "balance.extendPlanExpiry(user, grantEnd, t)" in srv,
+   "19.8b ★ 订阅额度只按期号判重（花完不补）；续费只延长有效期，不重复发钱")
 ok("'BALANCE_REQUIRED_FOR_HIGH_TIER'" in bal_src, "19.9 高级模型拦截有独立 code")
 ok("'INSUFFICIENT_BALANCE'" in bal_src, "19.10 余额不足拦截有可编程 code")
 ok("自带 Key 不受额度限制" in bal_src, "19.11 拦截文案给「充值 / 自有 Key」两条出路")
@@ -928,7 +928,7 @@ ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余�
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.8.5'" in srv, "19.24 服务端版本随批次推进（1.8.5）")
+ok("version: '1.8.7'" in srv, "19.24 服务端版本随批次推进（1.8.7）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -1088,7 +1088,7 @@ ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/p
 for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
     ok(k in html, "21.31 admin.html 含 %s" % k)
 
-ok("version: '1.8.5'" in srv, "21.32 服务端版本 1.8.5")
+ok("version: '1.8.7'" in srv, "21.32 服务端版本 1.8.7")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 22. 多引擎翻译（插件 0.28.0） ----------
@@ -2800,9 +2800,11 @@ ok("onlinePay: (j.onlinePay && typeof j.onlinePay === 'object')" in _acct_js,
    "44.2 plans() 解析服务端 onlinePay 可用性（旧服务端 → false）")
 ok("async function balOnlinePayCore()" in _pd_js and "Zotero.launchURL(r.payUrl)" in _pd_js,
    "44.3 prefs-account 在线支付核心：建收银台 + 系统浏览器打开 payUrl")
-ok("let balOnline = { available: false, channels: [] }" in _pd_js
-   and "online: (kind === \"credit\" && balOnline.available) ? balOnlinePayCore : null" in _pd_js,
-   "44.4 ★ 弹窗仅在服务端开通且充值单时提供在线支付动作")
+ok("let mbOnline = { available: false, channels: [] }" in _pd_js
+   and 'online: kind === "credit"' in _pd_js and "mbOnlinePayCore" in _pd_js,
+   "44.4 ★ 弹窗按订单类型提供在线支付（充值单 + 会员单，均需服务端开通）")
+ok("pp-mb-online" in xhtml_ids and 'bind("pp-mb-online", "click", onMbOnlinePay)' in _pd_js,
+   "44.4b ★ 会员订单内联「在线支付（扫码）」按钮存在且已绑定")
 ok("pp-bal-online" in xhtml_ids, "44.5 prefs.xhtml 含内联「在线支付（扫码）」按钮")
 ok("pp-dlg-online" in _pd_js, "44.6 付款单弹窗含在线支付按钮（class pp-dlg-online）")
 ok('bind("pp-bal-online", "click", onBalOnlinePay)' in _pd_js,
@@ -2920,9 +2922,9 @@ ok("SECRET_LEAF_RE" in _cloud_sync_js and 'shouldSyncPref' in _cloud_sync_js
    "48.9 ★ 设置快照剔除密钥类键（aiChannels/apiKey/token/password）")
 ok("cloudSync" in _cloud_sync_js and 'leaf.indexOf("cloudSync") === 0' in _cloud_sync_js,
    "48.10 ★ 同步自身配置不进快照（否则多机互相改配置）")
-ok(_cloud_sync_js.count("client.del(") == 2 and "_cleanupOldParts" in _cloud_sync_js
-   and "_purgeDir" in _cloud_sync_js,
-   "48.11 ★ DELETE 只出现在旧分卷清理（_cleanupOldParts/_purgeDir）；业务文件删除不传播")
+ok(_cloud_sync_js.count("client.del(") == 4 and "_cleanupOldParts" in _cloud_sync_js
+   and "_purgeDir" in _cloud_sync_js and "_applyTombstone" in _cloud_sync_js,
+   "48.11 ★ DELETE 只出现在旧分卷清理与墓碑应用；业务文件删除不传播")
 ok("TOO_LARGE" in _cloud_sync_js and "QUOTA" in _cloud_core_js and "AUTH_EXPIRED" in _cloud_sync_js,
    "48.12 ★ 错误分类齐全（超限/配额/授权过期）")
 ok("_uploadParts" in _cloud_sync_js and "ppmanifest" in _cloud_sync_js,
@@ -2959,6 +2961,23 @@ ok("assembleMaxMB" in _cloud_sync_js and "本机组装上限" in _cloud_sync_js,
    "48.25 ★ 分卷组装独立上限（防 512MB 内存峰值）")
 ok("CODES.QUOTA)) throw e" in _cloud_sync_js,
    "48.26 ★ 配额满立即中止整轮（不逐文件刷失败）")
+# 批次 2（0.60.0）：删除墓碑 / 三向合并 / 文件名兼容
+ok("_collectLocalDeletions" in _cloud_sync_js and "_applyTombstone" in _cloud_sync_js
+   and ".tombstones.json" in _cloud_sync_js,
+   "48.27 ★ 删除墓碑：本地删除记录 + 跨设备共享 + 应用")
+ok('ds.kind === "dir" && cfg.propagateDelete' in _cloud_sync_js
+   and "MASS_DELETE" in _cloud_sync_js,
+   "48.28 ★ 删除传播仅限目录型数据集，且大批缺失有保护")
+ok("mergeSnapshots" in _cloud_sync_js and "_rememberSnapshot" in _cloud_sync_js
+   and "snapshots" in _cloud_sync_js,
+   "48.29 ★ 设置快照三向合并（基线 + 逐键）")
+ok("sanitizeName" in _cloud_sync_js and "Windows 非法字符" in _cloud_sync_js,
+   "48.30 ★ 下载前校验 Windows 非法文件名（不做静默改名）")
+ok("listConflicts" in _cloud_sync_js and "pp-cloud-conflicts" in prefs_xhtml
+   and "pp-cloud-propagate" in prefs_xhtml,
+   "48.31 冲突留档列表 + 删除传播开关已接线")
+ok('pref("extensions.zotero.papilot.cloudSyncPropagateDelete", true);' in prefsdef,
+   "48.32 prefs.js 有删除传播默认值")
 
 # ---------- 49. 0.57.0 检索订阅 v2（推荐 / 试跑 / 多源 / AI 边界） ----------
 # 这一版的价值全在「接缝」：推荐没接上=空白卡；预览写脏数据=吃掉正式订阅；

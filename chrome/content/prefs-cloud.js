@@ -23,6 +23,19 @@
   const S = () => ((typeof Zotero !== "undefined" && Zotero.Papilot && Zotero.Papilot.cloudSync) || null);
 
   const APP_PW_URL = "https://www.jianguoyun.com/dashboard#/settings/security";
+  const HTML_NS = "http://www.w3.org/1999/xhtml";
+  const el = (tag, cls, text) => {
+    const node = document.createElementNS(HTML_NS, tag);
+    if (cls) node.setAttribute("class", cls);
+    if (text !== undefined) node.textContent = text;
+    return node;
+  };
+  const fmtBytes = (n) => {
+    const v = Number(n) || 0;
+    if (v < 1024) return v + " B";
+    if (v < 1024 * 1024) return (v / 1024).toFixed(1) + " KB";
+    return (v / 1024 / 1024).toFixed(1) + " MB";
+  };
 
   let unsub = null;
   let busy = false;
@@ -141,6 +154,34 @@
     box.scrollTop = box.scrollHeight;
   }
 
+  async function renderConflicts() {
+    const cs = S();
+    const box = $("pp-cloud-conflicts");
+    const msg = $("pp-cloud-conflict-msg");
+    if (!cs || !box) return;
+    box.textContent = "";
+    let list = [];
+    try { list = await cs.listConflicts(); } catch (e) { list = []; }
+    if (!list.length) {
+      box.appendChild(el("div", "pp-hint", "没有冲突留档"));
+      if (msg) msg.textContent = "";
+      return;
+    }
+    const max = 10;
+    list.slice(0, max).forEach((c) => {
+      const row = el("div", "pp-dataset");
+      const name = el("span", "pp-dataset-name", String(c.rel).split("/").pop());
+      name.title = c.rel;
+      const meta = el("span", "pp-hint",
+        new Date(c.mtime).toLocaleString() + " · " + fmtBytes(c.size));
+      row.appendChild(name);
+      row.appendChild(meta);
+      box.appendChild(row);
+    });
+    if (list.length > max) box.appendChild(el("div", "pp-hint", "仅显示最近 " + max + " 条"));
+    if (msg) msg.textContent = "共 " + list.length + " 条";
+  }
+
   function renderAll() {
     const cs = S();
     if (!cs) return;
@@ -159,6 +200,7 @@
     setVal("pp-cloud-maxfiles", cfg.maxFiles);
     setVal("pp-cloud-maxdepth", cfg.maxDepth);
     setChecked("pp-cloud-keep-parts", cfg.keepOldParts);
+    setChecked("pp-cloud-propagate", cfg.propagateDelete);
     setChecked("pp-cloud-remember", cfg.remember);
     renderDatasets(cfg.datasets);
 
@@ -174,6 +216,7 @@
     }
     renderStatus();
     renderLogs();
+    renderConflicts();
   }
 
   async function withBusy(fn, label) {
@@ -207,6 +250,7 @@
       maxFiles: Number(val("pp-cloud-maxfiles")) || 2000,
       maxDepth: Number(val("pp-cloud-maxdepth")) || 6,
       keepOldParts: checked("pp-cloud-keep-parts"),
+      propagateDelete: checked("pp-cloud-propagate"),
       remember: checked("pp-cloud-remember"),
     };
   }
@@ -255,6 +299,7 @@
       } else {
         setMsg(errText({ code: res && res.code, message: res && res.error }), "bad");
       }
+      renderConflicts();
     }, "同步中…");
   }
 
@@ -290,6 +335,13 @@
         try { cs.logout(); renderAll(); setMsg("已退出坚果云", "ok"); }
         catch (e) { setMsg(errText(e), "bad"); }
       }],
+      ["pp-cloud-conflict-open", "click", async () => {
+        try {
+          const dir = await cs.openConflictsDir();
+          setMsg("冲突目录：" + dir, "ok");
+        } catch (e) { setMsg(errText(e), "bad"); }
+      }],
+      ["pp-cloud-conflict-refresh", "click", () => renderConflicts()],
       ["pp-cloud-stage", "click", () => withBusy(async () => {
         const r = await cs.stageSkillPacks();
         setMsg("已收集 " + r.written + " 个技能包，点「立即同步」上传", r.written ? "ok" : "");

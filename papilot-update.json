@@ -3,6 +3,17 @@
   "papilot@dev.local": {
    "updates": [
     {
+     "version": "0.60.0",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.60.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "云同步批次 2：删除可传播（仅技能包/安装包；对端删除后又改过的不删）\n设置项冲突改为逐键三向合并，两台机器改不同设置不再互相覆盖\n设置面板新增「冲突留档」列表与打开目录\nWindows 非法文件名下载前跳过；仅大小写不同的云端文件不再互相覆盖"
+    },
+    {
      "version": "0.59.0",
      "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.59.0.xpi",
      "applications": {

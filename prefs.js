@@ -445,5 +445,7 @@ pref("extensions.zotero.papilot.cloudSyncMaxFiles", 2000);
 pref("extensions.zotero.papilot.cloudSyncMaxDepth", 6);
 // 是否保留旧分卷目录（默认 false = 上传成功后清理其它 hash 的分卷）
 pref("extensions.zotero.papilot.cloudSyncKeepOldParts", false);
+// 删除传播：只对目录型数据集（技能包/安装包）生效；对端在删除后又改过的文件不删
+pref("extensions.zotero.papilot.cloudSyncPropagateDelete", true);
 // 索引归属指纹（baseUrl|email|root）：换账号/改根目录时自动切到独立索引
 pref("extensions.zotero.papilot.cloudSyncIndexOwner", "");

@@ -770,6 +770,100 @@ const CFG = {
     ok(CS._localJoin(winRoot, "x").charAt(0) === "C", "批次1：Windows 本地路径不以 / 开头");
   }
 
+  // ---------- ④c 批次 2：墓碑 / 三向合并 / 文件名 ----------
+  {
+    // 三向合并：各改各的都要保住；同一键两边改 → 本机优先并记冲突
+    const base = { a: 1, b: 'x', c: true };
+    const local = { a: 2, b: 'x', c: false };          // 本机改 a、c
+    const remote = { a: 1, b: 'y', c: true, d: 'new' }; // 云端改 b、新增 d
+    const m = CS.mergeSnapshots(base, local, remote);
+    eq(m.merged.a, 2, '批次2：仅本机改的键保留本机值');
+    eq(m.merged.b, 'y', '批次2：仅云端改的键采用云端值');
+    eq(m.merged.c, false, '批次2：本机改的布尔键保留');
+    eq(m.merged.d, 'new', '批次2：云端新增键被合并');
+    eq(m.conflicts.length, 0, '批次2：不同键各改各的 → 无冲突');
+    ok(m.fromRemote.indexOf('b') >= 0, '批次2：记录来自云端的键', m.fromRemote);
+
+    const m2 = CS.mergeSnapshots({ a: 1 }, { a: 2 }, { a: 3 });
+    eq(m2.merged.a, 2, '批次2：同键两边都改 → 本机优先');
+    eq(m2.conflicts.join(','), 'a', '批次2：同键冲突被记录');
+
+    const m3 = CS.mergeSnapshots({ a: 1, b: 2 }, { a: 2 }, { a: 2, b: 2, c: 3 });
+    eq(m3.merged.a, 2, '批次2：两边改成同一个值 → 不算冲突');
+    eq(m3.conflicts.length, 0, '批次2：同值不记冲突');
+    eq(m3.merged.c, 3, '批次2：云端新增键仍被采纳');
+  }
+
+  {
+    // 墓碑：本地缺失 + 云端仍在 → 记录墓碑；大批缺失 → 整批跳过
+    prefStore.clear(); prefTypes.clear();
+    files.clear(); mt.clear(); dirs.clear();
+    const ds = CS.datasetOf('packages');
+    const index = { version: 1, entries: {}, snapshots: {} };
+    index.entries['packages::installers/gone.xpi'] = { syncedAt: Date.now(), localSize: 10, size: 10 };
+    index.entries['packages::installers/keep.xpi'] = { syncedAt: Date.now(), localSize: 10, size: 10 };
+    const local = { 'installers/keep.xpi': { size: 10, mtime: Date.now() } };
+    const remote = { 'installers/gone.xpi': { size: 10, mtime: Date.now() }, 'installers/keep.xpi': { size: 10, mtime: Date.now() } };
+    const result = { warnings: [] };
+    const tombs = await CS._collectLocalDeletions(ds, index, local, remote, result);
+    ok(!!tombs['packages::installers/gone.xpi'], '批次2：本地删除被记成墓碑');
+    ok(!tombs['packages::installers/keep.xpi'], '批次2：未删除的文件不记墓碑');
+    ok(!index.entries['packages::installers/gone.xpi'], '批次2：墓碑同时清掉索引条目');
+    eq(result.warnings.length, 0, '批次2：少量删除不触发大批删除保护');
+
+    // 大批缺失保护
+    const idx2 = { version: 1, entries: {}, snapshots: {} };
+    for (let i = 0; i < 25; i++) idx2.entries['packages::bulk/f' + i + '.xpi'] = { syncedAt: Date.now() };
+    const r2 = { warnings: [] };
+    const t2 = await CS._collectLocalDeletions(ds, idx2, {}, {}, r2);
+    eq(Object.keys(t2).filter((k) => k.indexOf('packages::bulk/') === 0).length, 0,
+      '批次2：大批缺失不写墓碑（防目录不可用误删）');
+    ok(r2.warnings.some((w) => w.code === 'MASS_DELETE'), '批次2：大批缺失给出告警');
+  }
+
+  {
+    // 应用墓碑：云端文件早于删除 → 删除云端；云端在删除后又改过 → 保留
+    const client = { deleted: [], async del(p) { this.deleted.push(p); return true; } };
+    const ds = CS.datasetOf('packages');
+    const idx = { entries: { 'packages::a.xpi': {} } };
+    const stat = { deleted: 0 };
+    const result = { deleted: 0 };
+    const old = Date.now() - 3600 * 1000;
+    const handled = await CS._applyTombstone(client, { root: '/Papilot' }, ds, {
+      rel: 'a.xpi', local: null, remote: { size: 10, mtime: old },
+      tomb: { at: Date.now() }, idxKey: 'packages::a.xpi', index: idx, stat, result,
+    });
+    eq(handled, true, '批次2：墓碑命中 → 已处理');
+    eq(client.deleted.length, 1, '批次2：云端旧文件被删除');
+    eq(result.deleted, 1, '批次2：结果计数删除 1');
+
+    const client2 = { deleted: [], async del(p) { this.deleted.push(p); return true; } };
+    const r3 = { deleted: 0 };
+    const handled2 = await CS._applyTombstone(client2, { root: '/Papilot' }, ds, {
+      rel: 'b.xpi', local: null, remote: { size: 10, mtime: Date.now() },
+      tomb: { at: old }, idxKey: 'packages::b.xpi', index: { entries: {} }, stat: { deleted: 0 }, result: r3,
+    });
+    eq(handled2, false, '批次2：删除后云端又改过 → 不删，交回常规决策');
+    eq(client2.deleted.length, 0, '批次2：不误删后改的文件');
+  }
+
+  {
+    // 文件名清理
+    eq(CS.sanitizeName('a:b?.xpi'), 'a_b_.xpi', '批次2：Windows 非法字符替换');
+    eq(CS.sanitizeName('CON'), '_CON', '批次2：保留名加前缀');
+    eq(CS.sanitizeName('name. '), 'name', '批次2：去掉末尾点/空格');
+    eq(CS.sanitizeName('正常 文件.pdf'), '正常 文件.pdf', '批次2：正常文件名不变');
+  }
+
+  {
+    // 冲突留档列表
+    files.clear(); mt.clear(); dirs.clear();
+    await IOUtils.writeUTF8('/data/papilot-cloud/conflicts/packages/a (冲突 本机 20261019-103000).xpi', 'x');
+    const list = await CS.listConflicts();
+    ok(list.length >= 1, '批次2：能列出冲突留档', list);
+    ok(/冲突/.test(list[0].rel), '批次2：冲突文件名可读', list[0] && list[0].rel);
+  }
+
   // ---------- ⑤ 端到端：transport 层模拟真实服务端，跑完整 syncNow ----------
   {
     prefStore.clear(); prefTypes.clear();
