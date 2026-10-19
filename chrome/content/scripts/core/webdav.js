@@ -357,6 +357,8 @@ var WebDAV = (function () {
     // ArrayBuffer.isView 走内部槽，跨 realm 可靠；缓冲区用 byteLength 鸭子判定。
     try {
       if (typeof ArrayBuffer !== "undefined" && ArrayBuffer.isView && ArrayBuffer.isView(v)) {
+        // 整块视图直接复用底层 buffer，避免大文件（分卷组装/校验）再多复制一份
+        if (v.byteOffset === 0 && v.byteLength === v.buffer.byteLength) return v.buffer;
         return v.buffer.slice(v.byteOffset || 0, (v.byteOffset || 0) + (v.byteLength || 0));
       }
     } catch (e) { /* 继续尝试其它形态 */ }
@@ -479,13 +481,31 @@ var WebDAV = (function () {
     var timeoutMs = Number(cfg.timeoutMs) > 0 ? Number(cfg.timeoutMs) : 30000;
     var transport = typeof cfg.transport === "function" ? cfg.transport : makeTransport();
     // 请求节流：坚果云对短时间内的密集请求会返回 503 BlockedTemporarily（真机踩过），
-    // 串行 + 最小间隔是唯一稳妥做法（默认 300ms ≈ 3.3 次/秒）。
-    var minIntervalMs = cfg.minIntervalMs === undefined ? 300 : Math.max(0, Number(cfg.minIntervalMs) || 0);
+    // 串行 + 最小间隔是唯一稳妥做法。默认 120ms，遇 429/503 限流自动翻倍（上限 3s），
+    // 连续成功后按 0.9 系数回落——首次同步比固定 300ms 快约一倍，又不至于撞墙。
+    var baseInterval = cfg.minIntervalMs === undefined ? 120 : Math.max(0, Number(cfg.minIntervalMs) || 0);
+    var interval = baseInterval;
     var lastAt = 0;
+    var stats = { requests: 0, throttled: 0, intervalMs: interval };
 
     function urlOf(path) {
       if (isAbsoluteUrl(path)) return String(path);
       return base + encodePath(path);
+    }
+
+    /** 根据响应自动升降节流档位：限流 → 翻倍；连续成功 → 缓慢回落 */
+    function adaptThrottle(res) {
+      if (baseInterval <= 0) return;
+      var st = Number(res && res.status) || 0;
+      var blocked = st === 429 ||
+        (st === 503 && /BlockedTemporarily|too many requests/i.test(textOf(res)));
+      if (blocked) {
+        interval = Math.min(3000, Math.max(600, Math.round(Math.max(interval, baseInterval) * 2)));
+        stats.throttled++;
+      } else if (st >= 200 && st < 300 && interval > baseInterval) {
+        interval = Math.max(baseInterval, Math.round(interval * 0.9));
+      }
+      stats.intervalMs = interval;
     }
 
     async function request(method, path, opts) {
@@ -499,11 +519,12 @@ var WebDAV = (function () {
       }
       if (auth) headers.Authorization = auth;
       // 最小请求间隔（只在本客户端实例内串行；同步本身也是串行的）
-      if (minIntervalMs > 0) {
-        var wait = lastAt + minIntervalMs - Date.now();
+      if (interval > 0) {
+        var wait = lastAt + interval - Date.now();
         if (wait > 0) await new Promise(function (r) { setTimeout(r, wait); });
         lastAt = Date.now();
       }
+      stats.requests++;
       var res = await transport({
         method: method,
         url: urlOf(path),
@@ -514,7 +535,9 @@ var WebDAV = (function () {
         onProgress: opts.onProgress,
         abortToken: opts.abortToken,
       });
-      return res || { status: 0, headers: {}, body: null, text: "" };
+      res = res || { status: 0, headers: {}, body: null, text: "" };
+      adaptThrottle(res);
+      return res;
     }
 
     /** 把非 2xx 响应转成带 code 的错误；401 区分「没填凭据」与「凭据失效」 */
@@ -664,6 +687,15 @@ var WebDAV = (function () {
       getBuffer: getBuffer,
       del: del,
       urlOf: urlOf,
+      /** 节流状态（排障/面板展示用）：当前间隔、触发限流次数 */
+      throttle: function () {
+        return {
+          baseIntervalMs: baseInterval,
+          intervalMs: interval,
+          requests: stats.requests,
+          throttled: stats.throttled,
+        };
+      },
     };
   }
 

@@ -3,6 +3,17 @@
   "papilot@dev.local": {
    "updates": [
     {
+     "version": "0.59.0",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.59.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "坚果云云同步（WebDAV）：设置项 / AI 对话 / 技能包与安装包统一同步，增量、冲突两份都留、大文件分卷续传\n快照分层：不再同步缓存、阅读统计与机器绝对路径，避免换机改坏对方配置\n索引按账号+同步目录隔离；旧分卷自动清理；分卷下载加组装上限与 SHA-256 校验\n扫描上限与自适应限流（遇限流自动降速），配额满立即中止并提示"
+    },
+    {
      "version": "0.58.0",
      "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.58.0.xpi",
      "applications": {

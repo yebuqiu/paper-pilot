@@ -57,6 +57,12 @@ var CloudSync = (function () {
     deviceId: "cloudSyncDeviceId",
     deviceName: "cloudSyncDeviceName",
     lastError: "cloudSyncLastError",
+    snapshotMaxKB: "cloudSyncSnapshotMaxKB",
+    assembleMaxMB: "cloudSyncAssembleMaxMB",
+    maxFiles: "cloudSyncMaxFiles",
+    maxDepth: "cloudSyncMaxDepth",
+    keepOldParts: "cloudSyncKeepOldParts",
+    indexOwner: "cloudSyncIndexOwner",
   };
 
   var DEFAULTS = {
@@ -72,6 +78,11 @@ var CloudSync = (function () {
     partMB: 32,
     timeoutSec: 40,
     remember: true,
+    snapshotMaxKB: 1024,
+    assembleMaxMB: 128,
+    maxFiles: 2000,
+    maxDepth: 6,
+    keepOldParts: false,
   };
 
   /** 数据集：新增同步对象只需往这里加一条（或在运行期 registerDataset） */
@@ -106,6 +117,31 @@ var CloudSync = (function () {
   /** 密钥类 pref：绝不出本机 */
   var SECRET_LEAF_RE = /(password|passwd|secret|apikey|api_key|cookie|credential|token$|key$)/i;
   var SECRET_LEAVES = ["aiChannels", "aiApiKey", "cnkiPassword", "easyScholarKey", "mcpToken", "s2ApiKey", "thirdSourcePassword"];
+
+  /**
+   * 非设置项：**默认不进云端**。分三类，每一类同步过去都会造成真实故障：
+   *   · 缓存/统计/会话：每天自然变化 → 天天冲突、快照虚胖；
+   *   · 大型数据集（分区数据等）：MB 级，改一个开关就整包上传；
+   *   · 机器相关绝对路径：同步到另一台机器会直接改坏对方的壁纸/下载目录/数据路径。
+   * 用显式清单而不是正则猜——猜错一次就是跨机配置污染。
+   */
+  var NON_SETTING_LEAVES = [
+    // 缓存 / 统计 / 会话
+    "autoTagCache", "autoTagCacheData", "searchSubsRecoCache", "searchSubsSeen",
+    "searchSubsFeedback", "searchSubsRecoDismissed", "discoveryResults", "discoveryLastRun",
+    "readingProgress", "readingStats", "agentMemory", "agentAuditLog",
+    "chatSessions", "workbenchSessions", "refPaneCache", "bilingualStructExtract",
+    // 大型数据集
+    "rankDataSets", "rankDataSetsM181",
+    // 机器相关绝对路径
+    "uiWallpaperPath", "uiWallpaperUrl", "cnDownloadDir", "rankDataPath", "metaRulesJournalDir",
+    // 设备标识 / 一次性标记 / 每日计数器
+    "installId", "renewPromptShownFor", "updateNoticeLastSeen", "brandMigrated",
+    "accountServerMigrated15", "translateMigrated28", "translateFallbackUpgraded",
+    "compareSelfTest", "pdfInlineSelfTest", "pdfDualSelfTest", "cnkiBootSelfTest",
+    "autoReadDailyCount", "automationDailyAiCount", "readerPopupDailyCount",
+    "cloudSyncIndexOwner",
+  ];
 
   /* ---------------- 小工具 ---------------- */
 
@@ -218,6 +254,11 @@ var CloudSync = (function () {
         largeFileMB: Math.max(1, Number(g(K.largeFileMB, DEFAULTS.largeFileMB)) || DEFAULTS.largeFileMB),
         partMB: Math.max(1, Number(g(K.partMB, DEFAULTS.partMB)) || DEFAULTS.partMB),
         timeoutSec: Math.max(5, Number(g(K.timeoutSec, DEFAULTS.timeoutSec)) || DEFAULTS.timeoutSec),
+        snapshotMaxKB: Math.max(64, Number(g(K.snapshotMaxKB, DEFAULTS.snapshotMaxKB)) || DEFAULTS.snapshotMaxKB),
+        assembleMaxMB: Math.max(8, Number(g(K.assembleMaxMB, DEFAULTS.assembleMaxMB)) || DEFAULTS.assembleMaxMB),
+        maxFiles: Math.max(50, Number(g(K.maxFiles, DEFAULTS.maxFiles)) || DEFAULTS.maxFiles),
+        maxDepth: Math.max(1, Number(g(K.maxDepth, DEFAULTS.maxDepth)) || DEFAULTS.maxDepth),
+        keepOldParts: !!g(K.keepOldParts, DEFAULTS.keepOldParts),
         deviceId: this.deviceId(),
         lastSyncAt: Number(g(K.lastSyncAt, 0)) || 0,
       };
@@ -231,6 +272,8 @@ var CloudSync = (function () {
         root: K.root, policy: K.policy, direction: K.direction, datasets: K.datasets,
         autoMinutes: K.autoMinutes, maxFileMB: K.maxFileMB, largeFileMB: K.largeFileMB,
         partMB: K.partMB, timeoutSec: K.timeoutSec, deviceName: K.deviceName,
+        snapshotMaxKB: K.snapshotMaxKB, assembleMaxMB: K.assembleMaxMB,
+        maxFiles: K.maxFiles, maxDepth: K.maxDepth,
       };
       var policyOk = { keepBoth: 1, local: 1, remote: 1 };
       var dirOk = { both: 1, up: 1, down: 1 };
@@ -255,8 +298,8 @@ var CloudSync = (function () {
             var list = String(v || "").split(",").map(function (s) { return s.trim(); })
               .filter(function (s) { return !!this.datasetOf(s); }, this);
             Prefs.set(K.datasets, list.join(",") || DEFAULTS.datasets);
-          } else if (key === "enabled" || key === "remember") {
-            Prefs.set(map[key], !!v);
+          } else if (key === "enabled" || key === "remember" || key === "keepOldParts") {
+            Prefs.set(key === "keepOldParts" ? K.keepOldParts : map[key], !!v);
           } else if (key === "email") {
             Prefs.set(K.email, String(v || "").trim().slice(0, 200));
           } else if (key === "deviceName") {
@@ -443,8 +486,8 @@ var CloudSync = (function () {
         username: cfg.email,
         password: cfg.token,
         timeoutMs: cfg.timeoutSec * 1000,
-        // 生产 300ms/次防限流；测试/离线校验可置 0（见 _minIntervalMs）
-        minIntervalMs: this._minIntervalMs === undefined ? 300 : this._minIntervalMs,
+        // 生产 120ms 起、遇限流自动升档；测试/离线校验可置 0（见 _minIntervalMs）
+        minIntervalMs: this._minIntervalMs === undefined ? 120 : this._minIntervalMs,
         transport: this._transport || undefined,
       });
       client.__cfgKey = this._cfgKey(cfg);
@@ -476,11 +519,12 @@ var CloudSync = (function () {
       this._running = true;
       this._abortToken = newAbortToken();
       this._ensuredDirs = {};
+      this._indexWriteError = null;
       var self = this;
       var result = {
         ok: true, startedAt: Date.now(), finishedAt: 0, dryRun: !!opts.dryRun,
         uploaded: 0, downloaded: 0, skipped: 0, conflicts: 0, failed: 0,
-        bytesUp: 0, bytesDown: 0, errors: [], datasets: {},
+        bytesUp: 0, bytesDown: 0, errors: [], warnings: [], datasets: {},
       };
 
       try {
@@ -499,6 +543,11 @@ var CloudSync = (function () {
 
         if (!opts.dryRun) {
           await this._writeIndex(index);
+          if (this._indexWriteError) {
+            result.warnings.push({ dataset: "index", code: "IO", message: "本地索引写入失败：" + this._indexWriteError });
+            this._log("error", "本地索引写入失败：" + this._indexWriteError + "（下一轮会退化判定）");
+            this._indexWriteError = null;
+          }
           await this._writeDeviceState(client, cfg, result);
           try { Prefs.set(K.lastSyncAt, Date.now()); } catch (e) { /* ignore */ }
         }
@@ -506,7 +555,8 @@ var CloudSync = (function () {
         result.finishedAt = Date.now();
         var summary = "上传 " + result.uploaded + " · 下载 " + result.downloaded +
           " · 跳过 " + result.skipped + (result.conflicts ? " · 冲突 " + result.conflicts : "") +
-          (result.failed ? " · 失败 " + result.failed : "");
+          (result.failed ? " · 失败 " + result.failed : "") +
+          (result.warnings.length ? " · 告警 " + result.warnings.length : "");
         this._log("info", (opts.dryRun ? "预演完成：" : "同步完成：") + summary);
         this._setState({
           state: result.failed ? "warn" : "done",
@@ -641,8 +691,30 @@ var CloudSync = (function () {
       this._setState({ state: "scanning", phase: "scan", message: "扫描「" + ds.name + "」…" });
       await client.ensureDir(dir);
 
-      var local = await this._scanLocal(ds);
-      var remote = await this._scanRemote(client, dir, ds);
+      // 扫描预算：超限时**整数据集跳过**，绝不做"只同步看到的部分"——
+      // 漏扫的文件会被当成"云端独有"而触发下载/覆盖，比不同步危险得多。
+      var budget = { maxFiles: cfg.maxFiles, maxDepth: cfg.maxDepth, count: 0, truncated: 0, deep: 0 };
+      var local;
+      var remote;
+      try {
+        local = await this._scanLocal(ds, budget);
+        remote = await this._scanRemote(client, dir, ds, budget);
+      } catch (e) {
+        stat.failed++; result.failed++;
+        result.errors.push({ dataset: ds.key, file: "", code: (e && e.code) || CODES.UNKNOWN, message: String(e && e.message || e) });
+        this._log("error", "「" + ds.name + "」扫描失败，已跳过该数据集：" + (e && e.message || e));
+        return;
+      }
+      if (budget.truncated || budget.deep) {
+        var whyLimit = budget.truncated
+          ? "文件数超过上限 " + cfg.maxFiles
+          : "目录深度超过上限 " + cfg.maxDepth;
+        var msgLimit = "「" + ds.name + "」" + whyLimit + "，已跳过该数据集以避免误判；可在「云同步 → 高级」调大上限";
+        result.warnings.push({ dataset: ds.key, code: "LIMIT", message: msgLimit });
+        stat.failed++; result.failed++;
+        this._log("warn", msgLimit);
+        return;
+      }
       // 多个数据集可能共用一个远程目录（settings 与 chatSessions 都在 data/）：
       // 单文件型数据集必须只认自己那一个文件名，否则会把邻居的文件当成自己的下载。
       if (ds.kind !== "dir") {
@@ -707,7 +779,8 @@ var CloudSync = (function () {
             if (res.downloaded) { stat.downloaded++; result.downloaded++; }
           }
         } catch (e) {
-          if (e && (e.code === CODES.AUTH_REQUIRED || e.code === CODES.AUTH_EXPIRED)) throw e;
+          // 授权失效与配额满都不该逐文件重试：立刻中止整轮，提示用户处理
+          if (e && (e.code === CODES.AUTH_REQUIRED || e.code === CODES.AUTH_EXPIRED || e.code === CODES.QUOTA)) throw e;
           stat.failed++; result.failed++;
           result.errors.push({ dataset: ds.key, file: rel, code: (e && e.code) || CODES.UNKNOWN, message: String(e && e.message || e) });
           this._log("error", "「" + ds.name + "」" + rel + " 失败：" + (e && e.message || e));
@@ -886,7 +959,71 @@ var CloudSync = (function () {
         return client.put(mPath, mBytes, { contentType: "application/json", abortToken: CS._abortToken });
       }, "上传分卷清单");
 
-      return { etag: mres.etag || "", etagRaw: mres.etagRaw || "", size: total, parts: count, manifest: manifest };
+      // 旧分卷目录按内容 hash 命名，新版本会生成新目录；不清就会把配额吃干。
+      // 清理失败不影响本次上传（下次还会再试），只记日志。
+      var cleaned = 0;
+      if (!cfg.keepOldParts) {
+        try {
+          cleaned = await this._cleanupOldParts(client, remotePath, dir);
+        } catch (e) {
+          this._log("warn", "清理旧分卷失败（不影响本次）：" + (e && e.message || e));
+        }
+      }
+
+      return {
+        etag: mres.etag || "", etagRaw: mres.etagRaw || "",
+        size: total, parts: count, cleaned: cleaned, manifest: manifest,
+      };
+    },
+
+    /** 删除同一文件其它 hash 的分卷目录，只保留本次写入的那一组 */
+    _cleanupOldParts: async function (client, remotePath, keepDir) {
+      var partsRoot = WebDAV.join(WebDAV.dirname(remotePath), ".ppparts");
+      var prefix = WebDAV.basename(remotePath) + ".";
+      var keep = WebDAV.normalizePath(keepDir);
+      var items = [];
+      try {
+        items = await client.propfind(partsRoot, 1);
+      } catch (e) {
+        if (e.code === CODES.NOT_FOUND) return 0;
+        throw e;
+      }
+      var removed = 0;
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (!it || !it.isDir) continue;
+        if (it.path === keep) continue;
+        var nm = it.name || WebDAV.basename(it.path);
+        if (nm.indexOf(prefix) !== 0) continue;
+        try {
+          removed += await this._purgeDir(client, it.path, 0);
+        } catch (e2) {
+          this._log("warn", "删除旧分卷失败：" + it.path + "（" + (e2 && e2.message || e2) + "）");
+        }
+      }
+      if (removed) this._log("info", "已清理旧分卷文件 " + removed + " 个（" + WebDAV.basename(remotePath) + "）");
+      return removed;
+    },
+
+    /**
+     * 递归清空目录。坚果云对 **collection 的 DELETE 返回 403**（真机实测），
+     * 所以必须先把里面的分片文件删掉；空目录删不掉就留着（不占配额）。
+     */
+    _purgeDir: async function (client, dir, depth) {
+      if (depth > 2) return 0;
+      var items = [];
+      try { items = await client.propfind(dir, 1); } catch (e) { return 0; }
+      var n = 0;
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (!it || it.path === WebDAV.normalizePath(dir)) continue;
+        if (it.isDir) n += await this._purgeDir(client, it.path, depth + 1);
+        else {
+          try { await client.del(it.path); n++; } catch (e2) { /* 单个失败继续 */ }
+        }
+      }
+      try { await client.del(dir); n++; } catch (e3) { /* 403 = 不支持删 collection，留空目录 */ }
+      return n;
     },
 
     _readLocalBytes: async function (ds, local) {
@@ -942,7 +1079,7 @@ var CloudSync = (function () {
 
       var target = this._localPathFor(ds, rel);
       if (!target) throw err(CODES.IO, "无法确定本地落点：" + rel);
-      await this._ensureLocalDir(WebDAV.dirname(target));
+      await this._ensureLocalDir(this._localParent(target));
       await this._backupLocalFile(target, ds.key);
 
       var partPath = target + ".part";
@@ -981,7 +1118,9 @@ var CloudSync = (function () {
     },
 
     _downloadParts: async function (client, cfg, remotePath, remote) {
-      var maxBytes = cfg.maxFileMB * 1024 * 1024;
+      // 组装是在内存里做的，必须**独立于单文件上限**再设一道更低的闸：
+      // 512MB 的连续分配足以让 Zotero 卡死。超限时明确让用户去网页下载。
+      var maxBytes = Math.min(cfg.maxFileMB, cfg.assembleMaxMB) * 1024 * 1024;
       var manifest = remote.manifest;
       if (!manifest) {
         var mres = await this._withRetry(function () {
@@ -993,7 +1132,11 @@ var CloudSync = (function () {
       }
       var v = WebDAV.validateManifest(manifest);
       if (!v.ok) throw err(CODES.IO, "分卷清单无效：" + v.error);
-      if (v.total > maxBytes) throw err(CODES.TOO_LARGE, "分卷总大小 " + WebDAV.formatBytes(v.total) + " 超过上限");
+      if (v.total > maxBytes) {
+        throw err(CODES.TOO_LARGE, "分卷总大小 " + WebDAV.formatBytes(v.total) +
+          " 超过本机组装上限 " + WebDAV.formatBytes(maxBytes) +
+          "；请在坚果云网页下载该文件，或在「云同步 → 高级」调大组装上限");
+      }
 
       var hash8 = String(manifest.sha256 || "").slice(0, 8) || "nohash";
       var dir = WebDAV.partsDirFor(remotePath, hash8);
@@ -1012,6 +1155,13 @@ var CloudSync = (function () {
         out.set(chunk, offset);
         offset += chunk.byteLength;
         this._progress({ file: WebDAV.basename(remotePath), current: i + 1, total: manifest.parts.length, bytesDone: offset, bytesTotal: v.total, action: "download" });
+      }
+      // 清单里有 sha256：组装完必须校验，避免"大小对但内容坏"的静默损坏
+      if (manifest.sha256) {
+        var got = await WebDAV.sha256Hex(out);
+        if (got && got !== manifest.sha256) {
+          throw err(CODES.IO, "分卷内容校验失败（SHA-256 不符），已丢弃");
+        }
       }
       return out;
     },
@@ -1078,15 +1228,37 @@ var CloudSync = (function () {
 
     /* ---------- 本地扫描 ---------- */
 
-    _scanLocal: async function (ds) {
+    /**
+     * 构建待上传的设置快照，并做**体积上限**检查。
+     * 超过上限不静默截断（截断等于丢设置），而是明确报错并指出最大的几个键，
+     * 让用户自己决定调大上限还是清理。
+     */
+    _buildSnapshot: async function () {
+      var cfg = this.config();
+      var snap = this.snapshotPrefs();
+      var text = JSON.stringify(snap, null, 2);
+      var bytes = encodeText(text);
+      var cap = cfg.snapshotMaxKB * 1024;
+      if (bytes.byteLength > cap) {
+        var biggest = Object.keys(snap.prefs).map(function (k) {
+          var v = snap.prefs[k];
+          return [k, typeof v === "string" ? v.length : 8];
+        }).sort(function (a, b) { return b[1] - a[1]; }).slice(0, 5).map(function (x) {
+          return x[0] + "(" + WebDAV.formatBytes(x[1]) + ")";
+        });
+        throw err(CODES.TOO_LARGE, "设置快照 " + WebDAV.formatBytes(bytes.byteLength) +
+          " 超过上限 " + cfg.snapshotMaxKB + "KB；最大项：" + biggest.join("、") +
+          "。可在「云同步 → 快照上限」调大，或清理这些设置");
+      }
+      return { snap: snap, text: text, bytes: bytes, hash: await WebDAV.sha256Hex(bytes) };
+    },
+
+    _scanLocal: async function (ds, budget) {
       var out = {};
       if (ds.kind === "pref") {
-        var snap = this.snapshotPrefs();
-        var text = JSON.stringify(snap, null, 2);
-        var bytes = encodeText(text);
-        var hash = await WebDAV.sha256Hex(bytes);
+        var built = await this._buildSnapshot();
         out[ds.fileName] = {
-          rel: ds.fileName, size: bytes.byteLength, mtime: 0, data: bytes, hash: hash,
+          rel: ds.fileName, size: built.bytes.byteLength, mtime: 0, data: built.bytes, hash: built.hash,
         };
         return out;
       }
@@ -1105,14 +1277,18 @@ var CloudSync = (function () {
       if (ds.kind === "dir") {
         var root = this._localPathFor(ds, "");
         if (!root || !(await this._exists(root))) return out;
-        await this._walkLocal(root, "", out, 0);
+        await this._walkLocal(root, "", out, 0, budget);
         return out;
       }
       return out;
     },
 
-    _walkLocal: async function (root, prefix, out, depth) {
-      if (depth > 6) return;
+    _walkLocal: async function (root, prefix, out, depth, budget) {
+      var maxDepth = budget ? budget.maxDepth : 6;
+      if (depth > maxDepth) {
+        if (budget) budget.deep++;
+        return;
+      }
       var names = [];
       try { names = await IOUtils.getChildren(root); } catch (e) { return; }
       for (var i = 0; i < names.length; i++) {
@@ -1124,8 +1300,15 @@ var CloudSync = (function () {
         var st = null;
         try { st = await IOUtils.stat(full); } catch (e) { continue; }
         if (!st) continue;
-        if (st.type === "directory") await this._walkLocal(full, rel, out, depth + 1);
-        else out[rel] = { rel: rel, size: Number(st.size) || 0, mtime: Number(st.lastModified) || 0, localPath: full };
+        if (st.type === "directory") {
+          await this._walkLocal(full, rel, out, depth + 1, budget);
+        } else {
+          if (budget) {
+            if (budget.count >= budget.maxFiles) { budget.truncated++; break; }
+            budget.count++;
+          }
+          out[rel] = { rel: rel, size: Number(st.size) || 0, mtime: Number(st.lastModified) || 0, localPath: full };
+        }
       }
     },
 
@@ -1135,14 +1318,61 @@ var CloudSync = (function () {
       if (ds.kind === "dir") base = this._localCloudDir();
       else base = this._dataDir();
       if (!base) return null;
-      if (ds.kind === "dir") return WebDAV.join(base, ds.localDir || "packages", rel || "");
-      return WebDAV.join(base, rel || ds.localName || "");
+      if (ds.kind === "dir") return this._localJoin(base, ds.localDir || "packages", rel || "");
+      return this._localJoin(base, rel || ds.localName || "");
+    },
+
+    /**
+     * 本地路径拼接：**不能复用 WebDAV.join**。后者按 POSIX 语义返回 `/C:/Users/...`，
+     * 在 Windows 上 IOUtils 会把它当成"当前盘根下的 C: 目录"，索引/备份/安装包目录
+     * 全部静默创建失败（真机 0.59.0 首次装机踩到：云端有数据，本地没有 index）。
+     */
+    _localJoin: function () {
+      var parts = [];
+      for (var i = 0; i < arguments.length; i++) {
+        var v = arguments[i];
+        if (v === undefined || v === null || v === "") continue;
+        parts.push(String(v));
+      }
+      if (!parts.length) return "";
+      // 优先用 Zotero 的 PathUtils：Windows 上会给出反斜杠路径，IOUtils 最稳；
+      // 测试/无 PathUtils 环境回落字符串拼接（POSIX 语义）。
+      try {
+        if (typeof PathUtils !== "undefined" && PathUtils && typeof PathUtils.join === "function") {
+          return PathUtils.join.apply(PathUtils, parts);
+        }
+      } catch (e) { /* 回落 */ }
+      var out = parts[0].split("\\").join("/").replace(/\/+$/, "");
+      for (var j = 1; j < parts.length; j++) {
+        var seg = parts[j].split("\\").join("/").replace(/^\/+|\/+$/g, "");
+        if (!seg) continue;
+        out += "/" + seg;
+      }
+      return out;
+    },
+
+    _localParent: function (p) {
+      try {
+        if (typeof PathUtils !== "undefined" && PathUtils && typeof PathUtils.parent === "function") {
+          return PathUtils.parent(String(p == null ? "" : p));
+        }
+      } catch (e) { /* 回落 */ }
+      var s = String(p == null ? "" : p).split("\\").join("/").replace(/\/+$/, "");
+      var i = s.lastIndexOf("/");
+      if (i < 0) return "";
+      var head = s.slice(0, i);
+      if (/^[A-Za-z]:$/.test(head)) return head + "/";
+      return head || "/";
     },
 
     _dataDir: function () {
       try {
         var d = Zotero.DataDirectory && Zotero.DataDirectory.dir;
-        if (d) return String(d);
+        if (d) {
+          if (typeof d === "string") return d;
+          if (d.path) return String(d.path);   // nsIFile
+          return String(d);
+        }
       } catch (e) { /* 回落 ProfD */ }
       try {
         var prof = Services.dirsvc.get("ProfD", Components.interfaces.nsIFile);
@@ -1154,7 +1384,7 @@ var CloudSync = (function () {
     _localCloudDir: function () {
       var d = this._dataDir();
       if (!d) throw err(CODES.IO, "无法定位 Zotero 数据目录");
-      return WebDAV.join(d, "papilot-cloud");
+      return this._localJoin(d, "papilot-cloud");
     },
 
     async _exists(p) {
@@ -1162,24 +1392,24 @@ var CloudSync = (function () {
     },
 
     async _ensureLocalDir(p) {
-      var segs = WebDAV.normalizePath(p).split("/").filter(Boolean);
-      var cur = "";
-      for (var i = 0; i < segs.length; i++) {
-        cur += "/" + segs[i];
-        if (await this._exists(cur)) continue;
-        try { await IOUtils.makeDirectory(cur, { ignoreExisting: true, createAncestors: true }); }
-        catch (e) {
-          if (!(await this._exists(cur))) throw err(CODES.IO, "创建本地目录失败：" + cur + "（" + (e && e.message || e) + "）");
-        }
+      var path = this._localJoin(p);
+      if (!path) return;
+      if (await this._exists(path)) return;
+      var parent = this._localParent(path);
+      if (parent && parent !== path) await this._ensureLocalDir(parent);
+      try {
+        await IOUtils.makeDirectory(path, { ignoreExisting: true, createAncestors: true });
+      } catch (e) {
+        if (!(await this._exists(path))) throw err(CODES.IO, "创建本地目录失败：" + path + "（" + (e && e.message || e) + "）");
       }
     },
 
     /* ---------- 远程扫描 ---------- */
 
-    _scanRemote: async function (client, dir, ds) {
+    _scanRemote: async function (client, dir, ds, budget) {
       var out = {};
       var manifests = {};
-      await this._walkRemote(client, dir, "", out, manifests, 0);
+      await this._walkRemote(client, dir, "", out, manifests, 0, budget);
 
       // 有清单没有正式文件 → 视为"分卷文件"，取清单补全逻辑条目
       var keys = Object.keys(manifests);
@@ -1207,8 +1437,12 @@ var CloudSync = (function () {
       return out;
     },
 
-    _walkRemote: async function (client, dir, prefix, out, manifests, depth) {
-      if (depth > 6) return;
+    _walkRemote: async function (client, dir, prefix, out, manifests, depth, budget) {
+      var maxDepth = budget ? budget.maxDepth : 6;
+      if (depth > maxDepth) {
+        if (budget) budget.deep++;
+        return;
+      }
       var items = [];
       try { items = await client.propfind(dir, 1); } catch (e) {
         if (e.code === CODES.NOT_FOUND) return;
@@ -1222,8 +1456,12 @@ var CloudSync = (function () {
         var rel = prefix ? prefix + "/" + name : name;
         if (it.isDir) {
           if (name === ".ppparts" || name === "conflicts") continue;
-          await this._walkRemote(client, WebDAV.join(dir, name), rel, out, manifests, depth + 1);
+          await this._walkRemote(client, WebDAV.join(dir, name), rel, out, manifests, depth + 1, budget);
         } else {
+          if (budget) {
+            if (budget.count >= budget.maxFiles) { budget.truncated++; break; }
+            budget.count++;
+          }
           if (WebDAV.isManifestName(name)) {
             manifests[rel.replace(/\.ppmanifest\.json$/i, "")] = WebDAV.join(dir, name);
             continue;
@@ -1255,6 +1493,8 @@ var CloudSync = (function () {
       //   seen / recoCache 是**本机运行态**——跟机器走，同步只会互相污染。
       if (leaf === "searchSubsRecoCache") return false;
       if (leaf === "searchSubsSeen") return false;
+      // 缓存 / 大型数据集 / 机器绝对路径 / 设备标记：默认一律不出本机
+      if (NON_SETTING_LEAVES.indexOf(leaf) >= 0) return false;
       if (SECRET_LEAVES.indexOf(leaf) >= 0) return false;
       if (SECRET_LEAF_RE.test(leaf)) return false;
       return true;
@@ -1308,14 +1548,54 @@ var CloudSync = (function () {
 
     /* ---------- 索引 ---------- */
 
+    /** FNV-1a 32 位：只用于文件名指纹，不用于安全用途；同步、跨平台稳定 */
+    _fingerprint: function (s) {
+      var h = 2166136261 >>> 0;
+      var str = String(s == null ? "" : s);
+      for (var i = 0; i < str.length; i++) {
+        h ^= str.charCodeAt(i);
+        h = Math.imul(h, 16777619) >>> 0;
+      }
+      return ("00000000" + h.toString(16)).slice(-8);
+    },
+
+    /** 账号 + 服务地址 + 同步根：任一变化都必须用独立索引，否则旧 etag 全量失配 */
+    _accountKey: function () {
+      var cfg = this.config();
+      return this._fingerprint([cfg.baseUrl, String(cfg.email || "").toLowerCase(), cfg.root].join("|"));
+    },
+
     _indexPath: function () {
-      return WebDAV.join(this._localCloudDir(), "index.json");
+      return this._localJoin(this._localCloudDir(), "index-" + this._accountKey() + ".json");
+    },
+
+    /**
+     * 老版本只有一份 index.json。升级后首次读取时按"当前账号"迁移一次；
+     * 如果检测到账号/根目录已变（indexOwner 不同），则不迁移，避免把 A 账号的
+     * etag 用在 B 账号上制造假冲突。
+     */
+    _migrateLegacyIndex: async function (newPath) {
+      try {
+        var legacy = this._localJoin(this._localCloudDir(), "index.json");
+        if (!(await this._exists(legacy))) return;
+        var owner = "";
+        try { owner = String(Prefs.get(K.indexOwner, "") || ""); } catch (e) { owner = ""; }
+        var key = this._accountKey();
+        if (owner && owner !== key) return;
+        await IOUtils.copy(legacy, newPath);
+        this._log("info", "已把旧索引迁移到账号专属文件（" + key + "）");
+      } catch (e) {
+        this._log("warn", "迁移旧索引失败（将按新索引处理）：" + (e && e.message || e));
+      }
     },
 
     _readIndex: async function () {
       var p = this._indexPath();
       var empty = { version: 1, updatedAt: 0, entries: {} };
-      if (!(await this._exists(p))) return empty;
+      if (!(await this._exists(p))) {
+        await this._migrateLegacyIndex(p);
+        if (!(await this._exists(p))) return empty;
+      }
       try {
         var text = await IOUtils.readUTF8(p);
         var v = JSON.parse(text);
@@ -1334,6 +1614,9 @@ var CloudSync = (function () {
         var dir = this._localCloudDir();
         await this._ensureLocalDir(dir);
         index.updatedAt = Date.now();
+        index.version = 1;
+        index.account = this._accountKey();
+        index.root = this.config().root;
         // 只保留最近 90 天没动过的条目，防索引无限膨胀
         var cutoff = Date.now() - 90 * 24 * 3600 * 1000;
         for (var k in index.entries) {
@@ -1342,8 +1625,10 @@ var CloudSync = (function () {
           if (Number(e.syncedAt) > 0 && Number(e.syncedAt) < cutoff) delete index.entries[k];
         }
         await IOUtils.writeUTF8(this._indexPath(), JSON.stringify(index, null, 2));
+        try { Prefs.set(K.indexOwner, index.account); } catch (e2) { /* 标记失败不影响索引 */ }
       } catch (e) {
-        this._log("warn", "写本地索引失败（不影响本轮结果）：" + (e && e.message || e));
+        this._indexWriteError = String(e && e.message || e);
+        this._log("warn", "写本地索引失败（不影响本轮结果）：" + this._indexWriteError);
       }
     },
 
@@ -1381,7 +1666,7 @@ var CloudSync = (function () {
         var st = null;
         try { st = await IOUtils.stat(target); } catch (e) { return ""; }
         if (!st || !(Number(st.size) > 0)) return "";
-        var dir = WebDAV.join(this._localCloudDir(), "conflicts", safeName(datasetKey));
+        var dir = this._localJoin(this._localCloudDir(), "conflicts", safeName(datasetKey));
         await this._ensureLocalDir(dir);
         var dst = WebDAV.join(dir, WebDAV.basename(target) + "." + stamp());
         await IOUtils.copy(target, dst);
@@ -1394,7 +1679,7 @@ var CloudSync = (function () {
 
     async _backupLocalBytes(ds, rel, bytes) {
       try {
-        var dir = WebDAV.join(this._localCloudDir(), "conflicts", safeName(ds.key));
+        var dir = this._localJoin(this._localCloudDir(), "conflicts", safeName(ds.key));
         await this._ensureLocalDir(dir);
         var dst = WebDAV.join(dir, WebDAV.basename(rel).replace(/\.json$/i, "") + "." + stamp() + ".json");
         await IOUtils.write(dst, bytes);
@@ -1406,7 +1691,7 @@ var CloudSync = (function () {
       try {
         var remotePath = WebDAV.join(cfg.root, ds.remoteDir, rel);
         var res = await client.getBuffer(remotePath, { abortToken: this._abortToken });
-        var dir = WebDAV.join(this._localCloudDir(), "conflicts", safeName(ds.key));
+        var dir = this._localJoin(this._localCloudDir(), "conflicts", safeName(ds.key));
         await this._ensureLocalDir(dir);
         var dst = WebDAV.join(dir, WebDAV.basename(rel).replace(/\.json$/i, "") + ".remote." + stamp() + ".json");
         await IOUtils.write(dst, new Uint8Array(res.body || new ArrayBuffer(0)));
@@ -1423,7 +1708,7 @@ var CloudSync = (function () {
       var dst = this._localPathFor(ds, newRel);
       if (!src || !dst || !(await this._exists(src))) return "";
       try {
-        await this._ensureLocalDir(WebDAV.dirname(dst));
+        await this._ensureLocalDir(this._localParent(dst));
         await IOUtils.copy(src, dst);
         return dst;
       } catch (e) {
@@ -1442,7 +1727,7 @@ var CloudSync = (function () {
       if (typeof SkillPacks === "undefined" || !SkillPacks || typeof SkillPacks.exportPack !== "function") {
         throw err(CODES.CONFIG, "技能包模块未就绪");
       }
-      var dir = WebDAV.join(this._localCloudDir(), "packages", "skill-packs");
+      var dir = this._localJoin(this._localCloudDir(), "packages", "skill-packs");
       await this._ensureLocalDir(dir);
       var list = [];
       try { list = SkillPacks.listInstalled() || []; } catch (e) { list = []; }
@@ -1467,7 +1752,7 @@ var CloudSync = (function () {
     /** 用户把自己的安装包丢进同步区（kind: installers | skill-packs） */
     addLocalPackage: async function (srcPath, kind) {
       var k = kind === "skill-packs" ? "skill-packs" : "installers";
-      var dir = WebDAV.join(this._localCloudDir(), "packages", k);
+      var dir = this._localJoin(this._localCloudDir(), "packages", k);
       await this._ensureLocalDir(dir);
       var name = WebDAV.basename(srcPath);
       if (!name) throw err(CODES.CONFIG, "文件名为空");
@@ -1487,7 +1772,7 @@ var CloudSync = (function () {
     listLocalPackages: async function () {
       var out = [];
       try {
-        var root = WebDAV.join(this._localCloudDir(), "packages");
+        var root = this._localJoin(this._localCloudDir(), "packages");
         if (!(await this._exists(root))) return out;
         var map = {};
         await this._walkLocal(root, "", map, 0);

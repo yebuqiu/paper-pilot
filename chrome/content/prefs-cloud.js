@@ -154,6 +154,11 @@
     setVal("pp-cloud-maxmb", cfg.maxFileMB);
     setVal("pp-cloud-large", cfg.largeFileMB);
     setVal("pp-cloud-part", cfg.partMB);
+    setVal("pp-cloud-snapkb", cfg.snapshotMaxKB);
+    setVal("pp-cloud-assemble", cfg.assembleMaxMB);
+    setVal("pp-cloud-maxfiles", cfg.maxFiles);
+    setVal("pp-cloud-maxdepth", cfg.maxDepth);
+    setChecked("pp-cloud-keep-parts", cfg.keepOldParts);
     setChecked("pp-cloud-remember", cfg.remember);
     renderDatasets(cfg.datasets);
 
@@ -197,6 +202,11 @@
       maxFileMB: Number(val("pp-cloud-maxmb")) || 512,
       largeFileMB: Number(val("pp-cloud-large")) || 64,
       partMB: Number(val("pp-cloud-part")) || 32,
+      snapshotMaxKB: Number(val("pp-cloud-snapkb")) || 1024,
+      assembleMaxMB: Number(val("pp-cloud-assemble")) || 128,
+      maxFiles: Number(val("pp-cloud-maxfiles")) || 2000,
+      maxDepth: Number(val("pp-cloud-maxdepth")) || 6,
+      keepOldParts: checked("pp-cloud-keep-parts"),
       remember: checked("pp-cloud-remember"),
     };
   }
@@ -239,7 +249,9 @@
           (res.downloaded ? "下载 " + res.downloaded + " · " : "") +
           "跳过 " + (res.skipped || 0) +
           (res.conflicts ? " · 冲突 " + res.conflicts : "") +
-          (res.failed ? " · 失败 " + res.failed : ""), res.failed ? "bad" : "ok");
+          (res.failed ? " · 失败 " + res.failed : "") +
+          (res.warnings && res.warnings.length ? " · 告警 " + res.warnings.length : ""),
+          res.failed ? "bad" : "ok");
       } else {
         setMsg(errText({ code: res && res.code, message: res && res.error }), "bad");
       }

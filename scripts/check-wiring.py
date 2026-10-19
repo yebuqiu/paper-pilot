@@ -2920,8 +2920,9 @@ ok("SECRET_LEAF_RE" in _cloud_sync_js and 'shouldSyncPref' in _cloud_sync_js
    "48.9 ★ 设置快照剔除密钥类键（aiChannels/apiKey/token/password）")
 ok("cloudSync" in _cloud_sync_js and 'leaf.indexOf("cloudSync") === 0' in _cloud_sync_js,
    "48.10 ★ 同步自身配置不进快照（否则多机互相改配置）")
-ok("client.del(" not in _cloud_sync_js,
-   "48.11 ★ 同步过程从不调用 DELETE（删除不传播，避免误删传染）")
+ok(_cloud_sync_js.count("client.del(") == 2 and "_cleanupOldParts" in _cloud_sync_js
+   and "_purgeDir" in _cloud_sync_js,
+   "48.11 ★ DELETE 只出现在旧分卷清理（_cleanupOldParts/_purgeDir）；业务文件删除不传播")
 ok("TOO_LARGE" in _cloud_sync_js and "QUOTA" in _cloud_core_js and "AUTH_EXPIRED" in _cloud_sync_js,
    "48.12 ★ 错误分类齐全（超限/配额/授权过期）")
 ok("_uploadParts" in _cloud_sync_js and "ppmanifest" in _cloud_sync_js,
@@ -2942,6 +2943,22 @@ ok("minIntervalMs" in _cloud_core_js and "minIntervalMs" in _cloud_sync_js,
 ok("BlockedTemporarily" in _cloud_core_js and "retryAfterMs" in _cloud_core_js
    and "retryAfterMs" in _cloud_sync_js,
    "48.19 ★ 限流单独归因（BlockedTemporarily → RATE_LIMIT + 长等待）")
+# 批次 1（0.59.0）：数据安全与配额
+ok("NON_SETTING_LEAVES" in _cloud_sync_js and '"uiWallpaperPath"' in _cloud_sync_js
+   and '"readingProgress"' in _cloud_sync_js and '"rankDataSets"' in _cloud_sync_js,
+   "48.20 ★ 快照分层：缓存/大型数据集/机器绝对路径默认不出本机")
+ok("_buildSnapshot" in _cloud_sync_js and "snapshotMaxKB" in _cloud_sync_js,
+   "48.21 ★ 快照体积上限（超限报错并指出最大键，不静默截断）")
+ok('index-" + this._accountKey()' in _cloud_sync_js and "_migrateLegacyIndex" in _cloud_sync_js,
+   "48.22 ★ 索引按账号+根目录隔离，旧索引按 owner 迁移一次")
+ok("budget.truncated" in _cloud_sync_js and "已跳过该数据集以避免误判" in _cloud_sync_js,
+   "48.23 ★ 扫描预算超限 → 整数据集跳过（不做部分同步）")
+ok("_cleanupOldParts" in _cloud_sync_js and "keepOldParts" in _cloud_sync_js,
+   "48.24 ★ 旧分卷清理（只删同 basename 的其它 hash 目录）")
+ok("assembleMaxMB" in _cloud_sync_js and "本机组装上限" in _cloud_sync_js,
+   "48.25 ★ 分卷组装独立上限（防 512MB 内存峰值）")
+ok("CODES.QUOTA)) throw e" in _cloud_sync_js,
+   "48.26 ★ 配额满立即中止整轮（不逐文件刷失败）")
 
 # ---------- 49. 0.57.0 检索订阅 v2（推荐 / 试跑 / 多源 / AI 边界） ----------
 # 这一版的价值全在「接缝」：推荐没接上=空白卡；预览写脏数据=吃掉正式订阅；

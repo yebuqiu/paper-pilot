@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Papilot 文献副驾",
-  "version": "0.58.0",
-  "description": "Papilot 文献副驾 · Zotero 的 AI 文献副驾：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、参考文献一键入库、阅读进度与题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.58.0 更新：检索订阅增强——收藏/忽略反馈学习、作者追踪订阅、定时新增系统通知、OpenAlex 免费 Key；被忽略的条目不再进入速递。",
+  "version": "0.59.0",
+  "description": "Papilot 文献副驾 · Zotero 的 AI 文献副驾：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、参考文献一键入库、阅读进度与题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.59.0 更新：坚果云云同步强化——设置快照分层（不再同步缓存与机器路径）、索引按账号隔离、旧分卷自动清理、扫描上限与自适应限流、配额满立即中止；修复坚果云裸 ETag 条件写 412。",
   "author": "Cassiuschen",
   "homepage_url": "https://gitee.com/cassiuschen9261/zotero-papilot",
   "icons": {

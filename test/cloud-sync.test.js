@@ -650,6 +650,126 @@ const CFG = {
     eq(seen.length, n, '事件：退订后不再收到');
   }
 
+  // ---------- ④b 批次 1：快照分层 / 索引指纹 / 扫描预算 / 分卷清理 ----------
+  {
+    // 快照分层：缓存、机器路径、大型数据集一律不出现；普通设置照常
+    prefStore.clear(); prefTypes.clear();
+    Prefs.set('aiSystemPrompt', '保留我');
+    Prefs.set('readingProgress', '{"items":{}}');
+    Prefs.set('readingStats', '{}');
+    Prefs.set('uiWallpaperPath', 'C:\Users\a\wall.jpg');
+    Prefs.set('cnDownloadDir', 'D:\Downloads');
+    Prefs.set('rankDataSets', 'x'.repeat(2000));
+    Prefs.set('autoTagCacheData', '{}');
+    Prefs.set('searchSubsSeen', '{}');
+    Prefs.set('installId', 'abc');
+
+    const snap = CS.snapshotPrefs();
+    ok('aiSystemPrompt' in snap.prefs, '批次1：普通设置进快照');
+    ok(!('readingProgress' in snap.prefs), '批次1：阅读进度（本机数据）不进快照');
+    ok(!('readingStats' in snap.prefs), '批次1：阅读统计不进快照');
+    ok(!('uiWallpaperPath' in snap.prefs), '批次1：壁纸绝对路径不进快照（防跨机污染）');
+    ok(!('cnDownloadDir' in snap.prefs), '批次1：下载目录绝对路径不进快照');
+    ok(!('rankDataSets' in snap.prefs), '批次1：大型分区数据不进快照');
+    ok(!('autoTagCacheData' in snap.prefs), '批次1：打标缓存不进快照');
+    ok(!('searchSubsSeen' in snap.prefs), '批次1：订阅 seen 不进快照');
+    ok(!('installId' in snap.prefs), '批次1：设备标识不进快照');
+  }
+
+  {
+    // 快照体积上限：超限抛 TOO_LARGE，并指出最大键（不静默截断）
+    prefStore.clear(); prefTypes.clear();
+    Prefs.set('cloudSyncSnapshotMaxKB', 1);
+    Prefs.set('aiSystemPrompt', 'x'.repeat(100 * 1024));
+    let code = '';
+    let msg = '';
+    try { await CS._buildSnapshot(); } catch (e) { code = e.code; msg = e.message; }
+    eq(code, 'TOO_LARGE', '批次1：快照超限 → TOO_LARGE');
+    ok(/aiSystemPrompt/.test(msg), '批次1：超限信息指出最大的键', msg.slice(0, 80));
+    Prefs.set('cloudSyncSnapshotMaxKB', 1024);
+  }
+
+  {
+    // 索引按账号+根目录隔离
+    prefStore.clear(); prefTypes.clear();
+    Prefs.set('cloudSyncEmail', 'a@example.com');
+    Prefs.set('cloudSyncRoot', '/Papilot');
+    const p1 = CS._indexPath();
+    Prefs.set('cloudSyncEmail', 'b@example.com');
+    const p2 = CS._indexPath();
+    Prefs.set('cloudSyncRoot', '/Other');
+    const p3 = CS._indexPath();
+    ok(/index-[0-9a-f]{8}\.json$/.test(p1), '批次1：索引文件名带账号指纹', p1);
+    ok(p1 !== p2, '批次1：换账号 → 换索引');
+    ok(p2 !== p3, '批次1：改同步根 → 换索引');
+    Prefs.set('cloudSyncEmail', 'a@example.com');
+    Prefs.set('cloudSyncRoot', '/Papilot');
+    eq(CS._indexPath(), p1, '批次1：索引指纹稳定可复现');
+  }
+
+  {
+    // 扫描预算：maxFiles=1 时第 2 个文件被截断，并标记 truncated（调用方据此整集跳过）
+    prefStore.clear(); prefTypes.clear();
+    files.clear(); mt.clear(); dirs.clear();
+    await IOUtils.writeUTF8('/data/papilot-cloud/packages/a.json', '{"a":1}');
+    await IOUtils.writeUTF8('/data/papilot-cloud/packages/b.json', '{"b":2}');
+    const ds = CS.datasetOf('packages');
+    const budget = { maxFiles: 1, maxDepth: 6, count: 0, truncated: 0, deep: 0 };
+    const local = await CS._scanLocal(ds, budget);
+    eq(Object.keys(local).length, 1, '批次1：预算内只收 1 个文件');
+    ok(budget.truncated >= 1, '批次1：超出预算被标记（调用方整数据集跳过）', budget);
+  }
+
+  {
+    // 分卷清理：先删分片文件再删目录；只处理同 basename 的其它 hash 目录
+    const deleted = [];
+    const tree = {};
+    const D = '/Papilot/packages/.ppparts';
+    tree[D] = [
+      { path: D + '/big.xpi.aaaa1111', name: 'big.xpi.aaaa1111', isDir: true },
+      { path: D + '/big.xpi.bbbb2222', name: 'big.xpi.bbbb2222', isDir: true },
+      { path: D + '/other.xpi.cccc3333', name: 'other.xpi.cccc3333', isDir: true },
+    ];
+    tree[D + '/big.xpi.aaaa1111'] = [
+      { path: D + '/big.xpi.aaaa1111/0001.part', name: '0001.part', isDir: false },
+      { path: D + '/big.xpi.aaaa1111/0002.part', name: '0002.part', isDir: false },
+    ];
+    const client = {
+      async propfind(p) { return tree[p] || []; },
+      async del(p) { deleted.push(p); return true; },
+    };
+    const n = await CS._cleanupOldParts(client, '/Papilot/packages/big.xpi', D + '/big.xpi.bbbb2222');
+    ok(n >= 3, '批次1：旧分卷的分片与目录都被清理', { n, deleted });
+    ok(deleted.some((x) => x === D + '/big.xpi.aaaa1111/0001.part'), '批次1：先删分片文件', deleted);
+    ok(deleted.some((x) => x === D + '/big.xpi.aaaa1111'), '批次1：再删分卷目录', deleted);
+    ok(deleted.every((x) => x.indexOf('other.xpi') < 0), '批次1：不误删其它文件的旧分卷');
+    ok(deleted.every((x) => x.indexOf('big.xpi.bbbb2222') < 0), '批次1：保留本次写入的分卷目录');
+  }
+
+  {
+    // 分卷组装上限：独立于单文件上限，超限直接拒绝（避免内存爆掉）
+    const cfg = Object.assign({}, CFG, { assembleMaxMB: 8, maxFileMB: 512 });
+    const manifest = { version: 1, size: 9 * 1024 * 1024, parts: [{ name: '0001.part', size: 9 * 1024 * 1024 }], sha256: '' };
+    let code = '';
+    try {
+      await CS._downloadParts(fakeClient(), cfg, '/Papilot/packages/big.xpi', { parts: true, manifest: manifest });
+    } catch (e) { code = e.code; }
+    eq(code, 'TOO_LARGE', '批次1：超过组装上限 → TOO_LARGE（不硬分配内存）');
+  }
+
+  {
+    // 本地路径：绝不能复用 WebDAV.join（Windows 上会得到 /C:/...，索引/备份全写不出来）
+    const bs = String.fromCharCode(92);
+    const winRoot = "C:" + bs + "Users" + bs + "a" + bs + "Zotero";
+    eq(CS._localJoin(winRoot, "papilot-cloud"), "C:/Users/a/Zotero/papilot-cloud",
+      "批次1：本地路径拼接保留盘符、不产生前导斜杠");
+    eq(CS._localJoin("/data", "papilot-cloud", "index-1.json"), "/data/papilot-cloud/index-1.json",
+      "批次1：POSIX 本地路径照常拼接");
+    eq(CS._localParent("C:/Users/a/Zotero"), "C:/Users/a", "批次1：本地父目录（Windows）");
+    eq(CS._localParent("/data/papilot-cloud"), "/data", "批次1：本地父目录（POSIX）");
+    ok(CS._localJoin(winRoot, "x").charAt(0) === "C", "批次1：Windows 本地路径不以 / 开头");
+  }
+
   // ---------- ⑤ 端到端：transport 层模拟真实服务端，跑完整 syncNow ----------
   {
     prefStore.clear(); prefTypes.clear();

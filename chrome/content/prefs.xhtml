@@ -1547,6 +1547,32 @@
         </html:div>
       </html:div>
 
+      <html:div class="pp-grid2" style="margin-top:8px;">
+        <html:div class="pp-field">
+          <html:label class="pp-label">设置快照上限（KB）</html:label>
+          <html:input type="text" id="pp-cloud-snapkb" class="pp-input" placeholder="1024"/>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">分卷组装上限（MB）</html:label>
+          <html:input type="text" id="pp-cloud-assemble" class="pp-input" placeholder="128"/>
+        </html:div>
+      </html:div>
+
+      <html:div class="pp-grid2" style="margin-top:8px;">
+        <html:div class="pp-field">
+          <html:label class="pp-label">单次同步文件上限</html:label>
+          <html:input type="text" id="pp-cloud-maxfiles" class="pp-input" placeholder="2000"/>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">目录深度上限</html:label>
+          <html:input type="text" id="pp-cloud-maxdepth" class="pp-input" placeholder="6"/>
+        </html:div>
+      </html:div>
+      <html:div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;">
+        <html:label class="pp-check"><html:input type="checkbox" id="pp-cloud-keep-parts"/> 保留旧分卷（排障用）</html:label>
+        <html:span class="pp-hint">超限时整数据集跳过，不做"只同步看到的部分"（漏扫会误判成云端独有）。</html:span>
+      </html:div>
+
       <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:12px;">
         <html:button id="pp-cloud-sync" class="pp-btn pp-btn-primary">立即同步</html:button>
         <html:button id="pp-cloud-up" class="pp-btn pp-btn-sm">仅上传</html:button>

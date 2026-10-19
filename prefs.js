@@ -435,3 +435,15 @@ pref("extensions.zotero.papilot.cloudSyncLastSyncAt", 0);
 pref("extensions.zotero.papilot.cloudSyncDeviceId", "");
 pref("extensions.zotero.papilot.cloudSyncDeviceName", "");
 pref("extensions.zotero.papilot.cloudSyncLastError", "");
+// —— 云同步安全阈值（0.59.0 批次 1）——
+// 设置快照体积上限（KB）：超过不截断、直接跳过该数据集并指出最大的键，防"快照虚胖"
+pref("extensions.zotero.papilot.cloudSyncSnapshotMaxKB", 1024);
+// 分卷下载的内存组装上限（MB）：独立于单文件上限，避免一次分配几百 MB 卡死 Zotero
+pref("extensions.zotero.papilot.cloudSyncAssembleMaxMB", 128);
+// 单次同步的扫描预算：超限整数据集跳过（不做"只同步看到的部分"，那会误判）
+pref("extensions.zotero.papilot.cloudSyncMaxFiles", 2000);
+pref("extensions.zotero.papilot.cloudSyncMaxDepth", 6);
+// 是否保留旧分卷目录（默认 false = 上传成功后清理其它 hash 的分卷）
+pref("extensions.zotero.papilot.cloudSyncKeepOldParts", false);
+// 索引归属指纹（baseUrl|email|root）：换账号/改根目录时自动切到独立索引
+pref("extensions.zotero.papilot.cloudSyncIndexOwner", "");
