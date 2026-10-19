@@ -763,10 +763,13 @@ function grantMembership(doc, user, opts) {
 /* ---------------- 订单 ---------------- */
 
 function orderOut(doc, o) {
+  const isCredit = o.kind === 'credit';
   return {
-    id: o.id, plan: o.plan, planName: planOf(doc, o.plan).name,
+    id: o.id, plan: o.plan,
+    // 充值单没有「套餐」概念：plan 为 null，原实现会回落成 Free 并在后台显示「免费版」
+    planName: isCredit ? 'AI 额度充值' : planOf(doc, o.plan).name,
     // 1.6.0 订单类型：plan = 买会员时长；credit = 买 AI 余额（核销后加余额）
-    kind: o.kind === 'credit' ? 'credit' : 'plan',
+    kind: isCredit ? 'credit' : 'plan',
     creditMicro: Number(o.creditMicro) || 0,
     bonusMicro: Number(o.bonusMicro) || 0,
     // 1.6.0 在线支付相关（无支付时为空值，不影响既有渲染）
@@ -788,7 +791,9 @@ function orderOut(doc, o) {
       ? '−¥' + (Number(o.discountCents) / 100).toFixed(2) : '',
     couponId: o.couponId || null,
     couponCode: o.couponCode || null,
-    perpetual: !!o.perpetual || Number(o.months) === 0,
+    // ★ 1.8.7：充值单的 months 恒为 0（不适用），原实现会把它误判成「永久会员」，
+    //   导致后台订单列表把一笔 ¥10 充值显示成「永久」。
+    perpetual: !isCredit && (!!o.perpetual || Number(o.months) === 0),
     status: o.status, createdAt: o.createdAt, updatedAt: o.updatedAt,
     claimedAt: o.claimedAt || null, fulfilledAt: o.fulfilledAt || null,
     cancelledAt: o.cancelledAt || null, cancelReason: o.cancelReason || '',
@@ -1032,15 +1037,17 @@ function cancelOrder(doc, order, user, reason) {
  * 核销订单（管理员）：给下单账号开通会员，同时生成一枚**已使用**的兑换码留档对账。
  * 幂等：已 fulfilled 的订单重复调用不重复开通。
  * ★ 充值订单（kind='credit'）不生成留档码：它的凭据就是 user.balance 的流水条目。
+ * ★ skipCode（1.8.7 审查）：调用方已经确认「本次只是补订单状态、会员/余额早就到账」
+ *   （崩溃重试窗口）时传 true——否则每重试一次就多一枚已用留档码，对账数据会脏。
  */
-function fulfillOrder(doc, order, { by, now } = {}) {
+function fulfillOrder(doc, order, { by, now, skipCode } = {}) {
   const t = now || Date.now();
   if (!order) return { error: '订单不存在' };
   if (order.status === 'fulfilled') return { error: '订单已核销，无需重复操作' };
   if (order.status === 'cancelled') return { error: '订单已取消，无法核销' };
   const isCredit = order.kind === 'credit';
   let code = null;
-  if (!isCredit) {
+  if (!isCredit && !skipCode) {
     code = {
       id: rid('c', 6), code: newCode(),
       plan: order.plan, months: order.months,

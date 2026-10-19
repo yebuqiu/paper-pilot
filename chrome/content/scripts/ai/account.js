@@ -788,9 +788,9 @@ var Account = {
   },
 
   /**
-   * 在线支付（服务端 1.7.0）：为**充值订单**创建网关收银台地址（扫码支付）。
-   * 仅 kind='credit' 且待支付的订单可用；返回 { payUrl, channel, ... }，
-   * 调用方用 Zotero.launchURL 打开系统浏览器，支付成功后网关回调自动入账。
+   * 在线支付（服务端 1.7.0 起支持充值单，1.8.7 起支持会员单）：
+   * 为待支付订单创建网关收银台地址（扫码支付），返回 { payUrl, channel, ... }。
+   * 调用方用 Zotero.launchURL 打开系统浏览器，支付成功后网关回调自动入账/开通。
    */
   async startOnlinePay(orderId, channel) {
     const resp = await this._request("POST",

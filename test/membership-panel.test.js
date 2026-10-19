@@ -869,6 +869,44 @@ const flush = () => new Promise((r) => setImmediate(r));
     eq(registry.get('pp-bal-online').style.display, 'none', 'K33 未开通 → 内联在线支付按钮隐藏');
     eq(dlgRootFor(registry).children[0].children[0].byClass('pp-dlg-online').length, 0,
       'K34 ★ 未开通 → 弹窗不出现在线支付按钮（不留死入口）');
+
+    // ---- 会员订单在线支付（0.60.0 / 服务端 1.8.7）：与充值单同一套入口 ----
+    const mbOnlineCalls = [];
+    let mbLaunched = [];
+    ({ registry, launched: mbLaunched } = boot({
+      createOrder: async () => orderK,
+      startOnlinePay: async (orderId, channel) => {
+        mbOnlineCalls.push([orderId, channel]);
+        return { payUrl: 'https://www.ljlliu.cn/Pay/console?trade_no=LH2', channel: channel };
+      },
+    }));
+    await flush(); await flush(); await flush();
+    registry.get('pp-mb-upgrade').click();
+    await flush(); await flush(); await flush();
+    registry.get('pp-mb-create').click();
+    await flush(); await flush(); await flush();
+    ok(registry.get('pp-mb-online').style.display !== 'none',
+      'K35 ★ 会员单内联区出现「在线支付（扫码）」（服务端已开通）');
+    const card6 = dlgRootFor(registry).children[0].children[0];
+    const mbDlgOnline = card6.byClass('pp-dlg-online')[0];
+    ok(!!mbDlgOnline, 'K36 ★ 会员付款单弹窗含在线支付按钮');
+    if (mbDlgOnline) { await mbDlgOnline.click(); await flush(); await flush(); }
+    eq(mbOnlineCalls.length, 1, 'K37 点击 → 调用 startOnlinePay');
+    eq(mbOnlineCalls.length ? mbOnlineCalls[0][0] : '', 'o-plan-1', 'K38 带会员订单号');
+    ok(mbLaunched.length === 1 && /Pay\/console/.test(mbLaunched[0]),
+      'K39 ★ 打开会员单收银台（扫码后自动开通）', mbLaunched);
+
+    // 未开通 → 会员单同样不出现入口
+    ({ registry } = boot({
+      createOrder: async () => orderK,
+      plans: async () => Object.assign({}, PLANS_PAYLOAD, { onlinePay: { available: false, channels: [] } }),
+    }));
+    await flush(); await flush(); await flush();
+    registry.get('pp-mb-upgrade').click();
+    await flush(); await flush(); await flush();
+    registry.get('pp-mb-create').click();
+    await flush(); await flush(); await flush();
+    eq(registry.get('pp-mb-online').style.display, 'none', 'K40 未开通 → 会员单不显示在线支付');
   }
 
   function dlgRootFor(reg) { return reg.get('pp-dlg-root'); }

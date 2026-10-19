@@ -301,7 +301,7 @@ function orderOnDisk(id) {
     // 默认状态：未启用
     let r = await req(PORT, 'GET', '/api/health');
     eq(r.json.onlinePay, false, 'C1 health：默认未开通在线支付');
-    eq(r.json.version, '1.8.5', 'C2 服务端版本 1.8.4');
+    eq(r.json.version, '1.8.7', 'C2 服务端版本 1.8.4');
     r = await req(PORT, 'GET', '/api/plans');
     eq(r.json.onlinePay.available, false, 'C3 /api/plans：未开通时 available=false');
 
@@ -413,7 +413,7 @@ function orderOnDisk(id) {
     eq(r.text, 'success', 'C39a ★ 免签加价：多付 1 分 → success');
     me = (await req(PORT, 'GET', '/api/auth/me', null, tok)).json.user;
     eq(me.balance.paidMicro, paidAfterFirst + yuan(10), 'C39b ★ 加价单按本地订单额度入账（¥10，多付部分不多记）');
-    const paidAfterBump = me.balance.paidMicro;
+    let paidAfterBump = me.balance.paidMicro;
     const oo = await req(PORT, 'POST', '/api/orders', { kind: 'credit', optionId: 'rc10' }, tok);
     const ooCents = Math.round(Number(oo.json.order.amount) * 100);
     await req(PORT, 'POST', '/api/orders/' + oo.json.order.id + '/pay', { channel: 'alipay' }, tok);
@@ -424,6 +424,49 @@ function orderOnDisk(id) {
     r = await req(PORT, 'GET', notifyUrl(overN));
     eq(r.text, 'fail', 'C39c ★ 超容差多付（+¥1.50，默认窗口 ¥1）→ fail');
     eq(orderOnDisk(oo.json.order.id).status, 'pending', 'C39d 超容差订单不入账');
+
+    /* ---- 1.8.7：会员订单在线支付（此前只有充值单能走网关，买会员必须等人工核销） ---- */
+    const po = await req(PORT, 'POST', '/api/orders', { plan: 'Pro', months: 1 }, tok);
+    eq(po.status, 200, 'C39e 会员订单创建成功');
+    const poid = po.json.order.id;
+    const poCents = Math.round(Number(po.json.order.amount) * 100);
+    r = await req(PORT, 'POST', '/api/orders/' + poid + '/pay', { channel: 'alipay' }, tok);
+    eq(r.status, 200, 'C39f ★ 会员订单可发起在线支付（不再 400 拒绝）');
+    ok(String(r.json.payUrl || '').indexOf('submit.php') > 0, 'C39g 返回收银台地址');
+    const poNo = orderOnDisk(poid).outTradeNo;
+    ok(/^[A-Za-z0-9]+$/.test(poNo), 'C39h 会员单也有纯字母数字商户订单号', poNo);
+    let pn = { pid: '1001', trade_status: 'TRADE_SUCCESS', out_trade_no: poNo,
+      money: (poCents / 100).toFixed(2), trade_no: 'GW-PLAN-1', type: 'alipay' };
+    pn.sign = pay.buildSign(pn, KEY);
+    r = await req(PORT, 'GET', notifyUrl(pn));
+    eq(r.text, 'success', 'C39i ★ 会员单回调 → success');
+    eq(orderOnDisk(poid).status, 'fulfilled', 'C39j 会员订单已履约');
+    me = (await req(PORT, 'GET', '/api/auth/me', null, tok)).json.user;
+    eq(me.membership.plan, 'Pro', 'C39k ★ 在线支付后会员已开通（无需人工核销）');
+    eq(me.membership.source, 'order', 'C39l 会员来源记为订单');
+
+    /* ---- 1.8.7：已过期订单在「钱确实到账」时仍必须入账（不能吞钱） ---- */
+    const xo = await req(PORT, 'POST', '/api/orders', { kind: 'credit', optionId: 'rc10' }, tok);
+    const xoid = xo.json.order.id;
+    const xoCents = Math.round(Number(xo.json.order.amount) * 100);
+    await req(PORT, 'POST', '/api/orders/' + xoid + '/pay', { channel: 'alipay' }, tok);
+    const xoNo = orderOnDisk(xoid).outTradeNo;
+    // 把创建时间改到 9 天前（TTL 7 天）→ 走真实 reap 置为 expired
+    const xoRec = mod.membershipStore.data.orders.find((o) => o.id === xoid);
+    xoRec.createdAt = new Date(Date.now() - 9 * 86400e3).toISOString();
+    mod.reapExpiredOrders();
+    eq(orderOnDisk(xoid).status, 'expired', 'C39m 订单已过期（reap）');
+    const beforeLate = (await req(PORT, 'GET', '/api/auth/me', null, tok)).json.user.balance.paidMicro;
+    let xn = { pid: '1001', trade_status: 'TRADE_SUCCESS', out_trade_no: xoNo,
+      money: (xoCents / 100).toFixed(2), trade_no: 'GW-LATE-1', type: 'alipay' };
+    xn.sign = pay.buildSign(xn, KEY);
+    r = await req(PORT, 'GET', notifyUrl(xn));
+    eq(r.text, 'success', 'C39n ★ 过期订单的合法回调仍 → success（不能因为过期就吞钱）');
+    eq(orderOnDisk(xoid).status, 'fulfilled', 'C39o 过期订单已补履约');
+    me = (await req(PORT, 'GET', '/api/auth/me', null, tok)).json.user;
+    eq(me.balance.paidMicro, beforeLate + yuan(10), 'C39p ★ 过期订单按原额度到账');
+    eq(orderOnDisk(xoid).lateFulfilled, true, 'C39q 标记 lateFulfilled（便于排查异常渠道）');
+    paidAfterBump = me.balance.paidMicro;   // 后续查单兜底断言以「此刻」为基准
 
     /* ---- 已履约订单不可再发起支付 ---- */
     r = await req(PORT, 'POST', '/api/orders/' + oid + '/pay', { channel: 'alipay' }, tok);

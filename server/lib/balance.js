@@ -118,10 +118,17 @@ function normalizeCfg(pricingDoc) {
   if (!pricingDoc || typeof pricingDoc !== 'object') return clone(DEFAULT_CFG);
   const raw = pricingDoc.balance && typeof pricingDoc.balance === 'object'
     ? pricingDoc.balance : {};
+  // ★ 1.8.7 审查：enforce 缺省必须**回落默认值（true）**，不能等价于 false。
+  //   原实现 `raw.enforce === true` 在字段缺失（老数据 / 只改单价的 PUT / 损坏后重建）
+  //   时会静默变成「观察模式」→ 余额不足不再拦截，等于把付费阀门整个关掉（fail-open）。
+  //   显式写 false 仍然生效（运维需要观察模式时是可用的），只是「没写」不再等于关闭。
+  const svdRaw = Number(raw.signupValidDays);
+  const svd = Number.isFinite(svdRaw) ? Math.max(0, Math.round(svdRaw)) : NaN;
   const cfg = {
     signupGrantMicro: micro(raw.signupGrantMicro, DEFAULT_CFG.signupGrantMicro),
-    signupValidDays: Math.max(0, Math.round(Number(raw.signupValidDays) || 0)) || 30,
-    enforce: raw.enforce === true,
+    // 0 是合法值（= 不过期），原 `|| 30` 会让它永远配不出来
+    signupValidDays: Number.isFinite(svd) ? svd : DEFAULT_CFG.signupValidDays,
+    enforce: raw.enforce === undefined ? DEFAULT_CFG.enforce : raw.enforce === true,
     minBalanceMicro: micro(raw.minBalanceMicro, 0),
     rechargeOptions: sanitizeRechargeOptions(raw.rechargeOptions),
   };
@@ -344,6 +351,24 @@ function adminAdjust(user, { micro: amount, kind, reason, refId }, now) {
     grantedAfter: b.grantedMicro, planAfter: b.planMicro, paidAfter: b.paidMicro,
   });
   return { balance: viewOf(b, t) };
+}
+
+/**
+ * 只延长「订阅额度」的有效期，**不加钱**（1.8.7）。
+ * 场景：月中到期前只发了 3 天额度，用户随后续费 → 本期 periodKey 没变，
+ * 若什么都不做，额度会继续在那 3 天后失效（等于续费后额度反而提前没了）。
+ * 只把 planExpiresAt 顶到 min(本期末, 新会员到期日)，planMicro 原样保留。
+ * @returns {boolean} 是否真的延长了
+ */
+function extendPlanExpiry(user, expiresAt, now) {
+  const t = Number.isFinite(now) ? now : Date.now();
+  const next = Date.parse(expiresAt || '') || 0;
+  if (!next) return false;
+  const b = sweep(ensure(user), t);
+  const cur = b.planExpiresAt ? Date.parse(b.planExpiresAt) : 0;
+  if (next <= cur) return false;
+  b.planExpiresAt = new Date(next).toISOString();
+  return true;
 }
 
 /**
@@ -633,7 +658,7 @@ module.exports = {
   ensure, sweep, grantedAvailable, planAvailable, totalMicro, payableMicro, availableMicro,
   sanitizeHolds, heldTotal, newHoldId,
   hold, settleHold, releaseHold,
-  grantSignup, grantPlan, creditTopUp, adminAdjust, consume, precheck,
+  grantSignup, grantPlan, extendPlanExpiry, creditTopUp, adminAdjust, consume, precheck,
   hasRef,
   viewOf, userView, adminView,
   rechargeOptionOf, rechargeOptionsForClient,

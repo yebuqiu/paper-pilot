@@ -3,6 +3,17 @@
   "papilot@dev.local": {
    "updates": [
     {
+     "version": "0.60.1",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.60.1.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "会员订单支持在线支付：扫码后自动开通，不必再等人工核销\n余额拦截开关修复：配置缺省不再静默放行（付费阀门不再失效）\n订阅额度有效期跟随会员到期日（续费会延长，过期不再白送）\n已付款但过期的订单仍会到账；充值单不再显示成「永久会员」\n同价多单对账支持用备注里的订单号/邮箱自动匹配\n（含 0.60.0 云同步批次 2：删除可传播 / 设置项三向合并 / 冲突留档）"
+    },
+    {
      "version": "0.60.0",
      "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.60.0.xpi",
      "applications": {

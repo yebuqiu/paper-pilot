@@ -117,7 +117,7 @@ function matchPayments(doc, entries, opts) {
         status: 'unmatched',
         reason: settled.length
           ? '该金额对应的订单已完成/已取消（' + settled.length + ' 笔），无需重复核销'
-          : '没有金额与时间窗匹配的待核销订单（金额需精确到分，含尾数）',
+          : '没有金额与时间窗匹配的待核销订单（金额需精确到分；若未开启唯一尾数，同价多单请在备注填订单号）',
         candidateOrderIds: settled.slice(0, 5).map((x) => x.id),
       }));
       continue;
@@ -132,9 +132,30 @@ function matchPayments(doc, entries, opts) {
       continue;
     }
     if (free.length > 1) {
+      // ★ 1.8.7（审查）：同价多单不再只能人工。
+      //   1.8.4 起「唯一尾数」默认关闭（所见即所付），同价待核销订单会很常见；
+      //   此时若用户转账备注里写了订单号或邮箱，就能唯一确定是哪一笔。
+      //   只在**恰好命中 1 笔**时才自动匹配——命中多笔仍然交给人。
+      const hint = [entry.note, entry.txnId, entry.raw].filter(Boolean).join(' ').toLowerCase();
+      const byId = hint ? free.filter((x) => hint.indexOf(String(x.id).toLowerCase()) >= 0) : [];
+      const byMail = hint
+        ? free.filter((x) => x.email && hint.indexOf(String(x.email).toLowerCase()) >= 0) : [];
+      const picked = byId.length === 1 ? byId[0] : (byId.length === 0 && byMail.length === 1 ? byMail[0] : null);
+      if (picked) {
+        used.add(picked.id);
+        results.push(Object.assign(base, {
+          status: 'matched',
+          reason: byId.length === 1 ? '同价多单：按备注中的订单号匹配' : '同价多单：按备注中的邮箱匹配',
+          orderId: picked.id, email: picked.email, userId: picked.userId,
+          plan: picked.plan, months: picked.months, perpetual: !!picked.perpetual,
+          orderStatus: picked.status, createdAt: picked.createdAt,
+        }));
+        continue;
+      }
       results.push(Object.assign(base, {
         status: 'ambiguous',
-        reason: '有 ' + free.length + ' 笔订单金额相同（历史遗留的同价订单），需人工确认',
+        reason: '有 ' + free.length + ' 笔订单金额相同（默认不做唯一尾数时很常见），需人工确认；'
+          + '在转账备注里填写订单号或注册邮箱即可自动匹配',
         candidates: free.slice(0, 8).map((x) => ({ orderId: x.id, email: x.email, createdAt: x.createdAt })),
       }));
       continue;

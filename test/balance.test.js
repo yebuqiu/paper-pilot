@@ -95,6 +95,19 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
     eq(bal.newCfg().signupValidDays, 30, 'A2 默认赠送有效期 30 天');
     eq(bal.newCfg().enforce, true, 'A3 默认开启余额拦截（1.8.0：没有次数上限，余额是唯一阀门）');
 
+    /* ★ 1.8.7 审查：配置字段缺省绝不能等于「关闭」——原实现 raw.enforce === true
+     * 在字段缺失（老数据 / 只改单价的 PUT / 损坏后重建）时静默变成观察模式 = fail-open。 */
+    eq(bal.normalizeCfg({ balance: {} }).enforce, true,
+      'A3a ★ enforce 缺省回落 true（缺字段 ≠ 观察模式）');
+    eq(bal.normalizeCfg({ balance: { signupGrantMicro: 100 } }).enforce, true,
+      'A3b ★ 只改赠送额度时 enforce 不被顺手关掉');
+    eq(bal.normalizeCfg({ balance: { enforce: false } }).enforce, false,
+      'A3c 显式 false 仍可关闭（运维观察模式可用）');
+    eq(bal.normalizeCfg({ balance: { signupValidDays: 0 } }).signupValidDays, 0,
+      'A3d ★ 赠送有效期 0 可配置（0 = 不过期）');
+    eq(bal.normalizeCfg({ balance: {} }).signupValidDays, 30,
+      'A3e 未配置赠送有效期时仍默认 30 天');
+
     const cfg = bal.newCfg();
     const u = {};
     const g1 = bal.grantSignup(u, cfg, Date.now());
@@ -412,7 +425,7 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
 
     // health
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.8.5', 'B42 服务端版本 1.8.0');
+    eq(h.version, '1.8.7', 'B42 服务端版本 1.8.0');
     eq(h.balanceEnforce, true, 'B43 health 暴露 enforce 状态');
     eq(h.signupGrantMicro, yuan(6), 'B44 health 暴露注册赠送额度');
 

@@ -145,6 +145,30 @@ function req(method, p, body, token) {
     eq(o3.perpetual, false, 'C19 按月下单不是永久');
     eq(o3.baseCents, 7900, 'C20 3 个月的原始价 7900 分');
 
+    /* ★ 1.8.7：充值单的 months=0 是「不适用」，不能被当成永久会员 */
+    const oc = membership.createCreditOrder(doc, {
+      user: buyer, cents: 1000, creditMicro: 10000000, label: 'AI 额度充值 ¥10',
+    }).order;
+    const ooc = membership.orderOut(doc, oc);
+    eq(ooc.perpetual, false, 'C20a ★ 充值单不被误标为永久（months=0 ≠ 永久）');
+    eq(ooc.planName, 'AI 额度充值', 'C20b 充值单不显示成「免费版」');
+    eq(ooc.kind, 'credit', 'C20c kind 正确');
+
+    /* ★ 1.8.7：默认关闭唯一尾数时同价多单很常见——备注里写订单号/邮箱应能自动消歧 */
+    const d2 = membership.normalize(membership.newDoc());
+    d2.tailEnabled = false;
+    const q1 = membership.createOrder(d2, { user: { id: 'u1', email: 'a@b.c' }, plan: 'Pro', months: 1 }).order;
+    const q2 = membership.createOrder(d2, { user: { id: 'u2', email: 'd@e.f' }, plan: 'Pro', months: 1 }).order;
+    eq(q1.amountCents, q2.amountCents, 'C20d 关闭尾数时同价订单金额相同（所见即所付）');
+    const qEntries = reconcile.parseEntries(
+      (q1.amountCents / 100).toFixed(2) + '\n'
+      + (q1.amountCents / 100).toFixed(2) + ',' + new Date().toISOString() + ',转账备注 ' + q2.id,
+      Date.now());
+    const qm = reconcile.matchPayments(d2, qEntries, { membership, now: Date.now() });
+    eq(qm.results[0].status, 'ambiguous', 'C20e 无备注的同价流水 → 仍需人工确认');
+    eq(qm.results[1].status, 'matched', 'C20f ★ 备注含订单号 → 同价多单自动消歧');
+    eq(qm.results[1].orderId, q2.id, 'C20g 命中备注里那一笔');
+
     // 授予
     const mu = { id: 'u1', email: 'a@b.c' };
     let mp = membership.grantMembership(doc, mu, { plan: 'Pro', perpetual: true, source: 'order' });

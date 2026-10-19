@@ -415,10 +415,25 @@ function ensurePlanGrant(user, now) {
   if (!grantMicro) return null;                     // 该档不发订阅额度（Free）
   const b = balance.ensure(user);
   const key = planPeriodKey(t);
+  // ★ 1.8.7（审查）：订阅额度**不得活过会员有效期**。
+  //   原实现固定发到「自然月末」：月中买一个月 / 月中到期时，会出现
+  //   「会员已经过期，订阅额度还能用到月底」的白送窗口（最多半个月额度）。
+  //   现在取 min(自然月末, 会员到期日)；永久会员没有到期日，仍按自然月末。
+  const periodEndMs = Date.parse(planPeriodEnd(t));
+  const mem = membership.membershipOf(membershipStore.data, user);
+  const memEndMs = mem.expiresAt ? Date.parse(mem.expiresAt) : 0;
+  const grantEnd = (memEndMs > t && memEndMs < periodEndMs)
+    ? new Date(memEndMs).toISOString() : planPeriodEnd(t);
   // ★ 只认 periodKey，不认余额是否为 0：本期已发过（哪怕已花完）就不再补，
-  //   否则会把"不结转"变成"花完自动续杯"
-  if (b.planPeriodKey === key) return null;
-  const r = balance.grantPlan(user, { micro: grantMicro, periodKey: key, expiresAt: planPeriodEnd(t) }, t);
+  //   否则会把"不结转"变成"花完自动续杯"。但**续费**要把有效期顶到新的到期日，
+  //   否则「3 天后到期 → 只发了 3 天额度 → 续费 1 个月」会让额度仍然 3 天后失效。
+  if (b.planPeriodKey === key) {
+    if (balance.extendPlanExpiry(user, grantEnd, t)) {
+      log('plan credit expiry extended:', user.email, '→', grantEnd);
+    }
+    return null;
+  }
+  const r = balance.grantPlan(user, { micro: grantMicro, periodKey: key, expiresAt: grantEnd }, t);
   if (r) log('plan credit granted:', user.email, planEffective(user), r.micro + ' micro, period', r.periodKey);
   return r;
 }
@@ -2275,22 +2290,33 @@ function adminCodeOut(c) {
 /**
  * 在线支付确认入账（**回调通知与主动查单共用**，保证两条路径副作用完全一致）。
  * 幂等：已 fulfilled 直接返回 already —— 网关会重试通知，不能重复入账。
- * 第一阶段只接充值订单（kind='credit'）。
+ * 1.8.7 起会员订单（kind='plan'）与充值订单共用同一条履约链路。
  * @returns {{ok:true, already?:boolean, user?:object, creditMicro?:number}|{ok:false, error:string}}
  */
 function fulfillByGateway(order, { tradeNo, channel, source } = {}) {
   if (!order) return { ok: false, error: 'order_not_found' };
   if (order.status === 'fulfilled') return { ok: true, already: true };
-  if (order.status !== 'pending' && order.status !== 'claimed') {
+  // ★ 1.8.7（审查）：**已过期订单也必须能入账**。
+  //   订单 7 天自动过期（reapOrders），但收银台页面可能一直开着、或用户隔几天才扫码。
+  //   此时验签与金额校验都已通过（钱确实进了商户账户），再按订单状态拒绝就会出现
+  //   「用户付了钱、后台收到了、插件里永远不到账」——这是资金履约事故，不是风控。
+  //   过期单的优惠券名额早已释放，可能造成券超发一两次；宁可少赚，不能吞钱。
+  const late = order.status === 'expired';
+  if (order.status !== 'pending' && order.status !== 'claimed' && !late) {
     return { ok: false, error: 'order_' + order.status };
   }
-  if (order.kind !== 'credit') return { ok: false, error: 'unsupported_kind' };
+  // ★ 1.8.7：会员单与充值单共用同一条履约链路（applyOrderFulfill 内部按 kind 分流）
   const r = applyOrderFulfill(order, source || 'gateway');
   if (!r.ok) return r;
   order.tradeNo = String(tradeNo || order.tradeNo || '').slice(0, 64);
   if (channel) order.payChannel = String(channel).slice(0, 16);
   order.paidAt = new Date().toISOString();
-  return { ok: true, user: r.user, creditMicro: r.creditMicro };
+  if (late) {
+    order.lateFulfilled = true;          // 后台可据此排查「过期后才付款」的异常渠道
+    log('[pay] late fulfill (order expired before payment):', order.id,
+      'no=' + order.outTradeNo, 'source=' + String(source || ''));
+  }
+  return { ok: true, user: r.user, creditMicro: r.creditMicro, already: !!r.already, late };
 }
 
 /** 支付完成后的同步返回页：轮询订单状态，然后引导用户回插件 */
@@ -2340,15 +2366,28 @@ function applyOrderFulfill(order, by) {
   if (order.kind === 'credit' && !(Number(order.creditMicro) > 0)) {
     return { ok: false, error: '充值订单的到账额度非法，拒绝核销（避免核销后无法入账）', user };
   }
-  const f = membership.fulfillOrder(membershipStore.data, order, { by });
+  // ★ 1.8.7（审查）：幂等判断必须**前置**。
+  //   原实现先调 fulfillOrder（会 push 一枚已用留档码）再查「是否已入账」，
+  //   于是「users.json 已写、membership.json 未写」的崩溃窗口被重试时，
+  //   虽然不会重复加钱/叠加时长，但每重试一次就多一枚留档码、并把券再 consume 一次。
+  const isCredit = order.kind === 'credit';
+  const alreadyApplied = isCredit
+    ? balance.hasRef(user, order.id, 'recharge')
+    : membership.hasGrantRef(user, order.id);
+  if (order.status === 'fulfilled' && alreadyApplied) {
+    return { ok: true, user, order, already: true,
+      creditMicro: isCredit ? Number(order.creditMicro) : undefined };
+  }
+  const f = membership.fulfillOrder(membershipStore.data, order, { by, skipCode: alreadyApplied });
   if (f.error) return { ok: false, error: f.error, user };
-  if (order.kind === 'credit') {
-    // ★ 1.8.5（审查 P0-3）：已经入过账就只补订单状态，不重复加钱。
-    //   写序改成「先入账（users.json）→ 后置订单状态（membership.json）」后，
-    //   两次写之间崩溃只会留下「钱到了、单还 pending」，网关/查单重试走到这里即收敛。
-    if (balance.hasRef(user, order.id, 'recharge')) {
-      return { ok: true, user, order, creditMicro: Number(order.creditMicro), already: true };
-    }
+  if (alreadyApplied) {
+    return { ok: true, user, order, already: true,
+      creditMicro: isCredit ? Number(order.creditMicro) : undefined };
+  }
+  if (isCredit) {
+    // ★ 1.8.5（审查 P0-3）：写序为「先入账（users.json）→ 后置订单状态（membership.json）」，
+    //   两次写之间崩溃只会留下「钱到了、单还 pending」，网关/查单重试走到这里即收敛
+    //   （上面的 alreadyApplied 前置判断负责不再重复加钱）。
     const r = balance.creditTopUp(user, Number(order.creditMicro), {
       orderId: order.id, reason: '充值订单 ' + order.id,
     });
@@ -2356,9 +2395,6 @@ function applyOrderFulfill(order, by) {
     return { ok: true, user, order, creditMicro: Number(order.creditMicro), balance: r.balance };
   }
   // 会员单同理：历史里已有同一 refId 的开通记录 → 只补订单状态，不重复叠加时长
-  if (membership.hasGrantRef(user, order.id)) {
-    return { ok: true, user, order, already: true };
-  }
   const mp = membership.grantMembership(membershipStore.data, user, {
     plan: order.plan, months: order.months, perpetual: order.perpetual,
     cycle: order.cycle, source: 'order', refId: order.id,
@@ -2440,7 +2476,7 @@ function healthSnapshot(deg, detail) {
     const bl = backlogNow();
     const ast = audit.stats(DATA_DIR);
     _healthCache = {
-      ok: true, service: 'papilot-account-server', version: '1.8.5',
+      ok: true, service: 'papilot-account-server', version: '1.8.7',
       // 以下活性字段每次响应都会覆盖为实时值（见下方 Object.assign）
       uptime: Math.round(process.uptime()), now: new Date().toISOString(),
       pid: process.pid,                 // 控制台据此显示 PID，不必再查 WMI / Get-NetTCPConnection
@@ -2992,8 +3028,10 @@ const server = http.createServer(async (req, res) => {
         const order = findOrder(pm[1]);
         if (!order || order.userId !== user.id) return json(res, 404, { ok: false, error: '订单不存在' });
         if (!onlinePayReady()) return json(res, 503, { ok: false, error: '在线支付未开通，请用收款码支付' });
-        // 第一阶段只接充值订单：金额小、退款纠纷少，先跑通链路
-        if (order.kind !== 'credit') return json(res, 400, { ok: false, error: '该订单类型暂不支持在线支付' });
+        // ★ 1.8.7（审查）：会员订单同样支持在线支付。
+        //   原实现只放行充值单（kind=credit），买会员只能扫码等人工核销——
+        //   而人工核销是转化漏斗里最贵的一环（夜间下单要等到第二天）。
+        //   支付→验签→金额比对→applyOrderFulfill 的链路本来就不区分订单类型。
         if (order.status !== 'pending') return json(res, 400, { ok: false, error: '订单当前状态不可支付' });
         let input = {};
         try { input = await readBody(req); } catch (e) { /* 允许空体 */ }
@@ -3004,10 +3042,16 @@ const server = http.createServer(async (req, res) => {
         order.payChannel = channel;
         order.updatedAt = new Date().toISOString();
         const cfg = payCfg(true);
+        // 商品名：会员单写清套餐与周期（支付账单/网关后台可核对），充值单沿用原有文案
+        const planLabel = order.kind === 'credit' ? ''
+          : ((membership.planOf(membershipStore.data, order.plan).name || order.plan || '会员')
+            + ' ' + (order.perpetual ? '永久' : (Number(order.months) || 1) + ' 个月'));
         const payUrl = pay.createPayUrl(cfg, {
           outTradeNo: order.outTradeNo,
           amountCents: order.amountCents,
-          itemName: order.note || ('Papilot ' + pay.moneyStr(order.amountCents) + ' 充值'),
+          itemName: order.note || (order.kind === 'credit'
+            ? ('Papilot ' + pay.moneyStr(order.amountCents) + ' 额度充值')
+            : ('Papilot ' + planLabel)),
         }, channel, siteBaseUrl());
         membershipStore.save();
         log('online pay started:', user.email, order.id, channel, pay.moneyStr(order.amountCents), 'no=' + order.outTradeNo);
@@ -3025,7 +3069,11 @@ const server = http.createServer(async (req, res) => {
         const order = findOrder(pm[1]);
         if (!order || order.userId !== user.id) return json(res, 404, { ok: false, error: '订单不存在' });
         if (order.status !== 'pending') {
-          return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, order) });
+          // ★ 1.8.7：过期订单仍允许主动查单一次——用户可能过期后才付款，
+          //   回调一旦丢包，没有这条兜底就永远不到账（同一笔钱不能靠运气）。
+          if (order.status !== 'expired' || !order.outTradeNo || !onlinePayReady()) {
+            return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, order) });
+          }
         }
         if (!order.outTradeNo || !onlinePayReady()) {
           return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, order),
@@ -3722,6 +3770,14 @@ const server = http.createServer(async (req, res) => {
         let input = {};
         try { input = await readBody(req); } catch (e) { /* 允许空请求体 */ }
         if (m[2] === 'fulfill') {
+          // 管理端重复核销要给出明确拒绝（幂等收敛只针对网关重试/崩溃恢复，
+          // 不该让人以为「再点一次又开通了一次」）
+          if (order.status === 'fulfilled') {
+            return json(res, 400, { ok: false, error: '订单已核销，无需重复操作' });
+          }
+          if (order.status === 'cancelled') {
+            return json(res, 400, { ok: false, error: '订单已取消，无法核销' });
+          }
           snapshot('orders-change', { note: '核销订单 ' + order.id });
           const r = applyOrderFulfill(order, 'admin');
           if (!r.ok) return json(res, 400, { ok: false, error: r.error });

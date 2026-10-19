@@ -365,7 +365,7 @@
       <div class="msg" id="p-msg"></div>
     </div>
 
-    <!-- ===== 1.7.0 在线支付网关（易支付/码支付）：充值订单可自动到账 ===== -->
+    <!-- ===== 1.7.0 在线支付网关（易支付/码支付）：充值/会员订单均可自动到账/开通 ===== -->
     <div class="card">
       <div class="toolbar"><h2 style="margin:0">在线支付网关（可选）</h2>
         <div>
@@ -374,7 +374,7 @@
           <button class="btn" id="pay-test-deep" onclick="testPayment(true)">深度测试</button>
         </div></div>
       <p class="hint" style="margin:0 0 12px">
-        接入后，用户充值可<b>自助下单 → 扫码 → 自动到账</b>，不必再人工核销。
+        接入后，用户充值或购买会员都可<b>自助下单 → 扫码 → 自动到账/开通</b>，不必再人工核销（收款码 + 人工核销仍保留为兜底）。
         <b>不开启时一切照旧</b>（收款码 + 管理员核销），随时可以关闭。
         密钥加密后落盘，页面不回显；主密钥在服务器的 <code>data/.secret.key</code>，
         <b>换机器请一并带走</b>，否则需重新粘贴密钥。
@@ -1902,7 +1902,9 @@ function renderOrders() {
       '<td class="mono">' + fmtTime(o.createdAt) + '</td>';
     var td = document.createElement('td');
     td.style.whiteSpace = 'nowrap';
-    var canFulfill = o.status === 'pending' || o.status === 'claimed';
+    // 过期订单也允许人工核销：用户可能过期后才付款（网关回调会拒绝重复，
+    // 但线下转账/客服补偿需要这条兜底），核销前请核对流水。
+    var canFulfill = o.status === 'pending' || o.status === 'claimed' || o.status === 'expired';
     var canCancel = o.status === 'pending' || o.status === 'claimed';
     td.innerHTML =
       '<button class="btn sm primary" ' + (canFulfill ? '' : 'disabled')

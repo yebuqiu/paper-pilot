@@ -135,6 +135,34 @@ function daysBetween(iso) { return Math.round((Date.parse(iso) - Date.now()) / D
     eq(r.json.user.plan, 'Pro', '6.1 /me 返回 Pro');
     eq(r.json.user.balance.planMicro, 20000000, '6.2 ★ Pro 每月 ¥20 额度已发放到余额');
     ok(r.json.user.membership.daysLeft >= 89, '6.3 剩余天数 ≥ 89', r.json.user.membership.daysLeft);
+    ok(Date.parse(r.json.user.balance.planExpiresAt) <= Date.parse(r.json.user.membership.expiresAt),
+      '6.3a ★ 订阅额度有效期不晚于会员到期日');
+
+    /* 6.4 ★ 1.8.7 审查：会员月中到期时，订阅额度不能白送到自然月末。
+     *     构造「会员 3 天后到期」的新账号（本月尚未发放过订阅额度）→ /me 触发发放，
+     *     额度有效期必须跟着会员到期日走，而不是月底。 */
+    await req('POST', '/api/auth/register', { email: 'short-pro@example.com', password: 'Passw0rd!' });
+    const shortId = ((await req('GET', '/api/admin/users')).json.users
+      .find((u) => u.email === 'short-pro@example.com') || {}).id;
+    const shortTok = (await req('POST', '/api/auth/login',
+      { email: 'short-pro@example.com', password: 'Passw0rd!' })).json.token;
+    const exp3 = new Date(Date.now() + 3 * 86400e3).toISOString();
+    r = await req('PUT', '/api/admin/users/' + shortId, { plan: 'Pro', expiresAt: exp3 });
+    eq(r.status, 200, '6.4 构造一个 3 天后到期的 Pro 账号');
+    r = await req('GET', '/api/auth/me', undefined, shortTok);
+    eq(r.json.user.balance.planMicro, 20000000, '6.5 当期订阅额度照常发放');
+    ok(Date.parse(r.json.user.balance.planExpiresAt) <= Date.parse(exp3),
+      '6.6 ★ 额度有效期跟着会员到期日（不再是自然月末）',
+      { planExpiresAt: r.json.user.balance.planExpiresAt, exp3 });
+
+    /* 6.7 ★ 1.8.7：续费后要把额度有效期顶到新的到期日，但**不能重复发钱** */
+    const exp33 = new Date(Date.now() + 33 * 86400e3).toISOString();
+    await req('PUT', '/api/admin/users/' + shortId, { plan: 'Pro', expiresAt: exp33 });
+    r = await req('GET', '/api/auth/me', undefined, shortTok);
+    eq(r.json.user.balance.planMicro, 20000000, '6.7 续费后不重复发放订阅额度（金额不变）');
+    ok(Date.parse(r.json.user.balance.planExpiresAt) > Date.parse(exp3),
+      '6.8 ★ 续费后额度有效期被延长（不再卡在旧到期日）',
+      { planExpiresAt: r.json.user.balance.planExpiresAt, exp3 });
 
     /* 7. 激活码：生成 → 兑换 → 续期叠加 */
     r = await req('POST', '/api/admin/codes', { plan: 'Pro', months: 1, count: 2, note: '线下售卖' });

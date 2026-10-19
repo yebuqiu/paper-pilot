@@ -391,6 +391,8 @@
    */
 
   let mbPlans = null;       // {plans, priceOptions, priceItems, upcoming, cycles, pay}（服务端下发，缓存）
+  // 0.60.0 在线支付可用性（会员单）：服务端 /api/plans 的 onlinePay；未开通时按钮不出现
+  let mbOnline = { available: false, channels: [] };
   let mbSel = null;         // 当前选中的价格档位 {plan, months, text}
   let mbCoupon = null;      // 0.24.6 已应用的优惠码试算结果 {code, discountText, payableText, ...}
   let mbOrder = null;       // 当前订单
@@ -648,8 +650,11 @@
       claim: kind === "credit" ? balClaimCore : mbClaimCore,
       cancel: kind === "credit" ? balCancelCore : mbCancelCore,
       refresh: kind === "credit" ? balRefreshCore : mbRefreshCore,
-      // 在线支付仅充值单支持（服务端 1.7.0 约定），且要服务端已开通
-      online: (kind === "credit" && balOnline.available) ? balOnlinePayCore : null,
+      // 在线支付：会员单（1.8.7+）与充值单（1.7.0+）都支持，前提是服务端已开通；
+      // 未开通时按钮不出现（绝不显示一个点了必然失败的入口）
+      online: kind === "credit"
+        ? (balOnline.available ? balOnlinePayCore : null)
+        : (mbOnline.available ? mbOnlinePayCore : null),
     });
   }
 
@@ -667,6 +672,7 @@
     if (mbPlans && !force) return mbPlans;
     try {
       mbPlans = await A.plans();
+      mbOnline = (mbPlans && mbPlans.onlinePay) || { available: false, channels: [] };
       if (!mbSel) mbSel = pickDefaultOption(mbOptions());
     } catch (e) {
       if (force) throw e;
@@ -1072,6 +1078,10 @@
     if (!pay || !info) return;
     if (!mbOrder) { pay.style.display = "none"; return; }
     pay.style.display = "";
+    // 在线支付可用性随套餐目录 /api/plans 下发；没加载过就补拉一次（否则会员单看不到入口）
+    if (!mbPlans) {
+      ensurePlans(false).then(() => { if (mbOrder) renderMbPay(); }).catch(() => { /* 拉不到就保持隐藏 */ });
+    }
     const o = mbOrder;
     const cycleTxt = o.perpetual ? "永久" : (o.months + " 个月");
     const money = o.amountText || ("¥" + (Number(o.amount) || 0).toFixed(2));
@@ -1106,6 +1116,13 @@
     }
     const cancel = $("pp-mb-cancel");
     if (cancel) cancel.disabled = done || o.status === "cancelled";
+    // 0.60.0 会员订单在线支付：服务端开通且订单待支付时才出现（已提交/已开通后收起）
+    const online = $("pp-mb-online");
+    if (online) {
+      const canOnline = !!mbOnline.available && o.status === "pending";
+      online.style.display = canOnline ? "" : "none";
+      online.disabled = !canOnline;
+    }
     if (done) mbSetMsg("pp-mb-pay-result", "✓ 已开通，会员状态已更新", "var(--pp-success)");
   }
 
@@ -1185,6 +1202,34 @@
     mbSetMsg("pp-mb-pay-result",
       "✓ 已提交，等待管理员核销（一般几分钟内）。可点「刷新订单状态」查看。", "var(--pp-success)");
     startMbPolling();
+  }
+
+  /**
+   * 在线支付（0.60.0 / 服务端 1.8.7）：为当前**会员订单**创建网关收银台 → 系统浏览器扫码。
+   * 支付成功后网关回调自动开通会员（不再等人工核销），面板轮询会看到 fulfilled。
+   * 只对「待支付」订单可用（服务端同判）。
+   */
+  async function mbOnlinePayCore() {
+    const A = account();
+    if (!A || !mbOrder) return { ok: false, error: "订单不存在" };
+    try {
+      const r = await A.startOnlinePay(mbOrder.id, "alipay");
+      try { Zotero.launchURL(r.payUrl); } catch (e) { /* 打不开浏览器也把地址留在提示里 */ }
+      startMbPolling();
+      return { ok: true, payUrl: r.payUrl };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) || "发起在线支付失败" };
+    }
+  }
+
+  async function onMbOnlinePay() {
+    const A = account();
+    if (!A || !mbOrder) return;
+    mbSetMsg("pp-mb-pay-result", "正在创建网关收银台…", "var(--pp-muted)");
+    const r = await mbOnlinePayCore();
+    if (!r.ok) return mbSetMsg("pp-mb-pay-result", "✗ " + r.error, "var(--pp-danger)");
+    mbSetMsg("pp-mb-pay-result",
+      "✓ 收银台已在浏览器打开：扫码支付后自动开通（本窗口保持轮询）", "var(--pp-success)");
   }
 
   /** 取消订单（内联按钮与弹窗共用）：成功后清空当前订单并关闭弹窗 */
@@ -1402,7 +1447,7 @@
       claim.disabled = done || o.status === "claimed" || o.status === "cancelled" || o.status === "expired";
       claim.textContent = o.status === "claimed" ? "已提交，等待核销" : "我已完成支付";
     }
-    // 0.50.0 在线支付：服务端开通且订单待支付时才出现（会员 plan 订单服务端不支持在线支付）
+    // 0.50.0 在线支付：服务端开通且订单待支付时才出现（0.60.0 起会员单同样支持）
     const online = $("pp-bal-online");
     if (online) {
       const canOnline = !!balOnline.available && o.status === "pending";
@@ -1489,7 +1534,7 @@
 
   /**
    * 在线支付（0.50.0 / 服务端 1.7.0）：为当前充值订单创建网关收银台 → 系统浏览器扫码。
-   * 只对「待支付」的充值订单可用（服务端同判，plan 订单会被 400 拒绝）。
+   * 只对「待支付」的订单可用（服务端同判）。
    * 支付成功后网关异步回调自动入账，面板轮询会看到 fulfilled。
    */
   async function balOnlinePayCore() {
@@ -2075,6 +2120,7 @@
     bind("pp-mb-create", "click", onMbCreate);
     bind("pp-mb-close-order", "click", () => { const b = $("pp-mb-order"); if (b) b.style.display = "none"; });
     bind("pp-mb-claim", "click", onMbClaim);
+    bind("pp-mb-online", "click", onMbOnlinePay);
     bind("pp-mb-poll", "click", () => onMbPoll(false));
     bind("pp-mb-cancel", "click", onMbCancel);
     // 0.49.0 付款单弹窗：内联区「查看付款单」重开（自动弹出只在生成订单时发生一次）
