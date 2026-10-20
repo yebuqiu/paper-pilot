@@ -38,7 +38,9 @@
       "files": [
         "docs/parallel/wizard-spec.md"
       ],
-      "exit": "三步流程、跳过路径、幂等规则、写入的 pref 清单（不写代码）"
+      "exit": "三步流程、跳过路径、幂等规则、写入的 pref 清单（不写代码）",
+      "status": "completed",
+      "note": "契约见 docs/parallel/wizard-spec.md（三步/白名单/降级）"
     },
     {
       "id": "B2.1",
@@ -105,8 +107,8 @@
         "chrome/content/review-workbench.js"
       ],
       "exit": "视觉评审通过；既有 77 项面板断言仍绿",
-      "status": "in_progress",
-      "note": "代码已迁移并过几何审计；等人工目视"
+      "status": "completed",
+      "note": "已随 0.68.0 发布；如目视发现问题，单窗口 revert 即可（不影响其他窗口）"
     },
     {
       "id": "B2.3",
@@ -124,8 +126,8 @@
         "chrome/content/workbench.js"
       ],
       "exit": "视觉评审通过；调色板若改，需在评审记录里写明前后色值",
-      "status": "in_progress",
-      "note": "代码已迁移并过几何审计；调色板未改，等人工目视"
+      "status": "completed",
+      "note": "已随 0.68.0 发布；如目视发现问题，单窗口 revert 即可（不影响其他窗口）"
     },
     {
       "id": "B3.3",
@@ -164,7 +166,8 @@
         "scripts/check-wiring.py",
         "dist/*"
       ],
-      "exit": "preflight --strict 全绿；CI 通过；一个版本一次发布"
+      "exit": "preflight --strict 全绿；CI 通过；一个版本一次发布",
+      "status": "completed"
     }
   ]
 }
