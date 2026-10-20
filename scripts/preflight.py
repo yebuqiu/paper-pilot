@@ -119,6 +119,9 @@ NODE_SUITES = [
     ("用量趋势", "test/usage.test.js"),
     ("会员面板渲染", "test/membership-panel.test.js"),
     ("统一设计令牌", "test/ui-tokens.test.js"),
+    ("ui-kit 组件契约", "test/ui-kit.test.js"),
+    ("首次使用向导", "test/wizard.test.js"),
+    ("推荐配置", "test/prefs-recommend.test.js"),
     ("运维三件套", "test/server-ops.test.js"),
     ("服务端规模与索引", "test/server-scale.test.js"),
     ("管理面来源校验", "test/admin-origin.test.js"),
@@ -184,6 +187,9 @@ NODE_SUITES = [
     # 0.63.0 PDF 无头渲染 + 视觉 OCR：纯函数 + 侧车读写 + 问答回退契约
     ("OCR(渲染/侧车/回退)", "test/ocr.test.js"),
     ("笔记工具(独立验收)", "test/note-tools-qa.test.js"),
+    # 0.66.0 账号与密钥中心（Pro）：核心域（脱敏/口令/门控/托管）+ 窗口渲染（不泄露明文）
+    ("账号与密钥中心", "test/cred-vault.test.js"),
+    ("凭据中心窗口渲染", "test/cred-vault-ui.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),
     ("全模块加载冒烟", "test/smoke-load.test.js"),
 ]

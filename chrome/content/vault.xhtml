@@ -1,0 +1,229 @@
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
+<!DOCTYPE window>
+<!-- Papilot · 个人中心「账号与密钥」（0.66.0，Pro）
+     纪律（与 skill-store.xhtml 同源，真机踩过的坑）：
+       ① 不写 XML 声明；禁用一切未定义实体（nbsp / mdash / copy…），占位一律 &#160;。
+       ② 窗口顶部 <script> 先于后续 DOM 执行 → vault.js 用 boot() +
+          DOMContentLoaded / readyState 双保险，绝不在脚本顶层碰 DOM。
+       ③ 表单控件三保险：input/select 一律 no-native="true"，并显式
+          appearance:none + background/color/border（win 平台皮肤会劫持未定型控件）。
+       ④ 布局只用 html:div 弹性盒，不依赖 XUL 盒模型。
+     安全：本窗口**默认不渲染任何明文**；解锁后才写入 DOM，到期自动清除。
+     单例（防重复打开）由 main.js 的 openVault() 负责。 -->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Papilot · 账号与密钥"
+        windowtype="papilot:vault"
+        width="900" height="680"
+        persist="screenX screenY width height sizemode">
+  <script src="chrome://papilot/content/vault.js"></script>
+  <html:style><![CDATA[
+    @import url("chrome://papilot/content/ui-tokens.css");
+
+    #pp-vault-root {
+      --v-bg:#f6f8fa; --v-surface:#ffffff; --v-surface2:#f6f8fa;
+      --v-border:#d1d9e0; --v-border-soft:#e7ecf0;
+      --v-text:#1f2328; --v-muted:#59636e; --v-faint:#7d8590;
+      --v-accent:#0969da; --v-accent-strong:#0757b3; --v-accent-weak:#ddf4ff;
+      --v-ok:#1a7f37; --v-ok-bg:rgba(26,127,55,.10);
+      --v-warn:#9a6700; --v-warn-bg:rgba(154,103,0,.10);
+      --v-danger:#cf222e; --v-danger-bg:rgba(207,34,46,.08);
+      --v-code-bg:#f0f3f6;
+      --v-shadow:0 1px 2px rgba(31,35,40,.06);
+      display:flex; flex-direction:column; height:100%; min-height:0;
+      background:var(--v-bg); color:var(--v-text);
+      font:13px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+      box-sizing:border-box;
+    }
+    #pp-vault-root * { box-sizing:border-box; }
+    @media (prefers-color-scheme: dark) {
+      #pp-vault-root:not([data-theme="light"]) {
+        --v-bg:#161a1f; --v-surface:#1d2228; --v-surface2:#22272e;
+        --v-border:#343b43; --v-border-soft:#2a3037;
+        --v-text:#e6edf3; --v-muted:#9198a1; --v-faint:#848d97;
+        --v-accent:#4493f8; --v-accent-strong:#58a6ff; --v-accent-weak:#17233a;
+        --v-ok:#3fb950; --v-ok-bg:rgba(63,185,80,.14);
+        --v-warn:#d29922; --v-warn-bg:rgba(210,153,34,.14);
+        --v-danger:#f85149; --v-danger-bg:rgba(248,81,73,.12);
+        --v-code-bg:#12161b; --v-shadow:none;
+      }
+    }
+    #pp-vault-root[data-theme="dark"] {
+      --v-bg:#161a1f; --v-surface:#1d2228; --v-surface2:#22272e;
+      --v-border:#343b43; --v-border-soft:#2a3037;
+      --v-text:#e6edf3; --v-muted:#9198a1; --v-faint:#848d97;
+      --v-accent:#4493f8; --v-accent-strong:#58a6ff; --v-accent-weak:#17233a;
+      --v-ok:#3fb950; --v-ok-bg:rgba(63,185,80,.14);
+      --v-warn:#d29922; --v-warn-bg:rgba(210,153,34,.14);
+      --v-danger:#f85149; --v-danger-bg:rgba(248,81,73,.12);
+      --v-code-bg:#12161b; --v-shadow:none;
+    }
+
+    /* ---------- 顶部 ---------- */
+    .v-head {
+      display:flex; align-items:center; gap:12px; padding:14px 18px 10px;
+      background:var(--v-surface); border-bottom:1px solid var(--v-border);
+      flex:0 0 auto;
+    }
+    .v-title-wrap { flex:1; min-width:0; }
+    .v-title { font-size:16px; font-weight:700; letter-spacing:.2px; }
+    .v-sub { font-size:11.5px; color:var(--v-muted); margin-top:2px; }
+    .v-badges { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+    .v-badge {
+      font-size:10.5px; font-weight:700; letter-spacing:.4px; padding:2px 8px;
+      border-radius:10px; border:1px solid var(--v-border); color:var(--v-muted);
+      background:var(--v-surface2); white-space:nowrap;
+    }
+    .v-badge-pro { color:#fff; background:var(--v-accent); border-color:var(--v-accent); }
+    .v-badge-lock { color:var(--v-warn); background:var(--v-warn-bg); border-color:transparent; }
+    .v-badge-open { color:var(--v-ok); background:var(--v-ok-bg); border-color:transparent; }
+
+    /* ---------- 工具栏 ---------- */
+    .v-toolbar {
+      display:flex; align-items:center; gap:8px; padding:10px 18px;
+      background:var(--v-surface); border-bottom:1px solid var(--v-border);
+      flex:0 0 auto;
+    }
+    .v-msg { font-size:11.5px; color:var(--v-muted); flex:1; min-width:0;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .v-msg-ok { color:var(--v-ok); }
+    .v-msg-err { color:var(--v-danger); }
+
+    /* ---------- 控件（no-native 三保险） ---------- */
+    .v-input, .v-select, .v-btn {
+      appearance:none; -moz-appearance:none; -webkit-appearance:none;
+      font:inherit; font-size:12.5px; border-radius:6px; outline:none;
+      border:1px solid var(--v-border); background:var(--v-surface);
+      color:var(--v-text);
+    }
+    .v-input, .v-select { padding:5px 9px; }
+    .v-input:focus, .v-select:focus { border-color:var(--v-accent); box-shadow:0 0 0 3px var(--v-accent-weak); }
+    .v-input::placeholder { color:var(--v-faint); }
+    .v-search { width:220px; flex:0 0 auto; }
+    .v-btn {
+      padding:5px 12px; cursor:pointer; white-space:nowrap;
+      transition:background .12s ease, border-color .12s ease;
+    }
+    .v-btn:hover { background:var(--v-surface2); border-color:var(--v-faint); }
+    .v-btn:disabled { opacity:.5; cursor:default; }
+    .v-btn-primary { background:var(--v-accent); border-color:var(--v-accent); color:#fff; font-weight:600; }
+    .v-btn-primary:hover { background:var(--v-accent-strong); border-color:var(--v-accent-strong); }
+    .v-btn-sm { padding:3px 9px; font-size:11.5px; }
+    .v-btn-danger { color:var(--v-danger); }
+    .v-btn-danger:hover { background:var(--v-danger-bg); border-color:var(--v-danger); }
+    .v-btn-ghost { background:transparent; border-color:transparent; color:var(--v-muted); }
+    .v-btn-ghost:hover { background:var(--v-surface2); color:var(--v-text); }
+
+    /* ---------- 主体 ---------- */
+    .v-body { display:flex; flex:1; min-height:0; }
+    .v-nav {
+      width:186px; flex:0 0 186px; padding:12px 10px; overflow-y:auto;
+      border-right:1px solid var(--v-border); background:var(--v-surface);
+    }
+    .v-nav-item {
+      padding:7px 10px; border-radius:6px; cursor:pointer; font-size:12.5px;
+      color:var(--v-muted); display:flex; align-items:center; gap:8px; margin-bottom:2px;
+    }
+    .v-nav-item:hover { background:var(--v-surface2); color:var(--v-text); }
+    .v-nav-item.is-active { background:var(--v-accent-weak); color:var(--v-accent); font-weight:600; }
+    .v-nav-count { margin-left:auto; font-size:10.5px; color:var(--v-faint); }
+    .v-main { flex:1; min-width:0; overflow-y:auto; padding:14px 18px 24px; }
+
+    /* ---------- 卡片 ---------- */
+    .v-sec {
+      background:var(--v-surface); border:1px solid var(--v-border);
+      border-radius:10px; box-shadow:var(--v-shadow); margin-bottom:12px; overflow:hidden;
+    }
+    .v-sec-head { padding:11px 14px; border-bottom:1px solid var(--v-border-soft); display:flex; align-items:center; gap:8px; }
+    .v-sec-icon { font-size:14px; }
+    .v-sec-title { font-size:13px; font-weight:700; }
+    .v-sec-desc { font-size:11.5px; color:var(--v-muted); margin-top:3px; }
+    .v-sec-body { padding:4px 14px 10px; }
+
+    .v-row {
+      display:flex; align-items:flex-start; gap:10px; padding:9px 0;
+      border-bottom:1px dashed var(--v-border-soft);
+    }
+    .v-row:last-child { border-bottom:none; }
+    .v-row-main { flex:1; min-width:0; }
+    .v-row-top { display:flex; align-items:center; gap:8px; }
+    .v-row-label { font-size:12.5px; font-weight:600; }
+    .v-row-hint { font-size:11px; color:var(--v-faint); margin-top:2px; }
+    .v-val {
+      display:inline-block; margin-top:5px; padding:3px 8px; border-radius:5px;
+      background:var(--v-code-bg); font-family:ui-monospace,Consolas,"Cascadia Mono",monospace;
+      font-size:12px; color:var(--v-text); max-width:100%;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    }
+    .v-val-empty { color:var(--v-faint); font-style:italic; background:transparent; padding-left:0; }
+    .v-row-act { display:flex; align-items:center; gap:5px; flex:0 0 auto; padding-top:2px; }
+    .v-chip {
+      font-size:10.5px; padding:1px 7px; border-radius:9px; white-space:nowrap;
+      border:1px solid var(--v-border); color:var(--v-faint); background:var(--v-surface2);
+    }
+    .v-chip-on { color:var(--v-ok); background:var(--v-ok-bg); border-color:transparent; }
+    .v-chip-host { color:var(--v-accent); background:var(--v-accent-weak); border-color:transparent; }
+    .v-chip-off { color:var(--v-warn); background:var(--v-warn-bg); border-color:transparent; }
+    .v-edit { display:flex; align-items:center; gap:6px; margin-top:6px; }
+    .v-edit .v-input { flex:1; min-width:0; font-family:ui-monospace,Consolas,monospace; }
+    .v-edit .v-input-num { flex:0 0 120px; font-family:inherit; }
+
+    /* ---------- 锁定 / 空态 ---------- */
+    .v-lock {
+      background:var(--v-surface); border:1px solid var(--v-border); border-radius:10px;
+      padding:26px 24px; text-align:center; box-shadow:var(--v-shadow);
+    }
+    .v-lock-icon { font-size:28px; }
+    .v-lock-title { font-size:15px; font-weight:700; margin-top:8px; }
+    .v-lock-text { font-size:12.5px; color:var(--v-muted); margin:8px auto 0; max-width:520px; line-height:1.7; }
+    .v-lock-list { text-align:left; max-width:460px; margin:14px auto; padding-left:18px; color:var(--v-muted); font-size:12px; line-height:1.9; }
+    .v-lock-actions { display:flex; gap:8px; justify-content:center; margin-top:16px; }
+    .v-empty { color:var(--v-faint); font-size:12px; padding:14px 2px; }
+
+    /* ---------- 审计 ---------- */
+    .v-log { font-size:11.5px; color:var(--v-muted); }
+    .v-log-row { display:flex; gap:10px; padding:4px 0; border-bottom:1px dashed var(--v-border-soft); }
+    .v-log-row:last-child { border-bottom:none; }
+    .v-log-time { flex:0 0 132px; color:var(--v-faint); font-family:ui-monospace,Consolas,monospace; font-size:11px; }
+    .v-log-act { flex:0 0 92px; font-weight:600; }
+    .v-log-note { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+    .v-foot {
+      padding:8px 18px; border-top:1px solid var(--v-border); background:var(--v-surface);
+      font-size:11px; color:var(--v-faint); flex:0 0 auto; display:flex; gap:12px;
+    }
+    .v-foot span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  ]]></html:style>
+
+  <html:div id="pp-vault-root">
+    <html:div class="v-head">
+      <html:div class="v-title-wrap">
+        <html:div class="v-title">账号与密钥</html:div>
+        <html:div class="v-sub">集中管理知网、坚果云、期刊分区与自定义 AI 模型的账号与密钥：默认脱敏、按需解锁、可加密托管到你自己的账号</html:div>
+      </html:div>
+      <html:div class="v-badges">
+        <html:span id="v-plan" class="v-badge">FREE</html:span>
+        <html:span id="v-lock" class="v-badge v-badge-lock">已锁定</html:span>
+      </html:div>
+    </html:div>
+
+    <html:div class="v-toolbar">
+      <html:input type="text" id="v-search" class="v-input v-search" no-native="true"
+                  placeholder="搜索条目 / 服务名…"/>
+      <html:button id="v-unlock" class="v-btn v-btn-primary" no-native="true">解锁查看</html:button>
+      <html:button id="v-refresh" class="v-btn" no-native="true">刷新</html:button>
+      <html:span id="v-msg" class="v-msg"></html:span>
+    </html:div>
+
+    <html:div class="v-body">
+      <html:div id="v-nav" class="v-nav"></html:div>
+      <html:div id="v-main" class="v-main"></html:div>
+    </html:div>
+
+    <html:div class="v-foot">
+      <html:span id="v-store-state">本机：Zotero 配置目录（敏感值混淆存放）</html:span>
+      <html:span id="v-host-state"></html:span>
+    </html:div>
+  </html:div>
+</window>

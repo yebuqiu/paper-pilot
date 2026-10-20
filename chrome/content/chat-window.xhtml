@@ -126,28 +126,29 @@
     #pp-cw-chips > button { max-height:none !important; height:auto !important; }
     #pp-cw-ctx-chips { display:flex; flex-wrap:wrap; gap:4px; padding:0 10px 6px; flex:none; }
 
+    /* ui-kit 需要、本窗口原先没定义的令牌：全部指向本窗口已有颜色，视觉不变 */
+    #pp-cw-root {
+      --pp-field: var(--pp-bg);
+      --pp-surface-3: var(--pp-soft);
+      --pp-faint: var(--pp-muted);
+      --pp-border-strong: #c9d2dd;
+    }
+    @media (prefers-color-scheme: dark) {
+      #pp-cw-root:not([data-theme="light"]) { --pp-border-strong: #46505f; }
+    }
+    #pp-cw-root[data-theme="dark"] { --pp-border-strong: #46505f; }
+
     /* ===== 输入区（三保险核心：no-native + 显式配色 + appearance:none） ===== */
     .pp-cw-inputbar { flex:none; background:var(--pp-surface); border-top:1px solid var(--pp-border);
       padding:8px 10px 6px; }
     .pp-cw-inputrow { display:flex; gap:8px; align-items:flex-end; }
+    /* 输入框只留布局（多行 + 高度窗口）；底/描边/焦点/占位交 ui-kit */
     #pp-cw-input {
-      appearance:none; flex:1; min-width:0; resize:none;
+      flex:1; min-width:0; resize:none;
       min-height:52px; max-height:200px; height:52px;
-      padding:8px 10px; font-size:13px; line-height:1.5; font-family:inherit;
-      border-radius:8px; border:1px solid var(--pp-border);
-      background:var(--pp-bg); color:var(--pp-text);
     }
-    #pp-cw-input:focus { border-color:var(--pp-accent); outline:none; }
-    #pp-cw-input::placeholder { color:var(--pp-muted); }
-    #pp-cw-send {
-      appearance:none; flex:none; min-height:40px; max-height:none; height:auto;
-      padding:8px 18px; font-size:12.5px; font-weight:600;
-      border:none; border-radius:8px; cursor:pointer; white-space:nowrap;
-      background:var(--pp-accent); color:#fff;
-    }
-    #pp-cw-send:hover { filter:brightness(1.08); }
-    #pp-cw-send.busy { background:var(--pp-danger); }
-    #pp-cw-send:disabled { opacity:.5; cursor:default; }
+    #pp-cw-send { flex:none; font-weight:600; }
+    #pp-cw-send.busy { background:var(--pp-danger); border-color:var(--pp-danger); }
     #pp-cw-hint { margin-top:5px; font-size:10.5px; color:var(--pp-muted); text-align:center; }
 
     /* ===== ChatFloat 标签编辑层（渲染进本窗口时的配色校正） ===== */
@@ -185,9 +186,9 @@
     <!-- 输入区 -->
     <html:div class="pp-cw-inputbar">
       <html:div class="pp-cw-inputrow">
-        <html:textarea id="pp-cw-input" no-native="true" rows="2"
+        <html:textarea id="pp-cw-input" class="pp-textarea" no-native="true" rows="2"
           placeholder="针对这篇文献提问…"></html:textarea>
-        <html:button id="pp-cw-send" type="button">发送</html:button>
+        <html:button id="pp-cw-send" class="pp-btn pp-btn-primary pp-btn-lg" type="button">发送</html:button>
       </html:div>
       <html:div id="pp-cw-hint">Enter 发送 · Shift+Enter 换行 · ↑↓ 翻提问记录 · Esc 关闭</html:div>
     </html:div>

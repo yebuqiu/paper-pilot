@@ -119,7 +119,7 @@ var CloudSync = (function () {
 
   /** 密钥类 pref：绝不出本机 */
   var SECRET_LEAF_RE = /(password|passwd|secret|apikey|api_key|cookie|credential|token$|key$)/i;
-  var SECRET_LEAVES = ["aiChannels", "aiApiKey", "cnkiPassword", "easyScholarKey", "mcpToken", "s2ApiKey", "thirdSourcePassword"];
+  var SECRET_LEAVES = ["aiChannels", "aiApiKey", "cnkiPassword", "easyScholarKey", "mcpToken", "s2ApiKey", "thirdSourcePassword", "vaultPassHash"];
 
   /**
    * 非设置项：**默认不进云端**。分三类，每一类同步过去都会造成真实故障：
@@ -144,6 +144,12 @@ var CloudSync = (function () {
     "compareSelfTest", "pdfInlineSelfTest", "pdfDualSelfTest", "cnkiBootSelfTest",
     "autoReadDailyCount", "automationDailyAiCount", "readerPopupDailyCount",
     "cloudSyncIndexOwner",
+    // 0.66.0 凭据中心的本地访问审计：只在本机有意义，同步过去等于把「用了几次哪个凭据」
+    // 这种旁路信息带到别的机器，还会天天冲突
+    "vaultAudit",
+    // 0.67.0「仅托管」标记：**绝不能同步**——同步过去会让另一台机器也清空本机凭据，
+    // 而那边的登录状态/网络未必满足水合条件，等于远程把功能关掉。vaultSelfTest 同理。
+    "vaultHostedOnly", "vaultSelfTest",
   ];
 
   /* ---------------- 小工具 ---------------- */
@@ -242,9 +248,18 @@ var CloudSync = (function () {
       if (!root || root === "/") root = DEFAULTS.root;
       var remember = !!g(K.remember, DEFAULTS.remember);
       var token = this._sessionToken || (remember ? String(g(K.token, "") || "") : "");
+      var email = String(g(K.email, "") || "").trim();
+      // 0.67.0「仅托管」模式：本机 pref 为空，值在 CredVault 的内存水合副本里
+      // （磁盘上只有服务端密文）。config() 是同步的，水合由 syncNow/login 前完成。
+      try {
+        if (typeof CredVault !== "undefined" && CredVault && CredVault.cached) {
+          if (!email) email = String(CredVault.cached("nutstore.email") || "").trim();
+          if (!token) token = String(CredVault.cached("nutstore.token") || "");
+        }
+      } catch (e) { /* 水合层不可用则按本机配置走 */ }
       return {
         enabled: !!g(K.enabled, DEFAULTS.enabled),
-        email: String(g(K.email, "") || "").trim(),
+        email: email,
         token: String(token || ""),
         remember: remember,
         baseUrl: String(g(K.baseUrl, DEFAULTS.baseUrl) || DEFAULTS.baseUrl).replace(/\/+$/, ""),
@@ -435,6 +450,14 @@ var CloudSync = (function () {
         var info = await this.testConnection();
         this._log("info", "授权成功：" + email + (info.rootExists ? "" : "（同步目录尚未创建，首次同步时自动建立）"));
         this._setState({ state: "idle", message: "已连接坚果云" + (info.rootExists ? "" : "（同步目录待创建）") });
+        // 手填/更新过凭据 = 退出「仅托管」标记（否则下次启动会被云端副本顶回旧值）
+        try {
+          if (typeof CredVault !== "undefined" && CredVault && CredVault.set) {
+            CredVault.set("nutstore.email", email);
+            // remember=false 时本机本就不该有值：传空串同时清掉「仅托管」标记
+            CredVault.set("nutstore.token", remember ? token : "");
+          }
+        } catch (e) { /* 清标记失败不影响登录 */ }
         this.startAutoSync();
         return { ok: true, rootExists: info.rootExists, message: info.message };
       } catch (e) {
@@ -513,6 +536,14 @@ var CloudSync = (function () {
     syncNow: async function (opts) {
       opts = opts || {};
       if (this._running) return { ok: false, code: "BUSY", error: "同步正在进行中，请等这一轮结束" };
+
+      // 仅托管模式：先把凭据从账号取回到内存，否则下面的 config() 只会看到空值
+      try {
+        if (typeof CredVault !== "undefined" && CredVault && CredVault.hasHostedOnly
+            && CredVault.hasHostedOnly()) {
+          await CredVault.hydrateHostedOnly();
+        }
+      } catch (e) { /* 离线时由下面的 AUTH_REQUIRED 给出可执行提示 */ }
 
       var cfg = this.config();
       if (!cfg.email || !cfg.token) {

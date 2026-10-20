@@ -450,12 +450,12 @@
       const inst = instOf(m);
       const updatable = needUpdateOf(m, inst);
       if (!inst) {
-        const b = el("button", "pp-ss-btn pp-ss-btn-primary pp-ss-btn-sm", "安装");
+        const b = el("button", "pp-btn pp-btn-primary pp-btn-sm", "安装");
         b.setAttribute("type", "button");
         b.addEventListener("click", guard((ev) => { ev.stopPropagation(); doInstall(m, b, false); }));
         btns.appendChild(b);
       } else if (updatable) {
-        const b = el("button", "pp-ss-btn pp-ss-btn-primary pp-ss-btn-sm", "↑ 更新");
+        const b = el("button", "pp-btn pp-btn-primary pp-btn-sm", "↑ 更新");
         b.setAttribute("type", "button");
         b.addEventListener("click", guard((ev) => { ev.stopPropagation(); doInstall(m, b, true); }));
         btns.appendChild(b);
@@ -463,7 +463,7 @@
         btns.appendChild(el("span", "pp-ss-installed", "已装 v" + (inst.version || "?")));
       }
       btns.appendChild(el("span", "pp-ss-spacer", ""));
-      const d = el("button", "pp-ss-btn pp-ss-btn-sm", "详情");
+      const d = el("button", "pp-btn pp-btn-sm", "详情");
       d.setAttribute("type", "button");
       d.addEventListener("click", guard((ev) => { ev.stopPropagation(); openDetail(m); }));
       btns.appendChild(d);
@@ -643,25 +643,25 @@
       /* ---- 操作行 ---- */
       const actRow = el("div", "pp-ss-actrow");
       if (!inst) {
-        const b = el("button", "pp-ss-btn pp-ss-btn-primary", "安装");
+        const b = el("button", "pp-btn pp-btn-primary", "安装");
         b.setAttribute("type", "button");
         b.addEventListener("click", guard(() => doInstall(m, b, false)));
         actRow.appendChild(b);
       } else {
         if (updatable) {
-          const b = el("button", "pp-ss-btn pp-ss-btn-primary", "↑ 更新");
+          const b = el("button", "pp-btn pp-btn-primary", "↑ 更新");
           b.setAttribute("type", "button");
           b.addEventListener("click", guard(() => doInstall(m, b, true)));
           actRow.appendChild(b);
         } else {
           actRow.appendChild(el("span", "pp-ss-installed", "已装 v" + (inst.version || "?")));
         }
-        const u = el("button", "pp-ss-btn pp-ss-btn-danger", "卸载");
+        const u = el("button", "pp-btn pp-ss-btn-danger", "卸载");
         u.setAttribute("type", "button");
         u.addEventListener("click", guard(() => requestUninstall(m, u)));
         actRow.appendChild(u);
       }
-      const x = el("button", "pp-ss-btn", "导出 JSON");
+      const x = el("button", "pp-btn", "导出 JSON");
       x.setAttribute("type", "button");
       x.addEventListener("click", guard(() => {
         if (typeof SP.exportPack !== "function") {
@@ -675,7 +675,7 @@
       }));
       actRow.appendChild(x);
       if (inst && c.agentPreset) {
-        const a = el("button", "pp-ss-btn", "应用 Agent 预设");
+        const a = el("button", "pp-btn", "应用 Agent 预设");
         a.setAttribute("type", "button");
         a.addEventListener("click", guard(async () => {
           if (typeof SP.applyAgentPreset !== "function") {
@@ -730,7 +730,7 @@
       paintStars();
       form.appendChild(starrow);
 
-      const ta = el("textarea", "pp-ss-textarea");
+      const ta = el("textarea", "pp-textarea pp-ss-textarea");
       ta.setAttribute("no-native", "true");
       ta.setAttribute("rows", "3");
       ta.setAttribute("placeholder", "这个技能包用得怎么样？给后来的使用者一点参考");
@@ -742,7 +742,7 @@
       form.appendChild(myMeta);
 
       const row = el("div", "pp-ss-actrow");
-      const saveBtn = el("button", "pp-ss-btn pp-ss-btn-primary pp-ss-btn-sm", "保存评价");
+      const saveBtn = el("button", "pp-btn pp-btn-primary pp-btn-sm", "保存评价");
       saveBtn.setAttribute("type", "button");
       saveBtn.addEventListener("click", guard(async () => {
         if (!selected) { setStatus("请先点选星级（1-5 星）", "err"); return; }
@@ -760,7 +760,7 @@
           setStatus("保存评价失败：" + ((res && res.error) || "未知错误"), "err");
         }
       }));
-      const clearBtn = el("button", "pp-ss-btn pp-ss-btn-sm", "清除我的评价");
+      const clearBtn = el("button", "pp-btn pp-btn-sm", "清除我的评价");
       clearBtn.setAttribute("type", "button");
       clearBtn.addEventListener("click", guard(() => {
         if (typeof SP.clearRating !== "function") {
@@ -836,14 +836,14 @@
 
     function addTplRow() {
       const row = el("div", "pp-ss-mk-tplrow");
-      const nameI = el("input", "pp-ss-input pp-ss-mk-tplname");
+      const nameI = el("input", "pp-input pp-ss-mk-tplname");
       nameI.setAttribute("type", "text");
       nameI.setAttribute("placeholder", "模板名称");
-      const ta = el("textarea", "pp-ss-textarea pp-ss-mk-tplcontent");
+      const ta = el("textarea", "pp-textarea pp-ss-textarea pp-ss-mk-tplcontent");
       ta.setAttribute("no-native", "true");
       ta.setAttribute("rows", "2");
       ta.setAttribute("placeholder", "模板正文");
-      const del = el("button", "pp-ss-btn pp-ss-btn-sm", "移除");
+      const del = el("button", "pp-btn pp-btn-sm", "移除");
       del.setAttribute("type", "button");
       del.addEventListener("click", guard(() => row.remove()));
       row.appendChild(nameI); row.appendChild(ta); row.appendChild(del);

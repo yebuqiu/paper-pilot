@@ -224,17 +224,27 @@ var ThirdSource = {
     catch (e) { return ""; }
   },
 
+  /** 0.67.0：本机为空时回落 CredVault 内存水合副本（仅托管模式） */
   creds() {
     let u = "", p = "";
     try {
       u = String(Prefs.get("thirdSourceUsername", "") || "").trim();
       p = this.deobfuscate(Prefs.get("thirdSourcePassword", ""));
+      if ((!u || !p) && typeof CredVault !== "undefined" && CredVault && CredVault.cached) {
+        u = u || String(CredVault.cached("third.user") || "").trim();
+        p = p || String(CredVault.cached("third.pass") || "");
+      }
     } catch (e) { return null; }
     return (u && p) ? { u: u, p: p } : null;
   },
 
   saveCreds(u, p) {
     try {
+      if (typeof CredVault !== "undefined" && CredVault && CredVault.set) {
+        const a = CredVault.set("third.user", String(u || "").trim());
+        const b = CredVault.set("third.pass", String(p || ""));
+        return !!(a.ok && b.ok);
+      }
       Prefs.set("thirdSourceUsername", String(u || "").trim());
       Prefs.set("thirdSourcePassword", this.obfuscate(p));
       return true;

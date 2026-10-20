@@ -69,32 +69,21 @@
 
     /* ===== 表单控件三保险（②③）：统一显式定型，压过 win 平台皮肤 ===== */
     #pp-ss-root input, #pp-ss-root select, #pp-ss-root textarea, #pp-ss-root button {
-      appearance:none; -moz-appearance:none; max-height:none; height:auto;
+      /* 压过 win 平台皮肤（透明底 / 蓝渐变 / max-height:25px）。
+         ★ 不写 height:auto —— 那会以 (1,0,1) 的特异性压掉 ui-kit 的 28px 控件高度。 */
+      appearance:none; -moz-appearance:none; max-height:none;
       font-family:inherit; box-sizing:border-box;
     }
-    #pp-ss-root input.pp-ss-input, #pp-ss-root select.pp-ss-select {
-      background:var(--pp-bg); color:var(--pp-text);
-      border:1px solid var(--pp-border); border-radius:6px;
-      padding:4px 8px; font-size:12.5px; min-width:0; width:100%;
-    }
+    /* 控件底/描边/焦点/占位全部交 ui-kit（.pp-input/.pp-select/.pp-textarea）；
+       这里只留窗口特有的：撑满宽度 + 下拉自绘箭头 + 文本域最小高度 */
+    #pp-ss-root input.pp-input, #pp-ss-root select.pp-select,
+    #pp-ss-root textarea.pp-textarea { width:100%; min-width:0; }
     #pp-ss-root select.pp-ss-select {
       background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23808c99' stroke-width='1.6'/%3E%3C/svg%3E");
       background-repeat:no-repeat; background-position:right 8px center; padding-right:24px;
     }
     #pp-ss-root select.pp-ss-select option { background:var(--pp-surface); color:var(--pp-text); }
-    #pp-ss-root input.pp-ss-input:focus, #pp-ss-root select.pp-ss-select:focus,
-    #pp-ss-root textarea.pp-ss-textarea:focus {
-      outline:none; border-color:var(--pp-accent); box-shadow:0 0 0 3px var(--pp-focus-ring);
-    }
-    #pp-ss-root input.pp-ss-input::placeholder, #pp-ss-root textarea.pp-ss-textarea::placeholder {
-      color:var(--pp-muted);
-    }
-    #pp-ss-root textarea.pp-ss-textarea {
-      background:var(--pp-bg); color:var(--pp-text);
-      border:1px solid var(--pp-border); border-radius:6px;
-      padding:6px 8px; font-size:12.5px; line-height:1.6;
-      resize:vertical; min-height:52px; width:100%;
-    }
+    #pp-ss-root textarea.pp-ss-textarea { min-height:52px; }
     /* 自绘复选框（checkbox 走 label + span 视觉，input 视觉隐藏） */
     .pp-ss-check { display:inline-flex; align-items:center; gap:6px; cursor:pointer;
       user-select:none; font-size:12.5px; color:var(--pp-text); }
@@ -115,25 +104,9 @@
     }
     .pp-ss-check input:focus-visible + .pp-ss-cbox { box-shadow:0 0 0 3px var(--pp-focus-ring); }
 
-    /* ===== 按钮 ===== */
-    #pp-ss-root button.pp-ss-btn {
-      appearance:none; -moz-appearance:none; height:auto; max-height:none;
-      background:var(--pp-surface); color:var(--pp-text);
-      border:1px solid var(--pp-border); border-radius:7px;
-      padding:4px 12px; font-size:12px; line-height:1.6; cursor:pointer;
-      white-space:nowrap; user-select:none;
-    }
-    #pp-ss-root button.pp-ss-btn:hover:not(:disabled) {
-      background:var(--pp-btn-hover); border-color:var(--pp-accent); color:var(--pp-accent);
-    }
-    #pp-ss-root button.pp-ss-btn:disabled { opacity:.55; cursor:default; }
-    #pp-ss-root button.pp-ss-btn-primary {
-      background:var(--pp-accent); border-color:var(--pp-accent); color:#ffffff; font-weight:600;
-    }
-    #pp-ss-root button.pp-ss-btn-primary:hover:not(:disabled) {
-      background:var(--pp-accent-emphasis); border-color:var(--pp-accent-emphasis); color:#ffffff;
-    }
-    #pp-ss-root button.pp-ss-btn-sm { padding:2px 10px; font-size:11.5px; }
+    /* ===== 按钮 =====
+       底/悬停/禁用/主按钮/小号全部来自 ui-kit（.pp-btn / .pp-btn-primary / .pp-btn-sm）；
+       这里只留「危险操作」这一窗口语义修饰。 */
     #pp-ss-root button.pp-ss-btn-danger { color:var(--pp-danger); }
     #pp-ss-root button.pp-ss-btn-danger:hover:not(:disabled) {
       background:rgba(207,34,46,.08); border-color:var(--pp-danger); color:var(--pp-danger);
@@ -274,19 +247,19 @@
     <html:div id="pp-ss-bar-list" class="pp-ss-bar">
       <html:input id="pp-ss-search" type="text"
         placeholder="搜索技能包名称 / 标签 / 作者…"/>
-      <html:button id="pp-ss-refresh" type="button" class="pp-ss-btn">🔄 刷新目录</html:button>
-      <html:button id="pp-ss-make" type="button" class="pp-ss-btn">＋ 制作技能包</html:button>
+      <html:button id="pp-ss-refresh" type="button" class="pp-btn">🔄 刷新目录</html:button>
+      <html:button id="pp-ss-make" type="button" class="pp-btn">＋ 制作技能包</html:button>
     </html:div>
 
     <!-- 顶栏 ② 详情视图：返回 -->
     <html:div id="pp-ss-bar-detail" class="pp-ss-bar" style="display:none;">
-      <html:button id="pp-ss-back-detail" type="button" class="pp-ss-btn">← 返回列表</html:button>
+      <html:button id="pp-ss-back-detail" type="button" class="pp-btn">← 返回列表</html:button>
       <html:div id="pp-ss-detail-title" class="pp-ss-bartitle"></html:div>
     </html:div>
 
     <!-- 顶栏 ③ 制作器视图：返回 -->
     <html:div id="pp-ss-bar-maker" class="pp-ss-bar" style="display:none;">
-      <html:button id="pp-ss-back-maker" type="button" class="pp-ss-btn">← 返回列表</html:button>
+      <html:button id="pp-ss-back-maker" type="button" class="pp-btn">← 返回列表</html:button>
       <html:div class="pp-ss-bartitle">制作技能包</html:div>
     </html:div>
 
@@ -320,27 +293,27 @@
         <html:div class="pp-ss-mk-grid">
           <html:div class="pp-ss-field">
             <html:label class="pp-ss-label" for="pp-ss-mk-name">名称 *</html:label>
-            <html:input id="pp-ss-mk-name" class="pp-ss-input" type="text"/>
+            <html:input id="pp-ss-mk-name" class="pp-input" type="text"/>
           </html:div>
           <html:div class="pp-ss-field">
             <html:label class="pp-ss-label" for="pp-ss-mk-author">作者 *</html:label>
-            <html:input id="pp-ss-mk-author" class="pp-ss-input" type="text"/>
+            <html:input id="pp-ss-mk-author" class="pp-input" type="text"/>
           </html:div>
           <html:div class="pp-ss-field">
             <html:label class="pp-ss-label" for="pp-ss-mk-desc">简介 *（60 字以内）</html:label>
-            <html:input id="pp-ss-mk-desc" class="pp-ss-input" type="text" maxlength="60"/>
+            <html:input id="pp-ss-mk-desc" class="pp-input" type="text" maxlength="60"/>
           </html:div>
           <html:div class="pp-ss-field">
             <html:label class="pp-ss-label" for="pp-ss-mk-cat">分类</html:label>
-            <html:select id="pp-ss-mk-cat" class="pp-ss-select"></html:select>
+            <html:select id="pp-ss-mk-cat" class="pp-select pp-ss-select"></html:select>
           </html:div>
           <html:div class="pp-ss-field">
             <html:label class="pp-ss-label" for="pp-ss-mk-tags">标签（多个用逗号分隔）</html:label>
-            <html:input id="pp-ss-mk-tags" class="pp-ss-input" type="text"/>
+            <html:input id="pp-ss-mk-tags" class="pp-input" type="text"/>
           </html:div>
           <html:div class="pp-ss-field">
             <html:label class="pp-ss-label" for="pp-ss-mk-ver">版本</html:label>
-            <html:input id="pp-ss-mk-ver" class="pp-ss-input" type="text" value="1.0.0"/>
+            <html:input id="pp-ss-mk-ver" class="pp-input" type="text" value="1.0.0"/>
           </html:div>
         </html:div>
 
@@ -348,23 +321,23 @@
         <html:div id="pp-ss-mk-tags-list"></html:div>
 
         <html:div class="pp-ss-mksec">可选：术语表（每行一条「原文 = 译文」，如「LLM = 大语言模型」；也可用 =&gt; 分隔，| 后可加领域）</html:div>
-        <html:textarea id="pp-ss-mk-glossary" class="pp-ss-textarea" no-native="true"
+        <html:textarea id="pp-ss-mk-glossary" class="pp-textarea pp-ss-textarea" no-native="true"
           rows="4" placeholder="每行一条术语，可留空"></html:textarea>
 
         <html:div class="pp-ss-mksec">可选：笔记模板</html:div>
         <html:div id="pp-ss-mk-tpl-list"></html:div>
 
         <html:div class="pp-ss-mk-actions">
-          <html:button id="pp-ss-mk-add-tpl" type="button" class="pp-ss-btn">＋ 添加一行模板</html:button>
-          <html:button id="pp-ss-mk-build" type="button" class="pp-ss-btn pp-ss-btn-primary">生成技能包</html:button>
+          <html:button id="pp-ss-mk-add-tpl" type="button" class="pp-btn">＋ 添加一行模板</html:button>
+          <html:button id="pp-ss-mk-build" type="button" class="pp-btn pp-btn-primary">生成技能包</html:button>
         </html:div>
 
         <html:div id="pp-ss-mk-errors"></html:div>
         <html:pre id="pp-ss-mk-json" class="pp-ss-json" style="display:none;"></html:pre>
         <html:div id="pp-ss-mk-json-actions" style="display:none;">
-          <html:button id="pp-ss-mk-copy" type="button" class="pp-ss-btn">复制 JSON</html:button>
-          <html:button id="pp-ss-mk-save" type="button" class="pp-ss-btn">保存为文件</html:button>
-          <html:button id="pp-ss-mk-submit" type="button" class="pp-ss-btn pp-ss-btn-primary">🚀 投稿到技能商店</html:button>
+          <html:button id="pp-ss-mk-copy" type="button" class="pp-btn">复制 JSON</html:button>
+          <html:button id="pp-ss-mk-save" type="button" class="pp-btn">保存为文件</html:button>
+          <html:button id="pp-ss-mk-submit" type="button" class="pp-btn pp-btn-primary">🚀 投稿到技能商店</html:button>
         </html:div>
 
         <html:div class="pp-ss-hint">生成后可分享给他人（对方在设置 → 技能商店导入），或提交到官方目录仓库收录。Esc 返回列表。</html:div>

@@ -153,6 +153,10 @@ Zotero.Papilot = {
       // 0.56.0 坚果云统一云同步（设置/对话/技能包/安装包）：依赖 core/webdav.js；
       // 对 SkillPacks 只在 stageSkillPacks() 里惰性调用，位置无碍
       "features/cloud-sync.js",
+      // 0.66.0 账号与密钥中心核心域（Pro）：统一收口知网 / 坚果云 / easyScholar /
+      // 自定义 AI Key 的脱敏查看、受控编辑、账号加密托管与本地审计。
+      // 对 Account / Channels 只在调用时惰性访问，故排在二者之后即可。
+      "features/cred-vault.js",
       "ai/slash-commands.js",
       "ai/auto-tag.js",
       "ai/matrix.js",
@@ -373,6 +377,8 @@ Zotero.Papilot = {
     // 0.56.0 坚果云统一云同步（设置面板 prefs-cloud.js 经此访问；测试/排障同入口）
     // 防御式赋值：模块加载失败时置 null，避免一行 ReferenceError 把整个 init 带崩
     this.cloudSync = (typeof CloudSync !== "undefined") ? CloudSync : null;
+    // 0.66.0 账号与密钥中心（Pro）：窗口脚本与设置面板经此访问
+    this.credVault = (typeof CredVault !== "undefined") ? CredVault : null;
     // 0.49.0 浮窗会话持久化 + 定时任务（设置面板 prefs-schedule.js 经此访问 Scheduler）
     this.chatSessions = ChatSessions;
     this.scheduler = Scheduler;
@@ -585,6 +591,8 @@ Zotero.Papilot = {
           rootURI + "chrome/content/prefs-subs.js",
           // 0.56.0 坚果云云同步（登录/策略/数据集/进度/日志）
           rootURI + "chrome/content/prefs-cloud.js",
+          // 0.68.0 「推荐配置」与向导入口（工具条两个按钮）
+          rootURI + "chrome/content/prefs-recommend.js",
         ],
         stylesheets: [
           rootURI + "chrome/content/prefs.css",
@@ -603,6 +611,21 @@ Zotero.Papilot = {
       new Promise((resolve) => setTimeout(resolve, 15000)),
     ]);
     await this._diag("ui ready (or timed out)");
+
+    // 首次使用向导（0.68.0）：只在「从未走过」时弹一次（wizardDone 为空）。
+    // 延迟 3s 是为了避开 Zotero 自己的欢迎页/启动焦点争抢；失败不影响启动。
+    try {
+      if (!Prefs.get("wizardDone", "")) {
+        const w = Zotero.getMainWindow();
+        const later = (fn, ms) => (w && w.setTimeout ? w.setTimeout(fn, ms) : setTimeout(fn, ms));
+        later(() => {
+          try { this.openWizard(); } catch (e) { /* 弹不出来也不能挡启动 */ }
+        }, 3000);
+        await this._diag("first-run wizard scheduled");
+      }
+    } catch (e) {
+      await this._diag("first-run wizard FAILED: " + (e && e.message || e));
+    }
 
     // 期刊分区列
     if (Prefs.get("rankColumnEnabled", true)) {
@@ -979,6 +1002,52 @@ Zotero.Papilot = {
       }
     }
 
+    // 0.67.0「仅托管」模式：值只存在账号密文里，运行时水合到内存（不落盘）。
+    // Account 恢复会话是异步的 → 首次未就绪时订阅一次会话变化再试，避免"开机第一次同步失败"。
+    try {
+      const CV = this.credVault;
+      if (CV && typeof CV.hasHostedOnly === "function" && CV.hasHostedOnly()) {
+        const runHydrate = (tag) => CV.hydrateHostedOnly(true)
+          .then((n) => { if (n) this._diag("vault hydrate (" + tag + "): " + n + " field(s)"); })
+          .catch((e) => this._diag("vault hydrate FAILED (" + tag + "): " + (e && e.message)));
+        runHydrate("boot");
+        try {
+          if (Account && typeof Account.onSessionChanged === "function") {
+            const off = Account.onSessionChanged(() => {
+              try { if (off) off(); } catch (e) { /* ignore */ }
+              runHydrate("session");
+            });
+          }
+        } catch (e) { /* 订阅失败就只靠 syncNow 前的兜底水合 */ }
+      }
+    } catch (e) { /* 水合失败只影响「仅托管」项，其它功能照常 */ }
+
+    // 0.67.0 凭据中心真机自检（pref vaultSelfTest，默认关）。
+    // 只有真机能验证：窗口能否打开、以及**锁定时 DOM 里是否真的没有明文**。
+    // 结论写进 boot 日志（leaked 必须为 0）。
+    if (Prefs.get("vaultSelfTest", false)) {
+      try {
+        const w = this.openVault();
+        await new Promise((r) => setTimeout(r, 3000));
+        const doc = w && w.document;
+        const box = doc && doc.getElementById("v-main");
+        const txt = box ? box.textContent : "(no main)";
+        const secrets = (this.credVault ? this.credVault.items() : [])
+          .filter((i) => i.secret && i.configured).map((i) => i.value).filter(Boolean);
+        const leaked = secrets.filter((v) => txt.indexOf(v) >= 0).length;
+        const planEl = doc && doc.getElementById("v-plan");
+        const lockEl = doc && doc.getElementById("v-lock");
+        await this._diag("vault selftest: opened=" + !!w
+          + " plan=" + (planEl && planEl.textContent) + " lock=" + (lockEl && lockEl.textContent)
+          + " mainLen=" + txt.length + " mainKids=" + (box ? box.children.length : -1)
+          + " masked=" + (txt.indexOf("••••") >= 0)
+          + " secrets=" + secrets.length + " leaked=" + leaked);
+        try { w.close(); } catch (e2) { /* ignore */ }
+      } catch (e) {
+        await this._diag("vault selftest FAILED: " + (e && (e.stack || e.message) || e));
+      }
+    }
+
     this._initialized = true;
     Zotero.debug(`Papilot ${version} initialized`);
   },
@@ -1049,6 +1118,49 @@ Zotero.Papilot = {
       return win.openDialog(
         "chrome://papilot/content/skill-store.xhtml",
         "papilot-skill-store",
+        "chrome,centerscreen,resizable,dialog=no",
+        { Zotero, Services }
+      );
+    } catch (e) {
+      try { Zotero.logError(e); } catch (e2) { /* ignore */ }
+      return null;
+    }
+  },
+
+  /** 0.68.0 打开「首次使用向导」（单例：已开则聚焦）。
+   *  入口：首启自动弹一次 / 工具菜单 / 设置面板「推荐配置」旁的手动入口。 */
+  openWizard() {
+    try {
+      const en = Services.wm.getEnumerator("papilot:wizard");
+      if (en.hasMoreElements()) { const w = en.getNext(); w.focus(); return w; }
+    } catch (e) { /* ignore */ }
+    const win = Zotero.getMainWindow();
+    if (!win) return null;
+    try {
+      return win.openDialog(
+        "chrome://papilot/content/wizard.xhtml",
+        "papilot-wizard",
+        "chrome,centerscreen,resizable,dialog=no",
+        { Zotero, Services }
+      );
+    } catch (e) {
+      try { Zotero.logError(e); } catch (e2) { /* ignore */ }
+      return null;
+    }
+  },
+
+  /** 0.66.0 打开「个人中心 · 账号与密钥」窗口（单例：已开则聚焦） */
+  openVault() {
+    try {
+      const en = Services.wm.getEnumerator("papilot:vault");
+      if (en.hasMoreElements()) { const w = en.getNext(); w.focus(); return w; }
+    } catch (e) { /* ignore */ }
+    const win = Zotero.getMainWindow();
+    if (!win) return null;
+    try {
+      return win.openDialog(
+        "chrome://papilot/content/vault.xhtml",
+        "papilot-vault",
         "chrome,centerscreen,resizable,dialog=no",
         { Zotero, Services }
       );

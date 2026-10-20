@@ -2111,6 +2111,10 @@
     bind("pp-logout-btn", "click", onLogout);
     bind("pp-account-refresh", "click", onRefreshAccount);
     bind("pp-account-official-model", "change", onOfficialModelChange);
+    // 0.66.0 账号与密钥中心（Pro）：独立窗口，单例复用
+    bind("pp-vault-open", "click", () => {
+      try { Zotero.Papilot.openVault(); } catch (e) { /* 窗口打不开不影响账号卡 */ }
+    });
     // 会员（0.23.0）
     bind("pp-mb-upgrade", "click", onMbUpgrade);
     bind("pp-mb-coupon-btn", "click", onMbCoupon);

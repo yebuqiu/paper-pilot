@@ -366,6 +366,11 @@ var Menus = {
     const hubPop = this._xul(doc, "menupopup");
     hubMenu.appendChild(hubPop);
     this._menuItem(doc, hubPop, "papilot-menu-hub", "menuHub", () => Zotero.Papilot.openHub());
+    // 0.66.0 账号与密钥（个人中心；Free 打开是锁定页，不做菜单级隐藏——
+    // 用户需要看见「有这个能力、需要专业版」，而不是到处找不到入口）
+    this._menuItem(doc, hubPop, "papilot-menu-vault", "menuVault", () => Zotero.Papilot.openVault());
+    // 0.68.0 首次使用向导：任何时候可重开（不清空已填内容）
+    this._menuItem(doc, hubPop, "papilot-menu-wizard", "menuWizard", () => Zotero.Papilot.openWizard());
     this._menuItem(doc, hubPop, "papilot-menu-workbench", "menuWorkbench", () => Zotero.Papilot.openWorkbench());
     this._menuItem(doc, hubPop, "papilot-menu-lib-ask", "menuLibAsk", () => LibSearch.openDialog());
     pop.appendChild(hubMenu);
@@ -409,6 +414,10 @@ var Menus = {
   _buildClassicTools(doc, toolsPopup) {
     const t0 = this._menuItem(doc, toolsPopup, "papilot-menu-hub", "menuHub",
       () => Zotero.Papilot.openHub());
+    // 0.66.0 classic 模式同样保留「账号与密钥」入口（与分组模式同一动作）
+    const t0v = this._menuItem(doc, toolsPopup, "papilot-menu-vault", "menuVault",
+      () => Zotero.Papilot.openVault());
+    void t0v;
     // 0.22.0：库内问答——问整个文献库（library-wide，与条目选中无关）
     const t0b = this._menuItem(doc, toolsPopup, "papilot-menu-lib-ask", "menuLibAsk",
       () => LibSearch.openDialog());

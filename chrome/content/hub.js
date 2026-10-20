@@ -126,6 +126,7 @@
           { t: zh ? "重新抓取被引量" : "Refresh citations", d: zh ? "Semantic Scholar 被引量手动刷新" : "Refresh citation counts", run: () => PP.citationColumn.refreshForSelected() },
           { t: zh ? "接口连通性测试" : "Connection test", d: zh ? "测试当前 AI 服务商与模型是否可用" : "Test AI endpoint", run: () => PP.menus.testConnection() },
           { t: zh ? "打开设置" : "Open settings", d: zh ? "服务商/模型/快照/浮窗/模板等全部配置" : "All preferences", run: () => PP.menus.openSettings() },
+          { t: zh ? "账号与密钥（个人中心）" : "Credentials & accounts", d: zh ? "知网 / 坚果云 / 期刊分区 / 自定义 AI 的账号与密钥集中管理：默认脱敏、按需解锁、可加密托管到自己的账号（专业版）" : "Manage CNKI / Nutstore / easyScholar / custom AI keys in one place (Pro)", run: () => PP.openVault() },
           { t: zh ? "期刊分区列" : "Journal rank column", d: zh ? "easyScholar 在线 + 离线数据，列表自动显示" : "Auto column", info: true },
           { t: zh ? "被引量列" : "Citation column", d: zh ? "Semantic Scholar 被引数，右键表头勾选显示" : "Auto column", info: true },
           { t: zh ? "AI 配置快照" : "AI profiles", d: zh ? "工具菜单中一键切换多套 AI 配置" : "Switch profiles in Tools menu", info: true },

@@ -32,6 +32,9 @@
       --pp-success:#1a7f37; --pp-danger:#cf222e; --pp-warn:#9a6700;
       --pp-btn-hover:#eef1f4; --pp-focus-ring:rgba(9,105,218,.18);
       --pp-code-bg:#f6f8fa; --pp-code-text:#1f2328;
+      /* ui-kit 需要、本窗口原先没定义的四个颜色令牌（与 Primer 同值，视觉不变） */
+      --pp-field:#ffffff; --pp-border-strong:#c3cdd6;
+      --pp-surface-3:#eceff3; --pp-faint:#6a7380;
     }
     @media (prefers-color-scheme: dark) {
       #pp-rw-root:not([data-theme="light"]) {
@@ -41,6 +44,8 @@
         --pp-success:#3fb950; --pp-danger:#f85149; --pp-warn:#d29922;
         --pp-btn-hover:#2a3038; --pp-focus-ring:rgba(68,147,248,.25);
         --pp-code-bg:#12161b; --pp-code-text:#c9d1d9;
+        --pp-field:#1b1f24; --pp-border-strong:#4d565f;
+        --pp-surface-3:#2a3038; --pp-faint:#8b949e;
       }
     }
     #pp-rw-root[data-theme="dark"] {
@@ -50,6 +55,8 @@
       --pp-success:#3fb950; --pp-danger:#f85149; --pp-warn:#d29922;
       --pp-btn-hover:#2a3038; --pp-focus-ring:rgba(68,147,248,.25);
       --pp-code-bg:#12161b; --pp-code-text:#c9d1d9;
+      --pp-field:#1b1f24; --pp-border-strong:#4d565f;
+      --pp-surface-3:#2a3038; --pp-faint:#8b949e;
     }
 
     * { box-sizing:border-box; }
@@ -64,44 +71,17 @@
 
     /* ===== 表单控件三保险 ===== */
     #pp-rw-root input, #pp-rw-root textarea, #pp-rw-root button {
-      appearance:none; -moz-appearance:none; max-height:none; height:auto;
+      /* 不写 height:auto —— (1,0,1) 会压掉 ui-kit 的 28px 控件高度 */
+      appearance:none; -moz-appearance:none; max-height:none;
       font-family:inherit; box-sizing:border-box;
     }
-    #pp-rw-root input.pp-rw-input {
-      background:var(--pp-bg); color:var(--pp-text);
-      border:1px solid var(--pp-border); border-radius:6px;
-      padding:4px 8px; font-size:13px; min-width:0;
-    }
-    #pp-rw-root textarea.pp-rw-textarea {
-      background:var(--pp-surface); color:var(--pp-text);
-      border:1px solid var(--pp-border); border-radius:8px;
-      padding:8px 10px; font-size:12.5px; line-height:1.65;
-      resize:none; width:100%; min-height:0;
+    /* 控件底/描边/焦点/禁用/主按钮全部来自 ui-kit（.pp-btn* / .pp-input / .pp-textarea）；
+       这里只留本窗口特有的：等宽字体 + 列编辑器铺满。 */
+    #pp-rw-root textarea.pp-textarea {
       font-family:Consolas,Menlo,"Microsoft YaHei",monospace;
+      resize:none; min-height:0;
     }
-    #pp-rw-root input.pp-rw-input:focus, #pp-rw-root textarea.pp-rw-textarea:focus {
-      outline:none; border-color:var(--pp-accent); box-shadow:0 0 0 3px var(--pp-focus-ring);
-    }
-    #pp-rw-root input.pp-rw-input::placeholder,
-    #pp-rw-root textarea.pp-rw-textarea::placeholder { color:var(--pp-muted); }
-
-    /* ===== 按钮 ===== */
-    #pp-rw-root button.pp-rw-btn {
-      background:var(--pp-surface); color:var(--pp-text);
-      border:1px solid var(--pp-border); border-radius:7px;
-      padding:3px 11px; font-size:12px; line-height:1.6; cursor:pointer;
-      white-space:nowrap; user-select:none;
-    }
-    #pp-rw-root button.pp-rw-btn:hover:not(:disabled) {
-      background:var(--pp-btn-hover); border-color:var(--pp-accent); color:var(--pp-accent);
-    }
-    #pp-rw-root button.pp-rw-btn:disabled { opacity:.5; cursor:default; }
-    #pp-rw-root button.pp-rw-btn-primary {
-      background:var(--pp-accent); border-color:var(--pp-accent); color:#ffffff; font-weight:600;
-    }
-    #pp-rw-root button.pp-rw-btn-primary:hover:not(:disabled) {
-      background:var(--pp-accent-emphasis); border-color:var(--pp-accent-emphasis); color:#ffffff;
-    }
+    #pp-rw-root input.pp-input { min-width:0; }
 
     /* ===== 顶栏 ===== */
     .pp-rw-bar {
@@ -152,9 +132,9 @@
     .pp-rw-itemmeta { font-size:11px; color:var(--pp-muted); margin-top:1px; }
 
     /* ===== 中/右栏 ===== */
-    .pp-rw-col textarea.pp-rw-textarea { flex:1 1 0; height:auto; border:none; border-radius:0; }
-    .pp-rw-col textarea.pp-rw-textarea:focus { box-shadow:none; }
-    .pp-rw-colhead .pp-rw-btn { margin-left:auto; }
+    .pp-rw-col textarea.pp-textarea { flex:1 1 0; height:auto; border:none; border-radius:0; }
+    .pp-rw-col textarea.pp-textarea:focus { box-shadow:none; }
+    .pp-rw-colhead .pp-btn { margin-left:auto; }
     .pp-rw-actions {
       display:flex; align-items:center; gap:8px; flex:none;
       padding:8px 10px; border-top:1px solid var(--pp-border); background:var(--pp-surface-2);
@@ -179,7 +159,7 @@
     <!-- 顶栏：标题 + 文献数 -->
     <html:div class="pp-rw-bar">
       <html:div class="pp-rw-brand">综述工作台</html:div>
-      <html:input id="pp-rw-doctitle" class="pp-rw-input pp-rw-doctitle" type="text"
+      <html:input id="pp-rw-doctitle" class="pp-input pp-rw-doctitle" type="text"
         placeholder="综述标题（导出与笔记标题）" value="文献综述"/>
       <html:span id="pp-rw-count" class="pp-rw-count"></html:span>
     </html:div>
@@ -203,9 +183,9 @@
       <html:div class="pp-rw-col">
         <html:div class="pp-rw-colhead">
           <html:span>大纲</html:span>
-          <html:button id="pp-rw-gen-outline" type="button" class="pp-rw-btn pp-rw-btn-primary">① 生成大纲</html:button>
+          <html:button id="pp-rw-gen-outline" type="button" class="pp-btn pp-btn-primary">① 生成大纲</html:button>
         </html:div>
-        <html:textarea id="pp-rw-outline" class="pp-rw-textarea" no-native="true" spellcheck="false"
+        <html:textarea id="pp-rw-outline" class="pp-textarea" no-native="true" spellcheck="false"
           placeholder="点「① 生成大纲」由 AI 产出，或直接手动输入：&#10;## 1. 节标题&#10;一句覆盖说明&#10;&#10;## 2. 节标题&#10;一句覆盖说明"></html:textarea>
       </html:div>
 
@@ -213,13 +193,13 @@
       <html:div class="pp-rw-col">
         <html:div class="pp-rw-colhead">
           <html:span>草稿</html:span>
-          <html:button id="pp-rw-gen-draft" type="button" class="pp-rw-btn">② 逐节起草</html:button>
+          <html:button id="pp-rw-gen-draft" type="button" class="pp-btn">② 逐节起草</html:button>
         </html:div>
-        <html:textarea id="pp-rw-draft" class="pp-rw-textarea" no-native="true" spellcheck="false"
+        <html:textarea id="pp-rw-draft" class="pp-textarea" no-native="true" spellcheck="false"
           placeholder="逐节起草完成后，正文按大纲拼接在这里（引用已转为可点击的「文献 n」链接）"></html:textarea>
         <html:div class="pp-rw-actions">
-          <html:button id="pp-rw-save" type="button" class="pp-rw-btn">③ 保存为笔记</html:button>
-          <html:button id="pp-rw-export" type="button" class="pp-rw-btn">导出 Markdown</html:button>
+          <html:button id="pp-rw-save" type="button" class="pp-btn">③ 保存为笔记</html:button>
+          <html:button id="pp-rw-export" type="button" class="pp-btn">导出 Markdown</html:button>
           <html:span class="pp-rw-grow"></html:span>
           <html:span id="pp-rw-progress" class="pp-rw-count"></html:span>
         </html:div>

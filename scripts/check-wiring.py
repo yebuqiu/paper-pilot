@@ -813,7 +813,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.9.0'" in srv, "18.31 服务端版本号已随批次更新（1.9.0）")
+ok("version: '1.9.2'" in srv, "18.31 服务端版本号已随批次更新（1.9.2）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -928,7 +928,7 @@ ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余�
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.9.0'" in srv, "19.24 服务端版本随批次推进（1.9.0）")
+ok("version: '1.9.2'" in srv, "19.24 服务端版本随批次推进（1.9.2）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -1088,7 +1088,7 @@ ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/p
 for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
     ok(k in html, "21.31 admin.html 含 %s" % k)
 
-ok("version: '1.9.0'" in srv, "21.32 服务端版本 1.9.0")
+ok("version: '1.9.2'" in srv, "21.32 服务端版本 1.9.2")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 22. 多引擎翻译（插件 0.28.0） ----------
@@ -3342,6 +3342,167 @@ if os.path.exists(_ui_tok_p):
 ok(os.path.exists(os.path.join(ROOT, "test", "ui-tokens.test.js")),
    "54.7 test/ui-tokens.test.js 在库")
 ok("ui-tokens.test.js" in _preflight_src, "54.8 preflight 注册 ui-tokens.test.js")
+
+
+# ==================== 55. B2/B3 并行编排（2026-10-20） ====================
+# 并行不是「同时开工」，而是「文件零交集 + 契约先行 + 汇合点单写者」。
+# 登记表与校验器一旦漂移（比如任务偷偷加了文件却没登记），冲突会留到合并时才爆。
+# 这里把「登记表可解析 / 校验器通过 / 两份契约在库」钉住；真正的 DAG 与交集判断交给校验器。
+_par_dir = os.path.join(ROOT, "docs", "parallel")
+ok(os.path.isdir(_par_dir), "55.1 docs/parallel/ 在库（并行编排登记目录）")
+_tasks_p = os.path.join(_par_dir, "tasks.json")
+ok(os.path.exists(_tasks_p), "55.2 docs/parallel/tasks.json 在库（唯一真源）")
+if os.path.exists(_tasks_p):
+    try:
+        _tj = json.loads(io.open(_tasks_p, encoding="utf-8").read())
+        _ids = [t.get("id") for t in (_tj.get("tasks") or [])]
+        ok(len(_ids) >= 8 and len(set(_ids)) == len(_ids),
+           "55.3 登记表任务 id 唯一且不少于 8 个（实际 %d）" % len(_ids))
+        ok(any(t.get("id") == "INTEGRATE" for t in _tj["tasks"]),
+           "55.4 存在 INTEGRATE 汇合任务（共享文件唯一写者）")
+        ok(all(t.get("files") for t in _tj["tasks"]),
+           "55.5 每个任务都声明了文件集（否则交集校验形同虚设）")
+    except Exception as _e:
+        ok(False, "55.6 tasks.json 可解析：%s" % _e)
+ok(os.path.exists(os.path.join(ROOT, "scripts", "parallel-plan.py")),
+   "55.7 scripts/parallel-plan.py 在库（DAG / 交集 / 汇合文件校验）")
+for _doc in ("ui-kit-contract.md", "wizard-spec.md"):
+    ok(os.path.exists(os.path.join(_par_dir, _doc)),
+       "55.8 并行契约在库：docs/parallel/%s" % _doc)
+ok(os.path.exists(os.path.join(ROOT, "docs", "并行任务编排-B2B3-2026-10-20.md")),
+   "55.9 并行编排方案文档在库（调度/依赖/边界/异常/效果/限制）")
+
+
+# ==================== 56. ui-kit 组件层与首次向导（B2.0 / B3.1） ====================
+# 并行开发的两个产出：组件层是共享 API，向导是独立窗口。守卫盯「在库 + 被注册 + 不越界」。
+_kit = os.path.join(ROOT, "chrome", "content", "ui-kit.css")
+ok(os.path.exists(_kit), "56.1 chrome/content/ui-kit.css 在库（组件层唯一实现）")
+if os.path.exists(_kit):
+    _kc = re.sub(r"/\*[\s\S]*?\*/", "", io.open(_kit, encoding="utf-8").read())
+    ok("!important" not in _kc, "56.2 ★ 组件层不留 !important")
+    ok('@import url("chrome://papilot/content/ui-tokens.css")' in _kc,
+       "56.3 组件层内部引入统一令牌（消费方只引 ui-kit）")
+    for _cls in (".pp-btn {", ".pp-btn-primary", ".pp-btn-sm", ".pp-input", ".pp-select",
+                 ".pp-textarea", ".pp-chip", ".pp-card", ".pp-row", ".pp-label",
+                 ".pp-hint", ".pp-msg", ".pp-empty"):
+        ok(_cls in _kc, "56.4 组件层实现 %s" % _cls)
+_wz = os.path.join(ROOT, "chrome", "content", "wizard.xhtml")
+ok(os.path.exists(_wz), "56.5 chrome/content/wizard.xhtml 在库（首启向导）")
+if os.path.exists(_wz):
+    _wx = io.open(_wz, encoding="utf-8").read()
+    ok('windowtype="papilot:wizard"' in _wx, "56.6 ★ 向导窗口 windowtype = papilot:wizard（B3.2 单例靠它）")
+    ok("wizard.js" in _wx and "wizard.css" in _wx, "56.7 向导引入自己的 js/css")
+    ok("<?xml" not in _wx, "56.8 向导不写 XML 声明（避免 parseXULToFragment 报错）")
+    _bad_ent = re.findall(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)[a-zA-Z][a-zA-Z0-9]*;", _wx)
+    ok(not _bad_ent, "56.9 ★ 向导无未定义命名实体：%s" % (_bad_ent[:3] or "无"))
+    _wzjs = io.open(os.path.join(ROOT, "chrome", "content", "wizard.js"), encoding="utf-8").read()
+    ok("applyOutcome" in _wzjs and "WRITE_WHITELIST" in _wzjs,
+       "56.10 ★ 向导写入有白名单（只 wizardDone / wizardDoneAt / translateCfg）")
+    ok("wizardDone" in _wzjs and "skipped" in _wzjs, "56.11 跳过会记 skipped（之后不再自动弹）")
+for _t in ("ui-kit.test.js", "wizard.test.js"):
+    ok(os.path.exists(os.path.join(ROOT, "test", _t)), "56.12 test/%s 在库" % _t)
+    ok(_t in _preflight_src, "56.13 preflight 注册 %s" % _t)
+ok(os.path.exists(os.path.join(ROOT, "chrome", "content", "ui-kit.css")),
+   "56.14 组件层与向导均已随包产出（chrome/content 下，构建自动包含）")
+
+
+# ==================== 57. skill-store 迁到 ui-kit（B2.1） ====================
+# B2 的迁移样板：窗口只保留布局类，控件交 ui-kit。守卫防两种回退：
+#   ① 又冒出一套本地按钮/输入样式（复制粘贴回潮）；② 高特异性规则把 kit 的高度压掉。
+_ss_x = os.path.join(ROOT, "chrome", "content", "skill-store.xhtml")
+_ss_j = os.path.join(ROOT, "chrome", "content", "skill-store.js")
+ok(os.path.exists(_ss_x), "57.1 skill-store.xhtml 在库")
+if os.path.exists(_ss_x):
+    _sx = io.open(_ss_x, encoding="utf-8").read()
+    ok("@import url(\"chrome://papilot/content/ui-tokens.css\")" in _sx,
+       "57.2 ★ 商店窗口先引入统一令牌（ui-tokens 测试要求第一条 @import 是它）")
+    ok('class="pp-btn' in _sx and 'class="pp-input' in _sx,
+       "57.3 ★ 商店按钮/输入已改用 ui-kit 类（.pp-btn / .pp-input）")
+    ok("button.pp-ss-btn {" not in _sx,
+       "57.4 ★ 不再自定义按钮底/悬停（重复样式回潮即红）")
+    # 输入/文本域只剩「窗口特有」的一条最小高度；底/描边/焦点都在 ui-kit
+    _tr = re.search(r"#pp-ss-root textarea\.pp-ss-textarea \{([^}]*)\}", _sx)
+    ok("pp-ss-input" not in _sx
+       and (_tr is None or _tr.group(1).strip().startswith("min-height")),
+       "57.5 ★ 不再自定义输入底/描边（文本域只留 min-height）")
+    # 三保险规则不得含 height:auto —— 它 (1,0,1) 会压掉 .pp-btn 的 28px（本次真实踩到）
+    # ★ 必须先剥注释再判：本次的说明注释里就写着「不写 height:auto」，直接字符串搜索会误判
+    _sx_nc = re.sub(r"/\*[\s\S]*?\*/", "", _sx)
+    _blanket = re.search(r"#pp-ss-root input, #pp-ss-root select, #pp-ss-root textarea, #pp-ss-root button \{([^}]*)\}", _sx_nc)
+    ok(_blanket is not None and "height:auto" not in _blanket.group(1),
+       "57.6 ★ 控件三保险不含 height:auto（否则压掉 ui-kit 的 28px 高度）")
+    ok("pp-ss-btn-danger" in _sx, "57.7 危险操作仍保留窗口语义修饰（pp-ss-btn-danger）")
+if os.path.exists(_ss_j):
+    _sj = io.open(_ss_j, encoding="utf-8").read()
+    _left = _sj.replace("pp-ss-btn-danger", "")
+    ok("pp-ss-btn" not in _left and "pp-ss-input" not in _sj,
+       "57.8 ★ 脚本动态创建的控件也用 ui-kit 类（否则列表里的按钮还是旧样式）")
+
+
+# ==================== 58. 其余三个窗口迁到 ui-kit（B2.2 / B2.3） ====================
+# 与 skill-store 同一套路：控件交 kit、窗口只留布局与语义修饰。
+# 三种回退一旦出现就会静默变形：①又冒本地按钮底/悬停 ②三保险里的 height:auto 压掉 28px
+# ③输入/发送仍由 ID 规则写死配色（kit 不生效却看不出）。
+def _rule_body(text, sel):
+    mm = re.search(re.escape(sel) + r"\s*\{([^}]*)\}", text)
+    return mm.group(1) if mm else None
+
+_rw = io.open(os.path.join(ROOT, "chrome", "content", "review-workbench.xhtml"), encoding="utf-8").read()
+_rwn = re.sub(r"/\*[\s\S]*?\*/", "", _rw)
+ok("button.pp-rw-btn {" not in _rwn, "58.1 ★ 综述工作台不再自定义按钮底/悬停")
+ok('class="pp-btn' in _rw and 'class="pp-input' in _rw, "58.2 综述工作台控件已用 ui-kit 类")
+_b = _rule_body(_rwn, "#pp-rw-root input, #pp-rw-root textarea, #pp-rw-root button")
+ok(_b is not None and "height:auto" not in _b, "58.3 ★ 综述工作台三保险不含 height:auto")
+ok(".pp-rw-col textarea.pp-textarea" in _rw, "58.4 列编辑器布局特例仍生效（类名已随迁）")
+
+_cw = io.open(os.path.join(ROOT, "chrome", "content", "chat-window.xhtml"), encoding="utf-8").read()
+_cwn = re.sub(r"/\*[\s\S]*?\*/", "", _cw)
+ok('id="pp-cw-send" class="pp-btn pp-btn-primary pp-btn-lg"' in _cw,
+   "58.5 ★ 分屏问答的发送按钮用 kit 大号主按钮（36px，与多行输入同高）")
+ok('id="pp-cw-input" class="pp-textarea"' in _cw, "58.6 分屏问答输入框用 .pp-textarea")
+_sendb = _rule_body(_cwn, "#pp-cw-send") or ""
+ok("background" not in _sendb and "border-radius" not in _sendb,
+   "58.7 ★ 发送按钮不再由 ID 规则写死底色/圆角（交 kit）")
+ok("--pp-field:" in _cw, "58.8 分屏问答补了 ui-kit 需要的 --pp-field（暗色不白块）")
+
+_wb = io.open(os.path.join(ROOT, "chrome", "content", "workbench.xhtml"), encoding="utf-8").read()
+_wbn = re.sub(r"/\*[\s\S]*?\*/", "", _wb)
+ok('id="pp-wb-send" class="pp-btn pp-btn-primary pp-btn-lg"' in _wb
+   and 'id="pp-wb-stop" class="pp-btn pp-btn-lg"' in _wb,
+   "58.9 ★ 工作台发送/停止用 kit 大号按钮")
+_wb_send = _rule_body(_wbn, "#pp-wb-send") or ""
+ok("background" not in _wb_send, "58.10 工作台发送按钮不再写死底色")
+ok("--pp-field:" in _wb, "58.11 工作台补了 ui-kit 需要的 --pp-field")
+ok(".pp-btn-lg {" in io.open(os.path.join(ROOT, "chrome", "content", "ui-kit.css"),
+                             encoding="utf-8").read(),
+   "58.12 组件层已提供 .pp-btn-lg（编辑器主操作档位）")
+
+
+# ==================== 59. 向导接线与「推荐配置」入口（B3.2 / B3.3） ====================
+# 向导窗口做好但没接线 = 用户永远看不到；接线了但首启不加锁 = 每次启动都弹。
+# 这里把「打开 / 单例 / 只弹一次 / 菜单入口 / 关窗算跳过 / 推荐配置入口」逐条钉住。
+_mn = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "main.js"), encoding="utf-8").read()
+_me = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "menus.js"), encoding="utf-8").read()
+_ut = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "core", "utils.js"), encoding="utf-8").read()
+_pj = io.open(os.path.join(ROOT, "chrome", "content", "wizard.js"), encoding="utf-8").read()
+ok("openWizard()" in _mn and "papilot:wizard" in _mn,
+   "59.1 ★ 主模块有 openWizard()，按 papilot:wizard 单例聚焦")
+ok('Prefs.get("wizardDone", "")' in _mn and "first-run wizard scheduled" in _mn,
+   "59.2 ★ 首启只在 wizardDone 为空时弹一次（延迟触发，失败不挡启动）")
+ok("papilot-menu-wizard" in _me and "openWizard" in _me, "59.3 工具菜单有「首次使用向导」入口")
+ok("menuWizard" in _ut, "59.4 菜单文案进 I18n 字典（中英双语）")
+ok('pref("extensions.zotero.papilot.wizardDone", "")' in prefsdef, "59.5 prefs.js 有 wizardDone 默认值（空 = 未走过）")
+ok("unload" in _pj and "skipped" in _pj, "59.6 ★ 关窗也算「稍后」（不会下次启动又弹）")
+ok('id="pp-recommend"' in prefs_xhtml and 'id="pp-wizard-open"' in prefs_xhtml,
+   "59.7 ★ 设置面板工具条有「推荐配置」与「首次使用向导」两个入口")
+ok('id="pp-recommend-msg"' in prefs_xhtml, "59.8 推荐配置有结果提示位（不静默改）")
+ok("prefs-recommend.js" in _mn, "59.9 推荐配置脚本已注册到设置面板")
+ok("window.PapilotRecommend" in io.open(os.path.join(ROOT, "chrome", "content", "prefs-recommend.js"),
+                                        encoding="utf-8").read(),
+   "59.10 推荐配置暴露纯逻辑（plan/apply 可单测）")
+ok(os.path.exists(os.path.join(ROOT, "test", "prefs-recommend.test.js")),
+   "59.11 test/prefs-recommend.test.js 在库")
+ok("prefs-recommend.test.js" in _preflight_src, "59.12 preflight 注册推荐配置测试")
 
 
 print("=" * 60)

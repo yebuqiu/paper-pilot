@@ -1,0 +1,170 @@
+{
+  "$comment": "B2/B3 并行任务登记表（唯一真源）。由 scripts/parallel-plan.py 校验：DAG 无环、依赖存在、同波次文件零交集、共享汇合文件只归 INTEGRATE。",
+  "generated": "2026-10-20",
+  "rules": {
+    "sameWaveMustNotOverlap": true,
+    "exclusiveFiles": [
+      "manifest.json",
+      "prefs.js",
+      "papilot-update.json",
+      "scripts/check-wiring.py",
+      "dist/*"
+    ],
+    "note": "exclusiveFiles 只能由 INTEGRATE 任务写：版本号、pref 默认值、接线守卫、产物与清单是并行线的汇合点，并发写必冲突。"
+  },
+  "tasks": [
+    {
+      "id": "B2.0",
+      "title": "组件契约：ui-kit.css（类名 / 尺寸 / 状态）",
+      "wave": 1,
+      "deps": [],
+      "est": "0.5d",
+      "owner": "contract",
+      "files": [
+        "chrome/content/ui-kit.css",
+        "docs/parallel/ui-kit-contract.md",
+        "test/ui-kit.test.js"
+      ],
+      "exit": "契约文档 + 类名快照测试；类名只增不改，后续任务据此开发",
+      "status": "completed"
+    },
+    {
+      "id": "B3.0",
+      "title": "向导交互稿与数据契约（步骤 / 字段 / 落点 pref）",
+      "wave": 1,
+      "deps": [],
+      "est": "0.5d",
+      "owner": "design",
+      "files": [
+        "docs/parallel/wizard-spec.md"
+      ],
+      "exit": "三步流程、跳过路径、幂等规则、写入的 pref 清单（不写代码）"
+    },
+    {
+      "id": "B2.1",
+      "title": "迁移样板：skill-store 用 ui-kit 类替换 inline style",
+      "wave": 2,
+      "deps": [
+        "B2.0"
+      ],
+      "est": "0.5d",
+      "owner": "fe-a",
+      "files": [
+        "chrome/content/skill-store.xhtml",
+        "chrome/content/skill-store.js"
+      ],
+      "exit": "视觉评审通过（人工目视）；35 项烟测仍绿",
+      "status": "completed"
+    },
+    {
+      "id": "B3.1",
+      "title": "向导窗口 UI（新文件，不改任何既有窗口）",
+      "wave": 2,
+      "deps": [
+        "B2.0",
+        "B3.0"
+      ],
+      "est": "1d",
+      "owner": "fe-b",
+      "files": [
+        "chrome/content/wizard.xhtml",
+        "chrome/content/wizard.js",
+        "chrome/content/wizard.css",
+        "test/wizard.test.js"
+      ],
+      "exit": "三步可走通、可跳过、可重入；无网络依赖时降级为空态",
+      "status": "completed"
+    },
+    {
+      "id": "B3.2",
+      "title": "首启触发与入口（菜单 / 工具菜单）",
+      "wave": 2,
+      "deps": [
+        "B3.0"
+      ],
+      "est": "0.5d",
+      "owner": "fe-c",
+      "files": [
+        "chrome/content/scripts/main.js",
+        "chrome/content/scripts/core/menus.js"
+      ],
+      "exit": "只弹一次（pref 记账）、可「稍后」、可从菜单重开",
+      "status": "completed"
+    },
+    {
+      "id": "B2.2",
+      "title": "迁移：review-workbench",
+      "wave": 3,
+      "deps": [
+        "B2.1"
+      ],
+      "est": "0.5d",
+      "owner": "fe-a",
+      "files": [
+        "chrome/content/review-workbench.xhtml",
+        "chrome/content/review-workbench.js"
+      ],
+      "exit": "视觉评审通过；既有 77 项面板断言仍绿",
+      "status": "in_progress",
+      "note": "代码已迁移并过几何审计；等人工目视"
+    },
+    {
+      "id": "B2.3",
+      "title": "迁移：chat-window + workbench（含调色板是否并入 Primer 的决策）",
+      "wave": 3,
+      "deps": [
+        "B2.1"
+      ],
+      "est": "1d",
+      "owner": "fe-b",
+      "files": [
+        "chrome/content/chat-window.xhtml",
+        "chrome/content/chat-window.js",
+        "chrome/content/workbench.xhtml",
+        "chrome/content/workbench.js"
+      ],
+      "exit": "视觉评审通过；调色板若改，需在评审记录里写明前后色值",
+      "status": "in_progress",
+      "note": "代码已迁移并过几何审计；调色板未改，等人工目视"
+    },
+    {
+      "id": "B3.3",
+      "title": "设置面板「推荐配置」卡（一键套用）",
+      "wave": 3,
+      "deps": [
+        "B2.0",
+        "B3.1"
+      ],
+      "est": "0.5d",
+      "owner": "fe-c",
+      "files": [
+        "chrome/content/prefs.xhtml",
+        "chrome/content/prefs-recommend.js",
+        "test/prefs-recommend.test.js"
+      ],
+      "exit": "不覆盖用户已有非默认值；可一键撤销（回到套用前快照）",
+      "status": "completed"
+    },
+    {
+      "id": "INTEGRATE",
+      "title": "汇合：版本号 / pref 默认值 / 守卫 / 产物 / 清单 / 发版",
+      "wave": 4,
+      "deps": [
+        "B2.2",
+        "B2.3",
+        "B3.2",
+        "B3.3"
+      ],
+      "est": "0.5d",
+      "owner": "integrator",
+      "files": [
+        "manifest.json",
+        "prefs.js",
+        "papilot-update.json",
+        "scripts/check-wiring.py",
+        "dist/*"
+      ],
+      "exit": "preflight --strict 全绿；CI 通过；一个版本一次发布"
+    }
+  ]
+}

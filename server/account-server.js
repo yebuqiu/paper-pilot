@@ -32,8 +32,9 @@
  *   不再原样透传——插件会把网关 401 视为「账号令牌失效」清会话，透传会让用户
  *   「切个模型就整个插件掉登录」。
  * 在线支付（1.7.0）：易支付/码支付接入，充值订单可自助下单→扫码→**自动到账**。
- * 密钥托管（1.9.0）：GET/PUT/DELETE /api/user/secrets[/<name>] —— 用户**自己的**第三方
- *   Key（当前 only easyScholar）加密存到本人账号，换机/重装自动取回。落盘只有密文
+ * 密钥托管（1.9.0/1.9.1/1.9.2）：GET/PUT/DELETE /api/user/secrets[/<name>] —— 用户**自己的**第三方
+ *   凭据（easyScholar / 知网账号与密码 / 坚果云应用密码 / 自定义 AI Key / S2 / MCP / 第三方源）加密存到本人账号，
+ *   换机/重装自动取回。落盘只有密文
  *   （secretbox，主密钥不进备份）；列表只回掩码，明文需登录 + 限速 + 审计。
  *   ★ 不是「官方 Key」：0.56.0 已按授权要求移除随包分发的 Key，服务端不提供任何额度。
  *   配置存 data/pay.json，商户密钥用 AES-256-GCM 加密（主密钥 data/.secret.key，均不进备份）。
@@ -1070,7 +1071,7 @@ function userByToken(req) {
   return user || null;
 }
 
-/* ================= 密钥托管（1.9.0） =================
+/* ================= 密钥托管（1.9.0，1.9.1 起覆盖四类凭据） =================
  * 背景：0.56.0 因授权问题移除了随包分发的 easyScholar Key，此后所有用户都得自备。
  * 但「换机器 / 重装要重填」是真实摩擦，于是把**用户自己的** Key 加密存到他自己名下，
  * 客户端登录后自动取回（服务端只做保险箱，不提供任何第三方额度）。
@@ -1082,6 +1083,19 @@ function userByToken(req) {
  */
 const HOSTED_SECRETS = {
   easyscholar: { label: 'easyScholar SecretKey', maxLen: 200 },
+  // 1.9.1：个人中心「账号与密钥」统一托管。四类凭据都只保存**用户自己的**第三方凭据，
+  // 加密落盘、列表只回掩码；明文读取仍走登录 + 限速 + 审计（audit 只记掩码）。
+  cnki_password: { label: '知网账号密码', maxLen: 200 },
+  nutstore_token: { label: '坚果云应用密码', maxLen: 200 },
+  // 自定义 AI 通道的 Key 集合：{ channelId: apiKey } 的 JSON 串（多通道一次存取）
+  ai_channels_keys: { label: '自定义 AI 模型 API Key', maxLen: 8000 },
+  // 1.9.2：知网「账号 + 密码」合并托管（JSON），解决换机取回只回密码、用户名仍要手填的断点。
+  // 仍保留 cnki_password 作为兼容副本（旧客户端只认它），读取时优先 cnki_account。
+  cnki_account: { label: '知网账号', maxLen: 400 },
+  // 1.9.2：其余集成凭据（原先散落在设置里，性质与上面四类完全相同）
+  s2_apikey: { label: 'Semantic Scholar API Key', maxLen: 200 },
+  mcp_token: { label: 'MCP 访问令牌', maxLen: 200 },
+  third_source_password: { label: '第三方文献源密码', maxLen: 200 },
 };
 
 /** 掩码：只露前 4 位与后 4 位（短密钥退化为前 2 位 + ***） */
@@ -2522,7 +2536,7 @@ function healthSnapshot(deg, detail) {
     const bl = backlogNow();
     const ast = audit.stats(DATA_DIR);
     _healthCache = {
-      ok: true, service: 'papilot-account-server', version: '1.9.0',
+      ok: true, service: 'papilot-account-server', version: '1.9.2',
       // 以下活性字段每次响应都会覆盖为实时值（见下方 Object.assign）
       uptime: Math.round(process.uptime()), now: new Date().toISOString(),
       pid: process.pid,                 // 控制台据此显示 PID，不必再查 WMI / Get-NetTCPConnection

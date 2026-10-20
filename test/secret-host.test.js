@@ -169,6 +169,70 @@ const KEY2 = 'ffffffffffffffffffffffffffffffff';
     r = await req('GET', '/api/auth/me', null, tokA);
     eq(r.status, 200, 'A34 /api/auth/me 正常');
     ok(!r.text.includes('secrets'), 'A35 用户信息里不带 secrets 字段');
+
+    /* ---- 1.9.1：四类凭据统一托管（知网 / 坚果云 / AI 通道 Key 集合） ---- */
+    const CNKI_PW = 'cnki-pass-测试-2026';
+    r = await req('PUT', '/api/user/secrets/cnki_password', { value: CNKI_PW }, tokA);
+    eq(r.status, 200, 'B1 知网密码保存成功');
+    eq(r.json.secrets.cnki_password.set, true, 'B2 知网密码状态为已托管');
+    ok(!r.text.includes(CNKI_PW), 'B3 写入响应不含知网明文');
+    r = await req('GET', '/api/user/secrets/cnki_password', null, tokA);
+    eq(r.json.value, CNKI_PW, 'B4 取回知网密码一致（含中文）');
+
+    r = await req('PUT', '/api/user/secrets/nutstore_token', { value: 'nutstore-app-pass-1234' }, tokA);
+    eq(r.status, 200, 'B5 坚果云应用密码保存成功');
+    const AI_KEYS = JSON.stringify({ ch1: 'sk-aaaa1111', ch2: 'sk-bbbb2222' });
+    r = await req('PUT', '/api/user/secrets/ai_channels_keys', { value: AI_KEYS }, tokA);
+    eq(r.status, 200, 'B6 AI Key 集合保存成功');
+    r = await req('GET', '/api/user/secrets/ai_channels_keys', null, tokA);
+    eq(r.json.value, AI_KEYS, 'B7 AI Key 集合原样取回');
+
+    // 四类各自独立，不互相覆盖
+    r = await req('GET', '/api/user/secrets', null, tokA);
+    const NAMES = ['easyscholar', 'cnki_password', 'nutstore_token', 'ai_channels_keys'];
+    ok(NAMES.every((n) => r.json.secrets[n] && typeof r.json.secrets[n].label === 'string'),
+      'B8 列表覆盖四类凭据（各有 label）');
+    ok(NAMES.every((n) => r.json.secrets[n].set === true), 'B9 四类凭据都是已托管状态');
+
+    // 落盘仍无明文（含中文密码与 AI Key 集合）
+    const rawB = fs.readFileSync(path.join(WORK, 'users.json'), 'utf8');
+    ok(!rawB.includes(CNKI_PW), 'B10 users.json 没有知网明文');
+    ok(!rawB.includes('nutstore-app-pass-1234'), 'B11 users.json 没有坚果云明文');
+    ok(!rawB.includes('sk-bbbb2222'), 'B12 users.json 没有 AI Key 明文');
+
+    // 各类独立上限（ai_channels_keys 允许 8000，其余 200）
+    r = await req('PUT', '/api/user/secrets/ai_channels_keys', { value: 'x'.repeat(8001) }, tokA);
+    eq(r.status, 400, 'B13 AI Key 集合超长 → 400');
+    r = await req('PUT', '/api/user/secrets/cnki_password', { value: 'x'.repeat(201) }, tokA);
+    eq(r.status, 400, 'B14 知网密码超长 → 400');
+    r = await req('PUT', '/api/user/secrets/nutstore_token', { value: 'y'.repeat(201) }, tokA);
+    eq(r.status, 400, 'B15 坚果云应用密码超长 → 400');
+    r = await req('GET', '/api/user/secrets/nutstore_token', null, tokA);
+    eq(r.json.value, 'nutstore-app-pass-1234', 'B16 被拒绝的写入没有覆盖原值');
+
+    // 账号隔离对新类型同样成立
+    r = await req('GET', '/api/user/secrets/cnki_password', null, tokB);
+    eq(r.status, 404, 'B17 B 账号取不到 A 的知网密码');
+
+    /* ---- 1.9.2：知网合并托管 + 其余三类集成凭据 ---- */
+    const BUNDLE = JSON.stringify({ u: 'alice@cnki', p: 'pw-123', v: 2 });
+    r = await req('PUT', '/api/user/secrets/cnki_account', { value: BUNDLE }, tokA);
+    eq(r.status, 200, 'B18 知网合并副本保存成功');
+    r = await req('GET', '/api/user/secrets/cnki_account', null, tokA);
+    eq(r.json.value, BUNDLE, 'B19 合并副本原样取回（用户名+密码一起）');
+    r = await req('PUT', '/api/user/secrets/cnki_account', { value: 'x'.repeat(401) }, tokA);
+    eq(r.status, 400, 'B20 合并副本超长（400）→ 400');
+
+    for (const nm of ['s2_apikey', 'mcp_token', 'third_source_password']) {
+      const val = 'v-' + nm + '-123';
+      r = await req('PUT', '/api/user/secrets/' + nm, { value: val }, tokA);
+      eq(r.status, 200, 'B21 ' + nm + ' 保存成功');
+      r = await req('GET', '/api/user/secrets/' + nm, null, tokA);
+      eq(r.json.value, val, 'B22 ' + nm + ' 原样取回');
+    }
+    const rawC = fs.readFileSync(path.join(WORK, 'users.json'), 'utf8');
+    ok(!rawC.includes('alice@cnki'), 'B23 users.json 没有知网账号明文');
+    ok(!rawC.includes('v-mcp_token-123'), 'B24 users.json 没有 MCP 令牌明文');
   } catch (e) {
     fails.push('未捕获异常: ' + (e && e.stack || e));
   } finally {

@@ -1422,18 +1422,43 @@ var CNAuth = {
     catch (e) { return ""; }
   },
 
-  /** 已保存的凭据 → {u, p}；未保存返回 null */
+  /**
+   * 已保存的凭据 → {u, p}；未保存返回 null。
+   * 0.67.0：本机 pref 为空时回落到 CredVault 的内存水合副本（「仅托管」模式，
+   * 值只在服务端密文里）。这是同步读取，所以水合必须由调用方在 async 上下文里先做。
+   */
   creds() {
     let u = "", p = "";
     try {
       u = String(Prefs.get("cnkiUsername", "") || "").trim();
       p = this.deobfuscate(Prefs.get("cnkiPassword", ""));
+      if ((!u || !p) && typeof CredVault !== "undefined" && CredVault && CredVault.cached) {
+        u = u || String(CredVault.cached("cnki.user") || "").trim();
+        p = p || String(CredVault.cached("cnki.pass") || "");
+      }
     } catch (e) { return null; }
     return (u && p) ? { u, p } : null;
   },
 
+  /** 仅托管模式：把值从账号取回到内存（不落盘）；非该模式时零开销 */
+  async hydrateVault() {
+    try {
+      if (typeof CredVault !== "undefined" && CredVault && CredVault.hasHostedOnly
+          && CredVault.hasHostedOnly()) {
+        const n = await CredVault.hydrateHostedOnly();
+        if (n) this._diag("vault hydrated " + n + " field(s)");
+      }
+    } catch (e) { /* 离线时降级为「没有凭据」，由上层提示用户 */ }
+  },
+
   saveCreds(u, p) {
     try {
+      // 走 CredVault 单一写入点：保持 base64 格式、顺手退出「仅托管」标记并记审计
+      if (typeof CredVault !== "undefined" && CredVault && CredVault.set) {
+        const a = CredVault.set("cnki.user", String(u || "").trim());
+        const b = CredVault.set("cnki.pass", String(p || ""));
+        return !!(a.ok && b.ok);
+      }
       Prefs.set("cnkiUsername", String(u || "").trim());
       Prefs.set("cnkiPassword", this.obfuscate(p));
       return true;
@@ -1702,6 +1727,7 @@ var CNAuth = {
       }
     } catch (e) { this._diag("ipLogin error: " + (e && e.message)); }
     if (o.silent) {
+      await this.hydrateVault();
       const c = this.creds();
       if (!c) return false;
       try { return await this.loginSilent(c.u, c.p); }
@@ -1880,6 +1906,7 @@ var CNAuth = {
     const zh = I18n.isZh;
     const win = Zotero.getMainWindow();
     if (!win) return false;
+    await this.hydrateVault();
     const saved = this.creds();
     const user = { value: saved ? saved.u : "" };
     const pass = { value: saved ? saved.p : "" };

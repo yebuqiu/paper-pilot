@@ -1,0 +1,215 @@
+/* Papilot · ui-kit 组件层（B2.0 产出，0.66.x）
+ * SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen
+ *
+ * 契约：docs/parallel/ui-kit-contract.md（类名只增不改；本文件是唯一实现）。
+ * 只管「叶子控件」——按钮 / 输入 / 下拉 / 文本域 / 芯片 / 卡片外壳 / 行 / 标签 / 提示 / 空态；
+ * 窗口骨架（头部、分栏、气泡、消息列表）仍归各窗口自己的类（pp-wb-* / pp-cw-* / pp-ss-* / pp-rw-*）。
+ *
+ * 三条硬规则（test/ui-kit.test.js 会校验）：
+ *   ① 不加 !important；
+ *   ② 颜色一律走 var(--pp-*)，不写死色值（暗色/自定义主题才不会被写死）；
+ *   ③ 控件高度只有 28（常规）/ 24（-sm）两档。
+ *
+ * 消费方式：窗口样式块第一条语句 `@import url("chrome://papilot/content/ui-kit.css");`
+ * （本文件内部已 @import 令牌词汇表，所以只引 ui-kit 一个即可）。
+ */
+
+@import url("chrome://papilot/content/ui-tokens.css");
+
+/* ---------- 按钮 ---------- */
+.pp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  font-size: var(--pp-fs-md, 12.5px);
+  font-family: inherit;
+  line-height: 1;
+  color: var(--pp-text, #1f2328);
+  background: var(--pp-surface, #ffffff);
+  border: 1px solid var(--pp-border, #d8dee4);
+  border-radius: var(--pp-radius-sm, 6px);
+  cursor: pointer;
+  white-space: nowrap;
+  appearance: none;
+  -moz-appearance: none;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+.pp-btn:hover:not(:disabled) {
+  background: var(--pp-btn-hover, #eef1f4);
+  border-color: var(--pp-border-strong, #c3cdd6);
+}
+.pp-btn:active:not(:disabled) { background: var(--pp-surface-3, #eceff3); }
+.pp-btn:focus-visible {
+  outline: none;
+  border-color: var(--pp-accent, #0969da);
+  box-shadow: 0 0 0 3px var(--pp-focus-ring, rgba(9, 105, 218, .2));
+}
+.pp-btn:disabled {
+  opacity: .5;
+  cursor: default;
+}
+.pp-btn-primary {
+  color: #ffffff;
+  background: var(--pp-accent, #0969da);
+  border-color: var(--pp-accent, #0969da);
+}
+.pp-btn-primary:hover:not(:disabled) {
+  color: #ffffff;
+  background: var(--pp-accent-emphasis, #0757b3);
+  border-color: var(--pp-accent-emphasis, #0757b3);
+}
+.pp-btn-sm {
+  height: 24px;
+  padding: 0 9px;
+  font-size: var(--pp-fs-sm, 11.5px);
+}
+/* 编辑器内主操作（聊天发送）：与多行输入同高，不和 28px 的行内按钮挤在一起 */
+.pp-btn-lg {
+  height: 36px;
+  padding: 0 16px;
+  font-size: var(--pp-fs-lg, 13.5px);
+}
+.pp-btn-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--pp-muted, #5b6570);
+}
+.pp-btn-ghost:hover:not(:disabled) {
+  color: var(--pp-text, #1f2328);
+  background: var(--pp-btn-hover, #eef1f4);
+  border-color: transparent;
+}
+
+/* ---------- 输入 ---------- */
+.pp-input,
+.pp-select {
+  height: 28px;
+  padding: 3px 8px;
+  font-size: var(--pp-fs-md, 12.5px);
+  font-family: inherit;
+  color: var(--pp-text, #1f2328);
+  background: var(--pp-field, #ffffff);
+  border: 1px solid var(--pp-border, #d8dee4);
+  border-radius: var(--pp-radius-sm, 6px);
+  min-width: 0;
+  box-sizing: border-box;
+  appearance: none;
+  -moz-appearance: none;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.pp-select { padding-right: 6px; }
+.pp-input::placeholder { color: var(--pp-faint, #6a7380); }
+.pp-input:hover:not(:focus),
+.pp-select:hover:not(:focus) { border-color: var(--pp-border-strong, #c3cdd6); }
+.pp-input:focus,
+.pp-select:focus {
+  outline: none;
+  border-color: var(--pp-accent, #0969da);
+  box-shadow: 0 0 0 3px var(--pp-focus-ring, rgba(9, 105, 218, .2));
+}
+.pp-textarea {
+  padding: 7px 9px;
+  font-size: var(--pp-fs-md, 12.5px);
+  font-family: inherit;
+  line-height: 1.65;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  color: var(--pp-text, #1f2328);
+  background: var(--pp-field, #ffffff);
+  border: 1px solid var(--pp-border, #d8dee4);
+  border-radius: var(--pp-radius-md, 8px);
+  appearance: none;
+  -moz-appearance: none;
+}
+.pp-textarea:focus {
+  outline: none;
+  border-color: var(--pp-accent, #0969da);
+  box-shadow: 0 0 0 3px var(--pp-focus-ring, rgba(9, 105, 218, .2));
+}
+
+/* ---------- 芯片 ---------- */
+.pp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  color: var(--pp-text, #1f2328);
+  background: var(--pp-surface-2, #f6f8fa);
+  border: 1px solid var(--pp-border, #d8dee4);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pp-chip:hover { border-color: var(--pp-accent, #0969da); color: var(--pp-accent, #0969da); }
+.pp-chip-on {
+  color: var(--pp-accent, #0969da);
+  background: var(--pp-accent-weak, #ddf4ff);
+  border-color: var(--pp-accent-line, rgba(9, 105, 218, .24));
+  font-weight: 600;
+}
+
+/* ---------- 卡片外壳 ---------- */
+.pp-card {
+  background: var(--pp-surface, #ffffff);
+  border: 1px solid var(--pp-border, #d8dee4);
+  border-radius: var(--pp-radius-lg, 12px);
+  box-shadow: var(--pp-shadow-1, 0 1px 2px rgba(15, 20, 26, .06));
+  padding: 12px 14px 14px;
+}
+.pp-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--pp-fs-lg, 13.5px);
+  font-weight: 600;
+  color: var(--pp-text-strong, #0f141a);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--pp-border, #d8dee4);
+}
+.pp-card-body {
+  font-size: var(--pp-fs-md, 12.5px);
+  color: var(--pp-text, #1f2328);
+}
+
+/* ---------- 排版原语 ---------- */
+.pp-row {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-2, 8px);
+  flex-wrap: wrap;
+}
+.pp-label {
+  font-size: var(--pp-fs-md, 12.5px);
+  color: var(--pp-text, #1f2328);
+  line-height: 1.4;
+}
+.pp-hint {
+  font-size: var(--pp-fs-sm, 11.5px);
+  color: var(--pp-muted, #5b6570);
+  line-height: 1.6;
+}
+.pp-msg {
+  font-size: 12px;
+  color: var(--pp-muted, #5b6570);
+  line-height: 1.5;
+  min-height: 16px;
+}
+.pp-msg-ok { color: var(--pp-success, #1a7f37); }
+.pp-msg-warn { color: var(--pp-warn, #9a6700); }
+.pp-msg-err { color: var(--pp-danger, #cf222e); }
+
+/* ---------- 空态 ---------- */
+.pp-empty {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: var(--pp-fs-sm, 11.5px);
+  color: var(--pp-muted, #5b6570);
+  line-height: 1.7;
+}

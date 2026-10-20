@@ -3,6 +3,39 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.68.0",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.68.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "首次使用向导接线（首启一次 / 工具菜单 / 设置内入口）；设置面板新增「推荐配置」一键补齐体验项；三个窗口控件统一到 ui-kit"
+        },
+        {
+          "version": "0.67.0",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.67.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "账号与密钥中心扩展：覆盖 8 类凭据，新增知网「账号+密码」合并托管与可逐项开启的「仅托管」模式（值只存你自己账号的密文、本机不留明文，离线时该项不可用），从账号取回需确认、访问记录清空也留痕。"
+        },
+        {
+          "version": "0.66.0",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.66.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "新增「账号与密钥」个人中心（专业版）：知网、坚果云、期刊分区与自定义 AI 模型的账号/密钥集中管理——默认脱敏显示、按需解锁、可设访问口令与自动隐藏，敏感值可加密托管到自己的账号（换机一键取回），并记录本地访问审计。"
+        },
+        {
           "version": "0.65.2",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.65.2.xpi",
           "applications": {

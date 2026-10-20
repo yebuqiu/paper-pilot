@@ -149,7 +149,10 @@ for (const w of wins) {
   const body = m[1].replace(/\/\*[\s\S]*?\*\//g, '');
   const iImport = body.indexOf('@import');
   const iLocal = body.indexOf('--pp-');
-  ok(iImport >= 0 && iLocal > iImport, '⑤ ' + w + ' 本地令牌声明仍在 @import 之后（层叠不变）');
+  // 有的窗口只引入词汇表、自己一个令牌都不声明（新窗口常见）—— 这类不存在「谁覆盖谁」，跳过即可。
+  // 只要它声明了本地令牌，就必须在 @import 之后（否则本地值会被词汇表的 :root 顶掉）。
+  ok(iLocal < 0 || (iImport >= 0 && iLocal > iImport),
+    '⑤ ' + w + ' 若有本地令牌声明，则在 @import 之后（层叠不变）');
 }
 
 /* ---------------- 汇总 ---------------- */

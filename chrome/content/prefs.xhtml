@@ -36,10 +36,14 @@
     </html:div>
     <html:div class="pp-toolbar-actions">
       <html:span id="pp-pref-count" class="pp-count">18 项 · 7 类</html:span>
+      <html:button id="pp-recommend" class="pp-btn pp-btn-sm" title="把「推荐项」一次改齐（先列出将要修改的项）">⚡ 推荐配置</html:button>
+      <html:button id="pp-wizard-open" class="pp-btn pp-btn-sm" title="重新运行首次使用向导（登录 / 通道 / 翻译）">首次使用向导</html:button>
       <html:button id="pp-fold-expand" class="pp-btn pp-btn-sm">全部展开</html:button>
       <html:button id="pp-fold-collapse" class="pp-btn pp-btn-sm">全部收起</html:button>
     </html:div>
   </html:div>
+
+  <html:div id="pp-recommend-msg" class="pp-msg" style="margin:0 0 6px 2px;"></html:div>
 
   <!-- 大类直达（由 prefs-hotkeys.js 按 .pp-cat-label 动态生成，点击滚动定位并展开首张卡） -->
   <html:div id="pp-anchor-nav" class="pp-anchor-nav"></html:div>
@@ -304,6 +308,14 @@
         </html:div>
         <!-- 套餐 AI 能力说明（1.4.9）：试用剩余天数 / 需升级的模型 -->
         <html:div id="pp-ai-tier-note" class="pp-ai-tier" style="display:none;"></html:div>
+        <!-- 0.66.0 个人中心 · 账号与密钥（Pro）：知网 / 坚果云 / 分区 / 自定义 AI Key 集中管理 -->
+        <html:div id="pp-vault-entry" class="pp-vault-entry">
+          <html:div class="pp-vault-entry-main">
+            <html:b class="pp-vault-entry-title">🔑 账号与密钥</html:b>
+            <html:div class="pp-hint">知网、坚果云、期刊分区与自定义 AI 模型的账号/密钥集中管理：默认脱敏、按需解锁、可加密托管到你自己的账号（换机一键取回）</html:div>
+          </html:div>
+          <html:button id="pp-vault-open" class="pp-btn pp-btn-primary pp-btn-sm">打开凭据中心</html:button>
+        </html:div>
       </html:div>
     </html:div>
   </html:div>

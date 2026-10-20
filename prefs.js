@@ -14,6 +14,9 @@ pref("extensions.zotero.papilot.brandMigrated", false);
 // 模型通道注册表 {channels:[{id,name,provider,baseUrl,apiKey,model,models,extraBody,timeoutMs}],active}
 // 官方通道(official)的 baseUrl/apiKey 由账号系统运行时注入，不落盘
 pref("extensions.zotero.papilot.aiChannels", "");
+// 0.68.0 首次使用向导：空 = 从未走过（首启弹一次）；"done" / "skipped" 之后不再自动弹
+pref("extensions.zotero.papilot.wizardDone", "");
+pref("extensions.zotero.papilot.wizardDoneAt", "");
 // —— 以下三项为 0.13 及更早的单通道配置，0.14.0 启动时自动迁移为通道，仅作兜底 ——
 pref("extensions.zotero.papilot.aiBaseUrl", "http://127.0.0.1:8000/v1");
 pref("extensions.zotero.papilot.aiApiKey", "");
@@ -469,3 +472,19 @@ pref("extensions.zotero.papilot.cloudSyncKeepOldParts", false);
 pref("extensions.zotero.papilot.cloudSyncPropagateDelete", true);
 // 索引归属指纹（baseUrl|email|root）：换账号/改根目录时自动切到独立索引
 pref("extensions.zotero.papilot.cloudSyncIndexOwner", "");
+
+// ===== 0.66.0 个人中心 · 账号与密钥（Pro）=====
+// 访问口令：只存加盐迭代 SHA-256（"salt:hash"），明文口令绝不落盘；空 = 未设口令
+// （未设口令时，首次查看明文需二次确认；设了口令则必须输入口令才能解锁）
+pref("extensions.zotero.papilot.vaultPassHash", "");
+// 明文自动隐藏秒数（0 = 不自动隐藏；设了口令时建议保持 30）
+pref("extensions.zotero.papilot.vaultAutoHideSec", 30);
+// 本地访问审计（JSON 数组，最多 40 条；只记动作/条目/时间，**不含任何值**）
+pref("extensions.zotero.papilot.vaultAudit", "[]");
+// 打开窗口时是否需要先解锁（设了口令才生效；默认 true = 打开即遮罩）
+pref("extensions.zotero.papilot.vaultLockOnOpen", true);
+// 仅托管模式：JSON 数组，列出「只存账号托管、本机不留值」的条目 id（如 ["nutstore.token"]）
+// 代价已知：离线 / 未登录 Papilot 账号时该项功能不可用（UI 有明确提示）
+pref("extensions.zotero.papilot.vaultHostedOnly", "");
+// 真机自检（默认关）：启动时打开凭据中心并断言"锁定时 DOM 无明文"，结果写 boot 日志
+pref("extensions.zotero.papilot.vaultSelfTest", false);
