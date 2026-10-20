@@ -299,6 +299,8 @@ Zotero.Papilot = {
       "features/chat-sessions.js",
       // 0.31.0 AI 问答悬浮窗（可拖动/停靠/分屏；唤起：快捷键/阅读器按钮/右键/划词）
       "panels/chat-float.js",
+      // 0.68.1 WPS 集成桥（检测 WPS 加载项/信任/代理；设置面板经 Zotero.Papilot.wpsBridge 访问）
+      "features/wps-bridge.js",
       "menus.js",
     ];
     for (const f of files) {
@@ -379,6 +381,14 @@ Zotero.Papilot = {
     this.cloudSync = (typeof CloudSync !== "undefined") ? CloudSync : null;
     // 0.66.0 账号与密钥中心（Pro）：窗口脚本与设置面板经此访问
     this.credVault = (typeof CredVault !== "undefined") ? CredVault : null;
+    // 0.68.1 WPS 集成桥（设置面板 prefs-wps.js 经此访问：检测/修复/代理）
+    // 只装代理与注册项；加载项本体是 GPL-3.0，不随本插件分发
+    this.wpsBridge = (typeof WpsBridge !== "undefined") ? WpsBridge : null;
+    try {
+      if (this.wpsBridge) this.wpsBridge.init({ rootURI });
+    } catch (e) {
+      this.wpsBridge = null;   // 路径解析失败不影响启动
+    }
     // 0.49.0 浮窗会话持久化 + 定时任务（设置面板 prefs-schedule.js 经此访问 Scheduler）
     this.chatSessions = ChatSessions;
     this.scheduler = Scheduler;
@@ -536,6 +546,15 @@ Zotero.Papilot = {
       await this._diag("cloud auto sync FAILED: " + (e && (e.stack || e.message) || e));
     }
 
+    // 0.68.1 WPS 集成：勾了「自动代理」就在启动后把 21931 拉起来（默认关）
+    try {
+      if (this.wpsBridge && (await this.wpsBridge.ensureProxy())) {
+        await this._diag("wps proxy ensured");
+      }
+    } catch (e) {
+      await this._diag("wps proxy FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
     // 注册设置面板（prefs.xhtml 为 fragment，配套脚本处理测试连接/文件选择）
     // 显式给稳定 id：openPreferences(paneID) 导航需要它（自动生成的 id 带随机串，
     // 且传 pluginID 给 openPreferences 无法定位面板——Z10 preferences.js 实证）
@@ -593,6 +612,8 @@ Zotero.Papilot = {
           rootURI + "chrome/content/prefs-cloud.js",
           // 0.68.0 「推荐配置」与向导入口（工具条两个按钮）
           rootURI + "chrome/content/prefs-recommend.js",
+          // 0.68.1 WPS 集成卡片（检测链路 / 一键修复 / 起停 CORS 代理）
+          rootURI + "chrome/content/prefs-wps.js",
         ],
         stylesheets: [
           rootURI + "chrome/content/prefs.css",

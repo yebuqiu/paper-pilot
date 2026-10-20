@@ -1920,12 +1920,12 @@ ok("prefs-fold.js" in mainjs, "31.2 main.js 注册 prefs-fold.js（scripts 列�
 for _eid in ("pp-fold-expand", "pp-fold-collapse"):
     ok(_eid in xhtml_ids, "31.3 prefs.xhtml 含折叠工具条 #%s" % _eid)
 _FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "skills", "subscriptions", "schedule", "popup",
-              "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys", "cloud"]
+              "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys", "cloud", "wps"]
 _fold_found = re.findall(r'data-fold="([a-z]+)"', prefs_xhtml)
 ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
-   "31.4 prefs.xhtml 的 18 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务；0.53.0 检索订阅；0.56.0 云同步）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 18,
-   "31.5 折叠卡片共 18 张（0.49.0 定时任务，0.53.0 检索订阅，0.56.0 云同步；不多不少，防止漏包一张）")
+   "31.4 prefs.xhtml 的 19 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务；0.53.0 检索订阅；0.56.0 云同步；0.68.1 WPS 集成）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 19,
+   "31.5 折叠卡片共 19 张（0.49.0 定时任务，0.53.0 检索订阅，0.56.0 云同步，0.68.1 WPS 集成；不多不少，防止漏包一张）")
 ok('pref("extensions.zotero.papilot.prefsFoldOpen", "");' in prefsdef,
    "31.6 prefs.js 有 prefsFoldOpen 默认值（空 = 全收起）")
 ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
@@ -2635,7 +2635,7 @@ ok('pref("extensions.zotero.papilot.reviewWorkbenchEnabled", true)' in prefsdef,
    "46.15 reviewWorkbenchEnabled 默认开")
 ok("test/search-subs.test.js" in _preflight_src and "test/review-workbench.test.js" in _preflight_src,
    "46.16 preflight 注册两个新测试套件")
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 18, "46.17 折叠卡共 18 张（订阅卡、云同步卡已计入）")
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 19, "46.17 折叠卡共 19 张（订阅卡、云同步卡、WPS 集成卡已计入）")
 
 # ---------- 47. 0.54.0 审查修复（P0-P2 十项） ----------
 ok('addCondition("note", "contains"' in _at_js,
@@ -3219,8 +3219,8 @@ ok(len(_cat_names) == 7, "52.1 7 个大类标签都带名称与计数（实际 %
 ok([n for n, _ in _cat_names] == ["账号与会员", "AI 能力", "阅读与翻译", "文献获取",
                                  "条目与标签", "界面与效率", "数据与同步"],
    "52.2 ★ 分类顺序按使用频率固定（改顺序属于信息架构变更，需同步文档）")
-ok(sum(int(c) for _, c in _cat_names) == 18,
-   "52.3 各大类计数之和 = 18（计数写错会让用户以为丢功能）")
+ok(sum(int(c) for _, c in _cat_names) == 19,
+   "52.3 各大类计数之和 = 19（计数写错会让用户以为丢功能）")
 for _id in ("pp-toolbar", "pp-prefs-search", "pp-prefs-search-clear", "pp-pref-count", "pp-anchor-nav"):
     ok('"%s"' % _id in prefs_xhtml or 'id="%s"' % _id in prefs_xhtml or _id in prefs_xhtml,
        "52.4 设置面板含工具条元素 %s" % _id)
@@ -3245,8 +3245,8 @@ for _sel in (".pp-root .pp-toolbar", ".pp-root .pp-search", ".pp-root .pp-count"
 ok("@media (max-width: 560px)" in prefs_css and "@media (prefers-color-scheme: dark)" in prefs_css,
    "52.11 ★ 响应式（≤560px 单列）与暗色主题两套规则都在")
 ok("prefers-reduced-motion" in prefs_css, "52.12 尊重系统的减少动效偏好")
-ok("class=\"pp-card pp-fold\"" in prefs_xhtml and prefs_xhtml.count('class="pp-card pp-fold"') == 18,
-   "52.13 折叠卡仍为 18 张（重组只搬家）")
+ok("class=\"pp-card pp-fold\"" in prefs_xhtml and prefs_xhtml.count('class="pp-card pp-fold"') == 19,
+   "52.13 折叠卡仍为 19 张（重组只搬家；0.68.1 新增 WPS 集成仅加卡不改结构）")
 ok(os.path.exists(os.path.join(ROOT, "test", "prefs-fold.test.js")),
    "52.14 折叠/搜索测试套件在库")
 
@@ -3503,6 +3503,78 @@ ok("window.PapilotRecommend" in io.open(os.path.join(ROOT, "chrome", "content", 
 ok(os.path.exists(os.path.join(ROOT, "test", "prefs-recommend.test.js")),
    "59.11 test/prefs-recommend.test.js 在库")
 ok("prefs-recommend.test.js" in _preflight_src, "59.12 preflight 注册推荐配置测试")
+
+
+# ---------- 60. 0.68.1 WPS 集成（个人版可用：检测 / 一键修复 / 代理） ----------
+# 设计约束：加载项本体是 GPL-3.0，**不随本插件分发**；插件只带自有代码
+# （prefs-wps.js / wps-bridge.js / tools/wps/proxy.py），所以这里额外守一条
+# 「chrome/ 下不得出现加载项资源」，防止以后图省事把 GPL 代码打进 xpi。
+_PWPS_JS = os.path.join(ROOT, "chrome", "content", "prefs-wps.js")
+_WB_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "wps-bridge.js")
+_WPROXY = os.path.join(ROOT, "chrome", "content", "tools", "wps", "proxy.py")
+
+ok(os.path.exists(_PWPS_JS), "60.1 prefs-wps.js 存在（设置面板脚本）")
+ok("prefs-wps.js" in mainjs, "60.2 main.js 注册 prefs-wps.js（scripts 列表）")
+ok(os.path.exists(_WB_JS), "60.3 features/wps-bridge.js 存在（检测/修复/代理桥）")
+ok("features/wps-bridge.js" in mainjs, "60.4 main.js 加载 features/wps-bridge.js")
+ok("this.wpsBridge" in mainjs, "60.5 main.js 暴露 Zotero.Papilot.wpsBridge（面板经此访问）")
+ok(os.path.exists(_WPROXY), "60.6 随包分发的 CORS 代理 chrome/content/tools/wps/proxy.py 存在")
+
+_wb = io.open(_WB_JS, encoding="utf-8").read() if os.path.exists(_WB_JS) else ""
+ok("ZOTERO_PORT: 23119" in _wb and "PROXY_PORT: 21931" in _wb,
+   "60.7 桥接端口常量正确（21931 → 23119）")
+_wproxy_src = io.open(_WPROXY, encoding="utf-8").read() if os.path.exists(_WPROXY) else ""
+ok("Host: %s:%d" in _wproxy_src and "Zotero 10" in _wproxy_src,
+   "60.8 ★ 随包代理保留了 Host 改写（Zotero 10 不回写 Host 就全 400）")
+ok("authaddin.json" in _wb and "isload" in _wb,
+   "60.9 信任状态读取基于 authaddin.json 的 isload 字段")
+ok(re.search(r"wps-zotero_\d", _wb) is None,
+   "60.10 桥接不硬编码加载项版本目录名（按目录探测，版本号来自磁盘）")
+
+for _wid in ("pp-wps-detect", "pp-wps-fix", "pp-wps-proxy-start", "pp-wps-autoproxy",
+             "pp-wps-scriptdir", "pp-wps-savedir", "pp-wps-addon", "pp-wps-trust",
+             "pp-wps-proxy", "pp-wps-zotero", "pp-wps-reg", "pp-wps-msg"):
+    ok(_wid in prefs_xhtml, "60.11 面板含 #%s" % _wid)
+
+ok('pref("extensions.zotero.papilot.wpsAutoProxy", false);' in prefsdef,
+   "60.12 prefs.js 有 wpsAutoProxy 默认值（默认关，用户勾选才自启代理）")
+ok('pref("extensions.zotero.papilot.wpsScriptDir", "");' in prefsdef,
+   "60.13 prefs.js 有 wpsScriptDir 默认值")
+_pwps_src = io.open(_PWPS_JS, encoding="utf-8").read() if os.path.exists(_PWPS_JS) else ""
+ok("Zotero.Prefs.set" in _pwps_src and
+   re.search(r"(?<!Zotero\.)Prefs\.(get|set)\(", _pwps_src) is None,
+   "60.17 ★ 面板脚本只用 Zotero.Prefs（设置窗口作用域没有裸 Prefs，用了会静默失效）")
+
+_gpl_leaks = []
+for _root, _dirs, _files in os.walk(os.path.join(ROOT, "chrome")):
+    for _f in _files:
+        if _f in ("ribbon.xml",) or _f.startswith("wps-zotero"):
+            _gpl_leaks.append(os.path.join(_root, _f))
+ok(not _gpl_leaks,
+   "60.14 ★ chrome/ 下不得出现 WPS 加载项资源（GPL-3.0 不随 Apache-2.0 插件分发）→ %s" % _gpl_leaks[:3])
+
+ok(os.path.exists(os.path.join(ROOT, "test", "prefs-wps.test.js")),
+   "60.15 test/prefs-wps.test.js 在库")
+ok("prefs-wps.test.js" in _preflight_src, "60.16 preflight 注册 WPS 集成测试")
+
+# 0.68.2：加载项作为**独立发布物**（GPL-3.0 不进 xpi），卡片内按需下载安装
+ok('pref("extensions.zotero.papilot.wpsAddonUrl", "");' in prefsdef,
+   "60.18 prefs.js 有 wpsAddonUrl 默认值（留空=内置发布地址，可被镜像覆盖）")
+ok("pp-wps-install-addon" in prefs_xhtml, "60.19 面板含「下载并安装加载项」按钮")
+ok("async installAddon" in _wb and "ADDON_URLS" in _wb,
+   "60.20 桥接提供 installAddon() 与下载源清单")
+ok(".bundle.json" in _wb,
+   "60.21 ★ 下载的是 bundle.json（纯 JS 落盘，不依赖 ZipReader，可单测）")
+ok("_safeRel" in _wb and 'indexOf("..")' in _wb,
+   "60.22 ★ 落盘前做目录穿越校验（数据来自网络）")
+_BUILD_ADDON = os.path.join(ROOT, "scripts", "wps-zotero", "build-addon-zip.py")
+ok(os.path.exists(_BUILD_ADDON), "60.23 加载项打包脚本 build-addon-zip.py 在库")
+_GI = io.open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read() if os.path.exists(os.path.join(ROOT, ".gitignore")) else ""
+ok("!dist/papilot-wps-addon.zip" in _GI and "!dist/papilot-wps-addon.bundle.json" in _GI,
+   "60.24 发布物被 .gitignore 放行（否则 Gitee raw 直链 404）")
+ok(os.path.exists(os.path.join(ROOT, "test", "wps-bridge-install.test.js")),
+   "60.25 test/wps-bridge-install.test.js 在库")
+ok("wps-bridge-install.test.js" in _preflight_src, "60.26 preflight 注册加载项安装桥测试")
 
 
 print("=" * 60)

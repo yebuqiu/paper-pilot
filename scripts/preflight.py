@@ -152,6 +152,8 @@ NODE_SUITES = [
     ("更新提示", "test/update-notice.test.js"),
     ("翻译设置面板", "test/prefs-translate.test.js"),
     ("设置折叠分组", "test/prefs-fold.test.js"),
+    ("WPS 集成面板", "test/prefs-wps.test.js"),
+    ("WPS 加载项安装桥", "test/wps-bridge-install.test.js"),
     ("pref 命名空间", "test/pref-namespace.test.js"),
     ("顶部快捷按钮", "test/toolbar-quick.test.js"),
     ("阅读器翻译面板", "test/translate-pane.test.js"),

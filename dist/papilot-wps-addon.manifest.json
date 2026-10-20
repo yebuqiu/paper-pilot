@@ -1,0 +1,23 @@
+{
+  "name": "papilot-wps-addon",
+  "version": "1.0.0",
+  "zip": "papilot-wps-addon.zip",
+  "size": 39590,
+  "sha256": "afccdbe562cb18971fe4bcb7dac48f28f147dca7bbc971de22253795d71135d0",
+  "bundle": "papilot-wps-addon.bundle.json",
+  "bundleSize": 167388,
+  "bundleSha256": "e2af4b58daa7411abc578d5260fda30f82222fbf17888aac5b8026916115a013",
+  "fileCount": 17,
+  "required": [
+    "index.html",
+    "ribbon.xml",
+    "version.js",
+    "js/ribbon.js",
+    "js/zclient.js",
+    "js/tools.js",
+    "js/wpsif.js"
+  ],
+  "builtAt": "2026-10-20T23:06:20+0800",
+  "license": "GPL-3.0 (upstream tankwyn/WPS-Zotero)",
+  "note": "独立组件，不随 papilot xpi 分发；由设置面板「WPS 集成」卡片按需下载安装。"
+}

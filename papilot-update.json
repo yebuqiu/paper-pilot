@@ -3,6 +3,28 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.68.2",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.68.2.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "WPS 集成：加载项改为独立发布物并支持卡片内一键下载安装（GPL 组件不进 xpi）；安装做目录穿越校验与原子替换"
+        },
+        {
+          "version": "0.68.1",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.68.1.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "设置面板新增「WPS 集成」卡片（个人版可用）：检测加载项/信任/代理/Zotero 端口，一键修复代理与注册，可选启动时自动拉起 CORS 代理"
+        },
+        {
           "version": "0.68.0",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.68.0.xpi",
           "applications": {

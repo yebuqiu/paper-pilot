@@ -8,14 +8,14 @@
  * 展开状态记不住 / 全部展开失效」，这类静默失败只有真跑一遍 prefs-fold.js
  * 才能发现。这个套件用「迷你 DOM」把它真跑一遍（只桩掉 Zotero.Prefs / 定时器），
  * 断言行为本身：
- *   ① 初始：prefsFoldOpen 为空 → 18 张卡全部收起（默认全收起）；
+ *   ① 初始：prefsFoldOpen 为空 → 19 张卡全部收起（默认全收起）；
  *   ② 点标题行 → 展开/收起该卡，且**写回 prefsFoldOpen pref**（记住状态）；
  *      点 A 卡不影响 B 卡；
- *   ③ 「全部展开 / 全部收起」→ 18 卡全开/全闭，pref 同步；
+ *   ③ 「全部展开 / 全部收起」→ 19 卡全开/全闭，pref 同步；
  *   ④ 深链定位：_prefsFocus 放分组键 → 打开设置时该卡自动展开并滚动定位，
  *      消费后键被清空（一次性）；
  *   ⑤ 结构体检（纯文本，不跑 JS）：每张 pp-fold 卡都有 pp-fold-head 且在
- *      pp-card-body 之前；18 个 data-fold 键与预期集合一致——防止未来改
+ *      pp-card-body 之前；19 个 data-fold 键与预期集合一致——防止未来改
  *      prefs.xhtml 时把折叠结构改坏。
  *   ⑦ 搜索过滤（0.65.0）：命中项显示、未命中隐藏、组内无命中时大类标签一起隐藏、
  *      根节点挂 pp-searching（用 CSS 展开命中卡），清空后全部恢复且**不动折叠 pref**。
@@ -104,7 +104,7 @@ const GROUPS = [
   ['阅读与翻译', ['translate', 'popup', 'pdftheme']],
   ['文献获取', ['cnki', 'thirdsrc', 'subscriptions', 'schedule']],
   ['条目与标签', ['columns', 'tagging', 'enhance']],
-  ['界面与效率', ['uitheme', 'menu', 'hotkeys']],
+  ['界面与效率', ['uitheme', 'menu', 'hotkeys', 'wps']],
   ['数据与同步', ['cloud']],
 ];
 
@@ -168,7 +168,7 @@ function makeDom() {
   searchClear.setAttribute('id', 'pp-prefs-search-clear');
   const countEl = new El('span');
   countEl.setAttribute('id', 'pp-pref-count');
-  countEl.textContent = '18 项 · 7 类';
+  countEl.textContent = '19 项 · 7 类';
   root.appendChild(searchInput);
   root.appendChild(searchClear);
   root.appendChild(countEl);
@@ -222,7 +222,7 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
 /* ---------------- ⑤ 结构体检（纯文本） ---------------- */
 {
   const dom = makeDom();
-  ok(dom.byKey.size === 18, '⑤ 18 张分组卡都建出来了（0.49.0 定时任务 + 0.53.0 检索订阅 + 0.56.0 云同步）', dom.byKey.size);
+  ok(dom.byKey.size === 19, '⑤ 19 张分组卡都建出来了（0.49.0 定时任务 + 0.53.0 检索订阅 + 0.56.0 云同步 + 0.68.1 WPS 集成）', dom.byKey.size);
   ok(/id="pp-fold-expand"/.test(dom.xhtml) && /id="pp-fold-collapse"/.test(dom.xhtml),
     '⑤ 工具条按钮 #pp-fold-expand / #pp-fold-collapse 存在');
   // 每张卡：pp-fold-head 必须在 pp-card-body 之前（点击区不能包住表单）
@@ -233,15 +233,15 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
       'class="pp-card pp-fold" data-fold="' + key + '"[\\s\\S]*?class="pp-fold-head"[\\s\\S]*?class="pp-card-body"');
     ok(re.test(dom.xhtml), '⑤ 卡 ' + key + '：head 在 body 之前');
   }
-  ok((dom.xhtml.match(/class="pp-card pp-fold"/g) || []).length === 18,
-    '⑤ pp-fold 卡恰好 18 张（无裸 pp-card 漏包）');
+  ok((dom.xhtml.match(/class="pp-card pp-fold"/g) || []).length === 19,
+    '⑤ pp-fold 卡恰好 19 张（无裸 pp-card 漏包）');
 }
 
 /* ---------------- ① 初始：默认全收起 ---------------- */
 {
   const dom = makeDom();
   const { PrefStore } = runFoldScript(dom);
-  eq(openCount(dom), 0, '① pref 为空 → 18 张卡全部收起');
+  eq(openCount(dom), 0, '① pref 为空 → 19 张卡全部收起');
   eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen'), undefined,
     '① 初始不写 pref');
 }
@@ -270,11 +270,11 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
   const dom = makeDom();
   const { PrefStore } = runFoldScript(dom);
   dom.expandBtn.click();
-  eq(openCount(dom), 18, '③ 全部展开 → 18 张卡全开');
-  eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen').split(',').length, 18,
-    '③ pref 记满 18 键');
+  eq(openCount(dom), 19, '③ 全部展开 → 19 张卡全开');
+  eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen').split(',').length, 19,
+    '③ pref 记满 19 键');
   dom.collapseBtn.click();
-  eq(openCount(dom), 0, '③ 全部收起 → 18 张卡全闭');
+  eq(openCount(dom), 0, '③ 全部收起 → 19 张卡全闭');
   eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen'), '', '③ pref 清空');
 }
 
@@ -305,7 +305,7 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
   const labelHidden = (i) => cls(dom.labels[i]).indexOf(' pp-hidden ') >= 0;
 
   ok(dom.labels.length === 7, '⑦ 7 个大类标签都建出来了', dom.labels.length);
-  ok(dom.byKey.size === 18, '⑦ 18 张卡都在（组间搬家后数量不变）', dom.byKey.size);
+  ok(dom.byKey.size === 19, '⑦ 19 张卡都在（组间搬家后数量不变）', dom.byKey.size);
 
   dom.searchInput.value = '快捷键';
   dom.searchInput.fire('input');
@@ -314,7 +314,7 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
   ok(cls(dom.root).indexOf(' pp-searching ') >= 0, '⑦ 根节点进入搜索态（CSS 据此展开命中卡）');
   ok(!labelHidden(5), '⑦ 有命中的大类标签保留（界面与效率）');
   ok(labelHidden(1), '⑦ 组内零命中 → 大类标签一起隐藏（AI 能力）');
-  ok(dom.countEl.textContent.indexOf('/') > 0 && dom.countEl.textContent.indexOf('18') > 0,
+  ok(dom.countEl.textContent.indexOf('/') > 0 && dom.countEl.textContent.indexOf('19') > 0,
     '⑦ 计数显示「命中 / 全部」', dom.countEl.textContent);
   eq(PrefStore.get('extensions.zotero.papilot.prefsFoldOpen'), undefined,
     '⑦ 搜索只切类名，不写折叠 pref');
@@ -324,7 +324,7 @@ const openCount = (dom) => FOLD_KEYS.filter((k) => isOpen(dom, k)).length;
   ok(!hidden('channels') && !hidden('hotkeys'), '⑦ 清空后全部卡片恢复可见');
   ok(cls(dom.root).indexOf(' pp-searching ') < 0, '⑦ 退出搜索态');
   ok(dom.labels.every((l) => cls(l).indexOf(' pp-hidden ') < 0), '⑦ 大类标签全部恢复');
-  eq(dom.countEl.textContent, '18 项 · 7 类', '⑦ 计数恢复原始文案');
+  eq(dom.countEl.textContent, '19 项 · 7 类', '⑦ 计数恢复原始文案');
   eq(dom.searchInput.value, '', '⑦ 清空按钮同时清掉输入框内容');
 }
 
