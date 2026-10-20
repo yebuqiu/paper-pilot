@@ -33,6 +33,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -91,8 +92,14 @@ def api(method, path, body=None, tok=None):
                 if loc:
                     url = loc
                     continue
+            # 5xx 是服务端瞬时故障（本次发版实测 POST /git/trees 连续 502）：
+            # 退避重试，别把整次同步判死。blob 是内容寻址，重试天然幂等。
+            if e.code >= 500 and _ < 4:
+                time.sleep(1.5 * (_ + 1))
+                continue
             detail = e.read().decode("utf-8", "replace")[:500]
-            raise SystemExit("GitHub API %s %s 失败 %s: %s" % (method, path, e.code, detail))
+            raise SystemExit("GitHub API %s %s 失败 %s（payload %d B）: %s"
+                             % (method, path, e.code, len(data or b""), detail))
     raise SystemExit("重定向次数过多: " + path)
 
 
@@ -126,14 +133,15 @@ def main():
     remote_tree = api("GET", "/repos/%s/git/trees/%s?recursive=1" % (REPO, parent_tree), None, tok)
     remote_blobs = {e["path"]: e["sha"] for e in remote_tree.get("tree", []) if e["type"] == "blob"}
 
-    trees = []
+    # 只把「新增/变更」的条目建进 tree：未变更的交给 base_tree 继承。
+    # 起因：全量 588 条 POST /git/trees 被 GitHub 判 422「input too large」。
+    blob_sha = {}
     n_reused = 0
     for i, (path, mode, sha) in enumerate(entries, 1):
         if dry:
-            trees.append({"path": path, "mode": mode, "type": "blob", "sha": sha})
             continue
         if remote_blobs.get(path) == sha:
-            trees.append({"path": path, "mode": mode, "type": "blob", "sha": sha})
+            blob_sha[path] = sha
             n_reused += 1
             continue
         content = sh("git", "cat-file", "blob", sha, binary=True)
@@ -144,7 +152,7 @@ def main():
         # 内容相同则 GitHub 返回同一个 sha（blob 内容寻址）——自检一下
         if blob["sha"] != sha:
             print("  ! blob sha 不一致（本地 %s / 远端 %s）: %s" % (sha[:8], blob["sha"][:8], path))
-        trees.append({"path": path, "mode": mode, "type": "blob", "sha": blob["sha"]})
+        blob_sha[path] = blob["sha"]
         if i % 20 == 0:
             print("  已处理 %d/%d（复用 %d）" % (i, len(entries), n_reused))
     if not dry:
@@ -173,7 +181,25 @@ def main():
 
     # 提交信息取本地 HEAD 的完整 message
     msg = sh("git", "log", "-1", "--pretty=%B").strip() or "sync from local"
-    new_tree = api("POST", "/repos/%s/git/trees" % REPO, {"tree": trees}, tok)
+    mode_of = {p: m for p, m, _ in entries}
+    tree_entries = []
+    for p in added + changed:
+        tree_entries.append({"path": p, "mode": mode_of.get(p, "100644"),
+                             "type": "blob", "sha": blob_sha[p]})
+    for p in removed:
+        tree_entries.append({"path": p, "mode": "100644", "type": "blob", "sha": None})
+
+    # 分片 + base_tree 链：每片 ≤150 条，避免单次请求被判定过大
+    base = parent_tree
+    for i in range(0, len(tree_entries), 150):
+        chunk = tree_entries[i:i + 150]
+        body = {"tree": chunk}
+        if base:
+            body["base_tree"] = base
+        res = api("POST", "/repos/%s/git/trees" % REPO, body, tok)
+        base = res["sha"]
+        print("  建树分片 %d-%d → %s" % (i, i + len(chunk) - 1, base[:10]))
+    new_tree = {"sha": base}
     commit = api("POST", "/repos/%s/git/commits" % REPO, {
         "message": msg,
         "tree": new_tree["sha"],
