@@ -1,0 +1,62 @@
+name: Gate
+
+# 唯一门禁：跑 scripts/preflight.py（语法 + 全部单测 + 接线扫描 + 目录同构 + 后台 E2E）。
+# 为什么要有它：项目的门禁密度很高（87 步 / 1600+ 条接线断言），但**全靠本地手动跑**；
+# 换机、接手、或赶时间跳过时没有任何信号。这里让每次 push / PR 都真跑一遍。
+#
+# ★ 用 --strict：跳过项按失败处理。后台 E2E 在缺 playwright-core / 缺浏览器时会「优雅跳过
+#   并退出 0」，旧门禁把它记成通过 —— 那就是假绿。CI 里跳过必须红。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装 E2E 依赖（playwright-core，不写 lock/package.json）
+        run: npm install --no-save --no-audit --no-fund playwright-core
+
+      - name: 解析 Chrome 路径（供 PP_CHROME 使用）
+        run: |
+          CHROME="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME" ]; then
+            echo "::error::runner 上没有 Chrome，E2E 会被跳过（--strict 下即失败）。请换 ubuntu-latest 或安装 chrome。"
+            exit 1
+          fi
+          echo "PP_CHROME=$CHROME" >> "$GITHUB_ENV"
+          echo "使用浏览器：$CHROME"
+
+      - name: preflight（含后台 E2E，跳过即失败）
+        env:
+          NODE_PATH: ${{ github.workspace }}/node_modules
+        run: python scripts/preflight.py --strict
+
+      - name: 失败时上传 E2E 截图与日志
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            /tmp/pp-admin-membership.png
+            /tmp/pp-admin-e2e-*/**/*.json
+          if-no-files-found: ignore
+          retention-days: 7

@@ -11,7 +11,8 @@
 
 用法：
     python scripts/preflight.py                # 全量（含浏览器 E2E；无浏览器会自动跳过）
-    python scripts/preflight.py --fast         # 只跑确定性的静态/单测，跳过 E2E
+    python scripts/preflight.py --fast         # 只跑确定性的静态/单测，跳过 E2E（汇总会标注「跳过」）
+    python scripts/preflight.py --strict       # 不允许跳过：跳过项按失败处理（CI 用）
     python scripts/preflight.py --with-build 0.24.4
                                                # 追加构建 xpi 并做包内自检
 
@@ -117,6 +118,7 @@ NODE_SUITES = [
     ("价格表", "test/price.test.js"),
     ("用量趋势", "test/usage.test.js"),
     ("会员面板渲染", "test/membership-panel.test.js"),
+    ("统一设计令牌", "test/ui-tokens.test.js"),
     ("运维三件套", "test/server-ops.test.js"),
     ("服务端规模与索引", "test/server-scale.test.js"),
     ("管理面来源校验", "test/admin-origin.test.js"),
@@ -197,6 +199,10 @@ def main(argv):
             say("--with-build 需要跟一个版本号，例如 --with-build 0.24.4")
             return 2
 
+    if fast and "--strict" in argv:
+        say(RED + "✗ --strict 与 --fast 互斥：fast 必然跳过浏览器 E2E，strict 不允许跳过。" + RESET)
+        return 2
+
     if not NODE:
         say(RED + "✗ 找不到 node（可用 PP_NODE 指定路径）" + RESET)
         return 2
@@ -207,13 +213,20 @@ def main(argv):
     say("模式: %s" % ("fast（跳过浏览器 E2E）" if fast else "full"))
     say("-" * 68)
 
-    results = []   # (名称, ok, 摘要, 详情)
+    # 0.65.1：结果改**三态**（pass / skip / fail）。
+    # ★ 原实现把「脚本自己跳过」和「真的通过」都记成 ok=True：
+    #   后台 E2E 缺 playwright-core 时 admin-e2e 自己 exit 0，--fast 下更是直接 append True，
+    #   于是 153 条管理面断言可能长期没跑，门禁却永远是绿的。跳过必须能被看见。
+    results = []   # (名称, 状态, 摘要, 详情)；状态 ∈ "pass" / "skip" / "fail"
 
-    def record(name, ok, summary, detail=None):
-        results.append((name, ok, summary, detail))
-        mark = GREEN + "✓" + RESET if ok else RED + "✗" + RESET
+    def record(name, ok, summary, detail=None, skipped=False):
+        state = "skip" if skipped else ("pass" if ok else "fail")
+        results.append((name, state, summary, detail))
+        mark = {"pass": GREEN + "✓" + RESET,
+                "skip": YELLOW + "·" + RESET,
+                "fail": RED + "✗" + RESET}[state]
         say("%s %-14s %s" % (mark, name, summary))
-        if not ok and detail:
+        if state == "fail" and detail:
             for line in (detail if isinstance(detail, list) else [detail]):
                 for sub in str(line).splitlines()[:6]:
                     say("    " + DIM + sub + RESET)
@@ -222,6 +235,11 @@ def main(argv):
     t0 = time.time()
     ok, summary, detail = step_syntax()
     record("语法检查", ok, summary, detail)
+
+    # 1a) 文档版本与真源一致（manifest 的 version / 服务端头注释 → AGENTS · README badge）
+    #     为什么进门禁：版本号是手工抄的，已经漂过两次（AGENTS 停在 0.58.0、README badge 停在 0.63.0）。
+    code, out = run([PY, "scripts/sync-docs-version.py", "--check"], timeout=60)
+    record("文档版本", code == 0, pick_summary(out), None if code == 0 else out)
 
     # 1b) arXiv 核心生成物同步（改了 tools/arxiv/src 却忘了重新生成 → 这里拦住）
     #     必须排在插件侧测试之前：生成物不同步时那套测试测的是旧产物，结论无意义。
@@ -245,24 +263,34 @@ def main(argv):
     code, out = run([NODE, "scripts/build-skill-catalog.js", "--check"], timeout=60)
     record("技能包目录同构", code == 0, pick_summary(out), None if code == 0 else out)
 
-    # 4) 浏览器 E2E（可跳过；脚本自身在缺依赖时退出 0）
+    # 4) 浏览器 E2E（脚本缺依赖时会自行跳过并 exit 0 → 这里识别为「跳过」，不记通过）
     if not fast:
         code, out = run([NODE, "test/admin-e2e.test.js"], timeout=600)
-        record("后台 E2E", code == 0, pick_summary(out), None if code == 0 else out)
+        _e2e_skip = (code == 0) and ("跳过" in out or "SKIPPED" in out)
+        record("后台 E2E", (code == 0) and not _e2e_skip, pick_summary(out),
+               None if code == 0 else out, skipped=_e2e_skip)
     else:
-        results.append(("后台 E2E", True, "（--fast 跳过）", None))
-        say("%s %-14s %s" % (YELLOW + "·" + RESET, "后台 E2E", "已跳过（--fast）"))
+        record("后台 E2E", True, "（--fast 跳过，未执行）", None, skipped=True)
 
     # 5) 可选构建
     if build_ver:
         code, out = run([PY, "scripts/build-xpi.py", build_ver], timeout=600)
         record("构建 xpi", code == 0, pick_summary(out), None if code == 0 else out)
 
-    # ---- 汇总 ----
-    failed = [r for r in results if not r[1]]
+    # ---- 汇总（三态 + --strict） ----
+    strict = "--strict" in argv
+    failed = [r for r in results if r[1] == "fail"]
+    skipped = [r for r in results if r[1] == "skip"]
+    passed = [r for r in results if r[1] == "pass"]
     say("-" * 68)
-    say("共 %d 项，通过 %d，失败 %d  ·  耗时 %.1fs"
-        % (len(results), len(results) - len(failed), len(failed), time.time() - t0))
+    say("共 %d 项，通过 %d，跳过 %d，失败 %d  ·  耗时 %.1fs"
+        % (len(results), len(passed), len(skipped), len(failed), time.time() - t0))
+    if skipped:
+        say("")
+        say(YELLOW + "跳过项（不计入通过）：" + RESET)
+        for name, _, summary, _ in skipped:
+            say("  · %s  %s" % (name, summary))
+        say("  发布前请在装有浏览器的环境跑一次全量（去掉 --fast）；CI 用 --strict 让跳过直接失败。")
     if failed:
         say("")
         say(RED + "失败项：" + RESET)
@@ -271,6 +299,13 @@ def main(argv):
         say("")
         say("单独复现：见上面对应步骤的命令；本脚本 = 这些步骤的顺序串联。")
         return 1
+    if strict and skipped:
+        say("")
+        say(RED + "--strict：存在跳过项，按失败处理（%d 项）" % len(skipped))
+        return 1
+    if skipped:
+        say(YELLOW + "其余全部通过 —— 但上面有 %d 项被跳过，不等于全绿。" % len(skipped) + RESET)
+        return 0
     say(GREEN + "全部通过 —— 可以进入发版流程（git status → 显式 add → tag → push）。" + RESET)
     return 0
 

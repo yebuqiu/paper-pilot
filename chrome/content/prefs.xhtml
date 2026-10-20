@@ -7,38 +7,49 @@
 <!-- Zotero 7+ 绑定方式：控件直接写完整 pref key（preference="extensions.zotero.xxx.yyy"），
      设置窗口自动经 Zotero.Prefs 双向同步；不要再放 <preferences><preference> 元素（Z10 已废弃，
      仅剩兼容 shim 且会刷警告） -->
-<!-- 0.15.0 设置界面重构：参考 GitHub Primer / VS Code 设置页的卡片式视觉语言——
-     每个功能模块一张卡片（标题 + 说明 + 表单行），条目数据列等强相关模块合并为
-     卡片内子分区，层次 = 卡片 > 子分区 > 行。样式在 prefs.css（经 register 的
-     stylesheets 参数随面板加载——官方推荐通道），配色经 CSS 变量随系统明暗主题切换；
-     全部选择器以 .pp- 前缀收在 .pp-root 作用域内，不泄漏到设置窗口其他面板。 -->
-<!-- 0.38.0 折叠式重构：设置项增多后整页过长 → 每张卡片改为可折叠分组（.pp-fold：
-     点标题行展开/收起，展开状态记在 prefsFoldOpen pref，CSV 为「已展开」的 data-fold 键）。
-     ★ 兼容性约束：卡片内部 DOM 一律原样保留（所有元素 id 与 preference= 声明式绑定不动，
-     五个面板脚本全靠 getElementById 探测）；折叠只由 prefs-fold.js 切 .pp-fold-closed
-     类 + CSS display:none 实现，不挪动、不删除任何节点。分组上方的分类标签
-     （.pp-cat-label）只是视觉分隔，不参与交互。 -->
+<!-- 视觉语言（0.15.0 起）：GitHub Primer / VS Code 设置页的卡片式——每个功能模块一张卡片
+     （标题 + 说明 + 表单行），强相关模块在卡片内分 pp-sub 子分区，层次 = 分组 > 卡片 > 子分区 > 行。
+     样式在 prefs.css（经 register 的 stylesheets 参数随面板加载——官方推荐通道），
+     配色经 CSS 变量随系统明暗主题切换；全部选择器以 .pp- 前缀收在 .pp-root 作用域内。 -->
+<!-- 0.38.0 折叠式：卡片 = 可折叠分组（.pp-fold），展开状态记在 prefsFoldOpen pref。 -->
+<!-- 0.65.0 信息架构重组（本次）：设置项增至 18 组后，按「用户真正要做的事」重新分为 7 类，
+     每类带标题 + 计数，顶部提供「搜索 + 全部展开/收起 + 大类直达」工具条：
+       ① 账号与会员   ② AI 能力      ③ 阅读与翻译   ④ 文献获取
+       ⑤ 条目与标签   ⑥ 界面与效率   ⑦ 数据与同步
+     ★ 兼容性铁律：本次只调整**卡片顺序**与折叠头的图标/标题/说明，卡片内部 DOM、
+       元素 id、preference= 声明式绑定一律原样保留（十五个面板脚本全靠 getElementById
+       探测元素）；data-fold 键也全部未改（prefsFoldOpen 记忆、reader-popup 的
+       _prefsFocus="channels" 深链都依赖它）。折叠仍只由 prefs-fold.js 切
+       .pp-fold-closed 类实现，不挪动、不删除任何功能节点。 -->
+
 <vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
       xmlns:html="http://www.w3.org/1999/xhtml"
       class="pp-root" style="padding:12px;overflow-y:auto;" flex="1">
 
-  <!-- ============ 折叠工具条（0.38.0） ============ -->
-  <html:div class="pp-fold-bar">
-    <html:button id="pp-fold-expand" class="pp-btn pp-btn-sm">全部展开</html:button>
-    <html:button id="pp-fold-collapse" class="pp-btn pp-btn-sm">全部收起</html:button>
-    <html:span class="pp-hint">共 12 组设置；点击组标题行展开 / 收起，展开状态自动记住</html:span>
+  <!-- ============ 顶部工具条：搜索 + 批量展开 + 大类直达（0.65.0） ============ -->
+  <html:div class="pp-toolbar">
+    <html:div class="pp-search">
+      <html:span class="pp-search-icon" aria-hidden="true">⌕</html:span>
+      <html:input type="text" id="pp-prefs-search" class="pp-input pp-search-input"
+                  placeholder="搜索设置项：额度 / 翻译 / 快捷键 / 同步 …"/>
+      <html:button id="pp-prefs-search-clear" class="pp-search-clear" title="清空搜索" style="display:none;">×</html:button>
+    </html:div>
+    <html:div class="pp-toolbar-actions">
+      <html:span id="pp-pref-count" class="pp-count">18 项 · 7 类</html:span>
+      <html:button id="pp-fold-expand" class="pp-btn pp-btn-sm">全部展开</html:button>
+      <html:button id="pp-fold-collapse" class="pp-btn pp-btn-sm">全部收起</html:button>
+    </html:div>
   </html:div>
-  <!-- 0.42.0 锚点目录：由 prefs-hotkeys.js 按分类标签动态生成，点击滚动定位 -->
-  <html:div id="pp-anchor-nav" class="pp-fold-bar"></html:div>
 
-  <!-- ============ 分类 · 账号 ============ -->
-  <html:div class="pp-cat-label">账号</html:div>
+  <!-- 大类直达（由 prefs-hotkeys.js 按 .pp-cat-label 动态生成，点击滚动定位并展开首张卡） -->
+  <html:div id="pp-anchor-nav" class="pp-anchor-nav"></html:div>
 
-  <!-- ============ 1 · Papilot 账号 ============ -->
+  <!-- ============ 分类 · 账号与会员（1 项） ============ -->
+  <html:div class="pp-cat-label"><html:span class="pp-cat-name">账号与会员</html:span><html:span class="pp-cat-count">1 项</html:span></html:div>
   <html:div class="pp-card pp-fold" data-fold="account" data-search-strings-raw="账号 登录 注册 会员 余额 订单 激活码 设备 account login register membership balance order redeem">
     <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">👤</html:span><html:span class="pp-card-title">Papilot 账号</html:span>
-      <html:span class="pp-card-desc">登录后使用官方 AI 模型（按 AI 额度扣费）；登录状态本地持久化，会话过期自动提醒</html:span>
+      <html:span class="pp-card-icon">👤</html:span><html:span class="pp-card-title">账号与会员</html:span>
+      <html:span class="pp-card-desc">登录后使用官方 AI 模型（按额度扣费）；会员权益、AI 额度与登录设备都在这一张卡里</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -297,71 +308,8 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 2 · 知网账号（0.43.1：登录类入口收敛到设置面板） ============ -->
-  <html:div class="pp-card pp-fold" data-fold="cnki" data-search-strings-raw="知网 CNKI 登录 账号 校园网 IP 授权 验证 转换器 cnki login campus verify translator">
-    <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">📚</html:span><html:span class="pp-card-title">知网账号</html:span>
-      <html:span class="pp-card-desc">校园网自动识别 IP 授权，无需账号；非校园网可登录个人知网账号兜底。浏览器抓取（Connector）也依赖这里建立的会话</html:span>
-      <html:span class="pp-fold-arrow">▾</html:span>
-    </html:div>
-    <html:div class="pp-card-body">
-      <html:div class="pp-row" style="margin-top:10px;">
-        <html:span id="pp-cnki-status" class="pp-msg">打开面板时自动检测权限…</html:span>
-      </html:div>
-      <html:div class="pp-hint">校园网/机构网络下点「检测权限」即可自动建立机构会话（走 IP 登录，无需账号）；账号凭据只存本机，不会上传。</html:div>
-      <html:div class="pp-grid2">
-        <html:div class="pp-field">
-          <html:label class="pp-label">知网用户名</html:label>
-          <html:input type="text" id="pp-cnki-user" class="pp-input" placeholder="手机号 / 邮箱 / 账号"/>
-        </html:div>
-        <html:div class="pp-field">
-          <html:label class="pp-label">知网密码</html:label>
-          <html:input type="password" id="pp-cnki-pass" class="pp-input" placeholder="只存本机 Zotero，不进云端"/>
-        </html:div>
-      </html:div>
-      <html:div class="pp-row">
-        <html:button id="pp-cnki-login-btn" class="pp-btn pp-btn-primary">登录知网</html:button>
-        <html:button id="pp-cnki-detect-btn" class="pp-btn pp-btn-sm">检测权限</html:button>
-        <html:button id="pp-cnki-clear-btn" class="pp-btn pp-btn-sm">清除凭据/退出登录</html:button>
-      </html:div>
-      <html:div class="pp-row">
-        <html:button id="pp-cnki-verify-btn" class="pp-btn pp-btn-sm">解除风控验证</html:button>
-        <html:button id="pp-cnki-translators-btn" class="pp-btn pp-btn-sm">更新中文转换器</html:button>
-        <html:span id="pp-cnki-result" class="pp-msg"></html:span>
-      </html:div>
-    </html:div>
-  </html:div>
-
-  <!-- ============ 2.5 · 第三方文献源（实验性 · Pro 试用） ============ -->
-  <html:div class="pp-card pp-fold" data-fold="thirdsrc" data-search-strings-raw="第三方 文献源 入口 知网 万方 维普 镜像 scihub sci-hub pubmed arxiv 预印本 学术搜索 谷歌 实验 试用 third-party source endpoint">
-    <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">🧪</html:span><html:span class="pp-card-title">第三方文献源（实验）</html:span>
-      <html:span class="pp-card-desc">中文库 / 英文全文 / 预印本 / 学术搜索：公开入口一键直达，可带入 DOI 或标题检索。面向 Pro 会员试用，默认关闭</html:span>
-      <html:span class="pp-fold-arrow">▾</html:span>
-    </html:div>
-    <html:div class="pp-card-body">
-      <html:div class="pp-hint">实验功能：以下为第三方公开站点入口，仅供检索与定位；请自行评估并遵守各站点条款。</html:div>
-      <html:div class="pp-row">
-        <html:label class="pp-check"><html:input type="checkbox" id="pp-ts-enabled"/><html:span>启用实验功能（Pro 试用）</html:span></html:label>
-        <html:span id="pp-ts-gate" class="pp-msg"></html:span>
-      </html:div>
-      <html:div class="pp-row">
-        <html:input type="text" id="pp-ts-query" class="pp-input pp-grow" placeholder="可选：输入 DOI 或标题，点入口即在该站检索"/>
-      </html:div>
-      <html:div class="pp-row pp-row-tight"><html:span id="pp-ts-query-hint" class="pp-hint"></html:span></html:div>
-      <vbox id="pp-ts-endpoints" class="pp-ts-list"></vbox>
-      <html:div class="pp-row">
-        <html:button id="pp-ts-ping-btn" class="pp-btn pp-btn-primary">检测入口</html:button>
-        <html:span id="pp-ts-status" class="pp-msg">未检测</html:span>
-      </html:div>
-      <html:div class="pp-row"><html:span id="pp-ts-result" class="pp-msg"></html:span></html:div>
-    </html:div>
-  </html:div>
-
-  <!-- ============ 分类 · AI 与翻译 ============ -->
-  <html:div class="pp-cat-label">AI 与翻译</html:div>
-
-  <!-- ============ 2 · AI 模型通道 ============ -->
+  <!-- ============ 分类 · AI 能力（3 项） ============ -->
+  <html:div class="pp-cat-label"><html:span class="pp-cat-name">AI 能力</html:span><html:span class="pp-cat-count">3 项</html:span></html:div>
   <html:div class="pp-card pp-fold" data-fold="channels" data-search-strings-raw="模型 通道 密钥 厂商 延迟 channel model api key provider">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">🔌</html:span><html:span class="pp-card-title">AI 模型通道</html:span>
@@ -439,11 +387,214 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 2.5 · 翻译引擎（0.28.0） ============ -->
+  <html:div class="pp-card pp-fold" data-fold="aiparams" data-search-strings-raw="AI 参数 温度 提示词 上下文 智能体 工具 agent tools top_p 历史轮数 快捷指令 命令标签 slash temperature prompt context">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">🎛️</html:span><html:span class="pp-card-title">AI 参数与智能体</html:span>
+      <html:span class="pp-card-desc">温度 / 上下文 / 智能体 / 提示词模板 / 快捷指令，统一作用于当前活动通道</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
+    <html:div class="pp-card-body">
+      <html:div class="pp-grid3">
+        <html:div class="pp-field">
+          <html:label class="pp-label">最大输出 tokens</html:label>
+          <html:input type="number" preference="extensions.zotero.papilot.aiMaxTokens" class="pp-input"/>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">温度（0-2，越低越稳定）</html:label>
+          <html:input type="number" preference="extensions.zotero.papilot.aiTemperature" class="pp-input"
+                      min="0" max="2" step="0.1"/>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">送入 AI 的全文最大字符数</html:label>
+          <html:input type="number" preference="extensions.zotero.papilot.aiFullTextMaxChars" class="pp-input"/>
+        </html:div>
+      </html:div>
+      <html:div class="pp-hint" style="margin-top:4px;">超长全文在送入前截断，避免撑爆上下文窗口</html:div>
+
+      <!-- 3.1 对话与上下文（0.48.0：多轮上下文管理可配） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">对话与上下文</html:div>
+        <html:div class="pp-sub-desc">多轮对话时携带的历史窗口与采样参数</html:div>
+        <html:div class="pp-grid2">
+          <html:div class="pp-field">
+            <html:label class="pp-label">对话历史轮数（1-30，默认 6）</html:label>
+            <html:input type="number" preference="extensions.zotero.papilot.aiHistoryRounds" class="pp-input"
+                        min="1" max="30" step="1"/>
+          </html:div>
+          <html:div class="pp-field">
+            <html:label class="pp-label">top_p 核采样（0-1，留空 = 不传）</html:label>
+            <html:input type="number" preference="extensions.zotero.papilot.aiTopP" class="pp-input"
+                        min="0" max="1" step="0.05" placeholder="留空 = 不传该参数"/>
+          </html:div>
+        </html:div>
+        <html:div class="pp-hint">历史轮数越大，追问时的上下文越完整，token 消耗也越高；部分网关不支持 top_p 时留空即可。</html:div>
+      </html:div>
+
+      <!-- 3.2 智能体（0.48.0：交互设计参考开源项目 Hermes Agent） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">智能体（Agent 模式）</html:div>
+        <html:div class="pp-sub-desc">开启后 AI 问答浮窗升级为智能体：对复杂任务先规划步骤，再按需调用工具（检索文献库 / 读全文 / 加笔记 / 打标签），多轮工具结果自动汇入上下文</html:div>
+        <html:label class="pp-check">
+          <html:input type="checkbox" preference="extensions.zotero.papilot.chatAgentMode" id="pp-agent-mode"/>
+          <html:span>启用智能体模式（默认关；关闭时保持纯文献问答，行为与旧版一致）</html:span>
+        </html:label>
+        <html:div class="pp-grid2">
+          <html:div class="pp-field">
+            <html:label class="pp-label">单次问答工具调用轮数上限（1-12）</html:label>
+            <html:input type="number" preference="extensions.zotero.papilot.aiAgentMaxSteps" class="pp-input"
+                        min="1" max="12" step="1"/>
+          </html:div>
+          <html:div class="pp-field">
+            <html:label class="pp-label">写操作保护</html:label>
+            <html:label class="pp-check">
+              <html:input type="checkbox" preference="extensions.zotero.papilot.aiAgentConfirmWrite" id="pp-agent-confirm"/>
+              <html:span>写操作（加笔记 / 打标签）执行前逐次弹确认</html:span>
+            </html:label>
+          </html:div>
+        </html:div>
+        <html:div class="pp-field" style="margin-top:6px;">
+          <html:label class="pp-label">工具开关（点击启用 / 禁用）</html:label>
+          <html:div id="pp-agent-tools" class="pp-datasets"></html:div>
+          <html:div class="pp-hint">读类工具无副作用；写类工具默认逐次确认（取消上面的勾选 = 自主模式）。浮窗里输入 / 可唤起命令面板（/agent 快速开关、/tools 查看清单）。</html:div>
+        </html:div>
+      </html:div>
+
+      <!-- 3.3 提示词模板（System Prompt 预设 + 自定义） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">提示词模板</html:div>
+        <html:div class="pp-sub-desc">System Prompt 对全部 AI 功能生效（问答 / 翻译 / 总结 / 打标签）；点预设一键填充，可再手动微调</html:div>
+        <html:div class="pp-row" style="margin-top:4px;">
+          <html:button id="pp-syspreset-strict" class="pp-btn pp-btn-sm">严谨学术（默认）</html:button>
+          <html:button id="pp-syspreset-critical" class="pp-btn pp-btn-sm">批判审稿人</html:button>
+          <html:button id="pp-syspreset-explain" class="pp-btn pp-btn-sm">轻松讲解</html:button>
+          <html:button id="pp-syspreset-reset" class="pp-btn pp-btn-sm">清空</html:button>
+          <html:span id="pp-syspreset-result" class="pp-msg"></html:span>
+        </html:div>
+        <html:div class="pp-field" style="margin-top:8px;">
+          <html:label class="pp-label">System Prompt</html:label>
+          <html:textarea preference="extensions.zotero.papilot.aiSystemPrompt" id="pp-sysprompt" class="pp-textarea" rows="4"/>
+        </html:div>
+      </html:div>
+
+      <!-- 3.3b 研究者画像（0.49.0：注入所有 AI 功能的 system prompt，长期偏好） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">研究者画像</html:div>
+        <html:div class="pp-sub-desc">写下你的研究方向、关注问题、写作与术语偏好——每轮 AI 回答都会带上这段画像（对所有 AI 功能生效）；留空则不注入</html:div>
+        <html:div class="pp-field" style="margin-top:6px;">
+          <html:textarea preference="extensions.zotero.papilot.researcherProfile" id="pp-profile" class="pp-textarea" rows="3"
+            placeholder="例：我研究图神经网络在药物发现中的应用，关注可解释性与分布外泛化；写作偏好简洁陈述、术语保留英文原词；审稿场景请严格按证据分级。"/>
+        </html:div>
+      </html:div>
+
+      <!-- 3.3c Agent 决策模型路由（0.49.0：工具决策轮用轻量模型，最终回答走主通道） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">智能体决策模型</html:div>
+        <html:div class="pp-sub-desc">可选：填一个模型名（如 gpt-4o-mini / claude-haiku），智能体的工具决策轮用它、最终回答仍走主通道——降低官方通道成本。留空 = 全用主通道模型</html:div>
+        <html:div class="pp-field" style="margin-top:6px;">
+          <html:input type="text" preference="extensions.zotero.papilot.aiAgentDecisionModel" id="pp-agent-decision-model" class="pp-input" placeholder="留空 = 不路由"/>
+        </html:div>
+      </html:div>
+
+      <!-- 3.3d AI 记忆（0.51.0：Agent 长期记忆，可浏览/删除） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">AI 记忆</html:div>
+        <html:div class="pp-sub-desc">Agent 可在对话中自行记住研究方向、结论与偏好（memory_write），之后每次对话都会带上（与「研究者画像」互补：画像是静态设定，记忆是对话中积累的事实）；可随时删除单条或清空</html:div>
+        <html:div id="pp-mem-list" class="pp-datasets" style="margin-top:6px;"></html:div>
+        <html:div class="pp-row" style="margin-top:6px;">
+          <html:button id="pp-mem-clear" class="pp-btn pp-btn-sm">清空全部</html:button>
+          <html:span id="pp-mem-result" class="pp-msg"></html:span>
+        </html:div>
+      </html:div>
+
+      <!-- 3.3e 回答引用与相关文献开关（0.51.0） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:16px;">
+          <html:label class="pp-check">
+            <html:input type="checkbox" preference="extensions.zotero.papilot.citeLinksEnabled"/>
+            <html:span>AI 回答内「文献 n」可点击定位</html:span>
+          </html:label>
+          <html:label class="pp-check">
+            <html:input type="checkbox" preference="extensions.zotero.papilot.relatedPapersEnabled"/>
+            <html:span>条目详情面板显示「相关文献」（S2 推荐）</html:span>
+          </html:label>
+          <html:label class="pp-check">
+            <html:input type="checkbox" preference="extensions.zotero.papilot.citationContextEnabled"/>
+            <html:span>条目详情面板显示「引文上下文」（引用句倾向）</html:span>
+          </html:label>
+          <html:label class="pp-check">
+            <html:input type="checkbox" preference="extensions.zotero.papilot.annotationDigestEnabled"/>
+            <html:span>启用「标注→论点速记」菜单</html:span>
+          </html:label>
+        </html:div>
+      </html:div>
+
+      <!-- 3.4 快捷指令（命令标签管理） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">快捷指令（命令标签）</html:div>
+        <html:div class="pp-sub-desc">浮窗 / 分屏窗口输入框以 / 开头即可唤起命令面板：内置会话命令 + 下方标签直达。长按浮窗标签可编辑；此处可查看 / 删除 / 导入导出</html:div>
+        <html:div id="pp-agent-tags" class="pp-datasets" style="margin-top:6px;"></html:div>
+        <html:div class="pp-row" style="margin-top:6px;">
+          <html:button id="pp-tags-export" class="pp-btn pp-btn-sm">导出到剪贴板（JSON）</html:button>
+          <html:button id="pp-tags-import" class="pp-btn pp-btn-sm">从剪贴板导入</html:button>
+          <html:span id="pp-tags-result" class="pp-msg"></html:span>
+        </html:div>
+      </html:div>
+    </html:div>
+  </html:div>
+
+  <html:div class="pp-card pp-fold" data-fold="skills" data-search-strings-raw="技能 商店 技能包 安装 导入 导出 制作 skill pack store hub">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">🧩</html:span><html:span class="pp-card-title">技能包商店</html:span>
+      <html:span class="pp-card-desc">提示词标签 / 术语 / 笔记模板 / Agent 预设，一键安装与分享</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
+    <html:div class="pp-card-body">
+      <html:div class="pp-row">
+        <html:button id="pp-sk-open" class="pp-btn pp-btn-primary">打开技能商店</html:button>
+        <html:span id="pp-sk-msg" class="pp-msg"></html:span>
+      </html:div>
+      <html:div class="pp-hint" style="margin-top:4px;">技能包把常用 AI 配置打包成一键安装的单元：提示词标签、领域术语、笔记模板与 Agent 预设；商店内可制作自己的技能包并导出分享。</html:div>
+
+      <!-- 3b.1 已安装 -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">已安装</html:div>
+        <html:div class="pp-sub-desc">当前已安装的技能包（悬停查看详情）</html:div>
+        <html:div id="pp-sk-installed" class="pp-datasets"></html:div>
+        <html:div class="pp-row" style="margin-top:4px;">
+          <html:button id="pp-sk-refresh" class="pp-btn pp-btn-sm">↻ 刷新</html:button>
+          <html:span class="pp-hint">在商店里更新 / 卸载后这里会自动同步；显示不对时点刷新。</html:span>
+        </html:div>
+        <html:div class="pp-hint">卸载 / 更新单个技能包请进商店操作；全部卸载不需要，去商店管理。</html:div>
+      </html:div>
+
+      <!-- 3b.2 导入技能包 -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">导入技能包</html:div>
+        <html:div class="pp-sub-desc">从剪贴板读取技能包 JSON 并安装（与商店导出格式一致，适合点对点分享）</html:div>
+        <html:div class="pp-row" style="margin-top:4px;">
+          <html:button id="pp-sk-import" class="pp-btn pp-btn-sm">从剪贴板导入 JSON</html:button>
+          <html:span id="pp-sk-import-result" class="pp-msg"></html:span>
+        </html:div>
+      </html:div>
+
+      <!-- 3b.3 目录源（可选） -->
+      <html:div class="pp-sub" style="margin-top:12px;">
+        <html:div class="pp-sub-title">目录源（可选）</html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">在线目录 JSON 地址</html:label>
+          <html:input type="text" preference="extensions.zotero.papilot.skillStoreSource" id="pp-sk-source" class="pp-input pp-grow" placeholder="https://…/skill-catalog.json（默认官方源；清空 = 仅用内置目录，离线可用）"/>
+        </html:div>
+        <html:div class="pp-hint">默认已配置官方目录（Gitee），点商店「刷新目录」即可拉取最新技能包；也可换第三方目录地址；清空则只用插件内置目录（离线可用）。</html:div>
+      </html:div>
+    </html:div>
+  </html:div>
+
+  <!-- ============ 分类 · 阅读与翻译（3 项） ============ -->
+  <html:div class="pp-cat-label"><html:span class="pp-cat-name">阅读与翻译</html:span><html:span class="pp-cat-count">3 项</html:span></html:div>
   <html:div class="pp-card pp-fold" data-fold="translate" data-search-strings-raw="翻译 引擎 术语表 目标语言 translate engine glossary language">
     <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">🌐</html:span><html:span class="pp-card-title">翻译引擎</html:span>
-      <html:span class="pp-card-desc">划词翻译 / 全文对照翻译 / 标题摘要翻译共用这一套引擎。可选 AI 大模型（默认，质量最好），也可切到 Google / 必应 / 有道 等免费引擎（无需登录、开箱即用），或填自己的 DeepL / 百度 / 腾讯云 密钥</html:span>
+      <html:span class="pp-card-icon">🌐</html:span><html:span class="pp-card-title">翻译引擎与术语表</html:span>
+      <html:span class="pp-card-desc">划词、全文对照、标题摘要共用一套引擎；可选 AI 大模型、免费引擎或自填密钥，术语表保证全文一致</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -605,215 +756,155 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 3 · AI 参数（0.48.0 扩展：模型参数 / 对话与上下文 / 智能体 / 提示词模板 / 快捷指令） ============ -->
-  <html:div class="pp-card pp-fold" data-fold="aiparams" data-search-strings-raw="AI 参数 温度 提示词 上下文 智能体 工具 agent tools top_p 历史轮数 快捷指令 命令标签 slash temperature prompt context">
+  <html:div class="pp-card pp-fold" data-fold="popup" data-search-strings-raw="划词 浮窗 拼接 批注 selection popup concat annotation">
     <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">🎛️</html:span><html:span class="pp-card-title">AI 参数</html:span>
-      <html:span class="pp-card-desc">全局参数，应用于当前活动通道；含智能体（Agent）、提示词模板与快捷指令</html:span>
+      <html:span class="pp-card-icon">💬</html:span><html:span class="pp-card-title">阅读器划词浮窗</html:span>
+      <html:span class="pp-card-desc">PDF 里选中文字即弹浮窗：翻译 / 解读 / 追问</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
-      <html:div class="pp-grid3">
-        <html:div class="pp-field">
-          <html:label class="pp-label">最大输出 tokens</html:label>
-          <html:input type="number" preference="extensions.zotero.papilot.aiMaxTokens" class="pp-input"/>
-        </html:div>
-        <html:div class="pp-field">
-          <html:label class="pp-label">温度（0-2，越低越稳定）</html:label>
-          <html:input type="number" preference="extensions.zotero.papilot.aiTemperature" class="pp-input"
-                      min="0" max="2" step="0.1"/>
-        </html:div>
-        <html:div class="pp-field">
-          <html:label class="pp-label">送入 AI 的全文最大字符数</html:label>
-          <html:input type="number" preference="extensions.zotero.papilot.aiFullTextMaxChars" class="pp-input"/>
-        </html:div>
-      </html:div>
-      <html:div class="pp-hint" style="margin-top:4px;">超长全文在送入前截断，避免撑爆上下文窗口</html:div>
-
-      <!-- 3.1 对话与上下文（0.48.0：多轮上下文管理可配） -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-sub-title">对话与上下文</html:div>
-        <html:div class="pp-sub-desc">多轮对话时携带的历史窗口与采样参数</html:div>
-        <html:div class="pp-grid2">
-          <html:div class="pp-field">
-            <html:label class="pp-label">对话历史轮数（1-30，默认 6）</html:label>
-            <html:input type="number" preference="extensions.zotero.papilot.aiHistoryRounds" class="pp-input"
-                        min="1" max="30" step="1"/>
-          </html:div>
-          <html:div class="pp-field">
-            <html:label class="pp-label">top_p 核采样（0-1，留空 = 不传）</html:label>
-            <html:input type="number" preference="extensions.zotero.papilot.aiTopP" class="pp-input"
-                        min="0" max="1" step="0.05" placeholder="留空 = 不传该参数"/>
-          </html:div>
-        </html:div>
-        <html:div class="pp-hint">历史轮数越大，追问时的上下文越完整，token 消耗也越高；部分网关不支持 top_p 时留空即可。</html:div>
-      </html:div>
-
-      <!-- 3.2 智能体（0.48.0：交互设计参考开源项目 Hermes Agent） -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-sub-title">智能体（Agent 模式）</html:div>
-        <html:div class="pp-sub-desc">开启后 AI 问答浮窗升级为智能体：对复杂任务先规划步骤，再按需调用工具（检索文献库 / 读全文 / 加笔记 / 打标签），多轮工具结果自动汇入上下文</html:div>
-        <html:label class="pp-check">
-          <html:input type="checkbox" preference="extensions.zotero.papilot.chatAgentMode" id="pp-agent-mode"/>
-          <html:span>启用智能体模式（默认关；关闭时保持纯文献问答，行为与旧版一致）</html:span>
-        </html:label>
-        <html:div class="pp-grid2">
-          <html:div class="pp-field">
-            <html:label class="pp-label">单次问答工具调用轮数上限（1-12）</html:label>
-            <html:input type="number" preference="extensions.zotero.papilot.aiAgentMaxSteps" class="pp-input"
-                        min="1" max="12" step="1"/>
-          </html:div>
-          <html:div class="pp-field">
-            <html:label class="pp-label">写操作保护</html:label>
-            <html:label class="pp-check">
-              <html:input type="checkbox" preference="extensions.zotero.papilot.aiAgentConfirmWrite" id="pp-agent-confirm"/>
-              <html:span>写操作（加笔记 / 打标签）执行前逐次弹确认</html:span>
-            </html:label>
-          </html:div>
-        </html:div>
-        <html:div class="pp-field" style="margin-top:6px;">
-          <html:label class="pp-label">工具开关（点击启用 / 禁用）</html:label>
-          <html:div id="pp-agent-tools" class="pp-datasets"></html:div>
-          <html:div class="pp-hint">读类工具无副作用；写类工具默认逐次确认（取消上面的勾选 = 自主模式）。浮窗里输入 / 可唤起命令面板（/agent 快速开关、/tools 查看清单）。</html:div>
-        </html:div>
-      </html:div>
-
-      <!-- 3.3 提示词模板（System Prompt 预设 + 自定义） -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-sub-title">提示词模板</html:div>
-        <html:div class="pp-sub-desc">System Prompt 对全部 AI 功能生效（问答 / 翻译 / 总结 / 打标签）；点预设一键填充，可再手动微调</html:div>
-        <html:div class="pp-row" style="margin-top:4px;">
-          <html:button id="pp-syspreset-strict" class="pp-btn pp-btn-sm">严谨学术（默认）</html:button>
-          <html:button id="pp-syspreset-critical" class="pp-btn pp-btn-sm">批判审稿人</html:button>
-          <html:button id="pp-syspreset-explain" class="pp-btn pp-btn-sm">轻松讲解</html:button>
-          <html:button id="pp-syspreset-reset" class="pp-btn pp-btn-sm">清空</html:button>
-          <html:span id="pp-syspreset-result" class="pp-msg"></html:span>
-        </html:div>
-        <html:div class="pp-field" style="margin-top:8px;">
-          <html:label class="pp-label">System Prompt</html:label>
-          <html:textarea preference="extensions.zotero.papilot.aiSystemPrompt" id="pp-sysprompt" class="pp-textarea" rows="4"/>
-        </html:div>
-      </html:div>
-
-      <!-- 3.3b 研究者画像（0.49.0：注入所有 AI 功能的 system prompt，长期偏好） -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-sub-title">研究者画像</html:div>
-        <html:div class="pp-sub-desc">写下你的研究方向、关注问题、写作与术语偏好——每轮 AI 回答都会带上这段画像（对所有 AI 功能生效）；留空则不注入</html:div>
-        <html:div class="pp-field" style="margin-top:6px;">
-          <html:textarea preference="extensions.zotero.papilot.researcherProfile" id="pp-profile" class="pp-textarea" rows="3"
-            placeholder="例：我研究图神经网络在药物发现中的应用，关注可解释性与分布外泛化；写作偏好简洁陈述、术语保留英文原词；审稿场景请严格按证据分级。"/>
-        </html:div>
-      </html:div>
-
-      <!-- 3.3c Agent 决策模型路由（0.49.0：工具决策轮用轻量模型，最终回答走主通道） -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-sub-title">智能体决策模型</html:div>
-        <html:div class="pp-sub-desc">可选：填一个模型名（如 gpt-4o-mini / claude-haiku），智能体的工具决策轮用它、最终回答仍走主通道——降低官方通道成本。留空 = 全用主通道模型</html:div>
-        <html:div class="pp-field" style="margin-top:6px;">
-          <html:input type="text" preference="extensions.zotero.papilot.aiAgentDecisionModel" id="pp-agent-decision-model" class="pp-input" placeholder="留空 = 不路由"/>
-        </html:div>
-      </html:div>
-
-      <!-- 3.3d AI 记忆（0.51.0：Agent 长期记忆，可浏览/删除） -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-sub-title">AI 记忆</html:div>
-        <html:div class="pp-sub-desc">Agent 可在对话中自行记住研究方向、结论与偏好（memory_write），之后每次对话都会带上（与「研究者画像」互补：画像是静态设定，记忆是对话中积累的事实）；可随时删除单条或清空</html:div>
-        <html:div id="pp-mem-list" class="pp-datasets" style="margin-top:6px;"></html:div>
-        <html:div class="pp-row" style="margin-top:6px;">
-          <html:button id="pp-mem-clear" class="pp-btn pp-btn-sm">清空全部</html:button>
-          <html:span id="pp-mem-result" class="pp-msg"></html:span>
-        </html:div>
-      </html:div>
-
-      <!-- 3.3e 回答引用与相关文献开关（0.51.0） -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-row" style="flex-wrap:wrap;gap:16px;">
-          <html:label class="pp-check">
-            <html:input type="checkbox" preference="extensions.zotero.papilot.citeLinksEnabled"/>
-            <html:span>AI 回答内「文献 n」可点击定位</html:span>
-          </html:label>
-          <html:label class="pp-check">
-            <html:input type="checkbox" preference="extensions.zotero.papilot.relatedPapersEnabled"/>
-            <html:span>条目详情面板显示「相关文献」（S2 推荐）</html:span>
-          </html:label>
-          <html:label class="pp-check">
-            <html:input type="checkbox" preference="extensions.zotero.papilot.citationContextEnabled"/>
-            <html:span>条目详情面板显示「引文上下文」（引用句倾向）</html:span>
-          </html:label>
-          <html:label class="pp-check">
-            <html:input type="checkbox" preference="extensions.zotero.papilot.annotationDigestEnabled"/>
-            <html:span>启用「标注→论点速记」菜单</html:span>
-          </html:label>
-        </html:div>
-      </html:div>
-
-      <!-- 3.4 快捷指令（命令标签管理） -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-sub-title">快捷指令（命令标签）</html:div>
-        <html:div class="pp-sub-desc">浮窗 / 分屏窗口输入框以 / 开头即可唤起命令面板：内置会话命令 + 下方标签直达。长按浮窗标签可编辑；此处可查看 / 删除 / 导入导出</html:div>
-        <html:div id="pp-agent-tags" class="pp-datasets" style="margin-top:6px;"></html:div>
-        <html:div class="pp-row" style="margin-top:6px;">
-          <html:button id="pp-tags-export" class="pp-btn pp-btn-sm">导出到剪贴板（JSON）</html:button>
-          <html:button id="pp-tags-import" class="pp-btn pp-btn-sm">从剪贴板导入</html:button>
-          <html:span id="pp-tags-result" class="pp-msg"></html:span>
-        </html:div>
-      </html:div>
-    </html:div>
-  </html:div>
-
-  <!-- ============ 3b · 技能商店（0.48.x Skills Hub） ============ -->
-  <html:div class="pp-card pp-fold" data-fold="skills" data-search-strings-raw="技能 商店 技能包 安装 导入 导出 制作 skill pack store hub">
-    <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">🧩</html:span><html:span class="pp-card-title">技能商店</html:span>
-      <html:span class="pp-card-desc">AI 技能包：提示词标签 / 术语 / 笔记模板 / Agent 预设的一键安装与分享</html:span>
-      <html:span class="pp-fold-arrow">▾</html:span>
-    </html:div>
-    <html:div class="pp-card-body">
+      <html:label class="pp-check">
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupEnabled" id="pp-popup-enabled"/>
+        <html:span>启用划词浮窗</html:span>
+      </html:label>
+      <html:label class="pp-check">
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupAutoTranslate" id="pp-popup-auto"/>
+        <html:span>划词即自动翻译（无需点击，带限流与去重）</html:span>
+      </html:label>
+      <html:label class="pp-check">
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupStream" id="pp-popup-stream"/>
+        <html:span>流式输出（逐字显示；网关不支持时自动降级）</html:span>
+      </html:label>
+      <html:label class="pp-check">
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupWriteBack" id="pp-popup-writeback"/>
+        <html:span>允许把译文/解读写入高亮批注（在批注上划词时显示按钮）</html:span>
+      </html:label>
+      <html:label class="pp-check">
+        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupConcat" id="pp-popup-concat"/>
+        <html:span>拼接模式：按住 Ctrl/Cmd 划词可多段累加，松开后合并翻译（读双栏排版文献好用）</html:span>
+      </html:label>
       <html:div class="pp-row">
-        <html:button id="pp-sk-open" class="pp-btn pp-btn-primary">打开技能商店</html:button>
-        <html:span id="pp-sk-msg" class="pp-msg"></html:span>
+        <html:span class="pp-label">翻译目标语言</html:span>
+        <html:select preference="extensions.zotero.papilot.readerPopupTargetLang" id="pp-popup-lang" class="pp-select">
+          <html:option value="zh-CN">中文（简体）</html:option>
+          <html:option value="zh-TW">中文（繁體）</html:option>
+          <html:option value="en">English</html:option>
+          <html:option value="ja">日本語</html:option>
+          <html:option value="ko">한국어</html:option>
+          <html:option value="fr">Français</html:option>
+          <html:option value="de">Deutsch</html:option>
+          <html:option value="es">Español</html:option>
+          <html:option value="ru">Русский</html:option>
+          <html:option value="pt">Português</html:option>
+          <html:option value="it">Italiano</html:option>
+          <html:option value="ar">العربية</html:option>
+        </html:select>
       </html:div>
-      <html:div class="pp-hint" style="margin-top:4px;">技能包把常用 AI 配置打包成一键安装的单元：提示词标签、领域术语、笔记模板与 Agent 预设；商店内可制作自己的技能包并导出分享。</html:div>
+      <html:div class="pp-hint" style="margin-top:4px;">目标语言对全部翻译功能统一生效（划词浮窗 / 全文对照 / 标题摘要），与上方「翻译引擎」卡片是同一项设置。</html:div>
+      <html:div class="pp-hint" style="margin-top:8px;">0.15.0：浮窗已支持 A−/A+ 字号缩放（自动记住）、结果区展开/收起、生成中随时「停止」。</html:div>
+    </html:div>
+  </html:div>
 
-      <!-- 3b.1 已安装 -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-sub-title">已安装</html:div>
-        <html:div class="pp-sub-desc">当前已安装的技能包（悬停查看详情）</html:div>
-        <html:div id="pp-sk-installed" class="pp-datasets"></html:div>
-        <html:div class="pp-row" style="margin-top:4px;">
-          <html:button id="pp-sk-refresh" class="pp-btn pp-btn-sm">↻ 刷新</html:button>
-          <html:span class="pp-hint">在商店里更新 / 卸载后这里会自动同步；显示不对时点刷新。</html:span>
-        </html:div>
-        <html:div class="pp-hint">卸载 / 更新单个技能包请进商店操作；全部卸载不需要，去商店管理。</html:div>
-      </html:div>
+  <html:div class="pp-card pp-fold" data-fold="pdftheme" data-search-strings-raw="PDF 阅读主题 护眼 夜间 叠色 pdf theme night">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">📖</html:span><html:span class="pp-card-title">PDF 阅读主题</html:span>
+      <html:span class="pp-card-desc">护眼 / 羊皮纸等浅色叠色，夜间模式反色；不修改 PDF 本体</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
+    <html:div class="pp-card-body">
+      <html:div id="pp-pdf-theme-list" class="pp-pdf-list"></html:div>
+      <html:div class="pp-hint" style="margin-top:8px;">也可在 PDF 阅读器工具栏点 🎨 快速切换；对新打开的 PDF 自动应用</html:div>
 
-      <!-- 3b.2 导入技能包 -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-sub-title">导入技能包</html:div>
-        <html:div class="pp-sub-desc">从剪贴板读取技能包 JSON 并安装（与商店导出格式一致，适合点对点分享）</html:div>
-        <html:div class="pp-row" style="margin-top:4px;">
-          <html:button id="pp-sk-import" class="pp-btn pp-btn-sm">从剪贴板导入 JSON</html:button>
-          <html:span id="pp-sk-import-result" class="pp-msg"></html:span>
+      <!-- 9.1 自定义叠色 -->
+      <html:div class="pp-sub">
+        <html:div class="pp-sub-title">自定义叠色（选用「自定义颜色」时生效）</html:div>
+        <html:div class="pp-sub-desc">半透明色层叠在原 PDF 上——深色叠白底即护眼底色，文字仍清晰透出</html:div>
+        <html:div class="pp-grid2">
+          <html:div class="pp-field">
+            <html:label class="pp-label">叠色颜色</html:label>
+            <html:div class="pp-row" style="margin-top:0;">
+              <html:input type="text" id="pp-pt-color" class="pp-input pp-grow" placeholder="#578f32"/>
+              <html:input type="color" id="pp-pt-color-pick" class="pp-color" style="width:34px;height:26px;padding:1px;"/>
+            </html:div>
+          </html:div>
+          <html:div class="pp-field">
+            <html:label class="pp-label">不透明度（5-60）</html:label>
+            <html:input type="number" id="pp-pt-opacity" class="pp-input" min="5" max="60" step="5" placeholder="30"/>
+          </html:div>
         </html:div>
-      </html:div>
-
-      <!-- 3b.3 目录源（可选） -->
-      <html:div class="pp-sub" style="margin-top:12px;">
-        <html:div class="pp-sub-title">目录源（可选）</html:div>
-        <html:div class="pp-field">
-          <html:label class="pp-label">在线目录 JSON 地址</html:label>
-          <html:input type="text" preference="extensions.zotero.papilot.skillStoreSource" id="pp-sk-source" class="pp-input pp-grow" placeholder="https://…/skill-catalog.json（默认官方源；清空 = 仅用内置目录，离线可用）"/>
+        <html:div class="pp-row">
+          <html:button id="pp-pt-apply" class="pp-btn pp-btn-primary">保存并预览</html:button>
+          <html:span id="pp-pt-result" class="pp-msg"></html:span>
         </html:div>
-        <html:div class="pp-hint">默认已配置官方目录（Gitee），点商店「刷新目录」即可拉取最新技能包；也可换第三方目录地址；清空则只用插件内置目录（离线可用）。</html:div>
       </html:div>
     </html:div>
   </html:div>
 
-  <!-- ============ 3c2 · 检索订阅 v2（0.57.0：推荐 → 一句话/AI 配置 → 试跑 → 定时多源检索） ============ -->
+  <!-- ============ 分类 · 文献获取（4 项） ============ -->
+  <html:div class="pp-cat-label"><html:span class="pp-cat-name">文献获取</html:span><html:span class="pp-cat-count">4 项</html:span></html:div>
+  <html:div class="pp-card pp-fold" data-fold="cnki" data-search-strings-raw="知网 CNKI 登录 账号 校园网 IP 授权 验证 转换器 cnki login campus verify translator">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">📚</html:span><html:span class="pp-card-title">知网账号与校园网</html:span>
+      <html:span class="pp-card-desc">校园网自动识别 IP 授权；非校园网可登录个人账号兜底。浏览器抓取也依赖这里的会话</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
+    <html:div class="pp-card-body">
+      <html:div class="pp-row" style="margin-top:10px;">
+        <html:span id="pp-cnki-status" class="pp-msg">打开面板时自动检测权限…</html:span>
+      </html:div>
+      <html:div class="pp-hint">校园网/机构网络下点「检测权限」即可自动建立机构会话（走 IP 登录，无需账号）；账号凭据只存本机，不会上传。</html:div>
+      <html:div class="pp-grid2">
+        <html:div class="pp-field">
+          <html:label class="pp-label">知网用户名</html:label>
+          <html:input type="text" id="pp-cnki-user" class="pp-input" placeholder="手机号 / 邮箱 / 账号"/>
+        </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">知网密码</html:label>
+          <html:input type="password" id="pp-cnki-pass" class="pp-input" placeholder="只存本机 Zotero，不进云端"/>
+        </html:div>
+      </html:div>
+      <html:div class="pp-row">
+        <html:button id="pp-cnki-login-btn" class="pp-btn pp-btn-primary">登录知网</html:button>
+        <html:button id="pp-cnki-detect-btn" class="pp-btn pp-btn-sm">检测权限</html:button>
+        <html:button id="pp-cnki-clear-btn" class="pp-btn pp-btn-sm">清除凭据/退出登录</html:button>
+      </html:div>
+      <html:div class="pp-row">
+        <html:button id="pp-cnki-verify-btn" class="pp-btn pp-btn-sm">解除风控验证</html:button>
+        <html:button id="pp-cnki-translators-btn" class="pp-btn pp-btn-sm">更新中文转换器</html:button>
+        <html:span id="pp-cnki-result" class="pp-msg"></html:span>
+      </html:div>
+    </html:div>
+  </html:div>
+
+  <html:div class="pp-card pp-fold" data-fold="thirdsrc" data-search-strings-raw="第三方 文献源 入口 知网 万方 维普 镜像 scihub sci-hub pubmed arxiv 预印本 学术搜索 谷歌 实验 试用 third-party source endpoint">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon">🧪</html:span><html:span class="pp-card-title">第三方文献源（试验）</html:span>
+      <html:span class="pp-card-desc">中文库 / 英文全文 / 预印本 / 学术搜索入口一键直达，可带入 DOI 或标题检索；面向 Pro 试用，默认关闭</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
+    <html:div class="pp-card-body">
+      <html:div class="pp-hint">实验功能：以下为第三方公开站点入口，仅供检索与定位；请自行评估并遵守各站点条款。</html:div>
+      <html:div class="pp-row">
+        <html:label class="pp-check"><html:input type="checkbox" id="pp-ts-enabled"/><html:span>启用实验功能（Pro 试用）</html:span></html:label>
+        <html:span id="pp-ts-gate" class="pp-msg"></html:span>
+      </html:div>
+      <html:div class="pp-row">
+        <html:input type="text" id="pp-ts-query" class="pp-input pp-grow" placeholder="可选：输入 DOI 或标题，点入口即在该站检索"/>
+      </html:div>
+      <html:div class="pp-row pp-row-tight"><html:span id="pp-ts-query-hint" class="pp-hint"></html:span></html:div>
+      <vbox id="pp-ts-endpoints" class="pp-ts-list"></vbox>
+      <html:div class="pp-row">
+        <html:button id="pp-ts-ping-btn" class="pp-btn pp-btn-primary">检测入口</html:button>
+        <html:span id="pp-ts-status" class="pp-msg">未检测</html:span>
+      </html:div>
+      <html:div class="pp-row"><html:span id="pp-ts-result" class="pp-msg"></html:span></html:div>
+    </html:div>
+  </html:div>
+
   <html:div class="pp-card pp-fold" data-fold="subscriptions" data-search-strings-raw="订阅 检索 定时 自动入库 arxiv openalex pubmed 速递 推荐 作者 收藏 忽略 通知 反馈 subscription search saved query author notify feedback">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">📡</html:span><html:span class="pp-card-title">检索订阅</html:span>
-      <html:span class="pp-card-desc">按研究领域推荐主题（含作者追踪），一句话建订阅；先试跑预览（可收藏 / 忽略），再定时多源检索、去重入库、生成速递笔记并弹系统通知</html:span>
+      <html:span class="pp-card-desc">按研究领域推荐主题（含作者追踪），一句话建订阅；先试跑预览，再定时多源检索、去重入库、生成速递</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -912,11 +1003,10 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 3d · 定时任务（0.49.0：研究晨报 / 阅读周报 / 库体检） ============ -->
   <html:div class="pp-card pp-fold" data-fold="schedule" data-search-strings-raw="定时 任务 晨报 日报 周报 体检 计划 schedule cron digest report health">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">⏰</html:span><html:span class="pp-card-title">定时任务</html:span>
-      <html:span class="pp-card-desc">到点自动生成笔记：研究晨报（每日新增文献）· 阅读周报 · 库体检报告</html:span>
+      <html:span class="pp-card-desc">到点自动生成笔记：研究晨报（每日新增）· 阅读周报 · 库体检报告</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -925,63 +1015,12 @@
     </html:div>
   </html:div>
 
-  <html:div class="pp-card pp-fold" data-fold="popup" data-search-strings-raw="划词 浮窗 拼接 批注 selection popup concat annotation">
-    <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">💬</html:span><html:span class="pp-card-title">阅读器划词浮窗</html:span>
-      <html:span class="pp-card-desc">PDF 阅读器内选中文字即弹浮窗：翻译 / 解读 / 追问</html:span>
-      <html:span class="pp-fold-arrow">▾</html:span>
-    </html:div>
-    <html:div class="pp-card-body">
-      <html:label class="pp-check">
-        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupEnabled" id="pp-popup-enabled"/>
-        <html:span>启用划词浮窗</html:span>
-      </html:label>
-      <html:label class="pp-check">
-        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupAutoTranslate" id="pp-popup-auto"/>
-        <html:span>划词即自动翻译（无需点击，带限流与去重）</html:span>
-      </html:label>
-      <html:label class="pp-check">
-        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupStream" id="pp-popup-stream"/>
-        <html:span>流式输出（逐字显示；网关不支持时自动降级）</html:span>
-      </html:label>
-      <html:label class="pp-check">
-        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupWriteBack" id="pp-popup-writeback"/>
-        <html:span>允许把译文/解读写入高亮批注（在批注上划词时显示按钮）</html:span>
-      </html:label>
-      <html:label class="pp-check">
-        <html:input type="checkbox" preference="extensions.zotero.papilot.readerPopupConcat" id="pp-popup-concat"/>
-        <html:span>拼接模式：按住 Ctrl/Cmd 划词可多段累加，松开后合并翻译（读双栏排版文献好用）</html:span>
-      </html:label>
-      <html:div class="pp-row">
-        <html:span class="pp-label">翻译目标语言</html:span>
-        <html:select preference="extensions.zotero.papilot.readerPopupTargetLang" id="pp-popup-lang" class="pp-select">
-          <html:option value="zh-CN">中文（简体）</html:option>
-          <html:option value="zh-TW">中文（繁體）</html:option>
-          <html:option value="en">English</html:option>
-          <html:option value="ja">日本語</html:option>
-          <html:option value="ko">한국어</html:option>
-          <html:option value="fr">Français</html:option>
-          <html:option value="de">Deutsch</html:option>
-          <html:option value="es">Español</html:option>
-          <html:option value="ru">Русский</html:option>
-          <html:option value="pt">Português</html:option>
-          <html:option value="it">Italiano</html:option>
-          <html:option value="ar">العربية</html:option>
-        </html:select>
-      </html:div>
-      <html:div class="pp-hint" style="margin-top:4px;">目标语言对全部翻译功能统一生效（划词浮窗 / 全文对照 / 标题摘要），与上方「翻译引擎」卡片是同一项设置。</html:div>
-      <html:div class="pp-hint" style="margin-top:8px;">0.15.0：浮窗已支持 A−/A+ 字号缩放（自动记住）、结果区展开/收起、生成中随时「停止」。</html:div>
-    </html:div>
-  </html:div>
-
-  <!-- ============ 分类 · 条目与文献 ============ -->
-  <html:div class="pp-cat-label">条目与文献</html:div>
-
-  <!-- ============ 5 · 条目数据列 ============ -->
+  <!-- ============ 分类 · 条目与标签（3 项） ============ -->
+  <html:div class="pp-cat-label"><html:span class="pp-cat-name">条目与标签</html:span><html:span class="pp-cat-count">3 项</html:span></html:div>
   <html:div class="pp-card pp-fold" data-fold="columns" data-search-strings-raw="列 分区 被引量 标题译文 阅读进度 进度条 高能 评级 column rank citation progress rating translation">
     <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">📊</html:span><html:span class="pp-card-title">条目数据列</html:span>
-      <html:span class="pp-card-desc">在条目列表显示期刊分区与被引量两列；右键列表表头可勾选显示</html:span>
+      <html:span class="pp-card-icon">📊</html:span><html:span class="pp-card-title">列表数据列</html:span>
+      <html:span class="pp-card-desc">分区 / 被引量 / 标题译文 / 评级 / 阅读进度：列表里显示哪些数据由你决定</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -1156,11 +1195,10 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 6 · 规则打标与 AI 功能 ============ -->
   <html:div class="pp-card pp-fold" data-fold="tagging" data-search-strings-raw="打标 规则 标签 自动化 tag rule automation">
     <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">🏷️</html:span><html:span class="pp-card-title">规则打标与 AI 功能</html:span>
-      <html:span class="pp-card-desc">无 AI 依赖的规则打标 + AI 功能的通用参数</html:span>
+      <html:span class="pp-card-icon">🏷️</html:span><html:span class="pp-card-title">规则打标与 AI 打标</html:span>
+      <html:span class="pp-card-desc">无 AI 依赖的规则打标，加上 AI 打标的数量、语言与置信度偏好</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -1227,11 +1265,10 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 7 · 增强功能 ============ -->
   <html:div class="pp-card pp-fold" data-fold="enhance" data-search-strings-raw="增强 附件命名 笔记模板 Anki 对照翻译 补全文 OCR 扫描件 识别 文字层 渲染 template anki attachment unpaywall scihub ocr scan render">
     <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">🧩</html:span><html:span class="pp-card-title">增强功能</html:span>
-      <html:span class="pp-card-desc">阅读状态 / 附件命名 / 全文对照翻译 / Anki 制卡 / 笔记模板</html:span>
+      <html:span class="pp-card-icon">🧰</html:span><html:span class="pp-card-title">工具与增强</html:span>
+      <html:span class="pp-card-desc">阅读状态 / 附件命名 / 补全文 / Anki 制卡 / 笔记模板 / 扫描件 OCR</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -1336,14 +1373,12 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 分类 · 外观与界面 ============ -->
-  <html:div class="pp-cat-label">外观与界面</html:div>
-
-  <!-- ============ 8 · 界面主题（0.16.0） ============ -->
+  <!-- ============ 分类 · 界面与效率（3 项） ============ -->
+  <html:div class="pp-cat-label"><html:span class="pp-cat-name">界面与效率</html:span><html:span class="pp-cat-count">3 项</html:span></html:div>
   <html:div class="pp-card pp-fold" data-fold="uitheme" data-search-strings-raw="界面主题 壁纸 配色 theme wallpaper appearance">
     <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">🎨</html:span><html:span class="pp-card-title">界面主题</html:span>
-      <html:span class="pp-card-desc">主题 = 配色 + 壁纸一体包，点击卡片立即应用（记住选择，重启自动恢复）；界面主题与 PDF 阅读主题可独立搭配</html:span>
+      <html:span class="pp-card-icon">🎨</html:span><html:span class="pp-card-title">界面主题与壁纸</html:span>
+      <html:span class="pp-card-desc">主题 = 配色 + 壁纸一体包，点击卡片立即应用；与 PDF 阅读主题可独立搭配</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -1458,47 +1493,10 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 9 · PDF 阅读主题（0.16.0） ============ -->
-  <html:div class="pp-card pp-fold" data-fold="pdftheme" data-search-strings-raw="PDF 阅读主题 护眼 夜间 叠色 pdf theme night">
-    <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">📖</html:span><html:span class="pp-card-title">PDF 阅读主题</html:span>
-      <html:span class="pp-card-desc">更换 PDF 页面底色：护眼/羊皮纸等浅色叠色不改动 PDF 本身；夜间模式将页面反色（黑纸白字）</html:span>
-      <html:span class="pp-fold-arrow">▾</html:span>
-    </html:div>
-    <html:div class="pp-card-body">
-      <html:div id="pp-pdf-theme-list" class="pp-pdf-list"></html:div>
-      <html:div class="pp-hint" style="margin-top:8px;">也可在 PDF 阅读器工具栏点 🎨 快速切换；对新打开的 PDF 自动应用</html:div>
-
-      <!-- 9.1 自定义叠色 -->
-      <html:div class="pp-sub">
-        <html:div class="pp-sub-title">自定义叠色（选用「自定义颜色」时生效）</html:div>
-        <html:div class="pp-sub-desc">半透明色层叠在原 PDF 上——深色叠白底即护眼底色，文字仍清晰透出</html:div>
-        <html:div class="pp-grid2">
-          <html:div class="pp-field">
-            <html:label class="pp-label">叠色颜色</html:label>
-            <html:div class="pp-row" style="margin-top:0;">
-              <html:input type="text" id="pp-pt-color" class="pp-input pp-grow" placeholder="#578f32"/>
-              <html:input type="color" id="pp-pt-color-pick" class="pp-color" style="width:34px;height:26px;padding:1px;"/>
-            </html:div>
-          </html:div>
-          <html:div class="pp-field">
-            <html:label class="pp-label">不透明度（5-60）</html:label>
-            <html:input type="number" id="pp-pt-opacity" class="pp-input" min="5" max="60" step="5" placeholder="30"/>
-          </html:div>
-        </html:div>
-        <html:div class="pp-row">
-          <html:button id="pp-pt-apply" class="pp-btn pp-btn-primary">保存并预览</html:button>
-          <html:span id="pp-pt-result" class="pp-msg"></html:span>
-        </html:div>
-      </html:div>
-    </html:div>
-  </html:div>
-
-  <!-- ============ 10 · 菜单定制（0.29.0） ============ -->
   <html:div class="pp-card pp-fold" data-fold="menu" data-search-strings-raw="菜单 右键 分组 直达 menu context group quick">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">🧭</html:span><html:span class="pp-card-title">菜单定制</html:span>
-      <html:span class="pp-card-desc">右键菜单与「工具」菜单的结构、分组与高频直达项；所有改动即时生效，无需重启 Zotero</html:span>
+      <html:span class="pp-card-desc">右键菜单与「工具」菜单的结构、分组与高频直达项，所有改动即时生效</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -1528,14 +1526,10 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 分类 · 高级 ============ -->
-  <html:div class="pp-cat-label">高级</html:div>
-
-  <!-- ============ 12 · 快捷键（0.42.0） ============ -->
   <html:div class="pp-card pp-fold" data-fold="hotkeys" data-search-strings-raw="快捷键 录制 改键 hotkey shortcut keyboard">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">⌨️</html:span><html:span class="pp-card-title">快捷键</html:span>
-      <html:span class="pp-card-desc">全部可配动作一览：点击「录制」后按下新组合键即可改键，改动即时生效</html:span>
+      <html:span class="pp-card-desc">点击「录制」后按下新组合键即可改键，改动即时生效</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -1545,11 +1539,12 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 13 · 云同步（0.56.0：坚果云 WebDAV 统一同步） ============ -->
+  <!-- ============ 分类 · 数据与同步（1 项） ============ -->
+  <html:div class="pp-cat-label"><html:span class="pp-cat-name">数据与同步</html:span><html:span class="pp-cat-count">1 项</html:span></html:div>
   <html:div class="pp-card pp-fold" data-fold="cloud" data-search-strings-raw="云同步 坚果云 webdav 备份 同步 技能包 安装包 冲突 应用密码 断点续传 nutstore sync backup">
     <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">☁️</html:span><html:span class="pp-card-title">云同步（坚果云）</html:span>
-      <html:span class="pp-card-desc">设置项、AI 对话、技能包与安装包统一走坚果云 WebDAV：增量同步、冲突不丢数据、大文件分卷、断网自动重试</html:span>
+      <html:span class="pp-card-icon">☁️</html:span><html:span class="pp-card-title">云同步与备份</html:span>
+      <html:span class="pp-card-desc">设置、AI 对话、技能包与安装包统一走坚果云 WebDAV：增量同步、冲突不丢数据、断点续传</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">

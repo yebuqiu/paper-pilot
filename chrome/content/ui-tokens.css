@@ -1,0 +1,175 @@
+/* Papilot · 统一设计令牌（窗口级，0.65.2）
+ * SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen
+ *
+ * 为什么要有这份文件：
+ *   设置面板（prefs.css）有一套完整令牌，而各个独立窗口（对话分屏 / 工作台 / 综述工作台 /
+ *   技能商店）各自在自己的 <html:style> 里重抄一份 --pp-*。结果是**同一套语义、四份取值**，
+ *   新增一个窗口就要再抄一遍，改色要改四处，且新令牌（--pp-faint / --pp-radius-lg / --pp-shadow-*）
+ *   只有设置面板有，窗口里用就只能写散值。
+ *
+ * 本文件是**唯一词汇表**（superset：prefs 的全部 + 窗口历史别名）。窗口通过
+ *   @import url("chrome://papilot/content/ui-tokens.css");
+ * 作为自己 <html:style> 的**第一条规则**引入 —— 本地 :root 声明在其后，按层叠规则仍然生效，
+ * 所以**引入本身不改变任何现有观感**（这是第一步的全部意义：先有共同词汇，再逐窗口迁移）。
+ *
+ * 变量分三类：
+ *   ① 语义色/形（surface · border · text · accent · state · radius · shadow · spacing · font）
+ *      —— 新代码只用这一类；
+ *   ② 历史别名（--pp-soft / --pp-border2 / --pp-subtle / --pp-bg / --pp-user* / --pp-ai* /
+ *      --pp-code-*）—— 只为让老窗口 CSS 在迁移时继续可解析，迁移完成后逐步删；
+ *   ③ --material-* 不在此列（那是 Zotero 宿主的变量，功能中心等窗口直接用）。
+ *
+ * 明暗三态（缺一不可）：
+ *   · 默认（无属性）= 亮色；
+ *   · `@media (prefers-color-scheme: dark)` + 无 `data-theme="light"` = 跟随系统；
+ *   · `:root[data-theme="dark"]` = 窗口显式指定深色（ui-theme.js / 主题系统会写这个属性）。
+ *   `:root:not([data-theme="light"])` 这个 guard 很关键：否则系统是深色时，用户显式选的浅色主题会被顶掉。
+ */
+
+/* ---------- 亮色（默认） ---------- */
+:root {
+  /* 表面与描边 */
+  --pp-bg: #f6f8fa;
+  --pp-surface: #ffffff;
+  --pp-surface-2: #f6f8fa;
+  --pp-surface-3: #eceff3;
+  --pp-field: #ffffff;
+  --pp-border: #d8dee4;
+  --pp-border-strong: #c3cdd6;
+  /* 文字 */
+  --pp-text: #1f2328;
+  --pp-text-strong: #0f141a;
+  --pp-text2: #3d444d;
+  --pp-muted: #5b6570;
+  --pp-faint: #6a7380;
+  --pp-subtle: #6a7380;
+  /* 强调与状态 */
+  --pp-accent: #0969da;
+  --pp-accent-emphasis: #0757b3;
+  --pp-accent-weak: #ddf4ff;
+  --pp-accent-soft: rgba(9, 105, 218, .08);
+  --pp-accent-line: rgba(9, 105, 218, .24);
+  --pp-success: #1a7f37;
+  --pp-ok: #1a7f37;
+  --pp-ok-bg: rgba(31, 134, 61, .12);
+  --pp-warn: #9a6700;
+  --pp-warn-bg: rgba(154, 103, 0, .12);
+  --pp-danger: #cf222e;
+  --pp-danger-bg: rgba(207, 34, 46, .10);
+  --pp-btn-hover: #eef1f4;
+  --pp-soft: rgba(127, 127, 127, .10);
+  --pp-border2: #eef0f3;
+  --pp-focus-ring: rgba(9, 105, 218, .20);
+  /* 气泡与代码块（对话类窗口专用，留在词汇表里避免各窗口自造） */
+  --pp-user: #0969da;
+  --pp-user-text: #ffffff;
+  --pp-ai: #ffffff;
+  --pp-ai-text: #1f2328;
+  --pp-code-bg: #f6f8fa;
+  --pp-code-text: #1f2328;
+  /* 形状 */
+  --pp-radius-sm: 6px;
+  --pp-radius-md: 8px;
+  --pp-radius-lg: 12px;
+  --pp-shadow-1: 0 1px 2px rgba(15, 20, 26, .06);
+  --pp-shadow-2: 0 6px 20px rgba(15, 20, 26, .10);
+  --pp-shadow-3: 0 12px 40px rgba(15, 20, 26, .22);
+  /* 间距（4pt 基线） */
+  --pp-sp-1: 4px;
+  --pp-sp-2: 8px;
+  --pp-sp-3: 12px;
+  --pp-sp-4: 16px;
+  --pp-sp-5: 22px;
+  /* 字号 */
+  --pp-fs-xs: 10.5px;
+  --pp-fs-sm: 11.5px;
+  --pp-fs-md: 12.5px;
+  --pp-fs-lg: 13.5px;
+  --pp-fs-xl: 15px;
+}
+
+/* ---------- 深色（跟随系统；显式选浅色时不生效） ---------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --pp-bg: #1a1e23;
+    --pp-surface: #21252b;
+    --pp-surface-2: #1a1e23;
+    --pp-surface-3: #2a3038;
+    --pp-field: #1b1f24;
+    --pp-border: #3d444d;
+    --pp-border-strong: #4d565f;
+    --pp-text: #e6edf3;
+    --pp-text-strong: #f2f6fa;
+    --pp-text2: #c9d1d9;
+    --pp-muted: #9198a1;
+    --pp-faint: #8b949e;
+    --pp-subtle: #8b949e;
+    --pp-accent: #4493f8;
+    --pp-accent-emphasis: #2f81f7;
+    --pp-accent-weak: #17233a;
+    --pp-accent-soft: rgba(68, 147, 248, .12);
+    --pp-accent-line: rgba(68, 147, 248, .30);
+    --pp-success: #3fb950;
+    --pp-ok: #3fb950;
+    --pp-ok-bg: rgba(63, 185, 80, .16);
+    --pp-warn: #d29922;
+    --pp-warn-bg: rgba(210, 153, 34, .16);
+    --pp-danger: #f85149;
+    --pp-danger-bg: rgba(248, 81, 73, .14);
+    --pp-btn-hover: #2a3038;
+    --pp-soft: rgba(255, 255, 255, .06);
+    --pp-border2: #2c333f;
+    --pp-focus-ring: rgba(68, 147, 248, .28);
+    --pp-user: #2f6fed;
+    --pp-user-text: #f4f7ff;
+    --pp-ai: #242b37;
+    --pp-ai-text: #e8edf5;
+    --pp-code-bg: #0d1117;
+    --pp-code-text: #c9d1d9;
+    --pp-shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
+    --pp-shadow-2: 0 6px 20px rgba(0, 0, 0, .44);
+    --pp-shadow-3: 0 12px 40px rgba(0, 0, 0, .55);
+  }
+}
+
+/* ---------- 深色（窗口/主题系统显式指定） ---------- */
+:root[data-theme="dark"] {
+  --pp-bg: #1a1e23;
+  --pp-surface: #21252b;
+  --pp-surface-2: #1a1e23;
+  --pp-surface-3: #2a3038;
+  --pp-field: #1b1f24;
+  --pp-border: #3d444d;
+  --pp-border-strong: #4d565f;
+  --pp-text: #e6edf3;
+  --pp-text-strong: #f2f6fa;
+  --pp-text2: #c9d1d9;
+  --pp-muted: #9198a1;
+  --pp-faint: #8b949e;
+  --pp-subtle: #8b949e;
+  --pp-accent: #4493f8;
+  --pp-accent-emphasis: #2f81f7;
+  --pp-accent-weak: #17233a;
+  --pp-accent-soft: rgba(68, 147, 248, .12);
+  --pp-accent-line: rgba(68, 147, 248, .30);
+  --pp-success: #3fb950;
+  --pp-ok: #3fb950;
+  --pp-ok-bg: rgba(63, 185, 80, .16);
+  --pp-warn: #d29922;
+  --pp-warn-bg: rgba(210, 153, 34, .16);
+  --pp-danger: #f85149;
+  --pp-danger-bg: rgba(248, 81, 73, .14);
+  --pp-btn-hover: #2a3038;
+  --pp-soft: rgba(255, 255, 255, .06);
+  --pp-border2: #2c333f;
+  --pp-focus-ring: rgba(68, 147, 248, .28);
+  --pp-user: #2f6fed;
+  --pp-user-text: #f4f7ff;
+  --pp-ai: #242b37;
+  --pp-ai-text: #e8edf5;
+  --pp-code-bg: #0d1117;
+  --pp-code-text: #c9d1d9;
+  --pp-shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
+  --pp-shadow-2: 0 6px 20px rgba(0, 0, 0, .44);
+  --pp-shadow-3: 0 12px 40px rgba(0, 0, 0, .55);
+}

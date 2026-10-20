@@ -3204,6 +3204,146 @@ ok("migration" not in io.open(os.path.join(ROOT, "scripts", "build-xpi.py"), enc
    "51.9 主包构建脚本不包含 migration/（提示包不得混进 Papilot 本体）")
 
 
+# ==================== 52. 设置面板信息架构与视觉规范（0.65.0） ====================
+# 18 组设置按「用户要做的事」分成 7 大类，并新增顶部工具条（搜索 / 计数 / 批量折叠 / 大类直达）。
+# 守卫盯四件事：
+#   ① 7 个大类标签都在、且每个带名称与计数（脚本只认 .pp-cat-name，缺了就变成空 chip）；
+#   ② 搜索三件套（输入框 / 清空 / 计数）都在 XHTML 里，且 prefs-fold.js 真有过滤逻辑
+#      （只加控件不接线 = 用户输了字没反应）；
+#   ③ 视觉令牌与组件规则在 prefs.css 里成套存在（颜色/间距/圆角/阴影各至少一处引用），
+#      且响应式断点没被删；
+#   ④ 折叠卡数量不变（18 张）——重组只许搬家，不许增删功能卡。
+_cat_names = re.findall(r'class="pp-cat-label"><html:span class="pp-cat-name">([^<]+)</html:span>'
+                        r'<html:span class="pp-cat-count">(\d+) 项</html:span>', prefs_xhtml)
+ok(len(_cat_names) == 7, "52.1 7 个大类标签都带名称与计数（实际 %d 个）" % len(_cat_names))
+ok([n for n, _ in _cat_names] == ["账号与会员", "AI 能力", "阅读与翻译", "文献获取",
+                                 "条目与标签", "界面与效率", "数据与同步"],
+   "52.2 ★ 分类顺序按使用频率固定（改顺序属于信息架构变更，需同步文档）")
+ok(sum(int(c) for _, c in _cat_names) == 18,
+   "52.3 各大类计数之和 = 18（计数写错会让用户以为丢功能）")
+for _id in ("pp-toolbar", "pp-prefs-search", "pp-prefs-search-clear", "pp-pref-count", "pp-anchor-nav"):
+    ok('"%s"' % _id in prefs_xhtml or 'id="%s"' % _id in prefs_xhtml or _id in prefs_xhtml,
+       "52.4 设置面板含工具条元素 %s" % _id)
+_fold_js = io.open(os.path.join(ROOT, "chrome", "content", "prefs-fold.js"), encoding="utf-8").read()
+ok("function initSearch()" in _fold_js and 'pp-hidden' in _fold_js and 'pp-searching' in _fold_js,
+   "52.5 ★ prefs-fold.js 实现搜索过滤（切 pp-hidden / pp-searching，不改折叠 pref）")
+ok('data-search-strings-raw' in _fold_js,
+   "52.6 搜索索引用 data-search-strings-raw（中英文关键词别名，改标题不会让老词搜不到）")
+ok("prefsFoldOpen" in _fold_js and "classList.toggle" in _fold_js,
+   "52.7 折叠仍走类名 + prefsFoldOpen（不重建节点）")
+_hk_js = io.open(os.path.join(ROOT, "chrome", "content", "prefs-hotkeys.js"), encoding="utf-8").read()
+ok(".pp-cat-name" in _hk_js,
+   "52.8 ★ 大类直达 chip 取 .pp-cat-name（否则 chip 文字会带上「N 项」）")
+for _tok in ("--pp-surface:", "--pp-surface-2:", "--pp-field:", "--pp-border:", "--pp-text:",
+             "--pp-muted:", "--pp-accent:", "--pp-danger:", "--pp-radius-lg:", "--pp-shadow-1:",
+             "--pp-sp-2:", "--pp-fs-md:"):
+    ok(_tok in prefs_css, "52.9 prefs.css 定义令牌 %s" % _tok)
+for _sel in (".pp-root .pp-toolbar", ".pp-root .pp-search", ".pp-root .pp-count",
+             ".pp-root .pp-anchor-nav", ".pp-root .pp-cat-count", ".pp-root .pp-hidden",
+             ".pp-root .pp-hk-row", ".pp-root .pp-mem-kind"):
+    ok(_sel + " {" in prefs_css or _sel + "," in prefs_css, "52.10 prefs.css 有组件规则 %s" % _sel)
+ok("@media (max-width: 560px)" in prefs_css and "@media (prefers-color-scheme: dark)" in prefs_css,
+   "52.11 ★ 响应式（≤560px 单列）与暗色主题两套规则都在")
+ok("prefers-reduced-motion" in prefs_css, "52.12 尊重系统的减少动效偏好")
+ok("class=\"pp-card pp-fold\"" in prefs_xhtml and prefs_xhtml.count('class="pp-card pp-fold"') == 18,
+   "52.13 折叠卡仍为 18 张（重组只搬家）")
+ok(os.path.exists(os.path.join(ROOT, "test", "prefs-fold.test.js")),
+   "52.14 折叠/搜索测试套件在库")
+
+
+# ==================== 53. 门禁三态 / CI / 版本单源（0.65.1） ====================
+# 这一批治的是「验证靠人」：门禁能不能被看见、文档会不会漂、更新清单会不会漏。
+_pf = io.open(os.path.join(ROOT, "scripts", "preflight.py"), encoding="utf-8").read()
+ok('状态 ∈ "pass" / "skip" / "fail"' in _pf and "skipped=True" in _pf,
+   "53.1 ★ preflight 结果三态（pass/skip/fail），跳过不再记成通过")
+ok("_e2e_skip" in _pf and '("跳过" in out or "SKIPPED" in out)' in _pf,
+   "53.2 ★ 后台 E2E 自行跳过（exit 0 + 输出含「跳过」）会被识别为 skip")
+ok('if strict and skipped' in _pf and '"--strict"' in _pf,
+   "53.3 --strict：跳过项按失败处理（CI 用）")
+ok('fast and "--strict" in argv' in _pf,
+   "53.4 ★ --strict 与 --fast 互斥（fast 必然跳过 E2E，否则等于自我否定）")
+ok("sync-docs-version.py" in _pf and '"--check"' in _pf,
+   "53.5 preflight 含「文档版本」检查步骤")
+ok(os.path.exists(os.path.join(ROOT, "scripts", "sync-docs-version.py")),
+   "53.6 scripts/sync-docs-version.py 在库（版本单源工具）")
+_gate = os.path.join(ROOT, ".github", "workflows", "gate.yml")
+ok(os.path.exists(_gate), "53.7 .github/workflows/gate.yml 在库（测试 CI）")
+if os.path.exists(_gate):
+    _g = io.open(_gate, encoding="utf-8").read()
+    ok("preflight.py --strict" in _g, "53.8 ★ CI 以 --strict 跑门禁（跳过即红）")
+    ok("PP_CHROME" in _g and "playwright-core" in _g,
+       "53.9 CI 装了 E2E 依赖并注入浏览器路径（否则 E2E 必跳过）")
+_bx = io.open(os.path.join(ROOT, "scripts", "build-xpi.py"), encoding="utf-8").read()
+ok("papilot-update.json" in _bx and "_whats_new" in _bx,
+   "53.10 ★ 打包后自动 upsert 更新清单（治好「漏一条老用户升不上」）")
+ok('mf["version"] != VER' in _bx,
+   "53.11 试打包（包内版本 ≠ 命令行版本）不写更新清单")
+ok("--no-update-json" in _bx, "53.12 提供 --no-update-json 逃生口")
+# 清单最新版本必须等于 manifest（bump 了没打包 → 老用户拿不到新版）
+try:
+    _upd = json.loads(io.open(os.path.join(ROOT, "papilot-update.json"), encoding="utf-8").read())
+    _ul = (((_upd.get("addons") or {}).get("papilot@dev.local") or {}).get("updates") or [])
+    _uvs = sorted((tuple(int(x) for x in str(u.get("version", "0")).split(".") if x.isdigit())
+                   for u in _ul), reverse=True)
+    _mf_cur = (re.search(r'"version"\s*:\s*"([^"]+)"', MANIFEST) or [None, ""])[1]
+    ok(["%d.%d.%d" % v for v in _uvs][:1] == [_mf_cur] or
+       ".".join(str(x) for x in _uvs[0]) == _mf_cur,
+       "53.13 ★ 更新清单最新版本 == manifest 版本（%s）"
+       % ".".join(str(x) for x in _uvs[0]) if _uvs else "53.13 更新清单为空")
+except Exception as _e:
+    ok(False, "53.13 更新清单可解析：%s" % _e)
+# 文档版本漂移（门禁有步骤，这里静态再钉一次：单独跑 check-wiring 也能发现）
+_agents = io.open(os.path.join(ROOT, "AGENTS.md"), encoding="utf-8").read()
+_mf_v = (re.search(r'"version"\s*:\s*"([^"]+)"', MANIFEST) or [None, ""])[1]
+ok("（当前 `%s`）" % _mf_v in _agents,
+   "53.14 AGENTS.md 的插件版本与 manifest 一致（当前 %s）" % _mf_v)
+_readme = io.open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
+ok("badge/version-%s-blue" % _mf_v in _readme,
+   "53.15 README badge 与 manifest 一致（当前 %s）" % _mf_v)
+# 可访问性（0.65.1）：标题行必须键盘可达
+ok('setAttribute("role", "button")' in _fold_js and 'setAttribute("tabindex", "0")' in _fold_js,
+   "53.16 ★ 折叠标题行 role=button + tabindex（键盘可聚焦）")
+ok('addEventListener("keydown"' in _fold_js and 'aria-expanded' in _fold_js,
+   "53.17 ★ Enter/Space 可切换，且 aria-expanded 随状态同步")
+ok(":focus-visible" in prefs_css, "53.18 prefs.css 有键盘焦点环（:focus-visible）")
+
+
+# ==================== 54. 统一设计令牌（0.65.2） ====================
+# 设置面板有一套令牌，四个独立窗口各自重抄一份 —— 同一语义四份取值。0.65.2 建了唯一词汇表
+# `chrome/content/ui-tokens.css`，窗口用 @import 引入（本地声明在后，计算值不变，已逐令牌实测）。
+# 守卫：词汇表在、窗口都引入、位置正确（@import 必须是第一条有效语句）、与 prefs 不漂移。
+_ui_tok_p = os.path.join(ROOT, "chrome", "content", "ui-tokens.css")
+ok(os.path.exists(_ui_tok_p), "54.1 chrome/content/ui-tokens.css 在库（唯一词汇表）")
+if os.path.exists(_ui_tok_p):
+    _ut = re.sub(r"/\*[\s\S]*?\*/", "", io.open(_ui_tok_p, encoding="utf-8").read())
+    for _t in ("--pp-surface:", "--pp-surface-2:", "--pp-field:", "--pp-border:",
+               "--pp-border-strong:", "--pp-text:", "--pp-muted:", "--pp-faint:",
+               "--pp-accent:", "--pp-danger:", "--pp-radius-md:", "--pp-shadow-1:",
+               "--pp-sp-2:", "--pp-fs-md:"):
+        ok(_t in _ut, "54.2 词汇表定义 %s" % _t)
+    ok(':root:not([data-theme="light"])' in _ut and ':root[data-theme="dark"]' in _ut,
+       "54.3 ★ 明暗三态齐备（系统深色带 :not([data-theme=light]) guard，显式深色走 data-theme）")
+    for _alias in ("--pp-soft:", "--pp-border2:", "--pp-subtle:", "--pp-bg:", "--pp-code-bg:"):
+        ok(_alias in _ut, "54.4 保留历史别名 %s（迁移期可解析）" % _alias)
+    # 与 prefs.css 同值（配色只有一处真理）
+    _pf = re.sub(r"/\*[\s\S]*?\*/", "", prefs_css)
+    for _k, _v in (("--pp-surface", "#ffffff"), ("--pp-accent", "#0969da"),
+                   ("--pp-text", "#1f2328"), ("--pp-border", "#d8dee4")):
+        ok((_k + ": " + _v) in _pf and (_k + ": " + _v) in _ut,
+           "54.5 ★ prefs.css 与词汇表的 %s 同值（%s）" % (_k, _v))
+    # 窗口引入位置：@import 必须是 <html:style> 内第一条有效语句
+    for _win in ("chat-window", "review-workbench", "skill-store", "workbench"):
+        _p = os.path.join(ROOT, "chrome", "content", _win + ".xhtml")
+        _src = io.open(_p, encoding="utf-8").read()
+        _m = re.search(r"<html:style><!\[CDATA\[([\s\S]*?)\]\]></html:style>", _src)
+        _body = re.sub(r"/\*[\s\S]*?\*/", "", _m.group(1)).strip() if _m else ""
+        ok(_body.startswith('@import url("chrome://papilot/content/ui-tokens.css");'),
+           "54.6 ★ %s 的样式块第一条语句是 @import 统一令牌" % _win)
+ok(os.path.exists(os.path.join(ROOT, "test", "ui-tokens.test.js")),
+   "54.7 test/ui-tokens.test.js 在库")
+ok("ui-tokens.test.js" in _preflight_src, "54.8 preflight 注册 ui-tokens.test.js")
+
+
 print("=" * 60)
 for p in passes:
     print("  OK  " + p)

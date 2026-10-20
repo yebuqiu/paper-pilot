@@ -13,6 +13,10 @@
         persist="screenX screenY width height sizemode">
   <script src="chrome://papilot/content/workbench.js"/>
   <html:style><![CDATA[
+    /* 统一令牌（唯一词汇表）：本地 :root 声明在文件后部，按层叠仍然生效，引入不改变现有观感。
+       迁移完成后再逐步删掉本地重复的 --pp-* 声明。 */
+    @import url("chrome://papilot/content/ui-tokens.css");
+
     :root {
       --pp-bg:#f9fafb; --pp-surface:#ffffff; --pp-soft:#f1f5f9;
       --pp-border:#e2e8f0; --pp-border2:#eef0f3;

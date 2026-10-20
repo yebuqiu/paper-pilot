@@ -12,8 +12,8 @@ Papilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstrappe
 
 | 组成 | 说明 | 版本锚点 |
 |---|---|---|
-| **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.58.0`） |
-| **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.8.1`） |
+| **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.65.2`） |
+| **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.9.0`） |
 
 - 插件 ID：`papilot@dev.local`；兼容 `strict_min_version: "6.999"` → `strict_max_version: "99.*"`。
 - 授权：**Apache-2.0**（见 [LICENSE](LICENSE) / [NOTICE](NOTICE)）。插件本体永久免费开源。
@@ -58,14 +58,17 @@ Papilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstrappe
 ### 3.1 测试与质量门禁
 
 ```bash
-# 一键门禁（推荐，发版前必跑）：全 JS 语法 + arXiv 生成物同步 + 全部 Node 测试套件
-#                              + 接线扫描 + 后台 E2E（当前共 24 步）
+# 一键门禁（推荐，发版前必跑）：全 JS 语法 + 文档版本 + arXiv 生成物同步 + 全部 Node 测试套件
+#                              + 接线扫描 + 目录同构 + 后台 E2E（当前共 88 步 / 约 160s）
 python scripts/preflight.py
 
-# 快速模式（跳过浏览器 E2E，约 95s，适合改代码时的内循环）
+# 严格模式：不允许跳过——跳过项按失败处理（CI 与发版用）
+python scripts/preflight.py --strict
+
+# 快速模式（跳过浏览器 E2E，约 150s，适合内循环；汇总会明确标注「跳过 1 项」）
 python scripts/preflight.py --fast
 
-# 追加"打包 + 包内自检"
+# 追加"打包 + 包内自检"（打包成功会自动 upsert papilot-update.json）
 python scripts/preflight.py --with-build 0.25.0
 
 # 单独跑某个测试套件
@@ -92,20 +95,25 @@ python scripts/build-arxiv-core.py --check
 > 表现为**偶发**「异常中断」让门禁假红（`server-ops` 曾 4/6 失败）。`check-wiring.py` §14 有守卫。
 > 排障偶发失败时，用 `git archive HEAD | tar -x -C <tmp>` 建干净副本与工作区**交替**跑同一用例。
 
-> ⚠️ **后台 E2E 会静默跳过**：`test/admin-e2e.test.js` 依赖 `playwright-core`（装在
-> `C:\Users\Administrator\.workbuddy\binaries\node\workspace`）。preflight 不设 `NODE_PATH`，
-> 所以那里通常看到「跳过（未安装 playwright-core）」并以 0 退出——**这不是通过**。
-> 想真跑一次：
+> ⚠️ **后台 E2E 会跳过，但从 0.65.1 起会被明确标出来**（门禁三态）：缺 `playwright-core` 或浏览器时
+> 脚本仍以 0 退出，preflight 记作「**跳过**」并在汇总里单列，不计入通过；`--strict` 下直接判失败。
+> 想真跑一次（二选一）：
 > ```bash
-> export NODE_PATH="C:/Users/Administrator/.workbuddy/binaries/node/workspace/node_modules"
-> node test/admin-e2e.test.js     # 约 153 项断言
+> export NODE_PATH="<playwright-core 的 node_modules 目录>"
+> export PP_CHROME="<chrome 可执行文件路径>"
+> python scripts/preflight.py --strict     # 88 步全跑，E2E 约 153 项断言
 > ```
+>
+> 🔁 **CI**：`.github/workflows/gate.yml` 在 push / PR 上跑 `preflight.py --strict`（自动装
+> `playwright-core` 并解析 `PP_CHROME`）。门禁不再只靠本地手动跑——跳过即红。
 
 ### 3.2 打包插件
 
 ```bash
-python scripts/build-xpi.py 0.27.0
-# 产物：dist/papilot-0.27.0.xpi（zip，源码目录内容置于根，含包内清单与版本自检）
+python scripts/build-xpi.py 0.65.0 --note "本版更新要点（写进 update.json 的 whatsNew）"
+# 产物：dist/papilot-0.65.0.xpi（zip，源码目录内容置于根，含包内清单、版本自检与 sha256）
+# 打包成功会自动 upsert papilot-update.json（同版本去重 + 按版本倒序）；
+# 试打包（包内版本 ≠ 命令行版本）不写清单；--no-update-json 可跳过。
 ```
 
 - 打包内容 = 顶层文件（`bootstrap.js` / `LICENSE` / `NOTICE` / `prefs.js` / `README.md` / `manifest.json`）+ 遍历 `chrome/` + `locale/`。

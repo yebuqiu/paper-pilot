@@ -60,13 +60,13 @@
       return;
     }
     for (const r of rows) {
-      const line = el("div", { class: "pp-row", style: "margin-top:6px;align-items:center;" });
+      const line = el("div", { class: "pp-row pp-hk-row", style: "margin-top:6px;align-items:center;" });
       const name = el("span", { class: "pp-label", style: "min-width:200px;" }, r.label || r.id);
       const scope = el("span", { class: "pp-hint", style: "min-width:56px;" },
         r.scope === "reader" ? (zh ? "阅读器" : "Reader") : (zh ? "主窗口" : "Main"));
       const combo = el("span", {
-        class: "pp-hint",
-        style: "min-width:130px;font-family:monospace;" + (r.enabled === false ? "opacity:.5;text-decoration:line-through;" : ""),
+        class: "pp-hint pp-hk-combo",
+        style: "min-width:130px;" + (r.enabled === false ? "opacity:.5;text-decoration:line-through;" : ""),
       }, r.combo || (zh ? "（未设置）" : "(unset)"));
       const btnRec = el("button", { class: "pp-btn pp-btn-sm" }, zh ? "录制" : "Record");
       const btnReset = el("button", { class: "pp-btn pp-btn-sm" }, zh ? "重置" : "Reset");
@@ -140,7 +140,11 @@
     }
     host.appendChild(el("span", { class: "pp-hint" }, zh ? "直达：" : "Jump to: "));
     for (const lab of labels) {
-      const chip = el("button", { class: "pp-btn pp-btn-sm" }, lab.textContent || "");
+      // 0.65.0：大类标签内是「名称 + 计数」两个 span，chip 只取名称
+      let nameEl = null;
+      try { nameEl = lab.querySelector(".pp-cat-name"); } catch (e) { nameEl = null; }
+      const text = (nameEl && nameEl.textContent) || lab.textContent || "";
+      const chip = el("button", { class: "pp-btn pp-btn-sm", title: text }, text);
       const target = lab;
       chip.addEventListener("command", () => {
         try {

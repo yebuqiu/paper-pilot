@@ -20,6 +20,10 @@
         persist="screenX screenY width height sizemode">
   <script src="chrome://papilot/content/review-workbench.js"></script>
   <html:style><![CDATA[
+    /* 统一令牌（唯一词汇表）：本地 :root 声明在文件后部，按层叠仍然生效，引入不改变现有观感。
+       迁移完成后再逐步删掉本地重复的 --pp-* 声明。 */
+    @import url("chrome://papilot/content/ui-tokens.css");
+
     /* ===== 主题变量（与 skill-store 同一套；浅色 = GitHub Primer Light） ===== */
     #pp-rw-root {
       --pp-bg:#f6f8fa; --pp-surface:#ffffff; --pp-surface-2:#f6f8fa;
