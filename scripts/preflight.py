@@ -127,6 +127,7 @@ NODE_SUITES = [
     ("网关断开处理", "test/gateway-abort.test.js"),
     ("管理操作审计", "test/audit.test.js"),
     ("密钥托管", "test/secret-host.test.js"),
+    ("迁移提示包", "test/migration-notice.test.js"),
     ("永久会员与对账", "test/reconcile.test.js"),
     ("优惠券/折扣码", "test/coupon.test.js"),
     ("登录设备与会话", "test/sessions.test.js"),

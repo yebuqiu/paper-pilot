@@ -1,0 +1,16 @@
+{
+  "manifest_version": 2,
+  "name": "PaperPilot（已更名为 Papilot · 迁移提示）",
+  "version": "0.55.9",
+  "description": "PaperPilot 已更名为 Papilot。本包不含任何功能，只用于提示老用户：先卸载本插件，再从发行版页面安装 Papilot 新版本。",
+  "author": "Cassiuschen",
+  "homepage_url": "https://gitee.com/cassiuschen9261/zotero-papilot",
+  "applications": {
+    "zotero": {
+      "id": "paperpilot@dev.local",
+      "update_url": "https://gitee.com/cassiuschen9261/paper-pilot/raw/main/paperpilot-update.json",
+      "strict_min_version": "6.999",
+      "strict_max_version": "99.*"
+    }
+  }
+}

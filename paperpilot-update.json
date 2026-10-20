@@ -3,6 +3,17 @@
   "paperpilot@dev.local": {
    "updates": [
     {
+     "version": "0.55.9",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/paperpilot-0.55.9.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "PaperPilot 已更名为 Papilot。本提示包不含功能，装好后请：\n1) 到「工具 → 插件」卸载 PaperPilot；2) 在弹窗里点「打开发行版页面」下载 Papilot 并安装。\n文库、笔记与插件设置都不会丢，Papilot 首次启动会自动迁移旧设置。\n说明：扩展 ID 已变更，Zotero 无法通过「检查更新」直接从 PaperPilot 跨到 Papilot，因此需要这一步。"
+    },
+    {
      "version": "0.9.0",
      "update_link": "https://zotero.gujinbencao.com/paperpilot/paper-pilot-0.9.0.xpi",
      "applications": {

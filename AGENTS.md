@@ -112,6 +112,22 @@ python scripts/build-xpi.py 0.27.0
 - **`docs/` 与 `test/` 不进包**。
 - `build-xpi.py` 的 `ROOT` 已相对化（按脚本自身位置推导），换机/换盘符无需修改。
 
+### 3.2.1 老用户迁移提示包（`migration/`）
+
+0.56.0 改名后扩展 ID 从 `paperpilot@dev.local` 变成 `papilot@dev.local`，而 Zotero 按 ID 匹配更新，
+所以还装着旧版的用户点「检查更新」永远升不到 Papilot（旧清单最高只有 0.54.0）。
+`migration/` 是一个**沿用旧 ID** 的极小提示包（0.55.9），经 `paperpilot-update.json` 下发，
+装完后弹一次「请卸载重装」并给出发行版入口。
+
+```bash
+python scripts/build-migration-xpi.py     # → dist/paperpilot-0.55.9.xpi（约 3 KB）
+node test/migration-notice.test.js        # ID / 版本区间 / 只弹一次 / 取消不跳转
+```
+
+- **不要并进主包**：`build-xpi.py` 刻意不遍历 `migration/`（`check-wiring §51.9` 钉着）。
+- 改版本号必须仍满足 `0.54.0 < v < 0.56.0`，并同步 `paperpilot-update.json` 里的条目。
+- 本包**不卸载自己**（会被回收作用域），也不自动装新插件（Zotero 不支持静默安装第二个插件）。
+
 ### 3.3 账号后台（服务端）
 
 ```bash

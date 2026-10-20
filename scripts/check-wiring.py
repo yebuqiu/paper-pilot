@@ -3176,6 +3176,33 @@ ok('bind("pp-es-host-save"' in _pane_js2 and "onHostLoad" in _pane_js2
 ok("maskSecret(value)" in _srv_host,
    "50.27 ★ 审计只记掩码（日志不能成为密钥的第二份副本）")
 
+# ⑧ 迁移提示包（旧 ID · 0.55.9）：改名的收尾，缺口一开就再也触达不到老用户
+_mig_manifest_p = os.path.join(ROOT, "migration", "manifest.json")
+ok(os.path.exists(_mig_manifest_p), "51.1 存在 migration/manifest.json")
+if os.path.exists(_mig_manifest_p):
+    _mig = json.loads(io.open(_mig_manifest_p, encoding="utf-8").read())
+    _mig_zot = (_mig.get("applications") or {}).get("zotero") or {}
+    ok(_mig_zot.get("id") == "paperpilot@dev.local",
+       "51.2 ★ 迁移包必须沿用旧 ID paperpilot@dev.local（新 ID 就不会被旧通道拉取）")
+    _mv = tuple(int(x) for x in str(_mig.get("version", "0")).split("."))
+    ok(_mv > (0, 54, 0) and _mv < (0, 56, 0),
+       "51.3 迁移包版本在 0.54.0 与 0.56.0 之间（当前 %s）" % _mig.get("version"))
+    _mig_build = io.open(os.path.join(ROOT, "scripts", "build-migration-xpi.py"), encoding="utf-8").read()
+    ok("REQUIRED_ID = \"paperpilot@dev.local\"" in _mig_build and "MIN_VERSION = (0, 54, 0)" in _mig_build,
+       "51.4 构建脚本自带 ID/版本硬校验（改错 ID 会直接构建失败）")
+    _old_upd = json.loads(io.open(os.path.join(ROOT, "paperpilot-update.json"), encoding="utf-8").read())
+    _old_list = (((_old_upd.get("addons") or {}).get("paperpilot@dev.local") or {}).get("updates") or [])
+    _hit = [x for x in _old_list if x.get("version") == _mig.get("version")]
+    ok(len(_hit) == 1, "51.5 ★ 旧更新清单里有这个迁移版本（否则老用户检查更新看不到）")
+    if _hit:
+        ok("dist/paperpilot-%s.xpi" % _mig.get("version") in (_hit[0].get("update_link") or ""),
+           "51.6 清单里的 update_link 指向 dist 下的迁移包")
+        ok(len(_hit[0].get("whatsNew") or "") > 20, "51.7 whatsNew 写清了「先卸载再装新版」")
+    ok(os.path.exists(os.path.join(ROOT, "dist", "paperpilot-%s.xpi" % _mig.get("version"))),
+       "51.8 迁移包产物已构建")
+ok("migration" not in io.open(os.path.join(ROOT, "scripts", "build-xpi.py"), encoding="utf-8").read(),
+   "51.9 主包构建脚本不包含 migration/（提示包不得混进 Papilot 本体）")
+
 
 print("=" * 60)
 for p in passes:
