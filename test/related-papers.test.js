@@ -80,10 +80,19 @@ function makeDoc() {
   };
 }
 
+/**
+ * 等条件成立。
+ * ★ 0.68.1：只在 setImmediate 上自旋在 CI（Linux，负载更高）不够 —— 渲染链里如果有
+ *   setTimeout(0)/IO 回调，微任务队列跑完 80 轮也可能还没轮到它（真机 CI 实测：
+ *   本机 112 断言全过，GitHub runner 上「⑤/⑥ 渲染 5 条推荐」直接超时后崩在取 [0]）。
+ *   所以每 8 轮让一次真实定时器，并给整段等待一个 3s 上限（仍然确定性，不会变成靠 sleep 蒙）。
+ */
 async function drain(cond, maxRounds = 80) {
-  for (let i = 0; i < maxRounds; i++) {
+  const deadline = Date.now() + 3000;
+  for (let i = 0; i < maxRounds || Date.now() < deadline; i++) {
     if (cond()) return true;
     await new Promise((r) => setImmediate(r));
+    if (i % 8 === 7) await new Promise((r) => setTimeout(r, 0));
   }
   return cond();
 }
