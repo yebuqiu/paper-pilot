@@ -36,6 +36,7 @@ const ACTIONS = {
   'user.delete': '删除用户',
   'user.unlock': '解除登录锁定',
   'user.membership': '开通/续期会员',
+  'user.secret': '保存/取回/删除托管密钥',
   'price.create': '新增价格条目',
   'price.update': '修改价格条目',
   'price.delete': '删除价格条目',

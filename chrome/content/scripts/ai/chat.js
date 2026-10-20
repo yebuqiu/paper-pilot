@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Cassiuschen. All rights reserved.
 
 /* Papilot PDF 全文提取 + 问答逻辑 */
-/* global Zotero, IOUtils, Prefs, AIClient, TranslateSvc, TranslateX, I18n */
+/* global Zotero, IOUtils, Prefs, AIClient, TranslateSvc, TranslateX, I18n, OcrService */
 
 var AIChat = {
   // 附件全文缓存（存未截断原文，截断在使用时按当前 pref 值进行；FIFO 淘汰）
@@ -79,11 +79,18 @@ var AIChat = {
         return null;
       }
       raw = (text || "").replace(/\s+\n/g, "\n").trim();
-      if (!raw) return null; // 空结果不缓存，OCR 后可重试
-      if (this._textCache.size >= this._CACHE_LIMIT) {
-        this._textCache.delete(this._textCache.keys().next().value);
+      if (!raw) {
+        // 0.63.0 OCR 回退：扫描件没有文本层，索引恒为空 → 读本地 OCR 侧车（纯本地、不联网）。
+        // ★ OCR 文本**不进 _textCache**：保持「空结果不缓存」的既有策略，这样用户重跑 OCR
+        //   之后下一次提问立刻能用上新文本；已索引到正文时也绝不混入 OCR 文本。
+        raw = await this._ocrFallbackText(att);
+        if (!raw) return null; // 空结果不缓存，OCR 后可重试
+      } else {
+        if (this._textCache.size >= this._CACHE_LIMIT) {
+          this._textCache.delete(this._textCache.keys().next().value);
+        }
+        this._textCache.set(att.id, raw);
       }
-      this._textCache.set(att.id, raw);
     }
     if (!raw) return null;
     if (opts && opts.noTruncate) return raw;
@@ -95,6 +102,33 @@ var AIChat = {
       return raw.slice(0, head) + "\n\n[……中间内容已截断……]\n\n" + raw.slice(-(max - head));
     }
     return raw;
+  },
+
+  /**
+   * 0.63.0 OCR 回退：全文索引为空时取本机 OCR 侧车文本（features/ocr.js 的 OcrService）。
+   * 约束与取舍：
+   *   - 只在索引为空时调用（有正文就绝不混入 OCR，避免重复/污染上下文）；
+   *   - 纯本地读文件，不触发任何联网/识别（识别必须由用户在菜单里显式发起）；
+   *   - 任何异常/缺模块 → ""（OCR 是增强路径，不能把问答带崩）。
+   * @param att PDF 附件
+   * @returns {Promise<string>} 清洗后的文本或 ""
+   */
+  async _ocrFallbackText(att) {
+    try {
+      if (!Prefs.get("ocrAutoFallback", true)) return "";
+      let svc = (typeof OcrService !== "undefined") ? OcrService : null;
+      if (!svc) {
+        try { svc = (Zotero.Papilot && Zotero.Papilot.ocr) || null; } catch (e) { svc = null; }
+      }
+      if (!svc || typeof svc.textFor !== "function") return "";
+      const text = await svc.textFor(att);
+      // 只压「行尾空白」，**保留空行**：ocr.js 用 `\n\n` 分隔页，用 `\s+\n` 会把页边界吃掉
+      // （扫描件的段落结构也一并丢失）。索引正文那条路径的口径不动，避免影响既有 prompt。
+      return String(text || "").replace(/[ \t]+\n/g, "\n").trim();
+    } catch (e) {
+      Zotero.debug("Papilot: OCR 回退失败 " + (e && (e.message || e)));
+      return "";
+    }
   },
 
   /**

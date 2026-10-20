@@ -245,6 +245,20 @@ var I18n = (() => {
     menuSmartCleanup: zh ? "智能清理（重复/无附件/缺元数据扫描）" : "Smart Cleanup Scan",
     menuMetaEnrich: zh ? "元数据补全（S2/Crossref 回写缺失字段）" : "Fill Missing Metadata (S2)",
     menuRefImport: zh ? "参考文献一键入库…" : "Import References…",
+    menuCiteExport: zh ? "导出参考文献（GB/T 7714）…" : "Export References (GB/T 7714)…",
+    menuObsidianExport: zh ? "导出到 Obsidian…" : "Export to Obsidian…",
+    obsidianExportTitle: zh ? "导出到 Obsidian" : "Export to Obsidian",
+    obsidianPickFolder: zh ? "选择 Obsidian 库目录" : "Choose Obsidian vault folder",
+    obsidianNoItems: zh ? "请先选中至少一篇文献。" : "Select at least one item first.",
+    obsidianConfirm: zh
+      ? "将 {n} 篇文献导出到 {dir}，每篇一个 Markdown 文件（不覆盖已有同名文件）。"
+      : "Export {n} item(s) to {dir} as Markdown files (existing files are never overwritten).",
+    obsidianExportBtn: zh ? "导出" : "Export",
+    obsidianIncludeAi: zh ? "同时生成 AI 摘要（消耗额度或自备 Key）" : "Also generate AI summaries (uses credits or your key)",
+    obsidianDone: zh ? "已导出 {n} 篇" : "Exported {n} item(s)",
+    obsidianFailed: zh ? "导出失败，详见「帮助 → 调试输出」。" : "Export failed — see Help → Debug Output.",
+    citeExportEmpty: zh ? "选中条目里没有可导出的题录。" : "No citable items in the selection.",
+    citeExportSaveTitle: zh ? "保存参考文献" : "Save references",
     menuPasteCheck: zh ? "粘贴文献列表核验（AI 幻觉检测）…" : "Verify Pasted References…",
     menuWorkbench: zh ? "Papilot 工作台（独立窗口）" : "Papilot Workbench (standalone window)",
     menuChannels: zh ? "Papilot AI 模型通道" : "Papilot AI Channels",
@@ -325,6 +339,57 @@ var I18n = (() => {
     noteReviewTitle: zh ? "AI 文献综述" : "AI Literature Review",
     menuMetaLint: zh ? "元数据规范清洗（DOI/日期/标题/URL）" : "Metadata Lint",
     menuMetaDoctor: zh ? "元数据医生（Crossref 补 DOI/期刊/年份）" : "Metadata Doctor (Crossref fill)",
+    // ---- 0.63.0 PDF 无头渲染 + 视觉 OCR（扫描件补全文）----
+    menuOcrRun: zh ? "扫描件 OCR（视觉模型转写为本机文本）" : "OCR Scanned PDF (vision model → local text)",
+    ocrTitle: zh ? "扫描件 OCR" : "OCR Scanned PDF",
+    ocrNoPdf: zh
+      ? "选中的条目里没有 PDF 附件。\n请选中带 PDF 的文献，或直接选中 PDF 附件。"
+      : "No PDF attachment in the selection.",
+    ocrNoEngine: zh
+      ? "渲染引擎不可用：内置 pdf.js 未能加载，无法把 PDF 页面转成图片。\n重启 Zotero 后仍失败请查看「帮助 → 调试输出」里的 pdfjs 日志。"
+      : "Rendering engine unavailable: the bundled pdf.js failed to load.",
+    ocrConfirm: zh
+      ? "将识别 {n} 页：先把每页渲染成图片，再交给当前 AI 通道的视觉模型转写。\n\n"
+        + "· 只发送当前页的图片，不上传整份 PDF；\n"
+        + "· 会消耗你的 AI 额度（或自备 Key 的额度）；\n"
+        + "· 结果只存在本机，可在「AI 问答」里直接使用。\n\n是否继续？"
+      : "OCR {n} page(s): each page is rendered to an image and sent to your current AI channel's "
+        + "vision model.\n\n· only the current page image is sent (never the whole PDF);\n"
+        + "· this consumes your AI credits (or your own key);\n"
+        + "· results are stored locally and used by AI chat.\n\nContinue?",
+    ocrDone: zh ? "已识别 {n} 页（结果已存本机，AI 问答可直接使用）" : "OCR done: {n} page(s) (stored locally)",
+    ocrFailed: zh
+      ? "OCR 失败，详见「帮助 → 调试输出」。已识别的页已保存在本机，可重跑续接。"
+      : "OCR failed — see Help → Debug Output. Pages already done are kept locally.",
+    ocrNoKey: zh
+      ? "OCR 需要视觉模型：请先在 设置 → Papilot 登录账号（走 AI 额度），或在「AI 模型通道」中配置自己的多模态接口。"
+      : "OCR needs a vision model: log in under Settings → Papilot, or configure a multimodal channel.",
+    // ---- 0.63.0 笔记工具（A2）：单篇大纲 + 多篇批量整理 ----
+    menuNoteTools: zh ? "笔记工具（大纲 / 批量整理）…" : "Note Tools (outline / batch)…",
+    noteToolsTitle: zh ? "笔记工具" : "Note Tools",
+    noteToolsEmpty: zh
+      ? "选中的条目下没有笔记。\n请选中至少一条笔记（或带笔记的文献）后再试。"
+      : "No notes in the selection.",
+    noteToolsOutline: zh ? "生成 / 刷新大纲" : "Build / refresh outline",
+    noteToolsRemoveOutline: zh ? "移除大纲" : "Remove outline",
+    noteToolsAddTag: zh ? "加标签…" : "Add tags…",
+    noteToolsRemoveTag: zh ? "去标签…" : "Remove tags…",
+    noteToolsMove: zh ? "移入当前分类" : "Move to current collection",
+    noteToolsPrefix: zh ? "统一标题前缀…" : "Unify title prefix…",
+    noteToolsMerge: zh ? "合并为新笔记" : "Merge into a new note",
+    noteToolsMergeTitle: zh ? "笔记整理（合并）" : "Note digest (merged)",
+    noteToolsDone: zh ? "已处理 {n} 条笔记" : "Processed {n} note(s)",
+    noteToolsNoCollection: zh
+      ? "请先在主窗口左侧选中一个分类，再执行「移入当前分类」。"
+      : "Select a collection in the main window first.",
+    noteToolsPromptTags: zh
+      ? "输入标签，多个用逗号或空格分隔（已存在的标签不会重复添加）："
+      : "Enter tags separated by commas or spaces:",
+    noteToolsPromptPrefix: zh
+      ? "输入要加到每条笔记标题前的前缀（例如「[精读] 」）："
+      : "Enter the prefix to prepend to each note title (e.g. \"[Read] \"):",
+
+
     menuAnnotDigest: zh ? "标注→论点速记（AI 整理为笔记）" : "Annotation → Argument Digest (AI)",
     menuReviewWorkbench: zh ? "综述工作台（多篇 → 大纲 → 分节草稿）…" : "Review Workbench (outline → sections)…",
     menuReviewWorkbenchDisabled: zh ? "综述工作台已在设置中关闭" : "Review Workbench is disabled in settings",

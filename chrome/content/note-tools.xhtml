@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
+<!DOCTYPE window>
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Papilot · 笔记工具"
+        windowtype="papilot:notetools"
+        width="820" height="640"
+        persist="screenX screenY width height">
+  <script src="chrome://papilot/content/note-tools.js"></script>
+  <vbox flex="1" style="padding:12px;">
+    <hbox style="gap:8px;align-items:center;flex-wrap:wrap;">
+      <html:button id="pp-nt-refresh">生成 / 刷新大纲</html:button>
+      <html:button id="pp-nt-remove-outline">移除大纲</html:button>
+      <html:button id="pp-nt-add-tag">加标签…</html:button>
+      <html:button id="pp-nt-remove-tag">去标签…</html:button>
+      <html:button id="pp-nt-move">移入当前分类</html:button>
+      <html:button id="pp-nt-prefix">统一标题前缀…</html:button>
+      <html:button id="pp-nt-merge">合并为新笔记</html:button>
+      <spacer flex="1"/>
+      <html:button id="pp-nt-close">关闭</html:button>
+    </hbox>
+    <hbox style="gap:8px;align-items:center;margin-top:8px;">
+      <html:button id="pp-nt-all">全选</html:button>
+      <html:button id="pp-nt-none">全不选</html:button>
+      <html:span id="pp-nt-count" style="font-size:12.5px;color:var(--fill-secondary,#666);">已选 0 条</html:span>
+    </hbox>
+    <vbox id="pp-nt-list" flex="1"
+          style="overflow:auto;margin-top:8px;padding:6px;border:1px solid var(--fill-tertiary,#999);background:var(--material-surface,#fff);color:var(--fill-primary,#222);"/>
+    <html:div id="pp-nt-status"
+              style="margin-top:6px;font-size:12.5px;color:var(--fill-secondary,#666);white-space:pre-wrap;"></html:div>
+  </vbox>
+</window>

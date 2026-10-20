@@ -126,6 +126,7 @@ NODE_SUITES = [
     ("余额预留审计", "test/balance-hold-audit.test.js"),
     ("网关断开处理", "test/gateway-abort.test.js"),
     ("管理操作审计", "test/audit.test.js"),
+    ("密钥托管", "test/secret-host.test.js"),
     ("永久会员与对账", "test/reconcile.test.js"),
     ("优惠券/折扣码", "test/coupon.test.js"),
     ("登录设备与会话", "test/sessions.test.js"),
@@ -175,6 +176,11 @@ NODE_SUITES = [
     ("列视图组", "test/column-views.test.js"),
     # 0.56.0 坚果云云同步：协议层 + 三向决策 + 密钥边界 + 端到端（内存 WebDAV）
     ("坚果云云同步", "test/cloud-sync.test.js"),
+    # 0.63.0 笔记工具（A2）：大纲幂等 + 批量标签/分类/前缀/合并（原笔记保留）
+    ("笔记工具(大纲/批量)", "test/note-tools.test.js"),
+    # 0.63.0 PDF 无头渲染 + 视觉 OCR：纯函数 + 侧车读写 + 问答回退契约
+    ("OCR(渲染/侧车/回退)", "test/ocr.test.js"),
+    ("笔记工具(独立验收)", "test/note-tools-qa.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),
     ("全模块加载冒烟", "test/smoke-load.test.js"),
 ]

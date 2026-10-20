@@ -140,6 +140,9 @@ pref("extensions.zotero.papilot.translateMigrated28", false);
 pref("extensions.zotero.papilot.translateFallbackUpgraded", false);
 pref("extensions.zotero.papilot.readerPopupStream", true);
 pref("extensions.zotero.papilot.readerPopupWriteBack", true);
+// 0.63.0 补默认值：面板里早有这个 checkbox（prefs.xhtml:952），但 prefs.js 一直缺默认值，
+// 声明式 preference 绑定读到 undefined 时不生效；reader-popup.js 里的代码兜底掩盖了这一点。
+pref("extensions.zotero.papilot.readerPopupConcat", true);
 // 0.15.0 新增：浮窗结果区字号缩放（"0.85"/"1"/"1.15"/"1.3"/"1.5"，字符串存法同 aiTemperature）
 pref("extensions.zotero.papilot.readerPopupFontScale", "1");
 // 每日 AI 请求计数（格式：YYYY-MM-DD:次数），设置面板只读展示
@@ -364,6 +367,23 @@ pref("extensions.zotero.papilot.refImportSources", "");
 // 0.33.0：Crossref / OpenAlex 的「礼貌池」联系邮箱（填了会获得更高的限速配额，
 // 建议填真实邮箱；留空走内置占位值，功能不受影响）
 pref("extensions.zotero.papilot.refImportMailto", "");
+// 0.61.0 国标参考文献导出：上次使用的选项（JSON：{style,numeric|authorDate, typeCode, doi, maxAuthors}）。
+// 留空 = 默认「顺序编码制 + 含类型标识 + 含 DOI + 作者上限 3」。
+pref("extensions.zotero.papilot.citeExportOpts", "");
+// 0.62.0 导出到 Obsidian：上次选择的 vault 根目录（留空 = 首次导出时弹目录选择）。
+// 实际写入 <folder>/Papilot/，不碰用户原有笔记。
+pref("extensions.zotero.papilot.obsidianExportFolder", "");
+// 0.63.0 PDF 无头渲染 + 视觉 OCR（扫描件补全文）
+// 识别引擎：vision = 走当前 AI 通道的多模态模型（目前唯一实现；其它值一律提示引擎不可用）
+pref("extensions.zotero.papilot.ocrEngine", "vision");
+// 渲染倍率（字符串存法同 aiTemperature；代码经 clampScale 限制在 0.8–3.0，默认 2 ≈ 144dpi）
+pref("extensions.zotero.papilot.ocrRenderScale", "2");
+// 单次最多识别多少页（整本扫描件既慢又贵，默认只认前 30 页）
+pref("extensions.zotero.papilot.ocrMaxPages", 30);
+// 已有 OCR 文本的页是否跳过（默认跳过：可中断续跑，代价是改不了已识别的页）
+pref("extensions.zotero.papilot.ocrSkipExistingPages", true);
+// 全文索引为空的 PDF 是否自动用 OCR 侧车文本回答（默认开：纯本地读文件，不触发识别）
+pref("extensions.zotero.papilot.ocrAutoFallback", true);
 // 0.38.0 设置面板折叠分组：已展开的分组键（CSV，取值为 prefs.xhtml 里 data-fold：
 // account/channels/translate/aiparams/popup/columns/tagging/enhance/uitheme/pdftheme/menu）。
 // 留空 = 全部收起（默认）；面板里点标题行 / 全部展开会更新本 pref

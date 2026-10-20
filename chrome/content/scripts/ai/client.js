@@ -124,7 +124,12 @@ var AIClient = {
   },
 
   /**
-   * @param {Array<{role:string, content:string}>} messages
+   * @param {Array<{role:string, content:string|Array}>} messages
+   *   0.63.0 视觉输入（features/ocr.js 的 OCR）：content 允许是 OpenAI 兼容的多模态**数组**
+   *   （`[{type:"text",…},{type:"image_url",image_url:{url:"data:image/jpeg;base64,…"}}]`）。
+   *   本方法不加工 messages，原样 `JSON.stringify` 进请求体，数组 content 天然透传。
+   *   ⚠️ 若将来在这里加 content 归一化/裁剪，必须保留「数组原样透传」这一条，
+   *   否则 OCR 的图片会被压成字符串，视觉模型只会收到 "[object Object]"。
    * @param {{model?:string}=} opts 可选覆盖项（仅 model：Agent 决策轮路由用）
    * @returns {Promise<string>} 助手回复文本
    */

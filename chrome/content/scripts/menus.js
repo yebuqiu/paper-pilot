@@ -11,7 +11,7 @@
  *   - menuMode / menuHiddenGroups / menuQuickItems 三个 pref 变更即时重建菜单。
  * 设计口径：只做「重组」不做「删减」——被折叠的功能仍可从功能中心（Hub）、
  * 工具菜单分组、classic 模式三处到达，任何入口都不失联。 */
-/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats, ThirdSource, MetaDoctor, AnnotationDigest, ReviewWorkbench */
+/* global Zotero, Services, Prefs, AIChat, AIClient, I18n, Notes, Annotations, AutoTag, Matrix, Channels, CitationColumn, RuleTag, CitationTrace, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ItemSel, CNMeta, CNTranslators, CNFetch, CNVerify, CNAuth, ReadingState, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, AnkiExport, LibGraph, UiTheme, PdfTheme, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ChatFloat, Rating, PdfDual, CollectionStats, ThirdSource, MetaDoctor, AnnotationDigest, ReviewWorkbench, OcrService, NoteTools */
 
 var Menus = {
   _nodes: [], // 记录注入的 DOM 节点，shutdown 时移除
@@ -45,11 +45,16 @@ var Menus = {
     { id: "review", group: "notes", labelKey: "menuReview", run: () => ReviewGen.forSelected() },
     { id: "mindmap", group: "notes", labelKey: "menuMindmap", run: () => MindMap.runForSelected() },
     { id: "note-template", group: "notes", labelKey: "menuNoteTemplate", run: () => NoteTemplates.runForSelected() },
+    // 0.63.0 笔记工具（A2）：单篇内的大纲 + 多篇批量整理（只走公开接口，不碰编辑器内部）
+    { id: "note-tools", group: "notes", labelKey: "menuNoteTools", run: () => NoteTools.runForSelected() },
+    // 0.62.0 单向导出到 Obsidian（只写不回读，避免变成同步引擎）
+    { id: "obsidian-export", group: "notes", labelKey: "menuObsidianExport", run: () => ObsidianExport.runForSelected() },
     { id: "anki", group: "notes", labelKey: "menuAnki", run: () => AnkiExport.runForSelected() },
     // 引文分析
     { id: "s2-refresh", group: "citation", labelKey: "menuS2Refresh", run: () => CitationColumn.refreshForSelected() },
     { id: "cite-trace", group: "citation", labelKey: "menuCiteTrace", run: () => CitationTrace.runForSelected() },
     { id: "ref-import", group: "citation", labelKey: "menuRefImport", run: () => RefImport.openDialog() },
+    { id: "cite-export", group: "citation", labelKey: "menuCiteExport", run: () => CiteExport.openDialog() },
     { id: "matrix", group: "citation", labelKey: "menuMatrix", run: () => Matrix.forSelected() },
     // 标签治理
     { id: "ai-tag", group: "tags", labelKey: "menuAiTag", run: () => AutoTag.runForSelected() },
@@ -66,6 +71,9 @@ var Menus = {
     { id: "meta-lint", group: "meta", labelKey: "menuMetaLint", run: () => MetaLint.runForSelected() },
     // 0.52.0 元数据医生：Crossref 反查补全（预览→确认→可撤销）
     { id: "meta-doctor", group: "meta", labelKey: "menuMetaDoctor", run: () => MetaDoctor.run() },
+    // 0.63.0 PDF 无头渲染 + 视觉 OCR：扫描件（无文本层）补全文，结果落本地侧车后
+    // AI 问答自动回退可用。只发送当前页 JPEG 到用户自己配置的 AI 通道。
+    { id: "ocr-run", group: "meta", labelKey: "menuOcrRun", run: () => OcrService.runForSelected() },
     // 0.53.0 综述工作台（笔记组：多篇 → 大纲 → 分节草稿）
     { id: "review-workbench", group: "notes", labelKey: "menuReviewWorkbench", run: () => ReviewWorkbench.openDialog() },
     { id: "meta-rules", group: "meta", labelKey: "menuMetaRules", run: () => MetaRules.openDialog() },

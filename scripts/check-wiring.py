@@ -813,7 +813,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.8.7'" in srv, "18.31 服务端版本号已随批次更新（1.8.7）")
+ok("version: '1.9.0'" in srv, "18.31 服务端版本号已随批次更新（1.9.0）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -928,7 +928,7 @@ ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余�
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.8.7'" in srv, "19.24 服务端版本随批次推进（1.8.7）")
+ok("version: '1.9.0'" in srv, "19.24 服务端版本随批次推进（1.9.0）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -1088,7 +1088,7 @@ ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/p
 for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
     ok(k in html, "21.31 admin.html 含 %s" % k)
 
-ok("version: '1.8.7'" in srv, "21.32 服务端版本 1.8.7")
+ok("version: '1.9.0'" in srv, "21.32 服务端版本 1.9.0")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 22. 多引擎翻译（插件 0.28.0） ----------
@@ -1251,8 +1251,8 @@ ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
 for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
     ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
 _item_reg_src = menus_js.split("GROUPS:")[0]
-ok(_item_reg_src.count("labelKey:") == 50,
-   "23.7 ★ 注册表恰好 50 条命令（实测 %d；0.53.0 +综述工作台；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源）" % _item_reg_src.count("labelKey:"))
+ok(_item_reg_src.count("labelKey:") == 54,
+   "23.7 ★ 注册表恰好 54 条命令（实测 %d；0.53.0 +综述工作台；0.61.0 +国标参考文献导出、0.62.0 +Obsidian 导出、0.63.0 +OCR 与笔记工具；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源）" % _item_reg_src.count("labelKey:"))
 ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
@@ -3081,6 +3081,101 @@ ok('id="pp-subs-feedback-clear"' in prefs_xhtml and "pp-subs-feedback-clear" in 
    "49.22b 清空反馈学习按钮接线完整")
 ok("关键词、分类、作者至少填一个" in _psrc,
    "49.22c 表单校验文案同步（作者也算检索条件）")
+
+# ---------- 50. 0.63.0 PDF 无头渲染 + 视觉 OCR / 笔记工具（A2） ----------
+# 这两条链路都有「静默降级」的失败面，用户侧只表现为「点了没反应」，所以用静态断言钉住：
+#   ① pdfjs 若在模块循环**之后**载入，features/ocr.js 运行期取 pdfjsLib 得到 undefined；
+#      若没有 try/catch，UMD 加载失败会直接搞死整个插件启动；
+#   ② features/ocr.js 不在装配清单 → 菜单项调 OcrService 时 ReferenceError；
+#   ③ 5 个 OCR pref 缺默认值 → Prefs.get 拿到 undefined，页数上限变 NaN，识别循环一页都不跑；
+#   ④ 菜单 group 写错 → 功能在右键分组里根本找不到（分组即入口位置）；
+#   ⑤ 窗口脚本 getElementById 的 id 与 xhtml 不一致 → 控件永远没反应（点了像坏了）。
+_ocr_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "ocr.js"),
+                  encoding="utf-8").read()
+_nt_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "note-tools.js"),
+                 encoding="utf-8").read()
+_ntwin_js = io.open(os.path.join(ROOT, "chrome", "content", "note-tools.js"), encoding="utf-8").read()
+_ntxhtml = io.open(os.path.join(ROOT, "chrome", "content", "note-tools.xhtml"), encoding="utf-8").read()
+_pane_js2 = io.open(os.path.join(ROOT, "chrome", "content", "prefs-pane.js"), encoding="utf-8").read()
+
+# ① pdfjs 载入位置与容错（文本顺序 + 片段包含，不写脆弱正则）
+_pdfjs_at = mainjs.find("chrome/content/vendor/pdfjs/pdf.min.js")
+_loop_at = mainjs.find("for (const f of files)")
+ok(_pdfjs_at >= 0, "50.1 main.js 载入 vendor pdfjs（chrome/content/vendor/pdfjs/pdf.min.js）")
+ok(_pdfjs_at >= 0 and _loop_at > _pdfjs_at, "50.2 ★ pdfjs 在模块加载循环之前载入")
+ok(_pdfjs_at >= 0 and "try {" in mainjs[max(0, _pdfjs_at - 800):_pdfjs_at],
+   "50.3 ★ pdfjs 载入在 try 块内（失败不拖垮启动）")
+ok(_pdfjs_at >= 0 and "catch (e)" in mainjs[_pdfjs_at:_pdfjs_at + 2000],
+   "50.4 ★ pdfjs 载入被 catch 兜住（只写诊断）")
+ok("GlobalWorkerOptions.workerSrc" in mainjs and "pdf.worker.min.js" in mainjs,
+   "50.5 main.js 把 workerSrc 指向 vendor 里的 pdf.worker.min.js")
+ok('"features/ocr.js"' in mainjs and "this.ocr = " in mainjs,
+   "50.6 features/ocr.js 在装配清单且挂到 Zotero.Papilot.ocr")
+ok('"features/note-tools.js"' in mainjs and "this.noteTools = NoteTools;" in mainjs,
+   "50.6b features/note-tools.js 在装配清单且挂到 Zotero.Papilot.noteTools")
+
+# ② OCR 五个默认值
+for _k in ["ocrEngine", "ocrRenderScale", "ocrMaxPages", "ocrSkipExistingPages", "ocrAutoFallback"]:
+    ok(('papilot.%s"' % _k) in prefsdef, "50.7 prefs.js 含 OCR 默认值 %s" % _k)
+
+# ③ 菜单分组（分组即入口位置）
+ok('id: "ocr-run", group: "meta"' in menus_js, "50.8 菜单 ocr-run 归属 meta 组")
+ok('id: "note-tools", group: "notes"' in menus_js, "50.9 菜单 note-tools 归属 notes 组")
+
+# ④ 窗口脚本引用的 id 必须都在 xhtml 里
+_nt_ids = set(re.findall(r"""\$\(\s*["']([A-Za-z0-9_-]+)["']\s*\)""", _ntwin_js))
+_nt_ids |= set(re.findall(r"""getElementById\(\s*["']([A-Za-z0-9_-]+)["']\s*\)""", _ntwin_js))
+_nt_missing = sorted(i for i in _nt_ids if ('id="%s"' % i) not in _ntxhtml)
+ok(len(_nt_ids) >= 8, "50.10 从笔记工具窗口脚本提取到元素 id（实测 %d 个）" % len(_nt_ids))
+ok(not _nt_missing,
+   "50.11 ★ note-tools.xhtml 覆盖窗口脚本引用的全部 id → 缺失: %s" % (_nt_missing or "无"))
+ok('windowtype="papilot:notetools"' in _ntxhtml and "papilot:notetools" in _nt_js,
+   "50.12 窗口类型一致（openDialog 的「已开则聚焦」靠它）")
+
+# ⑤ OCR 模块接口与问答回退契约
+for _fn in ["clampScale", "clampMaxPages", "pickScale", "mergePages", "joinPages", "sidecarName",
+            "textFor", "ocrAttachment", "ocrItem", "runForSelected", "cancel"]:
+    ok(_fn in _ocr_js, "50.13 ocr.js 提供 %s" % _fn)
+ok("ocrAutoFallback" in _chatjs and "_ocrFallbackText" in _chatjs and "textFor" in _chatjs,
+   "50.14 ★ AIChat 全文为空时回退 OCR 侧车（受 ocrAutoFallback 控制）")
+ok(r"/[ \t]+\n/g" in _chatjs, "50.15 ★ OCR 回退只压行尾空白（保留页间空行）")
+ok("绝不传 mode" in _ocr_js, "50.16 ocr.js 写明 IOUtils.writeUTF8 不传 mode 的纪律")
+ok('"chrome/content/vendor/pdfjs/pdf.worker.min.js"' in _ocr_js,
+   "50.17 ocr.js 的 worker 兜底同样指向 vendor worker")
+
+# ⑥ 设置面板 OCR 子块（控件 + 钳制）
+for _id in ["pp-ocr-maxpages", "pp-ocr-scale", "pp-ocr-autofallback", "pp-ocr-skip"]:
+    ok(('id="%s"' % _id) in prefs_xhtml, "50.18 设置面板含 OCR 控件 #%s" % _id)
+ok("ocrClampPages" in _pane_js2 and "ocrClampScale" in _pane_js2 and "initOcr" in _pane_js2,
+   "50.19 ★ 设置面板对 OCR 输入钳制（页数 1–500 / 倍率 1.5-2-3）并显式读写 pref")
+ok("svc.clampMaxPages" in _pane_js2 and "svc.pickScale" in _pane_js2,
+   "50.20 ★ 面板复用 OcrService 的钳制判定（单一真源，避免面板与流程各钳一套）")
+
+# ⑦ 密钥托管（插件 0.64.0 / 服务端 1.9.0）：服务端 × account.js × 分区列 × 设置面板
+#   这条链路最容易「三端各改一半」——端点加了但列不读、按钮加了但没绑，都是静默失败。
+_srv_host = io.open(SRV, encoding="utf-8").read()
+_acct_host = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "ai", "account.js"),
+                     encoding="utf-8").read()
+_rankhost_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "columns", "rank-column.js"),
+                       encoding="utf-8").read()
+for _p in ["/api/user/secrets", "hostedSecretsView", "secretbox.encrypt", "maskSecret"]:
+    ok(_p in _srv_host, "50.21 ★ 服务端实现密钥托管：%s" % _p)
+ok("url.indexOf('/api/user/secrets/') === 0" in _srv_host
+   and "url === '/api/user/secrets' || url.startsWith('/api/user/secrets/')" in _srv_host,
+   "50.22 ★ 托管接口挂在登录态分组里（未登录 401，不泄漏账号是否有托管）")
+for _m in ["hostedSecrets", "revealHostedSecret", "saveHostedSecret", "deleteHostedSecret"]:
+    ok(("async %s(" % _m) in _acct_host, "50.23 account.js 提供 %s" % _m)
+ok("this._hostedKey" in _rankhost_js and "revealHostedSecret" in _rankhost_js
+   and "refreshHostedKey" in _rankhost_js,
+   "50.24 ★ 分区列在本机无 Key 时回落账号托管 Key，且 pref 清空后能重新评估")
+for _id in ["pp-es-host-save", "pp-es-host-load", "pp-es-host-del", "pp-es-host-state"]:
+    ok(('id="%s"' % _id) in prefs_xhtml, "50.25 设置面板含托管控件 #%s" % _id)
+ok('bind("pp-es-host-save"' in _pane_js2 and "onHostLoad" in _pane_js2
+   and "refreshHostState" in _pane_js2,
+   "50.26 ★ 三个托管按钮均已绑定并回显状态（只加控件不接线 = 点了没反应）")
+ok("maskSecret(value)" in _srv_host,
+   "50.27 ★ 审计只记掩码（日志不能成为密钥的第二份副本）")
+
 
 print("=" * 60)
 for p in passes:

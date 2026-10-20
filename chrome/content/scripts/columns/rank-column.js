@@ -34,7 +34,7 @@
  *  - 配色：补齐全部 kind 的颜色，默认分支不再是灰色（灰=低区语义，仅用于
  *    Q4/4区）；设置面板预览改为「全 kind 图例」，一眼可见设置是否生效。
  */
-/* global Zotero, IOUtils, PathUtils, Prefs, I18n */
+/* global Zotero, IOUtils, PathUtils, Prefs, I18n, Account */
 
 var RankColumn = {
   COLUMN_KEY: "papilot-journalRank",
@@ -133,23 +133,95 @@ var RankColumn = {
   /* ================= easyScholar 在线源 ================= */
 
   /**
-   * 取用的 easyScholar Key：**只认用户自备的 Key**（0.56.0 起不再有内置 Key）。
-   * 无 Key 时在线查询自动停用，分区列回落到内置离线数据集。
+   * 取用的 easyScholar Key 来源（按优先级）：
+   *   ① 本机自备（pref easyScholarKey）——最可信，也永不联网取回；
+   *   ② **账号托管**（服务端 1.9.0 起）——用户自己把这把 Key 存进自己账号，
+   *      换机器 / 重装后自动取回；只在内存里，不落盘。
+   * 两者都没有 ⇒ 在线查询停用，回落内置离线数据。
    */
   esKey() {
-    return String(Prefs.get("easyScholarKey", "") || "").trim();
+    const own = String(Prefs.get("easyScholarKey", "") || "").trim();
+    return own || this._hostedKey || "";
   },
 
   /**
    * 在线源状态（供设置页给出**可执行**的指引，而不是让用户看到空白以为坏了）：
-   *   "ok" = 可用（用户已填写自己的 Key）
-   *   "off" = 用户自己关了在线查询
-   *   "need_key" = 未填写 Key ⇒ 需要去 easyscholar.cn 免费注册后填入
+   *   "ok"       = 本机自备 Key 可用
+   *   "hosted"   = 正在使用账号里托管的 Key（本机没填）
+   *   "off"      = 用户自己关了在线查询
+   *   "need_key" = 都没有 ⇒ 需要去 easyscholar.cn 免费注册后填入
    */
   esStatus() {
     if (!Prefs.get("easyScholarEnabled", true)) return "off";
-    if (this.esKey()) return "ok";
+    if (String(Prefs.get("easyScholarKey", "") || "").trim()) return "ok";
+    if (this._hostedKey) return "hosted";
     return "need_key";
+  },
+
+  /* ================= 账号托管 Key（服务端 1.9.0） ================= */
+
+  /** 托管 Key 与掩码（仅本次会话内存；不落盘、不进云同步） */
+  _hostedKey: "",
+  _hostedHint: "",
+  _hostedTried: false,
+  _hostedWatch: null,
+
+  /**
+   * 从账号取回托管的 Key。仅当本机没有自备 Key 且已登录时尝试；
+   * 失败一律静默——404 表示「没托管」，属正常状态，不该打扰用户。
+   * 拿到后清条目缓存并重绘，列会在下一轮 dataProvider 调用时开始在线查询。
+   *
+   * ⚠️ 启动时序（0.64.0 实机踩到）：`Account.restore()` 是**异步**的（读多落点副本 +
+   * 可能的网络刷新），而分区列注册往往比它早几十毫秒 —— 首次调用时必然 `isLoggedIn()`
+   * 为 false。所以这里**不能**一上来就锁 `_hostedTried`：未登录时安排 3s×10 的轮询，
+   * 并额外订阅 onSessionChanged（恢复结束 / 登录 / 登出都会通知）。
+   * 失败（网络不可达）同样重置标记，让上面的两条路径都能再试。
+   */
+  async _loadHostedKey(attempt) {
+    const n = attempt || 0;
+    if (this._hostedTried) return;
+    if (typeof Account === "undefined" || !Account) return;
+    if (!Account.isLoggedIn()) {
+      if (n < 10 && typeof setTimeout === "function") {
+        setTimeout(() => { this._loadHostedKey(n + 1).catch(() => {}); }, 3000);
+      }
+      return;
+    }
+    this._hostedTried = true;
+    try {
+      const meta = await Account.hostedSecrets();
+      const st = meta && meta.easyscholar;
+      if (!st || !st.set) return;
+      const v = await Account.revealHostedSecret("easyscholar");
+      if (!v) return;
+      this._hostedKey = v;
+      this._hostedHint = st.hint || "";
+      Zotero.debug(`Papilot: 已取回账号托管的 easyScholar Key（${this._hostedHint || "已保存"}）`);
+      try { this._lookupCache.clear(); } catch (e) { /* ignore */ }
+      this._esRefreshColumns();
+    } catch (e) {
+      this._hostedTried = false;   // 网络/服务暂不可达：留给下一次会话通知或面板按钮重试
+      Zotero.debug("Papilot: 取回托管 Key 未成功 " + (e && e.message || e));
+    }
+  },
+
+  /** 订阅账号会话变化：恢复完成 / 登录 / 登出后自动再试（只注册一次） */
+  _watchHostedKey() {
+    if (this._hostedWatch) return;
+    try {
+      if (typeof Account === "undefined" || !Account
+          || typeof Account.onSessionChanged !== "function") return;
+      this._hostedWatch = Account.onSessionChanged(() => {
+        if (this._hostedKey || this._hostedTried) return;
+        this._loadHostedKey().catch(() => {});
+      });
+    } catch (e) { /* ignore */ }
+  },
+
+  /** pref 变化后重新评估（用户清空自备 Key 时应回落到账号托管） */
+  async refreshHostedKey() {
+    this._hostedTried = false;
+    if (!String(Prefs.get("easyScholarKey", "") || "").trim()) await this._loadHostedKey();
   },
 
   _esEnabled() {
@@ -166,15 +238,25 @@ var RankColumn = {
     try {
       const obj = JSON.parse(await IOUtils.readUTF8(this._esCacheFile()));
       let dropped = 0;
+      let revived = 0;
       for (const k of Object.keys(obj || {})) {
         const v = obj[k];
         // 旧格式（0.18.0 之前无 badges 字段、text 常为空）判定为失效缓存：
         // 丢弃以便用新解析器重查（否则中文期刊永远只有一个空/灰条目）
         if (v && !v.neg && !v.badges) { dropped++; continue; }
+        // 0.64.0：**老负缓存没有 retryAfter**（0.18 时代还没有「过期重查」的概念）。
+        // 这类条目会永久压住该期刊——later 就算配好了 Key 也永远空白，
+        // 用户只能自己去点「清空查询缓存」。这里补一个已过期的 retryAfter，
+        // 让下一轮 lookup 自动重查（232 条 ≈ 80s，限速内跑完）。
+        if (v && v.neg && !v.retryAfter) {
+          v.retryAfter = (Number(v.t) || 0) + 30 * 60 * 1000;
+          if (v.retryAfter > Date.now()) v.retryAfter = Date.now() - 1;
+          revived++;
+        }
         this._esCache.set(k, v);
       }
-      Zotero.debug(`Papilot: easyScholar 缓存 ${this._esCache.size} 条（迁移丢弃旧格式 ${dropped} 条）`);
-      if (dropped) this._esSaveCacheSoon();
+      Zotero.debug(`Papilot: easyScholar 缓存 ${this._esCache.size} 条（迁移丢弃旧格式 ${dropped} 条，复活过期负缓存 ${revived} 条）`);
+      if (dropped || revived) this._esSaveCacheSoon();
     } catch (e) { /* 无缓存文件属正常 */ }
   },
 
@@ -554,6 +636,12 @@ var RankColumn = {
     this._lookupCache.clear();
     await this._esLoadCache();
     this._migrateDataSets181();
+    // 账号托管的 Key（1.9.0）：不阻塞启动；本机已有自备 Key 时无需取回
+    this._hostedTried = false;
+    if (!String(Prefs.get("easyScholarKey", "") || "").trim()) {
+      this._watchHostedKey();
+      this._loadHostedKey().catch(() => {});
+    }
   },
 
   /** 0.18.1 数据集迁移：旧版本（≤0.18.0）的 rankDataSets 显式列表里不可能

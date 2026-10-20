@@ -763,6 +763,48 @@ var Account = {
   },
 
   /** 套餐目录 + 价格档位 + 收款信息（无需登录即可查看价格） */
+  /* ================= 密钥托管（服务端 1.9.0） =================
+   * 用户**自己的**第三方 Key（当前只有 easyScholar）加密存到自己账号下，
+   * 换机器 / 重装后自动取回，不用重填。
+   *
+   * ★ 这不是「官方 Key」：服务端不持有任何可用的第三方额度（0.56.0 已按授权要求
+   *   移除随包分发的 Key），它只是把用户自己的密文保管起来（AES-256-GCM，主密钥
+   *   不进备份）。列表接口只回掩码，明文只有 revealHostedSecret() 拿得到。
+   * ★ 明文一律不落本地磁盘、不进云同步快照、不写日志。
+   */
+  async hostedSecrets() {
+    const resp = await this._request("GET", "/api/user/secrets", null, this.token(), 10000);
+    const j = resp.json || {};
+    if (!j.ok) throw new Error(j.error || "读取托管密钥失败");
+    return j.secrets || {};
+  },
+
+  /** 取回明文（换机场景）；账号里没有时抛错（上层按「未托管」处理） */
+  async revealHostedSecret(name) {
+    const resp = await this._request("GET", "/api/user/secrets/" + encodeURIComponent(String(name || "")),
+      null, this.token(), 10000);
+    const j = resp.json || {};
+    if (!j.ok) throw new Error(j.error || "账号里没有保存这个密钥");
+    return String(j.value || "");
+  },
+
+  /** 保存（value 传空字符串等价于删除）；返回最新状态表 */
+  async saveHostedSecret(name, value) {
+    const resp = await this._request("PUT", "/api/user/secrets/" + encodeURIComponent(String(name || "")),
+      { value: String(value == null ? "" : value) }, this.token(), 10000);
+    const j = resp.json || {};
+    if (!j.ok) throw new Error(j.error || "保存托管密钥失败");
+    return j.secrets || {};
+  },
+
+  async deleteHostedSecret(name) {
+    const resp = await this._request("DELETE", "/api/user/secrets/" + encodeURIComponent(String(name || "")),
+      null, this.token(), 10000);
+    const j = resp.json || {};
+    if (!j.ok) throw new Error(j.error || "删除托管密钥失败");
+    return j.secrets || {};
+  },
+
   async plans() {
     const resp = await this._request("GET", "/api/plans", null, this.token() || null, 10000);
     const j = resp.json || {};

@@ -1007,7 +1007,13 @@
             <html:button id="pp-es-clear" class="pp-btn pp-btn-sm">清空查询缓存</html:button>
             <html:span id="pp-es-stats" class="pp-hint"></html:span>
           </html:div>
-          <html:div class="pp-hint">在线分区数据需要你自己的 easyScholar SecretKey —— 在 easyscholar.cn 免费注册即可获取，额度归你自己所有。未填写时分区列只显示插件内置的离线数据（覆盖常见期刊，不会联网）。</html:div>
+          <html:div class="pp-row" style="margin-top:6px;">
+            <html:button id="pp-es-host-save" class="pp-btn pp-btn-sm">存到我的账号</html:button>
+            <html:button id="pp-es-host-load" class="pp-btn pp-btn-sm">从账号取回</html:button>
+            <html:button id="pp-es-host-del" class="pp-btn pp-btn-sm">删除托管</html:button>
+            <html:span id="pp-es-host-state" class="pp-hint"></html:span>
+          </html:div>
+          <html:div class="pp-hint">在线分区数据需要你自己的 easyScholar SecretKey —— 在 easyscholar.cn 免费注册即可获取，额度归你自己所有。填好后点「存到我的账号」，密钥会加密保存（AES-256-GCM），换电脑或重装后自动取回；服务端只做保管，不提供任何第三方额度。未填写时分区列只显示插件内置的离线数据（覆盖常见期刊，不会联网）。</html:div>
         </html:div>
         <html:div class="pp-field" style="margin-top:12px;">
           <html:label class="pp-label">显示哪些分区数据（勾选即展示；一篇文章的全部命中分区以徽章完整展示）</html:label>
@@ -1222,7 +1228,7 @@
   </html:div>
 
   <!-- ============ 7 · 增强功能 ============ -->
-  <html:div class="pp-card pp-fold" data-fold="enhance" data-search-strings-raw="增强 附件命名 笔记模板 Anki 对照翻译 补全文 template anki attachment unpaywall scihub">
+  <html:div class="pp-card pp-fold" data-fold="enhance" data-search-strings-raw="增强 附件命名 笔记模板 Anki 对照翻译 补全文 OCR 扫描件 识别 文字层 渲染 template anki attachment unpaywall scihub ocr scan render">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">🧩</html:span><html:span class="pp-card-title">增强功能</html:span>
       <html:span class="pp-card-desc">阅读状态 / 附件命名 / 全文对照翻译 / Anki 制卡 / 笔记模板</html:span>
@@ -1299,13 +1305,34 @@
         <html:label class="pp-label">自定义笔记模板（每行一条：名称=模板正文，换行用 \n）</html:label>
         <html:textarea preference="extensions.zotero.papilot.noteTemplatesCustom" class="pp-textarea" rows="3"
                        placeholder="周报卡=## {{title}}\n本周进展：\n{{aiSummary}}"/>
-        <html:div class="pp-hint">占位符：{{title}} {{creators}} {{year}} {{pub}} {{abstract}} {{annotations}} {{aiSummary}}</html:div>
+        <html:div class="pp-hint">占位符：{{title}} {{creators}} {{creatorsShort}} {{year}} {{journalAbbr}} {{volume}} {{issue}} {{pages}} {{doi}} {{tags}} {{collections}} {{annotations}} {{aiSummary}}；条件块 {{#if doi}}…{{else}}…{{/if}}，循环 {{#each tags}}…{{this}}…{{/each}}（0.61.0 起）。</html:div>
         <html:div class="pp-row" style="margin-top:8px;">
           <html:button id="pp-tpl-export" class="pp-btn pp-btn-sm">导出模板到剪贴板</html:button>
           <html:button id="pp-tpl-import" class="pp-btn pp-btn-sm">从剪贴板导入模板</html:button>
           <html:span id="pp-tpl-result" class="pp-msg"></html:span>
         </html:div>
       </html:div>
+      <vbox class="pp-subblock" style="gap:6px;">
+        <description class="pp-subtitle">OCR（扫描版 PDF：右键菜单「扫描件 OCR」）</description>
+        <hbox style="gap:8px;align-items:center;">
+          <label value="每次最多页数（1–500）"/>
+          <html:input id="pp-ocr-maxpages" type="number" min="1" max="500" class="pp-input" style="width:80px;"/>
+          <html:span id="pp-ocr-pages-msg" class="pp-hint"></html:span>
+        </hbox>
+        <hbox style="gap:8px;align-items:center;">
+          <label value="渲染倍率（越大越清晰，也更慢更耗额度）"/>
+          <menulist id="pp-ocr-scale" style="width:170px;">
+            <menupopup>
+              <menuitem label="1.5（快、省额度）" value="1.5"/>
+              <menuitem label="2（默认）" value="2"/>
+              <menuitem label="3（小字更准）" value="3"/>
+            </menupopup>
+          </menulist>
+        </hbox>
+        <checkbox id="pp-ocr-autofallback" label="该 PDF 没有文字层时，AI 问答自动使用已识别文本（只读本机，不触发识别）"/>
+        <checkbox id="pp-ocr-skip" label="重新识别时跳过已有文字的页（可中断续跑；关掉才会覆盖）"/>
+        <description class="pp-hint">只把当前页的图片发给你的 AI 通道（不上传整份 PDF）；识别结果只存本机数据目录，「AI 问答」可直接使用。</description>
+      </vbox>
     </html:div>
   </html:div>
 

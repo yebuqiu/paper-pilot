@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
+<!DOCTYPE window>
+<!-- Papilot · 参考文献导出（GB/T 7714，0.61.0）
+     只做「选中条目 → 国标参考文献表」一件事：
+       ① 顺序编码制 / 著者-出版年制两种制式；
+       ② 可选是否带 [J]/[M]/[D] 类型标识、是否附 DOI、作者列出上限；
+       ③ 预览即最终结果（与复制/保存走同一个渲染函数，避免两套格式漂移）。
+     窗口脚本不碰 Zotero：数据与动作全部经 window.arguments[0].api 注入。 -->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Papilot · 导出参考文献（GB/T 7714）"
+        windowtype="papilot:cite-export"
+        width="860" height="640">
+  <script src="chrome://papilot/content/cite-export.js"/>
+
+  <vbox flex="1" style="padding:12px;gap:10px;">
+    <description id="ce-head" style="color:#555;">已选条目将按 GB/T 7714-2015 生成，可直接粘贴进 Word。</description>
+
+    <hbox style="gap:18px;align-items:center;flex-wrap:wrap;">
+      <radiogroup id="ce-style" orient="horizontal">
+        <radio id="ce-style-numeric" label="顺序编码制 [1]" selected="true"/>
+        <radio id="ce-style-authordate" label="著者-出版年制"/>
+      </radiogroup>
+      <checkbox id="ce-typecode" label="含类型标识" checked="true"/>
+      <checkbox id="ce-doi" label="含 DOI" checked="true"/>
+      <hbox style="align-items:center;gap:6px;">
+        <label id="ce-max-label" value="作者上限"/>
+        <menulist id="ce-max" style="width:64px;">
+          <menupopup>
+            <menuitem label="1" value="1"/>
+            <menuitem label="2" value="2"/>
+            <menuitem label="3" value="3" selected="true"/>
+            <menuitem label="4" value="4"/>
+            <menuitem label="5" value="5"/>
+          </menupopup>
+        </menulist>
+      </hbox>
+    </hbox>
+
+    <html:textarea id="ce-out" readonly="true" spellcheck="false"
+                   style="flex:1;width:100%;min-height:320px;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:6px;font-family:Consolas,Menlo,monospace;font-size:13px;line-height:1.65;resize:none;background:#fff;color:#222;"></html:textarea>
+
+    <hbox style="align-items:center;gap:8px;">
+      <description id="ce-status" style="color:#1a7f37;flex:1;"></description>
+      <html:button id="ce-copy">复制</html:button>
+      <html:button id="ce-save">另存为 .txt</html:button>
+      <html:button id="ce-close">关闭</html:button>
+    </hbox>
+  </vbox>
+</window>

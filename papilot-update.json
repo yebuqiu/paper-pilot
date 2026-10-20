@@ -3,6 +3,50 @@
   "papilot@dev.local": {
    "updates": [
     {
+     "version": "0.64.0",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.64.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "easyScholar 密钥托管：自备 SecretKey 加密存进自己账号（AES-256-GCM），换电脑或重装后自动取回\n分区列在本机未填 Key 时自动回落账号托管副本，设置面板新增「存到我的账号 / 从账号取回 / 删除托管」\n修复：0.18 时代遗留的负缓存没有过期时间，会让期刊永久空白（即使后来配好 Key）——现在自动过期重查\n修复：启动时账号会话还没恢复，托管 Key 取不回（改为轮询 + 会话变化重试）"
+    },
+    {
+     "version": "0.63.0",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.63.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "扫描件 OCR：内置 pdf.js 本地渲染 + 视觉模型逐页转写，结果只存本机并自动供 AI 问答使用\n新增笔记大纲与批量整理（目录 / 加标签 / 移分类 / 统一前缀 / 合并）"
+    },
+    {
+     "version": "0.62.0",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.62.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "新增「导出到 Obsidian」：每篇一个 Markdown（含 front-matter / 批注 / 国标引用），只写不回读、同名不覆盖\n沿用 0.61.0 的 GB/T 7714 导出与笔记模板条件块"
+    },
+    {
+     "version": "0.61.0",
+     "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.61.0.xpi",
+     "applications": {
+      "zotero": {
+       "strict_min_version": "6.999",
+       "strict_max_version": "99.*"
+      }
+     },
+     "whatsNew": "新增 GB/T 7714 参考文献导出（顺序编码制 / 著者-出版年制，可直接粘进 Word）\n笔记模板升级为条件块 + 循环 + 十余个字段占位符"
+    },
+    {
      "version": "0.60.2",
      "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.60.2.xpi",
      "applications": {

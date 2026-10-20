@@ -75,6 +75,9 @@
 .pp-root .pp-hint { font-size: 11.5px; color: var(--pp-muted); line-height: 1.5; }
 .pp-root .pp-check { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--pp-text); margin-top: 8px; }
 .pp-root .pp-check input { margin: 0; }
+/* 0.63.0 卡片内子分区（「增强功能」卡末段的 OCR 小分区）：虚线分隔 + 小标题 */
+.pp-root .pp-subblock { border-top: 1px dashed var(--pp-border); padding-top: 10px; margin-top: 10px; }
+.pp-root .pp-subtitle { font-size: 12.5px; font-weight: 600; color: var(--pp-text); }
 
 /* ---------- 控件 ---------- */
 .pp-root .pp-input, .pp-root .pp-select {

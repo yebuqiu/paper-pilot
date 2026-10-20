@@ -3,9 +3,17 @@
 
 /* Papilot 笔记模板系统（0.11.0，Better Notes 品类的轻量路线）
  * 模板 = 带占位符的 Markdown 骨架，对选中条目一键生成结构化笔记。
- * 占位符：{{title}} {{creators}} {{year}} {{pub}} {{doi}} {{abstract}}
- *         {{annotations}}（批注列表，无批注则占位文字）
- *         {{aiSummary}}（调 AI 生成 300 字总结，失败降级为摘要字段）
+ *
+ * 占位符（0.61.0 扩充）：
+ *   基础   {{title}} {{creators}} {{creatorsShort}} {{year}} {{date}} {{pub}}
+ *          {{journalAbbr}} {{volume}} {{issue}} {{pages}} {{publisher}} {{place}}
+ *          {{doi}} {{url}} {{abstract}} {{itemType}} {{itemKey}}
+ *          {{tags}}（逗号分隔） {{collections}}（逗号分隔，分类名）
+ *   特殊   {{annotations}}（批注列表）  {{aiSummary}}（AI 300 字总结，失败降级摘要）
+ *   条件   {{#if doi}}…{{else}}…{{/if}}     字段非空为真；{{#if !doi}} 取反
+ *   循环   {{#each tags}}…{{this}}…{{/each}}  数组遍历，{{this}} 为当前项
+ *   未知占位符渲染为空串（旧版会原样留在笔记里，属于静默脏数据）。
+ *
  * 内置 7 套模板 + 用户自定义（pref noteTemplatesCustom，
  * 每行：名称=模板正文，正文里用 \n 表示换行）。
  * 0.39.0 起支持导出/导入：exportAll() 把自定义模板序列化成 JSON 写剪贴板，
@@ -109,47 +117,113 @@ var NoteTemplates = {
     }
   },
 
+  /** 条目 → 渲染上下文（同步字段；annotations / aiSummary 由 render 按需异步补） */
+  context(item) {
+    const get = (f) => { try { return item.getField(f) || ""; } catch (e) { return ""; } };
+    let creators = [];
+    try { creators = item.getCreators() || []; } catch (e) { creators = []; }
+    const names = creators.map((c) => (Number(c && c.fieldMode) === 1
+      ? (c.lastName || c.name || "")
+      : [c.firstName, c.lastName].filter(Boolean).join(" "))).filter(Boolean);
+
+    let tags = [];
+    try { tags = (item.getTags() || []).map((t) => t && t.tag).filter(Boolean); } catch (e) { tags = []; }
+
+    let collections = [];
+    try {
+      collections = (item.getCollections() || []).map((id) => {
+        try { return (Zotero.Collections.get(id) || {}).name || ""; } catch (e) { return ""; }
+      }).filter(Boolean);
+    } catch (e) { collections = []; }
+
+    const date = get("date");
+    return {
+      title: get("title"),
+      creators: names.join(", "),
+      creatorsShort: names.length ? names[0] + (names.length > 1 ? (I18n.isZh ? " 等" : " et al.") : "") : "",
+      year: String(date).slice(0, 4),
+      date,
+      pub: get("publicationTitle"),
+      journalAbbr: get("journalAbbreviation"),
+      volume: get("volume"),
+      issue: get("issue"),
+      pages: get("pages"),
+      publisher: get("publisher"),
+      place: get("place"),
+      doi: get("DOI"),
+      url: get("url"),
+      abstract: get("abstractNote"),
+      itemType: item.itemType || "",
+      itemKey: item.key || "",
+      tags,
+      collections,
+    };
+  },
+
   /**
-   * 渲染模板：占位符替换。
+   * 纯函数渲染：循环 → 条件 → 占位符。
+   * 循环体内再走一次「条件 + 占位符」，这样 {{#each tags}}{{#if this}}…{{/if}}{{/each}}
+   * 才拿得到当前项（把 {{this}} 塞进临时上下文，而不是粗暴字符串替换）。
+   * @param body 模板正文
+   * @param ctx 上下文对象（数组值在普通占位符里按逗号连接）
+   */
+  renderText(body, ctx) {
+    const c = ctx || {};
+    let out = String(body == null ? "" : body);
+
+    // ① 循环：{{#each tags}}…{{this}}…{{/each}}
+    out = out.replace(/\{\{#each\s+([\w.]+)\s*\}\}([\s\S]*?)\{\{\/each\}\}/g, (m, key, inner) => {
+      const arr = c[key];
+      if (!Array.isArray(arr)) return "";
+      return arr.map((item) => {
+        const text = (item && typeof item === "object")
+          ? String(item.text || item.name || item.title || "")
+          : String(item == null ? "" : item);
+        return this._renderInline(inner, Object.assign({}, c, { this: text }));
+      }).join("");
+    });
+
+    // ② 条件 + ③ 占位符
+    return this._renderInline(out, c);
+  },
+
+  /** 单层渲染：条件块（支持一层 else 与 ! 取反）+ 普通占位符（未知 → 空串） */
+  _renderInline(body, ctx) {
+    let out = String(body == null ? "" : body);
+    out = out.replace(/\{\{#if\s+(!?)\s*([\w.]+)\s*\}\}([\s\S]*?)\{\{\/if\}\}/g, (m, neg, key, inner) => {
+      const parts = inner.split(/\{\{\s*else\s*\}\}/);
+      const v = ctx[key];
+      const truthy = Array.isArray(v) ? v.length > 0 : !!(v != null && String(v).trim());
+      const show = neg ? !truthy : truthy;
+      return show ? (parts[0] || "") : (parts[1] || "");
+    });
+    out = out.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, key) => {
+      const v = ctx[key];
+      if (Array.isArray(v)) return v.join(", ");
+      return v == null ? "" : String(v);
+    });
+    return out;
+  },
+
+  /**
+   * 渲染模板：按需解析批注与 AI 摘要，再走纯函数渲染。
    * @param tpl {name, body}
    * @param item Zotero 常规条目
    * @param hooks {aiSummary?: () => Promise<string>} 测试时可注入
    */
   async render(tpl, item, hooks = {}) {
-    const get = (f) => { try { return item.getField(f) || ""; } catch (e) { return ""; } };
-    let creators = "";
-    try {
-      creators = (item.getCreators() || [])
-        .map((c) => c.fieldMode === 1 ? c.lastName : [c.firstName, c.lastName].filter(Boolean).join(" "))
-        .join(", ");
-    } catch (e) { /* ignore */ }
+    const ctx = this.context(item);
+    const body = String(tpl && tpl.body || "");
 
-    const map = {
-      title: get("title"),
-      creators,
-      year: String(get("date")).slice(0, 4),
-      pub: get("publicationTitle"),
-      doi: get("DOI"),
-      abstract: get("abstractNote"),
-      annotations: () => this._annotationsMd(item),
-      aiSummary: async () => {
-        if (hooks.aiSummary) return hooks.aiSummary();
-        try {
-          return await AIChat.summarize(item);
-        } catch (e) {
-          return get("abstractNote") || (I18n.isZh ? "（AI 摘要不可用）" : "(AI summary unavailable)");
-        }
-      },
-    };
-
-    let out = tpl.body;
-    for (const key of Object.keys(map)) {
-      const re = new RegExp("\\{\\{" + key + "\\}\\}", "g");
-      if (!re.test(out)) continue;
-      const val = typeof map[key] === "function" ? await map[key]() : map[key];
-      out = out.replace(re, val || "");
+    if (/\{\{\s*annotations\s*\}\}/.test(body)) ctx.annotations = this._annotationsMd(item);
+    if (/\{\{\s*aiSummary\s*\}\}/.test(body)) {
+      if (hooks.aiSummary) ctx.aiSummary = await hooks.aiSummary();
+      else {
+        try { ctx.aiSummary = await AIChat.summarize(item); }
+        catch (e) { ctx.aiSummary = ctx.abstract || (I18n.isZh ? "（AI 摘要不可用）" : "(AI summary unavailable)"); }
+      }
     }
-    return out;
+    return this.renderText(body, ctx);
   },
 
   /** 菜单入口：选模板 → 生成笔记 */
@@ -169,7 +243,7 @@ var NoteTemplates = {
     if (!tpl) return;
 
     // 含 AI 占位符时检查 key
-    if (/\{\{aiSummary\}\}/.test(tpl.body) && !AIClient.hasKey()) {
+    if (/\{\{\s*aiSummary\s*\}\}/.test(tpl.body) && !AIClient.hasKey()) {
       Services.prompt.alert(win, "Papilot", I18n.t("chatNoKey"));
       return;
     }

@@ -30,6 +30,10 @@
     } catch (e) { return fallback; }
   };
 
+  const setPref = (key, value) => {
+    try { Zotero.Prefs.set(PREFIX + key, value, true); } catch (e) { /* 写失败不拖死面板 */ }
+  };
+
   function setText(id, msg, color) {
     const el = $(id);
     if (el) { el.textContent = msg; el.style.color = color || "var(--pp-muted)"; }
@@ -50,6 +54,11 @@
           "var(--pp-warn)");
         return;
       }
+      if (st === "hosted") {
+        setText("pp-es-stats", msg + (zh ? " · 正在使用账号托管的 Key" : " · using hosted key"),
+          "var(--pp-success)");
+        return;
+      }
       setText("pp-es-stats", msg);
     } catch (e) { /* ignore */ }
   }
@@ -58,6 +67,90 @@
     try { await rankColumn().esClearCache(); } catch (e) { /* ignore */ }
     refreshEsStats();
     setText("pp-es-stats", txt.cacheCleared, "var(--pp-success)");
+  }
+
+  /* ---------- easyScholar Key 托管（0.64.0 / 服务端 1.9.0） ----------
+   * 用户自己的 Key 加密存进自己账号，换机器/重装后自动取回。
+   * ★ 服务端只做保险箱，不提供任何第三方额度——文案里不要说成「官方 Key」。
+   */
+  const account = () => Zotero.Papilot && Zotero.Papilot.account;
+
+  async function refreshHostState() {
+    const el = $("pp-es-host-state");
+    if (!el) return;
+    const A = account();
+    if (!A || !A.isLoggedIn || !A.isLoggedIn()) {
+      setText("pp-es-host-state", zh ? "未登录账号（托管需登录）" : "Sign in to host your key");
+      return;
+    }
+    try {
+      const meta = await A.hostedSecrets();
+      const st = meta && meta.easyscholar;
+      if (st && st.set) {
+        setText("pp-es-host-state", (zh ? "账号已托管：" : "Hosted: ") + (st.hint || "***"),
+          "var(--pp-success)");
+      } else {
+        setText("pp-es-host-state", zh ? "账号未托管（换机器需重填）" : "Not hosted");
+      }
+    } catch (e) {
+      setText("pp-es-host-state", (e && e.message) || "读取失败", "var(--pp-warn)");
+    }
+  }
+
+  async function onHostSave() {
+    const A = account();
+    if (!A || !A.isLoggedIn || !A.isLoggedIn()) {
+      setText("pp-es-host-state", zh ? "请先登录账号" : "Sign in first", "var(--pp-warn)");
+      return;
+    }
+    const key = String(getPref("easyScholarKey", "") || "").trim();
+    if (!key) {
+      setText("pp-es-host-state", zh ? "请先在上方填入 SecretKey" : "Fill in the key first", "var(--pp-warn)");
+      return;
+    }
+    try {
+      await A.saveHostedSecret("easyscholar", key);
+      setText("pp-es-host-state", zh ? "已加密保存到账号" : "Saved to your account", "var(--pp-success)");
+      refreshHostState();
+    } catch (e) {
+      setText("pp-es-host-state", (e && e.message) || "保存失败", "var(--pp-warn)");
+    }
+  }
+
+  async function onHostLoad() {
+    const A = account();
+    if (!A || !A.isLoggedIn || !A.isLoggedIn()) {
+      setText("pp-es-host-state", zh ? "请先登录账号" : "Sign in first", "var(--pp-warn)");
+      return;
+    }
+    try {
+      const v = await A.revealHostedSecret("easyscholar");
+      if (!v) throw new Error(zh ? "账号里没有托管的密钥" : "No hosted key");
+      setPref("easyScholarKey", v);
+      const input = $("pp-es-key");
+      if (input) input.value = v;
+      try { rankColumn()._lookupCache.clear(); } catch (e) { /* ignore */ }
+      try { rankColumn()._esRefreshColumns(); } catch (e) { /* ignore */ }
+      setText("pp-es-host-state", zh ? "已取回并填入" : "Restored", "var(--pp-success)");
+      refreshEsStats();
+    } catch (e) {
+      setText("pp-es-host-state", (e && e.message) || "取回失败", "var(--pp-warn)");
+    }
+  }
+
+  async function onHostDelete() {
+    const A = account();
+    if (!A || !A.isLoggedIn || !A.isLoggedIn()) {
+      setText("pp-es-host-state", zh ? "请先登录账号" : "Sign in first", "var(--pp-warn)");
+      return;
+    }
+    try {
+      await A.deleteHostedSecret("easyscholar");
+      setText("pp-es-host-state", zh ? "已删除账号里的托管副本" : "Removed", "var(--pp-success)");
+      refreshHostState();
+    } catch (e) {
+      setText("pp-es-host-state", (e && e.message) || "删除失败", "var(--pp-warn)");
+    }
   }
 
   /* ---------- Semantic Scholar 被引量 ---------- */
@@ -277,6 +370,84 @@
 
   /* ---------- 初始化（DOM 就绪探测） ---------- */
 
+  /* ---------- OCR（扫描版 PDF）子块：0.63.0 ---------- */
+
+  // 这一小块用 XUL 控件 + 显式 Prefs 读写，**没有**走 preference= 声明式绑定：
+  // 因为要钳制非法输入（页数 1–500、倍率只认 1.5/2/3）。声明式绑定会把空串 / 越界值
+  // 原样写进 pref，于是 `ocrMaxPages=0` 会让识别循环一页都不跑、`ocrRenderScale=abc`
+  // 会让 clampScale 悄悄回落——两者都是「点了没反应」型的静默失败。
+  const OCR_DEFAULT_PAGES = 30;
+  const OCR_SCALES = ["1.5", "2", "3"];
+  const ocrService = () => (Zotero.Papilot && Zotero.Papilot.ocr) || null;
+
+  /** 页数钳制：优先用 OcrService.clampMaxPages（识别流程与面板同一份判定），模块缺位时本地兜底 */
+  function ocrClampPages(v) {
+    const svc = ocrService();
+    if (svc && typeof svc.clampMaxPages === "function") return svc.clampMaxPages(v);
+    const n = Math.round(Number(v));
+    if (!isFinite(n) || n <= 0) return OCR_DEFAULT_PAGES;
+    return Math.min(500, Math.max(1, n));
+  }
+
+  function ocrClampScale(v) {
+    const svc = ocrService();
+    if (svc && typeof svc.pickScale === "function") return svc.pickScale(v);
+    const s = String(v == null ? "" : v).trim();
+    return OCR_SCALES.indexOf(s) >= 0 ? s : "2";
+  }
+
+  /** 绑定 OCR 子块。DOM 还没插进来时返回 false（由 init 与独立重试再调） */
+  function initOcr() {
+    const pages = $("pp-ocr-maxpages");
+    const scale = $("pp-ocr-scale");
+    const auto = $("pp-ocr-autofallback");
+    const skip = $("pp-ocr-skip");
+    if (!pages || !scale || !auto || !skip) return false;
+    if (pages.getAttribute("data-pp-bound") === "1") return true;
+    pages.setAttribute("data-pp-bound", "1");
+
+    const hint = (msg) => {
+      const el = $("pp-ocr-pages-msg");
+      if (!el) return;
+      el.textContent = msg || "";
+      el.style.color = msg ? "var(--pp-warn)" : "";
+    };
+
+    // 初值：读 → 钳制 → 只在被钳制过时写回（避免每次打开面板都刷一遍 pref）
+    const rawPages = getPref("ocrMaxPages", OCR_DEFAULT_PAGES);
+    const nPages = ocrClampPages(rawPages);
+    pages.value = String(nPages);
+    if (String(rawPages) !== String(nPages)) {
+      setPref("ocrMaxPages", nPages);
+      hint(zh ? "已按 1–500 修正" : "Clamped to 1–500");
+    }
+
+    const rawScale = getPref("ocrRenderScale", "2");
+    const sScale = ocrClampScale(rawScale);
+    scale.value = sScale;
+    if (String(rawScale) !== sScale) setPref("ocrRenderScale", sScale);
+
+    auto.checked = getPref("ocrAutoFallback", true) !== false;
+    skip.checked = getPref("ocrSkipExistingPages", true) !== false;
+
+    // 用 change（失焦/提交）而不是 input：边打字边改写会跟用户的光标打架
+    pages.addEventListener("change", () => {
+      const raw = pages.value;
+      const n = ocrClampPages(raw);
+      pages.value = String(n);
+      setPref("ocrMaxPages", n);
+      hint(String(raw).trim() === String(n) ? "" : (zh ? "已按 1–500 修正" : "Clamped to 1–500"));
+    });
+    scale.addEventListener("command", () => {
+      const s = ocrClampScale(scale.value);
+      scale.value = s; // 非法值（理论上选不出来）回落默认，并保证界面与 pref 一致
+      setPref("ocrRenderScale", s);
+    });
+    auto.addEventListener("command", () => { setPref("ocrAutoFallback", !!auto.checked); });
+    skip.addEventListener("command", () => { setPref("ocrSkipExistingPages", !!skip.checked); });
+    return true;
+  }
+
   function init() {
     if (typeof Zotero === "undefined" || !Zotero.Papilot || !rankColumn()) {
       window.setTimeout(init, 400);
@@ -291,12 +462,16 @@
     init._done = true;
 
     try { refreshEsStats(); } catch (e) { /* ignore */ }
+    try { refreshHostState(); } catch (e) { /* ignore */ }
     try { refreshS2Stats(); } catch (e) { /* ignore */ }
     try { renderDatasets(); } catch (e) { /* ignore */ }
     try { renderRankPreview(); } catch (e) { /* ignore */ }
 
     const bind = (id, ev, fn) => { const el = $(id); if (el) el.addEventListener(ev, fn); };
     bind("pp-es-clear", "click", onEsClear);
+    bind("pp-es-host-save", "click", onHostSave);
+    bind("pp-es-host-load", "click", onHostLoad);
+    bind("pp-es-host-del", "click", onHostDelete);
     bind("pp-s2-clear", "click", onS2Clear);
     bind("pp-rank-browse", "click", browseRankData);
     bind("pp-rank-export", "click", exportRankCfg);
@@ -308,6 +483,7 @@
     // 0.15.0 起账号服务器地址不再出现在设置界面——官方地址内置固定）
     bindEye("pp-es-key", "pp-es-key-eye");
     bindEye("pp-s2-key", "pp-s2-key-eye");
+    try { initOcr(); } catch (e) { /* OCR 子块绑定失败不影响其它设置项 */ }
   }
 
   init();
@@ -315,4 +491,12 @@
     window.setTimeout(init, 400);
     window.setTimeout(init, 1200);
   }
+
+  // OCR 子块与其它控件同批插入 DOM：独立重试，避免「rankColumn 未就绪」把这块永久漏绑
+  let ocrBootTries = 0;
+  (function bootOcr() {
+    if (initOcr()) return;
+    if (++ocrBootTries > 12) return;
+    try { window.setTimeout(bootOcr, 300); } catch (e) { /* ignore */ }
+  })();
 })();

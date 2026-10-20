@@ -32,6 +32,10 @@
  *   不再原样透传——插件会把网关 401 视为「账号令牌失效」清会话，透传会让用户
  *   「切个模型就整个插件掉登录」。
  * 在线支付（1.7.0）：易支付/码支付接入，充值订单可自助下单→扫码→**自动到账**。
+ * 密钥托管（1.9.0）：GET/PUT/DELETE /api/user/secrets[/<name>] —— 用户**自己的**第三方
+ *   Key（当前 only easyScholar）加密存到本人账号，换机/重装自动取回。落盘只有密文
+ *   （secretbox，主密钥不进备份）；列表只回掩码，明文需登录 + 限速 + 审计。
+ *   ★ 不是「官方 Key」：0.56.0 已按授权要求移除随包分发的 Key，服务端不提供任何额度。
  *   配置存 data/pay.json，商户密钥用 AES-256-GCM 加密（主密钥 data/.secret.key，均不进备份）。
  *   ★ 回调地址由 **PP_PUBLIC_URL** 决定（不按 Host 头推断——公网 Host 可伪造）。
  *   ★ 不启用时一切照旧（收款码 + 人工核销）；`enforce`/`enabled` 各自独立开关。
@@ -252,6 +256,10 @@ const GATEWAY_MAX = 20;                  // 网关全局限速（每 IP 每分�
 const PAY_MAX = limitOf('PP_PAY_MAX', 10);              // 发起支付（每账号每分钟）
 const PAY_QUERY_MAX = limitOf('PP_PAY_QUERY_MAX', 12);  // 主动查单（每账号每分钟）
 const PAY_NOTIFY_MAX = limitOf('PP_PAY_NOTIFY_MAX', 60); // 网关回调（每 IP 每分钟，网关会重试）
+// 1.9.0 密钥托管：取回明文与写入都要限速（每账号每分钟）。取回是敏感动作，
+// 但换机场景可能一次取回多个 Key，额度给得比写入宽一些。
+const SECRET_GET_MAX = limitOf('PP_SECRET_GET_MAX', 30);
+const SECRET_PUT_MAX = limitOf('PP_SECRET_PUT_MAX', 20);
 // 2026-10 免签网关兼容（领航智能Pay ljlliu.cn 实测）：个人收款码靠「唯一金额」区分并发
 // 同额订单——同金额的第 2、3…笔未完结订单会被网关自动加价（¥10.00→10.01→10.02…），
 // notify 带加价后金额。回调金额校验因此在**多付侧**留尾差窗口（默认 ¥1.00）：
@@ -1060,6 +1068,44 @@ function userByToken(req) {
   if (!rec || rec.expiresAt < Date.now()) return null;
   const user = findUserById(rec.userId);
   return user || null;
+}
+
+/* ================= 密钥托管（1.9.0） =================
+ * 背景：0.56.0 因授权问题移除了随包分发的 easyScholar Key，此后所有用户都得自备。
+ * 但「换机器 / 重装要重填」是真实摩擦，于是把**用户自己的** Key 加密存到他自己名下，
+ * 客户端登录后自动取回（服务端只做保险箱，不提供任何第三方额度）。
+ *
+ * ★ 落盘只有密文（secretbox / AES-256-GCM；主密钥 data/.secret.key 不进快照与备份），
+ *   备份整包被拿走也解不开。
+ * ★ 列表只回掩码；明文只在 GET /api/user/secrets/<name> 返回，必须登录 + 限速 + 审计。
+ * ★ 与后台无关：userForClient / userAdminOut 都是白名单序列化，密文与掩码都不外泄。
+ */
+const HOSTED_SECRETS = {
+  easyscholar: { label: 'easyScholar SecretKey', maxLen: 200 },
+};
+
+/** 掩码：只露前 4 位与后 4 位（短密钥退化为前 2 位 + ***） */
+function maskSecret(v) {
+  const s = String(v || '');
+  if (!s) return '';
+  return s.length <= 8 ? s.slice(0, 2) + '***' : s.slice(0, 4) + '…' + s.slice(-4);
+}
+
+/** 托管状态视图（不含明文，也不含密文） */
+function hostedSecretsView(user) {
+  const box = (user && user.secrets) || {};
+  const secrets = {};
+  for (const name in HOSTED_SECRETS) {
+    const rec = box[name];
+    const has = !!(rec && rec.enc);
+    secrets[name] = {
+      label: HOSTED_SECRETS[name].label,
+      set: has,
+      hint: has ? (rec.hint || '') : '',
+      updatedAt: has ? (rec.updatedAt || null) : null,
+    };
+  }
+  return { secrets };
 }
 
 function touchToken(req) {
@@ -2476,7 +2522,7 @@ function healthSnapshot(deg, detail) {
     const bl = backlogNow();
     const ast = audit.stats(DATA_DIR);
     _healthCache = {
-      ok: true, service: 'papilot-account-server', version: '1.8.7',
+      ok: true, service: 'papilot-account-server', version: '1.9.0',
       // 以下活性字段每次响应都会覆盖为实时值（见下方 Object.assign）
       uptime: Math.round(process.uptime()), now: new Date().toISOString(),
       pid: process.pid,                 // 控制台据此显示 PID，不必再查 WMI / Get-NetTCPConnection
@@ -2838,10 +2884,80 @@ const server = http.createServer(async (req, res) => {
 
     if (url === '/api/membership' || url === '/api/orders' || url === '/api/redeem'
         || url === '/api/coupons/validate' || url.startsWith('/api/orders/')
+        || url === '/api/user/secrets' || url.startsWith('/api/user/secrets/')
         || url === '/api/sessions' || url.startsWith('/api/sessions/')) {
       const user = userByToken(req);
       if (!user) return json(res, 401, { ok: false, error: '登录已过期' });
       touchTokenSoon(req);
+
+      /* ---- 密钥托管（1.9.0）：用户自己的第三方 Key，加密存、换机自动取回 ----
+       * 契约：
+       *   GET    /api/user/secrets               → { secrets: { easyscholar: {set,hint,...} } }
+       *   GET    /api/user/secrets/<name>        → { name, value }（明文，登录 + 限速 + 审计）
+       *   PUT    /api/user/secrets/<name> {value}→ 保存（空字符串 = 删除）
+       *   DELETE /api/user/secrets/<name>        → 删除
+       * 任何情况下都不把明文写进日志/审计；hint 只用于「确认存的是哪把」。
+       */
+      if (url === '/api/user/secrets' && method === 'GET') {
+        return json(res, 200, Object.assign({ ok: true }, hostedSecretsView(user)));
+      }
+      if (url.indexOf('/api/user/secrets/') === 0) {
+        const name = url.slice('/api/user/secrets/'.length);
+        const spec = HOSTED_SECRETS[name];
+        if (!spec) return json(res, 404, { ok: false, error: '不支持的密钥类型' });
+        user.secrets = user.secrets || {};
+
+        if (method === 'GET') {
+          if (rateThrottled('secret-get:' + user.id, SECRET_GET_MAX, LOGIN_WINDOW_MS)) {
+            return json(res, 429, { ok: false, error: '取回过于频繁，请稍后再试' });
+          }
+          const rec = user.secrets[name];
+          let value = '';
+          try { value = rec && rec.enc ? (secretbox.decrypt(DATA_DIR, rec.enc) || '') : ''; }
+          catch (e) { value = ''; }
+          if (!value) return json(res, 404, { ok: false, error: '账号里没有保存这个密钥' });
+          audit.append(DATA_DIR, { action: 'user.secret', target: user.email,
+            note: '取回托管的 ' + spec.label, ip: clientIp(req) });
+          return json(res, 200, { ok: true, name, value, updatedAt: rec.updatedAt || null });
+        }
+
+        if (method === 'PUT') {
+          if (rateThrottled('secret-put:' + user.id, SECRET_PUT_MAX, LOGIN_WINDOW_MS)) {
+            return json(res, 429, { ok: false, error: '保存过于频繁，请稍后再试' });
+          }
+          let input;
+          try { input = await readBody(req); } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+          const value = String((input && input.value) || '').trim();
+          if (value.length > spec.maxLen) {
+            return json(res, 400, { ok: false, error: spec.label + ' 过长（上限 ' + spec.maxLen + ' 字符）' });
+          }
+          if (!value) {
+            delete user.secrets[name];
+            usersStore.save();
+            audit.append(DATA_DIR, { action: 'user.secret', target: user.email,
+              note: '删除托管的 ' + spec.label, ip: clientIp(req) });
+            return json(res, 200, Object.assign({ ok: true, cleared: true }, hostedSecretsView(user)));
+          }
+          let enc = '';
+          try { enc = secretbox.encrypt(DATA_DIR, value); }
+          catch (e) { return json(res, 503, { ok: false, error: '服务端加密不可用，密钥未保存' }); }
+          user.secrets[name] = { enc, hint: maskSecret(value), updatedAt: new Date().toISOString() };
+          usersStore.save();
+          // 审计只记掩码：日志文件本身不该成为密钥的第二份副本
+          audit.append(DATA_DIR, { action: 'user.secret', target: user.email,
+            note: '保存托管的 ' + spec.label + '（' + maskSecret(value) + '）', ip: clientIp(req) });
+          return json(res, 200, Object.assign({ ok: true }, hostedSecretsView(user)));
+        }
+
+        if (method === 'DELETE') {
+          delete user.secrets[name];
+          usersStore.save();
+          audit.append(DATA_DIR, { action: 'user.secret', target: user.email,
+            note: '删除托管的 ' + spec.label, ip: clientIp(req) });
+          return json(res, 200, Object.assign({ ok: true, cleared: true }, hostedSecretsView(user)));
+        }
+        return json(res, 405, { ok: false, error: '方法不支持' });
+      }
 
       if (method === 'GET' && url === '/api/membership') {
         return json(res, 200, { ok: true,

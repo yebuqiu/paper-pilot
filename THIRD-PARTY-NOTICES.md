@@ -48,6 +48,15 @@ SOFTWARE.
 - **许可证**：MIT（<https://github.com/nordtheme/nord>）
 - **说明**：颜色数值本身不构成著作权客体，此处仅作出处标注
 
+### pdf.js 3.11（pdfjs-dist legacy UMD 构建）
+
+- **文件**：`chrome/content/vendor/pdfjs/pdf.min.js`、`pdf.worker.min.js`、`LICENSE`（随 xpi 分发）
+- **用途**：对扫描版 PDF 做**本地**页面光栅化，供 OCR 使用；渲染在用户本机完成，不上传 PDF
+- **许可证**：Apache-2.0（Copyright © Mozilla Foundation）
+- **上游**：<https://github.com/mozilla/pdf.js>
+- **修改情况**：代码原样保留（取自本仓库 `edge-extension/src/vendor/pdfjs/`，与 pdfjs-dist 3.11 legacy 构建一致），未做修改；许可证全文随文件分发
+
+
 ---
 
 ## 2. 运行时下载、不随包分发

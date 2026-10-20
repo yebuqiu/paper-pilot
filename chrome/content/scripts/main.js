@@ -4,7 +4,7 @@
 /* Papilot 主入口：装配各模块
  * 由 bootstrap.js 通过 Services.scriptloader 加载，共享 bootstrap 作用域
  */
-/* global Zotero, Services, Prefs, IOUtils, PathUtils, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, SkillPacks, CloudSync, WebDAV, _ppDiag */
+/* global Zotero, Services, Prefs, IOUtils, PathUtils, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, SkillPacks, CloudSync, WebDAV, OcrService, NoteTools, pdfjsLib, _ppDiag */
 
 Zotero.Papilot = {
   id: null,
@@ -13,6 +13,8 @@ Zotero.Papilot = {
   _initialized: false,
   _prefObserverSymbols: null,
   _paneID: null,
+  // 0.63.0 pdf.js 实例（启动时载入；null = 渲染引擎不可用，OCR 功能按此降级）
+  _pdfjs: null,
 
   _diag(msg) {
     try { _ppDiag(msg); } catch (e) { /* bootstrap 未提供则忽略 */ }
@@ -95,6 +97,27 @@ Zotero.Papilot = {
     this.version = version;
     this.rootURI = rootURI;
 
+    // 0.63.0 PDF 无头渲染 + 视觉 OCR：先把 pdf.js 3.11 UMD（chrome/content/vendor/pdfjs/，
+    // Apache-2.0，见 THIRD-PARTY-NOTICES.md）载入 bootstrap 作用域，features/ocr.js 运行期
+    // 从全局取 pdfjsLib。⚠️ 这一步**绝不能拖垮启动**：失败只写一行诊断，OCR 功能自己降级
+    // （菜单点了会提示「渲染引擎不可用」）。worker 的三种加载方式（direct / blob / inline）
+    // 由 OcrService.openDocument 逐级降级，这里只装首选方式与初始 workerSrc。
+    try {
+      Services.scriptloader.loadSubScript(
+        rootURI + "chrome/content/vendor/pdfjs/pdf.min.js?v=" + version);
+      const pdfjs = (typeof pdfjsLib !== "undefined" && pdfjsLib) ? pdfjsLib : null;
+      if (!pdfjs) throw new Error("pdfjsLib 未挂到全局");
+      if (pdfjs.GlobalWorkerOptions) {
+        pdfjs.GlobalWorkerOptions.workerSrc =
+          rootURI + "chrome/content/vendor/pdfjs/pdf.worker.min.js";
+      }
+      this._pdfjs = pdfjs;
+      await this._diag("pdfjs loaded (version=" + (pdfjs.version || "?") + ", worker=direct)");
+    } catch (e) {
+      this._pdfjs = null;
+      await this._diag("pdfjs load FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
     // 按依赖顺序加载子模块（共享同一全局作用域，var 声明互相可见）
     const files = [
       "core/utils.js",
@@ -155,6 +178,10 @@ Zotero.Papilot = {
       "features/ref-format.js",
       "features/ref-sources.js",
       "features/ref-import.js",
+      // 0.61.0 国标参考文献导出（消费 RefFormat 的 GB/T 序列化；窗口脚本不碰 Zotero）
+      "features/cite-export.js",
+      // 0.62.0 单向导出到 Obsidian（消费 CiteExport 的记录映射与 RefFormat.gbtEntry）
+      "features/obsidian-export.js",
       "features/fake-check.js",
       "features/smart-cleanup.js",
       "features/meta-enrich.js",
@@ -167,6 +194,9 @@ Zotero.Papilot = {
       "features/cn-fetch.js",
       "features/reading-state.js",
       "features/note-templates.js",
+      // 0.63.0 笔记工具（A2）：单篇大纲生成 + 多篇批量整理（标签/分类/标题前缀/合并）。
+      // 只读写 getNote()/setNote()/saveTx() 等公开接口，不依赖其它笔记模块
+      "features/note-tools.js",
       "features/attach-manager.js",
       "features/mindmap.js",
       "features/review-gen.js",
@@ -190,6 +220,10 @@ Zotero.Papilot = {
       // 0.42.0 翻译多引擎同屏对比小窗（翻译面板「对比引擎」按钮调起）
       "features/translate-compare.js",
       "features/attach-doctor.js",
+      // 0.63.0 PDF 无头渲染 + 视觉 OCR（扫描件补全文）：消费启动时载入的 pdfjsLib 与
+      // AIClient（运行期惰性调用）、attach-doctor 的 noText 检测结果。OcrService 只在
+      // 菜单/问答回退时按需调用，故对加载顺序无依赖，紧跟 attach-doctor 便于对照阅读。
+      "features/ocr.js",
       // 0.23.0 自动化引擎 + 入库自动精读（阶段 2）
       "features/automation.js",
       "features/auto-read.js",
@@ -363,6 +397,8 @@ Zotero.Papilot = {
     this.cnAuth = CNAuth;
     this.readingState = ReadingState;
     this.noteTemplates = NoteTemplates;
+    // 0.63.0 笔记工具（A2）：窗口脚本经 Zotero.Papilot.noteTools 反向调用（与 noteGraph 同模式）
+    this.noteTools = NoteTools;
     this.attachManager = AttachManager;
     this.mindmap = MindMap;
     this.reviewGen = ReviewGen;
@@ -378,6 +414,8 @@ Zotero.Papilot = {
     this.libSearch = LibSearch;
     this.tagCurator = TagCurator;
     this.attachDoctor = AttachDoctor;
+    // 0.63.0 PDF 无头渲染 + 视觉 OCR（菜单/问答回退/排障经此访问；加载失败置 null 防崩）
+    this.ocr = (typeof OcrService !== "undefined") ? OcrService : null;
     // 0.23.0 自动化（对话框与菜单经此访问）
     this.automation = Automation;
     this.autoRead = AutoRead;
@@ -1055,6 +1093,8 @@ Zotero.Papilot = {
     } else if (key === "easyScholarEnabled" || key === "easyScholarKey") {
       // 开关或密钥变化：清查找缓存并立即重绘（ES 结果按内容缓存，无需清空）
       try { RankColumn._lookupCache.clear(); } catch (e) { /* ignore */ }
+      // 1.9.0：清空自备 Key 后应回落到「账号托管」那把（有就取回，没有就保持空）
+      if (key === "easyScholarKey") { try { RankColumn.refreshHostedKey().catch(() => {}); } catch (e) { /* ignore */ } }
       try { Zotero.ItemTreeManager.refreshColumns(); } catch (e) { /* ignore */ }
       try { Zotero.Notifier.trigger("redraw", "item", []); } catch (e) { /* ignore */ }
     } else if (key === "rankDataSets" || key === "rankMaxBadges" || key === "rankBadgeStyle") {

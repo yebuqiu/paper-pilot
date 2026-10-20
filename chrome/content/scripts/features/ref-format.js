@@ -1163,6 +1163,178 @@ var RefFormat = {
     return this.toBibtex(records);
   },
 
+  /* ================= GB/T 7714 输出（0.61.0） =================
+   *
+   * 为什么只做「序列化」这一半：本文件早就有 GB/T 7714 的**解析器**
+   * （parseChineseReference / parseGBTSource），却一直没有反向输出——用户能把
+   * 中文参考文献粘进来，却没法把条目导出成国标格式。这里是纯函数，不碰 Zotero。
+   *
+   * 口径按 GB/T 7714-2015：
+   *   期刊  [J]  作者. 题名[J]. 刊名, 年, 卷(期): 页码.
+   *   专著  [M]  作者. 书名[M]. 出版地: 出版者, 出版年: 页码.
+   *   学位  [D]  作者. 题名[D]. 出版地: 培养单位, 年.
+   *   会议  [C]  作者. 题名[C]//论文集. 出版地: 出版者, 年: 页码.
+   *   电子  [EB/OL] 作者. 题名[EB/OL]. [引用日期]. URL.
+   * 作者超过 3 位：中文「等」、英文「et al.」；英文姓全大写、名取首字母。
+   */
+
+  GBT_CODE: {
+    journalArticle: "J", magazineArticle: "J", newspaperArticle: "N",
+    book: "M", bookSection: "M", conferencePaper: "C",
+    thesis: "D", report: "R", patent: "P", dataset: "DB",
+    webpage: "EB", blogPost: "EB", forumPost: "EB", preprint: "EB",
+    document: "Z", manuscript: "Z", artwork: "Z",
+  },
+
+  /** 是否含中日韩字符（决定「等 / et al.」与姓名写法） */
+  gbtIsCJK(s) {
+    return /[\u3400-\u9fff\u3040-\u30ff]/.test(String(s == null ? "" : s));
+  },
+
+  /** 名的首字母串：John Robert → J R；Jean-Paul → J P（GB/T 首字母不带点） */
+  gbtInitials(given) {
+    return String(given || "")
+      .split(/[\s,.\-]+/)
+      .filter(Boolean)
+      .map((w) => w[0].toUpperCase())
+      .join(" ");
+  },
+
+  /** 单个责任者 → GB/T 写法（中文「张伟」，英文「SMITH J」） */
+  gbtAuthorName(a) {
+    if (!a) return "";
+    if (a.literal) return String(a.literal).trim();
+    const family = String(a.family || "").trim();
+    const given = String(a.given || "").trim();
+    if (!family && !given) return "";
+    if (this.gbtIsCJK(family) || this.gbtIsCJK(given)) return (family + given).trim();
+    return (family.toUpperCase() + (given ? " " + this.gbtInitials(given) : "")).trim();
+  },
+
+  /**
+   * 责任者段：≤ max 位全列，超出取前 max 位 + 等 / et al.
+   * @param rec 记录
+   * @param opts {maxAuthors?:number=3, forceEtAl?:boolean}
+   */
+  gbtAuthors(rec, opts) {
+    const o = opts || {};
+    const max = Math.max(1, Math.min(10, Number(o.maxAuthors) || 3));
+    const list = ((rec && rec.authors) || []).map((a) => this.gbtAuthorName(a)).filter(Boolean);
+    if (!list.length) return "";
+    const cjk = this.gbtIsCJK(rec.title || rec.container || list[0]);
+    if (list.length > max) {
+      const tail = cjk ? "等" : "et al.";
+      return list.slice(0, max).join(", ") + ", " + tail;
+    }
+    return list.join(", ");
+  },
+
+  /** 文献类型标识（含载体：明确给了 URL 的期刊 → J/OL）。
+   *  ★ 名字不能叫 gbtTypeCode —— 那是既有的**解析**函数（string → {code,carrier}），
+   *    重名会在对象字面量里被后者覆盖，表现为解析中文题录时整个崩掉。 */
+  gbtTypeCodeOf(rec) {
+    const base = this.GBT_CODE[(rec && rec.itemType) || "journalArticle"] || "Z";
+    const alwaysOnline = ["webpage", "blogPost", "forumPost", "preprint", "dataset"].includes(rec && rec.itemType);
+    const carrier = (alwaysOnline || (rec && rec.url)) && ["J", "M", "DB", "EB"].includes(base) ? "/OL" : "";
+    return base + carrier;
+  },
+
+  /** 去掉题名末尾的句点/逗号（GB/T 用「.」作字段分隔，题名自带会出双点） */
+  _gbtClean(s) {
+    return String(s == null ? "" : s).replace(/\s+/g, " ").replace(/[.,;:，。；：]+$/, "").trim();
+  },
+
+  /**
+   * 单条 → GB/T 7714 题录（不含序号，末尾带句点）。
+   * @param rec 记录
+   * @param opts {maxAuthors, typeCode?:boolean=true, doi?:boolean=true, accessDate?:string}
+   */
+  gbtEntry(rec, opts) {
+    const o = opts || {};
+    const type = rec.itemType || "journalArticle";
+    const code = o.typeCode === false ? "" : "[" + this.gbtTypeCodeOf(rec) + "]";
+    const authors = this.gbtAuthors(rec, o);
+    const title = this._gbtClean(rec.title);
+    const year = rec.year || (String(rec.date || "").match(/\d{4}/) || [""])[0];
+    const vol = this._gbtClean(rec.volume);
+    const iss = this._gbtClean(rec.issue);
+    const pages = this._gbtClean(rec.pages);
+    const container = this._gbtClean(rec.container);
+    const publisher = this._gbtClean(rec.publisher);
+    const place = this._gbtClean(rec.place);
+
+    let body = "";
+    if (type === "journalArticle" || type === "magazineArticle" || type === "newspaperArticle") {
+      body = container + (year ? (container ? ", " : "") + year : "");
+      if (vol) body += ", " + vol;
+      if (iss) body += "(" + iss + ")";
+      if (pages) body += ": " + pages;
+      body = body ? body + "." : "";
+    } else if (type === "book") {
+      body = (place ? place + ": " : "") + publisher + (year ? (publisher || place ? ", " : "") + year : "");
+      if (pages) body += ": " + pages;
+      body = body ? body + "." : "";
+    } else if (type === "bookSection" || type === "conferencePaper") {
+      const host = container || publisher;
+      body = "//" + host + (host && (place || publisher || year) ? ". " : " ");
+      body += (place ? place + ": " : "") + publisher + (year ? (publisher || place ? ", " : "") + year : "");
+      if (pages) body += ": " + pages;
+      body = body.replace(/\s+/g, " ").replace(/\.\s*\./g, ".").trim();
+      body = body ? body + "." : "";
+      body = body.replace(/^\/\/ /, "//");
+    } else if (type === "thesis" || type === "report") {
+      body = (place ? place + ": " : "") + (publisher || container) + (year ? (publisher || container || place ? ", " : "") + year : "");
+      body = body ? body + "." : "";
+    } else if (type === "webpage" || type === "blogPost" || type === "forumPost" || type === "preprint" || type === "dataset") {
+      const access = o.accessDate ? "[引用日期 " + o.accessDate + "]. " : "";
+      body = access + (rec.url || "") + (!rec.url && year ? year : "");
+      body = body ? body.replace(/\s+$/, "") + "." : "";
+    } else {
+      const bits = [container, year, pages].filter(Boolean);
+      body = bits.length ? bits.join(", ") + "." : "";
+    }
+
+    let out = authors ? authors.replace(/\.$/, "") + ". " : "";
+    out += title + code;
+    if (/^\/\//.test(body)) out += body;
+    else out += ". " + body;
+    if (o.doi !== false && rec.doi) {
+      out = out.replace(/\s+$/, "");
+      if (!/[.]$/.test(out)) out += ".";
+      out += " DOI: " + this.normDOI(rec.doi) + ".";
+    }
+    return out.replace(/\s+/g, " ").trim();
+  },
+
+  /**
+   * 多条 → 可直接粘进 Word 的参考文献表。
+   * @param records 记录数组
+   * @param opts {style?:"numeric"|"authorDate", numbered?:boolean, maxAuthors?, typeCode?, doi?, accessDate?, dedupe?:boolean=true}
+   */
+  toGBT(records, opts) {
+    const o = opts || {};
+    const seen = new Set();
+    const list = [];
+    for (const rec of records || []) {
+      if (this.isBlank(rec)) continue;
+      if (o.dedupe !== false) {
+        const k = this.recKey(rec);
+        if (k && seen.has(k)) continue;
+        if (k) seen.add(k);
+      }
+      list.push(rec);
+    }
+    if (o.style === "authorDate") {
+      list.sort((a, b) => {
+        const x = (this.gbtAuthors(a, o) + " " + (a.year || "")).toLowerCase();
+        const y = (this.gbtAuthors(b, o) + " " + (b.year || "")).toLowerCase();
+        return x < y ? -1 : x > y ? 1 : 0;
+      });
+    }
+    const numbered = o.numbered !== false && o.style !== "authorDate";
+    return list.map((rec, i) => (numbered ? "[" + (i + 1) + "] " : "") + this.gbtEntry(rec, o)).join("\n");
+  },
+
   /* ================= 源类型 → Zotero 条目类型 ================= */
 
   /** 各源返回的原始类型串 → Zotero 条目类型名 */
