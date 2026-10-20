@@ -357,8 +357,16 @@ function req(method, p, body, token, extraHeaders) {
       var t = document.getElementById('pr-msg');
       return t && t.textContent.indexOf('已保存价格') >= 0;
     }, { timeout: 6000 });
+    // ★ 0.68.1：保存提示先出现、表格是随后异步重绘的。CI（Linux，慢一档）上直接取文本
+    //   会拿到重绘前的 DOM（本机必过、runner 必红）。改成等「永久」真的出现在表里再断言。
+    try {
+      await page.waitForFunction(() => {
+        const t = document.getElementById('pr-table');
+        return !!t && t.textContent.indexOf('永久') >= 0;
+      }, { timeout: 8000 });
+    } catch (e) { /* 超时也继续，让下面的断言给出可读失败信息 */ }
     const prTxtPerp = await page.textContent('#pr-table tbody');
-    ok(prTxtPerp.includes('永久'), 'E21.3 价格表出现「永久」条目', prTxtPerp.slice(0, 120));
+    ok(prTxtPerp.includes('永久'), 'E21.3 价格表出现「永久」条目', prTxtPerp.slice(0, 160));
     const plansPerp = JSON.parse((await (await fetch(`http://127.0.0.1:${PORT}/api/plans`)).text()));
     const perpItem = plansPerp.priceItems.filter((i) => i.cycle === 'perpetual')[0];
     ok(!!perpItem && perpItem.price === 128, 'E21.4 /api/plans 下发永久价 ¥128（插件档位卡据此显示）', perpItem);
