@@ -199,6 +199,7 @@ python wps-cite/tools/install.py --with-dotm   # 装 Papilot Cite 时顺带做�
 | 5 | 从窗格/后台调用时 `ActiveDocument` 为 null | 页面没焦点 | `doc()` 退化为 `Documents.Item(1)`；`insertAtCursor` 无选区时退化为文末插入 |
 | 6 | 排查全靠猜 | WPS 界面不能自动化点，日志又在页面里看不到 | 加载项把 `addin loaded`（含 API 能力探测）/`action`/`queue`/异常栈 POST 到代理 `/log`，全部落进 `proxy.log` |
 | 7 | 某台电脑**全功能** 403（检索/插入/导出诊断包全挂），Zotero 本地 API 正常 | 该机 WPS 内嵌旧 Chromium 把 file 源序列化成 `file://` 而非 `null`，撞代理 Origin 白名单；proxy.log 全是 `reject origin: 'file://'` | 白名单补 `file://`（proxy 0.1.2）；403 响应体带被拒 Origin 值；冒烟测试钉住 |
+| 8 | 装了新版插件，仍然 403（报错文案是新的、但不显示 Origin 值） | **Python 进程启动时就把 proxy.py 读进内存**，覆盖文件对运行中的实例无效；桥接原来看端口通就跳过重启 | 桥接按 `__health` 的 `proxyVersion` 判版本，不符则 Stop-Process 旧进程再起（0.72.1）；代理补 `/__shutdown` 与真正的 `proxy.py stop` |
 
 > 第 6 条是这轮最值钱的一步：`log("addin loaded", apiProbe())` 一次就证明了
 > `wps.CreateTaskPane` / `ShowDialog` 都是 function，也让第 1 条的真凶（404）无处可藏。

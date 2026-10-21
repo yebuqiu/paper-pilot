@@ -44,10 +44,13 @@ if os.path.isdir(_WPS_SRC):
     _ver_src = _files.get("version.js", "")
     _vm = re.search(r"PPC_VERSION\s*=\s*'([^']+)'", _ver_src)
     _pv = _vm.group(1) if _vm else "0.0.0"
+    _proxy_src = io.open(_WPS_PROXY, encoding="utf-8").read() if os.path.exists(_WPS_PROXY) else ""
+    _pm = re.search(r'PROXY_VERSION\s*=\s*"([0-9.]+)"', _proxy_src)
     _payload = {
         "version": _pv,
+        "proxyVersion": _pm.group(1) if _pm else "",   # 桥接据此判断运行中的代理是否该重启
         "files": _files,
-        "proxy": io.open(_WPS_PROXY, encoding="utf-8").read() if os.path.exists(_WPS_PROXY) else "",
+        "proxy": _proxy_src,
     }
     os.makedirs(os.path.dirname(_WPS_BUNDLE), exist_ok=True)
     io.open(_WPS_BUNDLE, "w", encoding="utf-8", newline="\n").write(

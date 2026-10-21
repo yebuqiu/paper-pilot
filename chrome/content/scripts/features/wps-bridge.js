@@ -181,7 +181,7 @@ var WpsBridge = {
       const res = await fetch(this._rootURI + rel);
       json = JSON.parse(String(await res.text()));
     } catch (e) {
-      this._payload = { available: false, version: "", files: {}, proxy: "", error: String((e && e.message) || e) };
+      this._payload = { available: false, version: "", proxyVersion: "", files: {}, proxy: "", error: String((e && e.message) || e) };
       return this._payload;
     }
     const files = (json && json.files && typeof json.files === "object") ? json.files : {};
@@ -189,6 +189,8 @@ var WpsBridge = {
     this._payload = {
       available: ok,
       version: String((json && json.version) || ""),
+      // 载荷里带的代理版本：更新后据此判断运行中的旧实例要不要重启
+      proxyVersion: String((json && json.proxyVersion) || ""),
       files,
       proxy: String((json && json.proxy) || ""),
     };
@@ -347,7 +349,7 @@ var WpsBridge = {
     // 清同名旧版本，避免 WPS 列出两份
     for (const name of (await this._children(this.jsaddonsDir())).map((x) => PathUtils.filename(x))) {
       if (name.indexOf(this.ADDON_NAME + "_") === 0 && name !== `${this.ADDON_NAME}_${ver}`) {
-        try { await IOUtils.remove(PathUtils.join(this.jsaddonsDir(), name), { recursive: true }); report.push("清旧版 " + name); } catch (e) { /* 忽略 */ }
+        try { await IOUtils.remove(PathUtils.join(this.jsaddonsDir(), name), { recursive: true }); report.push("清旧版 " + name); } catch (e) { report.push("⚠ 旧目录没删掉：" + name + "（被 WPS 占用，重启 WPS 后再装一次）"); }
       }
     }
 
@@ -365,8 +367,19 @@ var WpsBridge = {
         report.push("代理部署失败：" + String((e && e.message) || e));
       }
     }
-    await this.startProxy();
-    return { ok: true, version: ver, report };
+    // ★ 必须过一遍 startProxy：它会在版本不符时停旧起新。
+    //   只写文件不重启 = 旧进程继续用旧代码应答（0.72.0 外机踩过）。
+    const pr = await this.startProxy();
+    if (pr && pr.stale) {
+      report.push(`⚠ 旧代理 v${pr.version || "?"} 仍在运行（应升到 v${pr.want || "?"}），自动停止失败——请重启电脑`);
+    } else if (pr && pr.error) {
+      report.push("代理未启动：" + pr.error);
+    } else if (pr && pr.started && pr.already) {
+      report.push(`代理已是 v${pr.version || "?"}`);
+    } else if (pr && pr.started) {
+      report.push(`代理已启动 v${pr.version || "?"}`);
+    }
+    return { ok: true, version: ver, report, proxy: pr };
   },
 
   // ---------- 清理旧版 ----------
@@ -407,16 +420,66 @@ var WpsBridge = {
    * 没装过 Papilot Cite 的机器（没有 proxy.py）返回 false，绝不凭空起进程。
    */
   async ensureProxy() {
-    const alive = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 800);
-    if (alive.ok) return true;
-    if (!(await this._exists(this.proxyPath()))) return false;
+    // 没装过 Papilot Cite 的机器（没有 proxy.py）绝不凭空起进程
+    if (!(await this._exists(this.proxyPath()))) {
+      const alive0 = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 800);
+      return !!alive0.ok;
+    }
+    // 装了就走 startProxy：版本不符时它会把旧实例重启掉（覆盖文件对运行中的进程无效）
     const r = await this.startProxy();
     return !!r.started;
   },
 
+  /** 从运行中代理的 __health 响应里读版本（老代理没有这个字段 → 空串） */
+  _healthVersion(body) {
+    try { return String((JSON.parse(body) || {}).proxyVersion || ""); } catch (e) { return ""; }
+  },
+
+  /** 随包载荷里的代理版本：优先 bundle 显式字段，老 bundle 退回解析源码 */
+  async _bundledProxyVersion() {
+    const p = await this.payload();
+    if (!p || !p.available) return "";
+    if (p.proxyVersion) return String(p.proxyVersion);
+    const m = /PROXY_VERSION\s*=\s*["']([0-9.]+)["']/.exec(String(p.proxy || ""));
+    return m ? m[1] : "";
+  },
+
+  /** 按端口停掉监听 21932 的进程（PowerShell Stop-Process），再靠探活确认真的停了 */
+  async _stopProxyByPort() {
+    try {
+      const proc = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
+      const exe = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+      exe.initWithPath("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+      proc.init(exe);
+      const args = ["-NoProfile", "-NonInteractive", "-Command",
+        "Get-NetTCPConnection -LocalPort " + this.PROXY_PORT + " -State Listen -ErrorAction SilentlyContinue"
+        + " | Select-Object -ExpandProperty OwningProcess -Unique"
+        + " | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"];
+      proc.runw(false, args, args.length);
+    } catch (e) { /* PowerShell 不可用就靠下面探活判定 */ }
+    for (let i = 0; i < 16; i++) {
+      await Zotero.Promise.delay(250);
+      const h = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 400);
+      if (!h.ok) return true;
+    }
+    return false;
+  },
+
   async startProxy() {
-    const alive = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 800);
-    if (alive.ok) return { started: true, already: true };
+    const health = `http://127.0.0.1:${this.PROXY_PORT}/__health`;
+    const alive = await this._get(health, 800);
+    if (alive.ok) {
+      const running = this._healthVersion(alive.body);
+      const want = await this._bundledProxyVersion();
+      // ★ 2026-10-21 外机实踩：Python 启动时就把源码读进内存，覆盖 proxy.py 对
+      //   **正在运行**的实例完全无效——新版插件 + 旧代理会一直 403。
+      //   版本不符（老代理不报版本 = 空串）时必须停旧起新，不能直接判 already。
+      if (!want || running === want) return { started: true, already: true, version: running };
+      const stopped = await this._stopProxyByPort();
+      if (!stopped) {
+        return { started: true, already: true, stale: true, version: running, want: want };
+      }
+    }
 
     const py = await this._whichPythonw();
     if (!py) return { started: false, error: "找不到 pythonw.exe（Papilot Cite 依赖本机 Python 3）" };
@@ -434,8 +497,11 @@ var WpsBridge = {
     }
     for (let i = 0; i < 12; i++) {
       await Zotero.Promise.delay(250);
-      const h = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 600);
-      if (h.ok) return { started: true, already: false };
+      const h = await this._get(health, 600);
+      if (h.ok) {
+        const v = this._healthVersion(h.body) || (await this._bundledProxyVersion());
+        return { started: true, already: false, version: v };
+      }
     }
     return { started: false, error: "代理起来了但 3 秒内没应答（看 %APPDATA%\\PapilotCite\\proxy.log）" };
   },

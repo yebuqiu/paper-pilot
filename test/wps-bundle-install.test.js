@@ -40,6 +40,7 @@ const ADDONS = APPDATA + '\\kingsoft\\wps\\jsaddons';
 
 const BUNDLE = {
   version: '0.2.0',
+  proxyVersion: '0.9.9',
   files: {
     'index.html': '<!DOCTYPE html><html></html>',
     'version.js': "var PPC_VERSION = '0.2.0';",
@@ -56,6 +57,7 @@ function makeWorld(opts) {
   opts = opts || {};
   const files = Object.create(null);
   const removed = [];
+  const calls = [];
   // 预置：旧的 authaddin（含本插件与别的插件各一条）
   files[ADDONS + '\\authaddin.json'] = JSON.stringify({
     comp1: {
@@ -102,21 +104,25 @@ function makeWorld(opts) {
     IOUtils,
     Services: { dirsvc: { get: () => ({ path: APPDATA }) }, io: { newURI: () => { throw new Error('jar'); } } },
     Ci: { nsIFile: function () {}, nsIProcess: function () {}, nsIEnvironment: function () {} },
-    Cc: { '@mozilla.org/process/util;1': { createInstance: () => ({ init() {}, runw() {} }) },
+    Cc: { '@mozilla.org/process/util;1': { createInstance: () => ({
+            init() {},
+            runw(...a) { calls.push(a); if (opts.onRun) opts.onRun(a); },
+          }) },
           '@mozilla.org/file/local;1': { createInstance: () => ({ initWithPath() {} }) },
           '@mozilla.org/process/environment;1': { getService: () => ({ get: () => '' }) } },
     fetch: async () => ({
       ok: true,
       text: async () => JSON.stringify(opts.bundle === null ? null : (opts.bundle || BUNDLE)),
     }),
-    Zotero: { Promise: { delay: async () => {} }, HTTP: { request: async () => { throw new Error('offline'); } } },
+    Zotero: { Promise: { delay: async () => {} },
+              HTTP: { request: opts.http || (async () => { throw new Error('offline'); }) } },
   };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
   vm.runInContext(fs.readFileSync(BRIDGE, 'utf8'), sandbox, { filename: 'wps-bridge.js' });
   const B = sandbox.WpsBridge;
   B.init({ rootURI: 'jar:file:///C:/x/papilot.xpi!/' });
-  return { B, files, removed };
+  return { B, files, removed, calls };
 }
 
 (async () => {
@@ -164,6 +170,54 @@ function makeWorld(opts) {
     ok(r.ok === false, 'bundle 缺失时返回 ok:false');
     ok(Object.keys(w.files).filter((p) => p.indexOf('papilot-cite_') >= 0).length === 0, 'bundle 缺失时一个文件都不写');
     ok(w.files[ADDONS + '\\publish.xml'] === '<jsplugins>\n</jsplugins>\n', 'bundle 缺失时不动注册项');
+  }
+
+  {
+    // ★ 0.72.1 回归：版本一致 → 直接复用，不许动运行中的进程
+    const w = makeWorld({
+      http: async () => ({ status: 200, responseText: '{"ok":true,"proxyVersion":"0.9.9"}' }),
+    });
+    const r = await w.B.startProxy();
+    ok(r.started === true && r.already === true, '代理版本一致时直接复用', r);
+    ok(w.calls.length === 0, '版本一致时不起新进程、不杀旧进程', w.calls);
+  }
+
+  {
+    // ★ 0.72.1 回归（0.72.0 外机实踩）：老代理不报 proxyVersion，必须停旧起新。
+    //   Python 启动即把源码读进内存，覆盖 proxy.py 对运行中的实例完全无效。
+    let alive = true;
+    const stopArgs = [];
+    const w = makeWorld({
+      onRun: (a) => {
+        const s = Array.isArray(a) ? a.join(' ') : String(a);
+        if (s.indexOf('Stop-Process') >= 0) { stopArgs.push(s); alive = false; }
+      },
+      http: async () => {
+        if (!alive) throw new Error('refused');
+        return { status: 200, responseText: '{"ok":true}' };
+      },
+    });
+    const r = await w.B.startProxy();
+    ok(stopArgs.length === 1, '★ 旧代理（无版本字段）被 Stop-Process 停掉', stopArgs);
+    ok(r.already !== true, '停掉后不再谎报「已在运行」', r);
+  }
+
+  {
+    // 版本不符（运行 0.1.2 ≠ 载荷 0.9.9）同样要重启
+    let alive = true;
+    const stopArgs = [];
+    const w = makeWorld({
+      onRun: (a) => {
+        const s = Array.isArray(a) ? a.join(' ') : String(a);
+        if (s.indexOf('Stop-Process') >= 0) { stopArgs.push(s); alive = false; }
+      },
+      http: async () => {
+        if (!alive) throw new Error('refused');
+        return { status: 200, responseText: '{"ok":true,"proxyVersion":"0.1.2"}' };
+      },
+    });
+    await w.B.startProxy();
+    ok(stopArgs.length === 1, '版本不符时也重启代理', stopArgs);
   }
 
   if (fails.length) {

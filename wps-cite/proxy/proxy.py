@@ -30,7 +30,7 @@ import urllib.error
 import urllib.request
 import zipfile
 
-PROXY_VERSION = "0.1.2"   # 部署在多机上，排障先对版本：__health 与启动日志都带它
+PROXY_VERSION = "0.1.3"   # 部署在多机上，排障先对版本：__health 与启动日志都带它
 ZOTERO = "127.0.0.1"
 ZOTERO_PORT = 23119
 LISTEN_PORT = 21932
@@ -572,6 +572,14 @@ def handle(client):
             gif = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
             return send(client, 200, gif, "image/gif")
 
+        if path == "/__shutdown":
+            # 供 `proxy.py stop` 用（也是插件更新后重启代理的兜底通道）。
+            # 端口只绑 127.0.0.1、且上面的 Origin 白名单已挡外站，风险面仅本机。
+            logging.info("shutdown requested")
+            send(client, 200, {"ok": True})
+            STOP.set()
+            return
+
         if path == "/__health":
             # 记一行：加载项启动时会自动探一次，这行就是"JS 跑了且网通了"的硬证据
             logging.info("health probe ok-zotero=%s", zotero_alive())
@@ -772,6 +780,18 @@ if __name__ == "__main__":
             print("stopped")
         finally:
             s.close()
+    elif arg == "stop":
+        # 真正停掉运行中的实例：POST /__shutdown → STOP → serve 循环 1s 内退出。
+        # 老版本代理没有这个接口（返回 404），此时只能按端口 kill（install.py --repair 走那条路）。
+        try:
+            req = urllib.request.Request(
+                "http://127.0.0.1:%d/__shutdown" % LISTEN_PORT, method="POST")
+            with urllib.request.urlopen(req, timeout=2) as r:
+                print("stopping" if r.status == 200 else "failed")
+        except urllib.error.HTTPError as e:
+            print("failed: HTTP %d（运行中的代理是旧版本，没有 __shutdown）" % e.code)
+        except (urllib.error.URLError, OSError):
+            print("stopped")
     else:
         try:
             sys.exit(serve())
