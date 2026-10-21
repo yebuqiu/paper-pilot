@@ -95,9 +95,12 @@
     if (!hasWps) {
       // 任务窗格是独立页面，拿不到 wps 对象 —— 交给主页面去写
       try {
-        await Z.call("/queue", { method: "POST", body: { items } });
+        // ★ 原来的日志写的是 `{pending: q && q.pending}`——这个 q 不是变量，
+        //   是 window 的 named element（<input id="q">），q.pending 永远是 undefined。
+        //   要看"代理队列里现在堆了几条"，得用 call 的返回值。
+        const qr = await Z.call("/queue", { method: "POST", body: { items } });
         setMsg("已选中。关掉这个窗口就会写入文档。");
-        App.log("picker queue push", { pending: q && q.pending });
+        App.log("picker queue push", { pending: qr && qr.pending });
       } catch (e) {
         setMsg("无法与文档通信：" + App.connError(e), true);
       }

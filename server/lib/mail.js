@@ -36,11 +36,11 @@ function replyToAddress() {
   return String(process.env.PP_MAIL_REPLY_TO || '').trim();
 }
 
-/** 公网链接前缀：PP_PUBLIC_URL > https://{host 头} > 本机回退 */
+/** 公网链接前缀：只认 PP_PUBLIC_URL；未配置回退本机回环。
+ *  1.9.1（审查 P2-5）：绝不按请求 Host 头拼——公网 Host 可伪造，
+ *  会把验证/重置链接指到攻击者域名（用户点了就丢 token）。 */
 function publicBaseUrl(req) {
   if (process.env.PP_PUBLIC_URL) return String(process.env.PP_PUBLIC_URL).replace(/\/+$/, '');
-  const host = req && req.headers && req.headers.host;
-  if (host) return 'https://' + host;
   return 'http://127.0.0.1:' + (process.env.PP_PORT || 8000);
 }
 

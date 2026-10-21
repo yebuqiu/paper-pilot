@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright (c) 2026 Cassiuschen. All rights reserved.
 
-import os, sys, zipfile, json, re, hashlib
+import io, os, sys, zipfile, json, re, hashlib
 
 # ★ 0.41.1：根路径改为**脚本自身位置推导**（原为写死的绝对路径）。
 # 写死的后果：在 git worktree（并发期从干净树构建的常规手段）里执行本脚本，
@@ -14,6 +14,49 @@ argv = sys.argv[1:]          # 供 --note / --no-update-json 判定
 OUT = "dist/papilot-%s.xpi" % VER
 
 TOP = ["bootstrap.js", "LICENSE", "NOTICE", "THIRD-PARTY-NOTICES.md", "prefs.js", "README.md", "README.en.md", "manifest.json"]
+
+# ---------------------------------------------------------------------------
+# WPS 加载项载荷（0.71.1）
+#
+# 设置面板里的「安装加载项」要能离线装，所以载荷必须进包。但**不能以目录形式进包**：
+# 用户装的是 xpi（jar:），jar 里没有可枚举的目录、也拿不到 nsIFile，
+# 桥接层没法"复制目录"。所以打成**一个文本 JSON**（rel 路径 → 文件内容），
+# 桥接层用 fetch 读出来再逐个落盘（fetch 是 bootstrap 里唯一能读 jar 的通道，
+# Zotero.File.getContentsAsync 对 jar: 会抛 NS_ERROR_FAILURE）。
+#
+# 单一真源仍是 wps-cite/（平时靠 python tools/install.py 直装），这里只做打包期快照。
+# ---------------------------------------------------------------------------
+_WPS_SRC = os.path.join(ROOT, "wps-cite", "addon")
+_WPS_PROXY = os.path.join(ROOT, "wps-cite", "proxy", "proxy.py")
+_WPS_BUNDLE = os.path.join(ROOT, "chrome", "content", "tools", "wps-cite.bundle.json")
+_WPS_LEGACY_DIR = os.path.join(ROOT, "chrome", "content", "tools", "wps-cite")
+
+if os.path.isdir(_WPS_SRC):
+    import shutil
+    if os.path.isdir(_WPS_LEGACY_DIR):
+        shutil.rmtree(_WPS_LEGACY_DIR)          # 0.71.1 早期版本用目录形态，清掉
+    _files = {}
+    for _dp, _dn, _fn in os.walk(_WPS_SRC):
+        for _f in sorted(_fn):
+            _p = os.path.join(_dp, _f)
+            _rel = os.path.relpath(_p, _WPS_SRC).replace(os.sep, "/")
+            _files[_rel] = io.open(_p, encoding="utf-8").read()
+    _ver_src = _files.get("version.js", "")
+    _vm = re.search(r"PPC_VERSION\s*=\s*'([^']+)'", _ver_src)
+    _pv = _vm.group(1) if _vm else "0.0.0"
+    _payload = {
+        "version": _pv,
+        "files": _files,
+        "proxy": io.open(_WPS_PROXY, encoding="utf-8").read() if os.path.exists(_WPS_PROXY) else "",
+    }
+    os.makedirs(os.path.dirname(_WPS_BUNDLE), exist_ok=True)
+    io.open(_WPS_BUNDLE, "w", encoding="utf-8", newline="\n").write(
+        json.dumps(_payload, ensure_ascii=False))
+    print("WPS 载荷: %s（%s，%d 个文件，%d 字节）"
+          % (os.path.relpath(_WPS_BUNDLE, ROOT), _pv, len(_files), os.path.getsize(_WPS_BUNDLE)))
+else:
+    print("WPS 载荷: 跳过（没有 wps-cite/ 目录）")
+
 inc = [p for p in TOP if os.path.exists(p)]
 for root in ["chrome", "locale"]:
     for dp, dn, fn in os.walk(root):

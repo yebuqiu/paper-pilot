@@ -23,10 +23,10 @@ node_modules/
 !dist/
 !dist/*.xpi
 # 0.68.2 WPS 加载项独立发布物（GPL-3.0 组件，不随 xpi 分发；卡片按需下载）
-!dist/papilot-wps-addon.zip
-!dist/papilot-wps-addon.bundle.json
-!dist/papilot-wps-addon.manifest.json
 
 # 一次性修补脚本（其它会话的临时产物，禁止入库）
 scripts/_tmp_*.py
 scripts/_tmp_*.js
+
+# 构建时从 wps-cite/ 同步的 WPS 加载项载荷（单一真源在 wps-cite/，不入库）
+chrome/content/tools/wps-cite.bundle.json

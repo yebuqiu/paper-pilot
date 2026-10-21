@@ -9,7 +9,13 @@
 var chromeHandle;
 
 // ---- 启动诊断：写 数据目录 + profile 目录 两处 papilot-boot.log，并镜像到 Zotero.debug ----
+// 0.71.x（审查 P0-1）：此前每记一行就「全量 join + 两处覆盖写盘」，一次启动
+// 120+ 行 → ~240 次串行磁盘写。现改为 200ms 合批：_ppDiag 只记行 + 排程，
+// 真正的写盘集中在 flush（每次 flush 仍写全量文本，两处共 2 次写），
+// shutdown 前补一次 flush 兜底。日志内容与对外行为不变（完整行序原样落盘）。
 var _ppBootLines = [];
+var _ppFlushTimer = null;
+var _ppWriting = null;      // 串行链：并发 flush 排队，后到者覆盖全量文本（无丢行）
 
 function _ppLogPaths() {
   var paths = [];
@@ -27,16 +33,42 @@ function _ppLogPaths() {
   return paths;
 }
 
-async function _ppDiag(msg) {
+// 同步记行 + 排程写盘（不再 async：调用方 await 与否都不沾磁盘 I/O）
+function _ppDiag(msg) {
   try {
     _ppBootLines.push(new Date().toISOString() + " " + msg);
     try { Zotero.debug("[papilot-boot] " + msg); } catch (e) { /* ignore */ }
-    var text = _ppBootLines.join("\n") + "\n";
-    var paths = _ppLogPaths();
-    for (var i = 0; i < paths.length; i++) {
-      try { await IOUtils.writeUTF8(paths[i], text); } catch (e) { /* ignore */ }
-    }
+    _ppScheduleFlush();
   } catch (e) { /* 诊断失败不影响主流程 */ }
+}
+
+function _ppScheduleFlush() {
+  if (_ppFlushTimer) return;
+  try {
+    _ppFlushTimer = setTimeout(function () {
+      _ppFlushTimer = null;
+      _ppFlush();
+    }, 200);
+  } catch (e) { /* 无定时器环境（极端降级）→ 跳过落盘，Zotero.debug 镜像仍在 */ }
+}
+
+function _ppFlush() {
+  try {
+    var text = _ppBootLines.join("\n") + "\n";   // 快照当时完整行序
+    var paths = _ppLogPaths();
+    _ppWriting = (_ppWriting || Promise.resolve()).then(function () {
+      var writes = [];
+      for (var i = 0; i < paths.length; i++) {
+        try { writes.push(IOUtils.writeUTF8(paths[i], text)); } catch (e) { /* ignore */ }
+      }
+      return Promise.all(writes).catch(function () { /* ignore */ });
+    });
+  } catch (e) { /* ignore */ }
+}
+
+function _ppFlushNow() {
+  if (_ppFlushTimer) { try { clearTimeout(_ppFlushTimer); } catch (e) { /* ignore */ } _ppFlushTimer = null; }
+  _ppFlush();
 }
 
 // 顶层留痕：证明 bootstrap.js 已被 Zotero 的 _loadScope 求值（不等 startup 被调用）
@@ -93,6 +125,7 @@ async function startup({ id, version, resourceURI, rootURI }, reason) {
 
 function shutdown(data, reason) {
   _ppDiag("shutdown reason=" + reason);
+  _ppFlushNow();   // 退出/禁用前把缓冲行刷出去（fire-and-forget，IO 线程收尾）
   // Zotero 退出（APP_SHUTDOWN）时 UI 已销毁，跳过清理
   if (reason === APP_SHUTDOWN) return;
   try {
@@ -111,6 +144,7 @@ function shutdown(data, reason) {
 
 function install(data, reason) {
   _ppDiag("install reason=" + reason);
+  _ppFlushNow();
 }
 
 function uninstall(data, reason) {
@@ -122,4 +156,5 @@ function uninstall(data, reason) {
   // 登出/401 走墓碑覆盖（令牌物理清除）；令牌真正失效时插件会在下次校验自动清理。
   _ppDiag("uninstall reason=" + reason + " (account session files kept by design; "
     + "2 locations x 3 generations)");
+  _ppFlushNow();
 }

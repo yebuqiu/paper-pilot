@@ -93,14 +93,26 @@ function Set-HealthFails {
 }
 
 # 端口占着但 health 不通 → 用监听进程的 PID 强杀（health 拿不到 pid 时）
+# 1.9.1（审查 P1-3）：杀之前必须确认目标进程命令行里真的有 account-server.js——
+# 8000 被别的进程（IDE 预览、临时 dev server、其它 node 应用）占用时，按端口
+# 无差别强杀会误伤用户工作。不匹配就只写日志不动手（留给人工排查）。
 function Stop-PortOwner {
     param([int]$Port)
     try {
         $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop
         foreach ($c in $conns) {
-            if ($c.OwningProcess) {
-                Write-Log ("killing pid " + $c.OwningProcess + " (owns port " + $Port + " but health failed)")
-                Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+            if (-not $c.OwningProcess) { continue }
+            $procId = $c.OwningProcess
+            $cmdLine = ''
+            try {
+                $proc = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $procId) -ErrorAction Stop
+                if ($proc) { $cmdLine = [string]$proc.CommandLine }
+            } catch { $cmdLine = '' }
+            if ($cmdLine -and $cmdLine.IndexOf('account-server.js') -ge 0) {
+                Write-Log ("killing pid " + $procId + " (account-server.js owns port " + $Port + " but health failed)")
+                Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+            } else {
+                Write-Log ("port " + $Port + " owned by pid " + $procId + " but cmdline is not account-server.js (" + $cmdLine + ") - NOT killing, manual check needed")
             }
         }
         Start-Sleep -Seconds 2

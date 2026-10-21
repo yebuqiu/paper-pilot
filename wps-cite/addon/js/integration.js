@@ -39,6 +39,7 @@
     doc: function () { return D().doc(); },
     app: function () { return D().app(); },
     meta: function (k, v) { return v === undefined ? D().meta(k) : D().meta(k, v); },
+    scanFields: function () { return D().scanFields(); },
   };
   // 注意：不能直连 23119——Zotero 本地服务不带 CORS 头，file:// 页面的 fetch 会被拦（Failed to fetch）。
   // 必须经代理（代理补 Access-Control-Allow-Origin，见 proxy.py 的 /zit 路由）。
@@ -75,6 +76,12 @@
     addBibliography: 1, editBibliography: 1, addEditBibliography: 1,
     addNote: 1, addAnnotation: 1,
   };
+  /* ★ 只有**引注类**命令才存在"用户点 X 取消"这回事（Zotero 会弹那个能取消的对话框）。
+   *   文献表命令是自动执行的，没有对话框可取消；它"没写文本"只有一个原因：
+   *   当前没有引文/文献表本来就是空的 —— 那是正常结果，不是取消。
+   *   曾经把它算进"取消"：第一次插入文献表时域被判空表 removeCode → 没写文本 →
+   *   我们回 cancelled → 界面什么都不提示，用户看到的就是"点了没反应"。 */
+  const CANCEL_ASKS = { addCitation: 1, editCitation: 1, addEditCitation: 1 };
   /* 第一条命令（Application.getActiveDocument）应当秒回。原来是拿 LONG(30 分钟) 等，
    * 于是"命令名写错"这类 Zotero 侧静默失败表现为"点了没反应"，半小时都不报错。 */
   const FIRST_WAIT = 90000;
@@ -206,7 +213,11 @@
     try {
       field.Result.Text = plain === "" ? " " : plain;
     } catch (e) {
-      return plain;
+      // ★ 不能静默回 plain：上层靠 txn.wroteText 判"插入 vs 用户取消"，
+      //   写失败却回 plain 会把一次失败误判成"插入成功"，最后文档里什么都没有
+      //   界面却显示"已插入"。这里留痕并回空串，让上层走失败/取消分支。
+      log("writeRuns 写文本失败", { err: String((e && e.message) || e), len: plain.length });
+      return "";
     }
     if (!d || plain === "") return plain;
 
@@ -317,6 +328,22 @@
 
   /** 上一次成功读到的插入点（Selection 取不到时靠它兜底） */
   let lastPos = -1;
+
+  /**
+   * 让 Zotero 弹出的「添加引注」浮窗浮到最前。
+   * 引注框是 Zotero 自己的窗口，加载项（浏览器页）碰不到操作系统窗口层级，
+   * 只能让代理进程代劳（代理会轮询最多 15 秒等窗口出现）。
+   * **必须在事务开始之前调用**：事务循环里每多发一个请求，都可能被当成一次 respond；
+   * 而且 fire-and-forget 也不会拖慢插入。失败一律静默。
+   */
+  function raiseWindow() {
+    try {
+      fetch("http://127.0.0.1:21932/raise", { method: "POST" })
+        .then(function (r) { return r.text(); })
+        .then(function (t) { log("raise", { r: String(t || "").slice(0, 200) }); })
+        .catch(function () { /* 置顶失败无妨 */ });
+    } catch (e) { /* 忽略 */ }
+  }
 
   /**
    * 取插入点。
@@ -565,7 +592,19 @@
         }
         const id = nextId++;
         fieldMap.set(id, { field: f, key: fieldIdentity(f) });
-        return { id: id, code: " ", text: "", noteIndex: noteIndex, adjacent: false };
+        /* ★ text 必须给一个**非空**占位（零宽空格），不能是 ""。
+         *   客户端 `Field.getText()` 返回的是构造时缓存的 _text，**不回环问文档**
+         *   （httpIntegrationClient.js:186-188）。而 Zotero 在汇总文档时有这么一段
+         *   （integration.js:1226）：
+         *       if (this.ignoreEmptyBibliography && (await field.getText()).trim() === "") {
+         *         this._removeCodeFields[i] = true;      // 随后 removeCode
+         *       }
+         *   于是"刚建好、结果还是空"的文献表域被判为空表 → removeCode → 整笔事务一个 setText
+         *   都没有 → 我们又把它判成"用户取消"。
+         *   真机症状就是：第一次点【插入/更新文献表】毫无反应，点第二次才成功
+         *   （因为第二次那个域已经有 BIBL 代码、我们的 getFields 会给它 \u200b）。
+         *   \u200b 的 trim() 不是空（U+200B 不在 ECMAScript 的 WhiteSpace 里），肉眼看不出。 */
+        return { id: id, code: " ", text: "\u200b", noteIndex: noteIndex, adjacent: false };
       }
 
       case "Field.setCode": {
@@ -635,6 +674,9 @@
           log("setText 失败", { err: String((err && err.message) || err) });
           plain = "";
         }
+        /* 文献表排版：文本落地之后再设悬挂缩进（顺序不能反——先设缩进再写文本，
+         * 有些 WPS 版本会把整段格式重置掉）。只作用于文献表域，引文域跳过。 */
+        try { hangingIndent(e.field); } catch (err) { /* 排版失败绝不能影响事务 */ }
         log("setText", {
           id: args[1], html: String(args[2] || "").slice(0, 160),
           plain: plain.slice(0, 80), nRuns: runs.length,
@@ -866,7 +908,14 @@
   let busy = "";
   let busySince = 0;
   let BUSY_WAIT_MS = 10000;     // 愿意为上一个事务的收尾等多久
-  let BUSY_STALE_MS = 180000;   // 超过这个时长认为锁已僵死
+  /* ★ STALE 不能随便放掉：用户在 Zotero 的「添加引文」框里挑 3 分钟很正常
+   *   （原来的 180s 就是"挑文献挑到一半锁被强制释放"的 bug），
+   *   而 Zotero 自己侧**已经**会靠 inProgress 把并发拦成 503 —— 我们这层再
+   *   强制释放，等于把人家的"拒 503"机会抢掉，而且放掉的是一把假锁：
+   *   老事务其实还活着，只是我们这里看不见了。
+   *   所以：阈值抬到与 LONG 同量级（30 分钟），且**只打日志不释放**，
+   *   把并发裁决权交回给 Zotero。 */
+  let BUSY_STALE_MS = 1800000;
 
   function sleep(ms) {
     return new Promise(function (r) { setTimeout(r, ms); });
@@ -876,8 +925,10 @@
     const t0 = Date.now();
     while (busy && Date.now() - t0 < BUSY_WAIT_MS) {
       if (Date.now() - busySince > BUSY_STALE_MS) {
-        log("★ busy 疑似僵尸锁，强制释放", { held: Date.now() - busySince, cmd: busy });
-        busy = "";
+        // 只留痕不放手：真挂死的情况是 Zotero 进程死了，那种情况下 respond 会 503
+        // 自然失败，不需要我们在这里越权放锁。
+        log("★ busy 已持有超过 STALE 阈值（不释放，交给 Zotero 的 503 兜并发）",
+          { held: Date.now() - busySince, cmd: busy });
         break;
       }
       await sleep(150);
@@ -897,7 +948,7 @@
 
   async function runInner(command) {
     log("run " + command);
-    txn = { wroteText: false };
+    txn = { wroteText: false, command: command };
 
     /* ★ 前置闸门：拿不到文档就**绝不发起事务**。
      *   事务一旦发起却在 getActiveDocument 之前失败，Zotero 会永久卡在 inProgress
@@ -962,10 +1013,16 @@
           + (txn.wroteText ? "" : "（用户取消，未写入）"));
         if (failure) throw failure;
         /* 只有"插入类"命令才需要用"有没有写过文本"来判取消。
-         * refreshDocument 在内容没变化时本来就不写文本，不能当成取消，
+         * refresh 在内容没变化时本来就不写文本，不能当成取消，
          * 否则点了刷新会既没动作也不报错，像死了一样。 */
         const isInsert = INSERT_COMMANDS[command] === 1;
-        if (isInsert && !txn.wroteText) return { ok: false, cancelled: true };
+        const asksCancel = CANCEL_ASKS[command] === 1;
+        if (asksCancel && !txn.wroteText) return { ok: false, cancelled: true };
+        if (isInsert && !txn.wroteText) {
+          /* 非引注的插入类命令（文献表）没写文本：不是取消，是"本来就没有可写的内容"。
+           * 照实回 ok，让界面给一句人话，而不是装作用户取消。 */
+          return { ok: true, empty: true };
+        }
         return { ok: true };
       }
 
@@ -1011,14 +1068,259 @@
       + "如果是超大文档，请先拆成章节再分别刷新。");
   }
 
+  /* ==================== 换样式 / 补入未引用条目 / 文献表缩进 ==================== */
+
+  /** 文献表域的判定（Word 方言与 Zotero 内部方言都要认） */
+  const BIB_RE = /CSL_BIBLIOGRAPHY|ZOTERO_BIBL/i;
+
+  /** 读 ZoteroDocData（自定义文档属性）。读不到一律当空串，交给调用方给用户人话。 */
+  function readDocData() {
+    try { return String(Doc.meta("ZoteroDocData") || ""); } catch (e) { return ""; }
+  }
+
+  /**
+   * 写 ZoteroDocData 并**逐字**回读校验。
+   * 不一致（WPS 截断）时把旧值写回去再抛错 —— 半个 JSON 留在文档里比直接失败危险得多：
+   * Zotero 下次 getDocumentData 解析失败 → 当成本文是新文档 → 编号从头来。
+   */
+  function writeDocDataChecked(json, oldRaw) {
+    const want = String(json == null ? "" : json);
+    try { Doc.meta("ZoteroDocData", want); } catch (e) { /* 写失败靠回读发现 */ }
+    const back = readDocData();
+    if (back === want) return true;
+
+    let restored = false;
+    if (oldRaw != null) {
+      try { Doc.meta("ZoteroDocData", String(oldRaw)); } catch (e) { /* 尽力恢复 */ }
+      restored = readDocData() === String(oldRaw);
+    }
+    log("★ 文档数据回读不一致", { want: want.length, got: back.length, restored: restored });
+    throw new Error("WPS 没能完整保存 Zotero 文档数据（写入 " + want.length + " 字符，回读 "
+      + back.length + " 字符）。继续下去会让引文编号错乱，所以停在这里。"
+      + (restored ? "文档数据已恢复原样。"
+        : "原数据也没能恢复，请撤销本次操作（Ctrl+Z）后重试。"));
+  }
+
+  /**
+   * 换引注样式：**不调 setDocPrefs**（那会弹 Zotero 的「文档首选项」对话框，
+   * 而且 setDocPrefs 在 HTTP 路径下还要额外几条命令），直接改文档数据里的 style，
+   * 再跑一次 refresh 让 Zotero 按新样式重排全文（正文引注 + 文献表一起）。
+   */
+  async function changeStyle(styleID) {
+    const want = String(styleID == null ? "" : styleID).trim();
+    if (!want) throw new Error("没有指定要换成的样式（styleID 是空的）。");
+
+    const raw = readDocData();
+    if (!raw) {
+      throw new Error("这个文档还没有 Zotero 文档数据：先插入一条引文让 Zotero 建立会话，再来换样式。");
+    }
+    let data = null;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      throw new Error("文档里的 Zotero 数据解析失败：" + String((e && e.message) || e));
+    }
+    if (!data || typeof data !== "object") {
+      throw new Error("文档里的 Zotero 数据不是对象，没法换样式。");
+    }
+    if (!data.style || typeof data.style !== "object") {
+      throw new Error("文档里的 Zotero 数据没有样式信息（style），没法换样式。");
+    }
+
+    const old = String(data.style.styleID || "");
+    if (old === want) return { ok: true, changed: false };
+
+    data.style.styleID = want;
+    writeDocDataChecked(JSON.stringify(data), raw);
+    /* ★ refresh 失败必须回滚文档数据。
+     *   最典型的失败是"本机没装这个样式"（Zotero 取样式失败）——如果不回滚，
+     *   文档数据里就钉着一个不存在的 styleID，之后点多少次【刷新】都失败，
+     *   用户只能手动去文档首选项里改回来，等于把文档弄坏了。 */
+    try {
+      await run("refresh");
+    } catch (e) {
+      let back = false;
+      try { back = writeDocDataChecked(raw, raw) === true; } catch (e2) { back = false; }
+      log("★ 换样式后 refresh 失败，已回滚", { to: want, restored: back,
+        err: String((e && e.message) || e).slice(0, 200) });
+      throw new Error("换成这个样式后重排失败（多半是本机没有这个样式，或 Zotero 取样式超时）。"
+        + (back ? "已恢复原来的样式。" : "原样式也没能写回，请按 Ctrl+Z 撤销后重试。")
+        + "原因：" + String((e && e.message) || e));
+    }
+    log("changeStyle", { from: old, to: want });
+    return { ok: true, changed: true, from: old, to: want };
+  }
+
+  /**
+   * 从域代码里取 Zotero 库的 URI 前缀。
+   * 引文域里 citationItems[].id 形如 http://zotero.org/users/local/XXXX/items/KEY，
+   * 去掉 /items/KEY 就是前缀。**不要自己拼前缀**：本地库、群组库、不同 Zotero 版本
+   * 的 users 段都不一样，猜错了补进去的条目 Zotero 认不出来（表现为文献表没变化）。
+   */
+  function uriPrefixFromFields(fields) {
+    for (let i = 0; i < fields.length; i++) {
+      const code = String((fields[i] && fields[i].code) || "");
+      if (!/CSL_CITATION|ZOTERO_ITEM/i.test(code)) continue;
+      const m = /"id"\s*:\s*"(https?:\/\/[^"]+?)\/items\/[^"\/]+"/.exec(code);
+      if (m) return m[1];
+    }
+    return "";
+  }
+
+  /**
+   * 规整 uncited：Zotero 的新格式是**数组的数组**（每组是一个 URI 数组，
+   * 对应一次「补入未引用条目」操作）。老数据里可能混着裸字符串，这里一并归一。
+   */
+  function normUncited(u) {
+    const out = [];
+    if (!Array.isArray(u)) return out;
+    for (let i = 0; i < u.length; i++) {
+      const it = u[i];
+      if (Array.isArray(it)) {
+        const g = [];
+        for (let j = 0; j < it.length; j++) {
+          const s = String(it[j] == null ? "" : it[j]).trim();
+          if (s) g.push(s);
+        }
+        if (g.length) out.push(g);
+      } else if (typeof it === "string" && it.trim()) {
+        out.push([it.trim()]);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * 把未引用条目补进文献表：改写文献表域代码里的 uncited，再 refresh 让 Zotero 重排。
+   * 格式（Zotero 源码 integration.js:3536-3556）：
+   *   ADDIN ZOTERO_BIBL {"uncited":[["http://zotero.org/users/local/XXXX/items/KEY1"]],
+   *                      "omitted":[],"custom":[]} CSL_BIBLIOGRAPHY
+   * ★ 写回必须保留 Word 方言前缀 —— 域头/域尾都按原文切片带回去，不做重建。
+   */
+  async function addUncited(keys) {
+    const arr = Array.isArray(keys) ? keys : (keys == null || keys === "" ? [] : [keys]);
+    const want = [];
+    for (let i = 0; i < arr.length; i++) {
+      const k = String(arr[i] == null ? "" : arr[i]).trim();
+      if (k && want.indexOf(k) < 0) want.push(k);
+    }
+    if (!want.length) throw new Error("没有要补入的条目（条目 key 列表是空的）。");
+
+    let fields = [];
+    try { fields = Doc.scanFields() || []; } catch (e) { fields = []; }
+
+    let bib = null;
+    for (let i = 0; i < fields.length; i++) {
+      if (BIB_RE.test(String((fields[i] && fields[i].code) || ""))) { bib = fields[i]; break; }
+    }
+    if (!bib) {
+      throw new Error("本文档还没有文献表，先点【插入/更新文献表】，再来补入未引用条目。");
+    }
+
+    const prefix = uriPrefixFromFields(fields);
+    if (!prefix) {
+      throw new Error("取不到 Zotero 库的地址：先插入一条引文（需要从它身上取库的 URI 前缀），再来补入未引用条目。");
+    }
+
+    const src = String(bib.code || "");
+    const i0 = src.indexOf("{");
+    const i1 = src.lastIndexOf("}");
+    if (i0 < 0 || i1 <= i0) {
+      throw new Error("文献表的域代码不完整（找不到数据段），可能被 WPS 截断了。请重新点【插入/更新文献表】。");
+    }
+    let obj = null;
+    try {
+      obj = JSON.parse(src.slice(i0, i1 + 1));
+    } catch (e) {
+      throw new Error("文献表的数据解析失败：" + String((e && e.message) || e));
+    }
+    if (!obj || typeof obj !== "object") {
+      throw new Error("文献表的数据不是一个对象，没法补入未引用条目。");
+    }
+
+    const uncited = normUncited(obj.uncited);
+    const have = {};
+    for (let i = 0; i < uncited.length; i++) {
+      for (let j = 0; j < uncited[i].length; j++) have[uncited[i][j]] = true;
+    }
+
+    let added = 0;
+    for (let i = 0; i < want.length; i++) {
+      const uri = prefix + "/items/" + want[i];
+      if (have[uri]) continue;
+      uncited.push([uri]);
+      have[uri] = true;
+      added++;
+    }
+    let total = 0;
+    for (let i = 0; i < uncited.length; i++) total += uncited[i].length;
+
+    /* 全都在表里了：一个字节都不用改，也就没必要去打扰 Zotero（少开一次事务）。 */
+    if (!added) {
+      log("addUncited 全部已存在", { want: want.length, total: total });
+      return { ok: true, added: 0, uncited: total };
+    }
+
+    obj.uncited = uncited;                              // omitted / custom 原值不动
+    const code = src.slice(0, i0) + JSON.stringify(obj) + src.slice(i1 + 1);
+
+    let f = null;
+    try { f = Doc.doc().Fields.Item(bib.index); } catch (e) { f = null; }
+    if (!f) {
+      throw new Error("找不到文献表所在的域（可能刚被删掉）。请重新点【插入/更新文献表】。");
+    }
+    let wrote = false;
+    try { f.Code.Text = code; wrote = true; } catch (e) { wrote = false; }
+    let back = "";
+    try { back = String(f.Code.Text || ""); } catch (e) { back = ""; }
+    if (!wrote || back !== code) {
+      try { f.Code.Text = src; } catch (e) { /* 尽力恢复 */ }
+      log("★ addUncited 域代码回读不一致", { want: code.length, got: back.length, wrote: wrote });
+      throw new Error("WPS 没能完整保存文献表的域代码（写入 " + code.length + " 字符，回读 "
+        + back.length + " 字符）。继续会让文献表损坏，所以停在这里。");
+    }
+
+    await run("refresh");
+    log("addUncited", { added: added, total: total, prefix: prefix });
+    return { ok: true, added: added, uncited: total };
+  }
+
+  /**
+   * 文献表悬挂缩进：LeftIndent=21（≈两个五号字）、FirstLineIndent=-21（首行顶格）。
+   * 只对**文献表域**做；引文域绝不动（引文是上标，段落缩进会把整段正文带偏）。
+   * 某些 WPS 版本的 Result 上没有 ParagraphFormat —— 静默跳过，不能因此让 setText 失败。
+   */
+  function hangingIndent(field) {
+    let code = "";
+    try { code = String((field && field.Code && field.Code.Text) || ""); } catch (e) { return false; }
+    if (!BIB_RE.test(code)) return false;
+    try {
+      const pf = field.Result && field.Result.ParagraphFormat;
+      if (!pf) {
+        log("文献表缩进跳过：ParagraphFormat 不存在（该 WPS 版本不支持）");
+        return false;
+      }
+      pf.LeftIndent = 21;
+      pf.FirstLineIndent = -21;
+      return true;
+    } catch (e) {
+      log("文献表缩进设置失败（静默跳过）", { err: String((e && e.message) || e) });
+      return false;
+    }
+  }
+
   // __fieldMapForTest / __setBusyTimings 只给单测用；生产路径不会读它们
   root.PPIntegration = {
     run: run, handle: handle, htmlToRuns: htmlToRuns, __fieldMapForTest: fieldMap,
-    toWordCode: toWordCode, toZoteroCode: toZoteroCode,
+    toWordCode: toWordCode, toZoteroCode: toZoteroCode, raiseWindow: raiseWindow,
+    changeStyle: changeStyle, addUncited: addUncited,
     __setBusyTimings: function (waitMs, staleMs) {
       if (waitMs != null) BUSY_WAIT_MS = waitMs;
       if (staleMs != null) BUSY_STALE_MS = staleMs;
     },
     __getBusy: function () { return busy; },
+    /* 测试专用：场景构造出"fetch 永远悬挂"的真僵尸时，locked 状态没法通过
+     * 正常路径清掉（await 卡死 → finally 跑不到）。只在测试收尾时调。 */
+    __resetBusy: function () { busy = ""; busySince = 0; },
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

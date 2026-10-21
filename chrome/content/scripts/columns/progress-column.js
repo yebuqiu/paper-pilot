@@ -439,8 +439,32 @@ var ProgressColumn = {
     try { cell.title = this.detail(prog); } catch (e) { /* ignore */ }
   },
 
-  /** 解析主题强调色为 rgb 三元组（每页透明度需要数值分量，CSS 变量进不了 rgba()） */
+  /** 解析主题强调色为 rgb 三元组（每页透明度需要数值分量，CSS 变量进不了 rgba()）
+   *  0.71.x（审查 P1-5）：模块级缓存——此前每行渲染都 getComputedStyle(documentElement)，
+   *  虚拟列表一屏 ~40 行 × 每行 1-2 次 = 每屏近百次同步样式解析。
+   *  按 doc 分桶（WeakMap，窗口销毁自动回收）；主题/progress* pref 变化时
+   *  main.js 的 pref observer 调 _invalidateVarCache() 失效。 */
+  _varCache: new WeakMap(),  // doc -> Map(cssVar -> [r,g,b])
+
+  _invalidateVarCache() {
+    this._varCache = new WeakMap();
+  },
+
   _varRGB(doc, cssVar, fallbackHex) {
+    let perDoc = null;
+    try { perDoc = doc ? this._varCache.get(doc) : null; } catch (e) { perDoc = null; }
+    if (perDoc && perDoc.has(cssVar)) return perDoc.get(cssVar);
+    const rgb = this._resolveVarRGB(doc, cssVar, fallbackHex);
+    if (doc) {
+      try {
+        if (!perDoc) { perDoc = new Map(); this._varCache.set(doc, perDoc); }
+        perDoc.set(cssVar, rgb);
+      } catch (e) { /* 缓存失败不影响取色 */ }
+    }
+    return rgb;
+  },
+
+  _resolveVarRGB(doc, cssVar, fallbackHex) {
     try {
       const win = doc && doc.defaultView;
       const v = win && win.getComputedStyle(doc.documentElement).getPropertyValue(cssVar);
@@ -480,8 +504,11 @@ var ProgressColumn = {
     return span;
   },
 
-  /** 高能进度条：每页一格、透明度=该页累计时长（对齐 zotero-style Progress.opacity：
-   *  饱和度上限 = 均值 + (最大-均值)×0.5，且不低于 1.5 分钟——读满一页即全深） */
+  /** 高能进度条：每页一段、透明度=该页累计时长（对齐 zotero-style Progress.opacity：
+   *  饱和度上限 = 均值 + (最大-均值)×0.5，且不低于 1.5 分钟——读满一页即全深）
+   *  0.71.x（审查 P1-6）：单节点 + linear-gradient 硬止点一次绘出（色标由 values
+   *  逐页拼成 stops，每页一段、顺序不变），替代旧版「每页新建一个 span」——
+   *  N 页文档每行少建 N 个 DOM 节点（ flex 等宽格与渐变硬止点外观等价）。 */
   _heatNode(span, values, doc) {
     const n = values.length;
     const max = Math.max.apply(null, values);
@@ -490,15 +517,17 @@ var ProgressColumn = {
     const limit = (RP && RP.MIN_PER_PAGE) || this.MIN_PER_PAGE;
     const maxValue = Math.max(mean + (max - mean) * 0.5, limit);
     const color = this._varRGB(doc, "--color-accent", "#2563eb");
-    span.style.cssText = "display:flex;flex-direction:row;height:100%;width:100%;" +
-      "justify-content:space-around;";
+    const rgb = color.join(",");
+    const stops = [];
     for (let i = 0; i < n; i++) {
-      const cell = doc.createElementNS(this.XHTML, "span");
-      const alpha = Math.min(1, Math.max(0, values[i] / maxValue));
-      cell.style.cssText = "height:100%;width:" + (100 / n) + "%;" +
-        "background:rgba(" + color.join(",") + "," + alpha.toFixed(3) + ");";
-      span.appendChild(cell);
+      const alpha = Math.min(1, Math.max(0, values[i] / maxValue)).toFixed(3);
+      const c = "rgba(" + rgb + "," + alpha + ")";
+      // 同一颜色写相邻两个止点 = 硬切换（页 i 段 [i/n, (i+1)/n) 纯色，无页间渐变）
+      stops.push(c + " " + (i * 100 / n).toFixed(3) + "%");
+      stops.push(c + " " + ((i + 1) * 100 / n).toFixed(3) + "%");
     }
+    span.style.cssText = "display:block;height:100%;width:100%;" +
+      "background:linear-gradient(to right," + stops.join(",") + ");";
     return span;
   },
 

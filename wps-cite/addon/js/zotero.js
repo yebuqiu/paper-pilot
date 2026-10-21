@@ -56,8 +56,11 @@
       if ((o.method || "GET").toUpperCase() !== "GET") throw e;
       return jsonp(path);
     });
-    if (!res || res.__jsonp) return res;
+    // JSONP 兜底返回的是 {__jsonp:true, value}，这里统一解包成数据本身，
+    // 与对外 api_.jsonp(...) 的 .then(r=>r.value) 语义对齐（原来直接返回包装对象，
+    // 调用方拿到的是 {value:...}，后续 .ok/.length 全读不到）。
     if (res && res.__jsonp) return res.value;
+    if (!res) return res;
     const text = await res.text();
     if (!res.ok) {
       const err = new Error(`HTTP ${res.status}`);

@@ -1,29 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Cassiuschen. All rights reserved.
 
-/* Papilot 设置窗格脚本 · WPS 集成（0.68.1）
+/* Papilot 设置窗格脚本 · WPS 集成（0.71.1 起对接 Papilot Cite）
  *
  * 运行上下文是设置窗口作用域，拿不到 bootstrap 作用域 —— 全部经 Zotero.Papilot.wpsBridge。
  *
- * 面板职责（刻意收窄）：
- *   ① 检测四件事：加载项目录 / WPS 信任记录 / CORS 代理 / Zotero 集成端口；
- *   ② 一键修复：部署代理 + 重写 publish.xml 注册 + 拉起代理（幂等，不动信任记录）；
- *   ③ 起代理 / 打开目录 / 记安装脚本目录 / 自动代理开关。
+ * 这张卡只做四件事（刻意收窄，别再加"自动""智能"按钮）：
+ *   ① 检测五件事：加载项目录 / publish.xml 注册 / WPS 信任 / 21932 代理 / 23119 Zotero；
+ *   ② 安装或更新加载项（载荷随 xpi 分发，等价于 wps-cite/tools/install.py）；
+ *   ③ 启动代理；
+ *   ④ 清理旧版残留（0.68.x 的 wps-zotero，两份同时装着会在功能区打架）。
  *
  * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测 #pp-wps-detect，
  *    不存在就延迟重试（同 prefs-cloud.js / prefs-subs.js 纪律）。
- * ⚠️ 加载项本体是 GPL-3.0，本插件不打包、不分发；这里只装代理与注册项。
  */
-/* global Zotero, window, document, setTimeout */
+/* global Zotero, document, setTimeout, confirm */
 
 (function () {
   const $ = (id) => document.getElementById(id);
   const B = () => ((typeof Zotero !== "undefined" && Zotero.Papilot && Zotero.Papilot.wpsBridge) || null);
-
-  // ⚠️ 设置窗口作用域里**没有**裸 Prefs（那是 bootstrap 作用域的助手），
-  //    必须走 Zotero.Prefs 且带 full path + global=true，否则写入静默失效。
-  const PREF = "extensions.zotero.papilot.";
-  const pset = (k, v) => Zotero.Prefs.set(PREF + k, v, true);
 
   let inited = false;
   let busy = false;
@@ -53,18 +48,20 @@
       return;
     }
     const parts = [];
+
     if (st.addon) {
-      const fixHint = st.addonStaticScripts ? "" : "（index.html 仍用 document.write，WPS 12 不执行 → 点一键修复无法改文件，需重装加载项）";
-      setText("pp-wps-addon", `${st.addon.name}${fixHint}`, st.addonStaticScripts ? "#2e9e5b" : "#d9534f");
+      setText("pp-wps-addon", `${st.addon.name}`, "#2e9e5b");
       parts.push("加载项已装");
+    } else if (st.payload && st.payload.available) {
+      setText("pp-wps-addon", `未安装（可装 ${st.payload.version}）`, "#d9534f");
     } else {
-      setText("pp-wps-addon", "未安装（见 docs/wps-zotero.md）", "#d9534f");
+      setText("pp-wps-addon", "未安装", "#d9534f");
     }
 
     if (!st.registered) {
-      setText("pp-wps-reg", "未注册（点一键修复）", "#d9534f");
+      setText("pp-wps-reg", "未注册（点「安装/更新加载项」）", "#d9534f");
     } else if (st.registeredBroken) {
-      setText("pp-wps-reg", "注册异常：" + (st.registeredUrl || "?") + "（点一键修复）", "#d9534f");
+      setText("pp-wps-reg", "注册指向别的目录：" + (st.registeredUrl || "?") + "（重新安装）", "#d9534f");
       parts.push("注册异常");
     } else {
       setText("pp-wps-reg", "已注册：" + (st.registeredUrl || ""), "#2e9e5b");
@@ -85,19 +82,45 @@
       setText("pp-wps-proxy", st.proxyFile ? "未运行" : "未部署", "#d9534f");
     }
 
-    setText("pp-wps-zotero", st.zotero ? "23119 应答正常" : "23119 无应答（Zotero 没开？）",
-      st.zotero ? "#2e9e5b" : "#d9534f");
+    /* 这张卡本身就跑在 Zotero 里，"Zotero 没开"是不可能的结论，所以三态分开写：
+     * true=端口应答 / false=端口没在听 / null=没法确认（代理没跑，探测不了）。 */
+    if (st.zotero === true) {
+      setText("pp-wps-zotero", "23119 应答正常", "#2e9e5b");
+    } else if (st.zotero === false) {
+      setText("pp-wps-zotero", "23119 无应答（端口没在监听）", "#d9534f");
+      parts.push("集成端口异常");
+    } else {
+      setText("pp-wps-zotero", "无法确认（先启动代理再检测）", "#c98800");
+    }
+
+    const legacy = (st.legacy && st.legacy.dirs) || [];
+    const hasLegacy = legacy.length || (st.legacy && st.legacy.publish);
+    if (hasLegacy) {
+      const what = [];
+      if (legacy.length) what.push(legacy.join("、"));
+      if (st.legacy.publish) what.push("旧注册项");
+      setText("pp-wps-legacy", "发现旧版残留：" + what.join(" + ") + "（建议清理）", "#c98800");
+      parts.push("有旧版残留");
+    } else {
+      setText("pp-wps-legacy", "没有旧版残留", "var(--pp-muted)");
+    }
 
     const regBad = st.registered && st.registeredBroken;
-    const allOk = st.addon && st.registered && !regBad && st.trusted && st.proxy && st.zotero;
+    const allOk = st.addon && st.registered && !regBad && st.trusted && st.proxy && st.zotero && !hasLegacy;
     okDot(allOk);
     setText("pp-wps-state", allOk ? "可用" : "待处理");
     setText("pp-wps-summary", parts.join(" · "));
 
-    const cb = $("pp-wps-autoproxy");
-    if (cb) cb.checked = !!st.autoProxy;
-    const dir = $("pp-wps-scriptdir");
-    if (dir && document.activeElement !== dir) dir.value = st.scriptDir || "";
+    const btnInstall = $("pp-wps-install");
+    if (btnInstall) {
+      const can = !!(st.payload && st.payload.available);
+      btnInstall.disabled = !can;
+      btnInstall.textContent = st.addon && st.payload && st.payload.version === st.addon.version
+        ? "重新安装加载项"
+        : (st.payload ? `安装加载项 ${st.payload.version || ""}` : "安装加载项");
+    }
+    const btnClean = $("pp-wps-clean");
+    if (btnClean) btnClean.disabled = !hasLegacy;
   }
 
   async function refresh(verbose) {
@@ -124,28 +147,37 @@
     if (node) node.addEventListener(event, handler);
   }
 
-  function wire() {
-    bind("pp-wps-detect", "click", () => refresh(true));
-
-    bind("pp-wps-fix", "click", async () => {
+  /** 一个"点一下、跑一段、报结果"的包装：统一 busy 与提示，不写第二份 */
+  function action(fn, opts) {
+    return async () => {
       const b = B();
       if (!b || busy) return;
       busy = true;
-      setMsg("正在修复…");
+      setMsg((opts && opts.start) || "正在处理…");
       try {
-        const r = await b.fix();
-        if (r.ok) {
-          setMsg("修复完成：" + (r.report || []).join("；") + "。重启 WPS 生效。", "ok");
+        const r = await fn(b);
+        if (r && r.ok) {
+          setMsg(((opts && opts.ok) || "完成") + (r.report && r.report.length ? "：" + r.report.join("；") : ""), "ok");
         } else {
-          setMsg("修复未完成：" + (r.error || (r.report || []).join("；")), "bad");
+          setMsg(((opts && opts.fail) || "未完成") + "：" + ((r && r.error) || "未知原因"), "bad");
         }
       } catch (e) {
-        setMsg("修复失败：" + String((e && e.message) || e), "bad");
+        setMsg(((opts && opts.fail) || "失败") + "：" + String((e && e.message) || e), "bad");
       } finally {
         busy = false;
         await refresh(false);
       }
-    });
+    };
+  }
+
+  function wire() {
+    bind("pp-wps-detect", "click", () => refresh(true));
+
+    bind("pp-wps-install", "click", action((b) => b.installAddon(), {
+      start: "正在安装加载项…",
+      ok: "安装完成（重启 WPS，首次会问「是否信任」→ 点确定）",
+      fail: "安装未完成",
+    }));
 
     bind("pp-wps-proxy-start", "click", async () => {
       const b = B();
@@ -164,22 +196,26 @@
       }
     });
 
-    bind("pp-wps-install-addon", "click", async () => {
+    bind("pp-wps-clean", "click", async () => {
       const b = B();
       if (!b || busy) return;
-      busy = true;
-      setMsg("正在获取加载项（约 0.2 MB）…");
+      let yes = true;
       try {
-        const r = await b.installAddon();
-        if (r.ok) {
-          setMsg(`加载项 ${r.version || ""} 已安装并注册。重启 WPS 后首次会问「是否信任」→ 点确定。`
-            + (r.report && r.report.length ? "（" + r.report[0] + "）" : ""), "ok");
-        } else {
-          setMsg("安装未完成：" + (r.error || "") +
-            (r.report && r.report.length ? " ｜ " + r.report.join("；") : ""), "bad");
-        }
+        yes = typeof confirm === "function"
+          ? confirm("清理旧版 WPS 加载项残留（wps-zotero 目录、注册项、旧代理目录）？\n\n"
+            + "只删旧版，不动当前的 Papilot Cite。")
+          : false;
+      } catch (e) { yes = false; }
+      if (!yes) return;
+      busy = true;
+      setMsg("正在清理…");
+      try {
+        const r = await b.cleanupLegacy();
+        const removed = (r && r.removed) || [];
+        if (removed.length) setMsg("已清理：" + removed.join("；"), "ok");
+        else setMsg("没有可清理的东西（可能已被 WPS 占用，关掉 WPS 再试）", "bad");
       } catch (e) {
-        setMsg("安装失败：" + String((e && e.message) || e), "bad");
+        setMsg("清理失败：" + String((e && e.message) || e), "bad");
       } finally {
         busy = false;
         await refresh(false);
@@ -189,31 +225,6 @@
     bind("pp-wps-open-addon", "click", () => {
       const b = B();
       if (!b || !b.openDir("addon")) setMsg("打不开目录（检查 WPS 是否安装）", "bad");
-    });
-
-    bind("pp-wps-open-script", "click", () => {
-      const b = B();
-      if (!b || !b.openDir("script")) setMsg("请先在下面填写安装脚本目录", "bad");
-    });
-
-    bind("pp-wps-autoproxy", "change", (ev) => {
-      try {
-        pset("wpsAutoProxy", !!ev.target.checked);
-        setMsg(ev.target.checked ? "已开启：启动 Zotero 时自动拉起代理" : "已关闭自动代理", "ok");
-      } catch (e) {
-        setMsg("保存失败：" + String((e && e.message) || e), "bad");
-      }
-    });
-
-    bind("pp-wps-savedir", "click", () => {
-      const node = $("pp-wps-scriptdir");
-      const v = node ? String(node.value || "").trim() : "";
-      try {
-        pset("wpsScriptDir", v);
-        setMsg(v ? "已保存脚本目录" : "已清空脚本目录", "ok");
-      } catch (e) {
-        setMsg("保存失败：" + String((e && e.message) || e), "bad");
-      }
     });
   }
 

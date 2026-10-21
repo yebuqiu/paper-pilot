@@ -214,6 +214,9 @@ const PRIVACY_HTML = path.join(__dirname, 'public', 'privacy.html');
  * PP_MAIL_FROM=...          发件人（可选）
  * PP_PUBLIC_URL=https://... 站点公网地址。邮件链接前缀用它；**在线支付的回调地址也由它决定**
  *                           （不按 Host 头推断——公网 Host 可伪造）。未配置时在线支付不可用。
+ * PP_TRUST_PROXY=1          显式信任 CF-Connecting-IP / X-Forwarded-For（隧道/反代部署时开）。
+ *                           不开一律用 socket 对端 IP——限速/活跃记录不再被伪造代理头绕过。
+ *                           1.9.1（审查 P1-4）起默认关；Cloudflare Tunnel 部署须手动加这一行。
  * PP_PAY_MAX / PP_PAY_QUERY_MAX / PP_PAY_NOTIFY_MAX  支付相关限速（可选，见下方常量）
  * PP_PAY_OVERPAY_CENTS     回调金额校验的多付尾差容差（分，默认 100=¥1，0=恢复精确比对）。
  *                           免签网关（领航智能Pay ljlliu.cn 实测）对并发同额订单自动 +1 分
@@ -439,6 +442,8 @@ function ensurePlanGrant(user, now) {
   if (b.planPeriodKey === key) {
     if (balance.extendPlanExpiry(user, grantEnd, t)) {
       log('plan credit expiry extended:', user.email, '→', grantEnd);
+      // 1.9.1（审查 P2-6）：extendPlanExpiry 已改库，返回非 null 让调用方落盘
+      return { extended: true, expiresAt: grantEnd };
     }
     return null;
   }
@@ -451,9 +456,22 @@ function ensurePlanGrant(user, now) {
 
 // 日志：始终写 server-console.log（任何启动方式都有排障日志，不依赖 stdout 重定向）；
 // 前台交互（TTY）时额外打印到控制台
+// 1.9.1（审查 P2-8）：超 PP_CONSOLE_MAX_BYTES（默认 2MB）轮转成 .1，只留 1 份历史——
+// 与 audit.log 同做法。长跑服务不再无限涨。
 const LOG_FILE = path.join(DATA_DIR, 'server-console.log');
+const LOG_ARCHIVE = LOG_FILE + '.1';
+const LOG_MAX_BYTES = Number(process.env.PP_CONSOLE_MAX_BYTES) > 0
+  ? Number(process.env.PP_CONSOLE_MAX_BYTES) : 2 * 1024 * 1024;
+function rotateLogIfNeeded() {
+  try {
+    const st = fs.statSync(LOG_FILE);
+    if (st.size <= LOG_MAX_BYTES) return;
+    try { fs.renameSync(LOG_FILE, LOG_ARCHIVE); } catch (e) { /* 轮转失败下一条再试 */ }
+  } catch (e) { /* 文件不存在等：无需轮转 */ }
+}
 function log(...a) {
   const line = '[' + new Date().toISOString() + '] ' + a.join(' ');
+  rotateLogIfNeeded();
   try { fs.appendFileSync(LOG_FILE, line + '\n'); } catch (e) { /* ignore */ }
   if (process.stdout.isTTY) {
     try { console.log(line); } catch (e) { /* stdout 不可用时静默 */ }
@@ -709,12 +727,17 @@ function netErrorText(e) {
   return '网络错误：' + msg.slice(0, 120);
 }
 
-/** 客户端真实 IP：经 Cloudflare Tunnel/反向代理回源时 socket 恒为回环，取代理头 */
+/** 客户端真实 IP：经 Cloudflare Tunnel/反向代理回源时 socket 恒为回环，取代理头。
+ *  1.9.1（审查 P1-4）：代理头可伪造——限速/会话活跃都按 clientIp 计，盲目信头
+ *  会被「伪造 XFF 绕过 IP 限速」打穿。必须显式 PP_TRUST_PROXY=1（隧道/反代部署
+ *  在 pp.env 里加一行）才读代理头；否则一律用 socket 对端 IP。 */
 function clientIp(req) {
-  const cf = req.headers['cf-connecting-ip'];
-  if (cf) return String(cf).split(',')[0].trim();
-  const xf = req.headers['x-forwarded-for'];
-  if (xf) return String(xf).split(',')[0].trim();
+  if (process.env.PP_TRUST_PROXY === '1') {
+    const cf = req.headers['cf-connecting-ip'];
+    if (cf) return String(cf).split(',')[0].trim();
+    const xf = req.headers['x-forwarded-for'];
+    if (xf) return String(xf).split(',')[0].trim();
+  }
   return req.socket.remoteAddress || 'unknown';
 }
 
@@ -2872,9 +2895,14 @@ const server = http.createServer(async (req, res) => {
       const user = userByToken(req);
       if (!user) return json(res, 401, { ok: false, error: '登录已过期' });
       // 1.6.0 现场补发当期订阅额度（幂等；跨月后第一次 /me 就会到账）
-      ensurePlanGrant(user);
-      touchToken(req);
-      usersStore.save();
+      // 1.9.1（审查 P2-6）：/me 是高频接口，原来每次必整文件落盘 users.json（含密码散列）。
+      //   改为：令牌续期走 touchTokenSoon 的 30s 节流；只有 ensurePlanGrant 真的改了
+      //   库（发放/延期）才立刻落盘——无变更时一律不写。
+      const granted = ensurePlanGrant(user);
+      touchTokenSoon(req);
+      if (granted) {
+        try { usersStore.save(); } catch (e) { log('me grant save failed:', e.message); }
+      }
       return json(res, 200, {
         ok: true, user: userForClient(user),
         expiresAt: new Date(Date.now() + TOKEN_TTL_MS).toISOString(),
@@ -3072,6 +3100,11 @@ const server = http.createServer(async (req, res) => {
 
       // 下单：返回订单号 + 金额 + 收款信息；支付与核销在线下完成
       if (method === 'POST' && url === '/api/orders') {
+        // 1.9.1（审查 P1-1）：下单本身无限速——撞单刷量会把订单表/运营核销队列撑爆。
+        // 与发起支付（PAY_MAX，每账号每分钟 10 次）同档。
+        if (rateThrottled('order:' + user.id, PAY_MAX, LOGIN_WINDOW_MS)) {
+          return json(res, 429, { ok: false, error: '操作过于频繁，请稍后再试' });
+        }
         let input;
         try { input = await readBody(req); } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
         // 2026-10-19 合规：订单级条款留痕（软记录，不阻断旧客户端）。
@@ -4293,8 +4326,10 @@ const server = http.createServer(async (req, res) => {
 
     return json(res, 404, { ok: false, error: 'not found: ' + method + ' ' + url });
   } catch (e) {
+    // 1.9.1（审查 P2-10）：e.message 可能带 SQL/文件路径/内部状态等敏感信息，
+    // 回给客户端等于免费侦察。500 固定文案，细节只进本地 server-console.log。
     log('ERROR', method, url, e && (e.stack || e.message));
-    if (!res.headersSent) json(res, 500, { ok: false, error: '服务器内部错误：' + (e && e.message) });
+    if (!res.headersSent) json(res, 500, { ok: false, error: '服务器内部错误' });
     else { try { res.end(); } catch (_) { /* ignore */ } }
   }
 });

@@ -1,20 +1,16 @@
 @echo off
 chcp 936 >nul
 setlocal
-set "SRC=%~dp0dist\papilot-0.19.0.xpi"
-set "DST=%APPDATA%\Zotero\Zotero\Profiles\swc79sqh.default\extensions\papilot@dev.local.xpi"
+cd /d "%~dp0"
 
-copy /Y "%SRC%" "%DST%" >nul 2>&1
+rem 装 dist 里最新的 Papilot xpi 到本机 Zotero（版本号/ profile 全自动，别再写死）
+rem 原来这里写死了 papilot-0.19.0.xpi 和 swc79sqh.default —— 双击等于降级或直接失败。
+python scripts\install-xpi.py %*
 if errorlevel 1 (
   echo.
-  echo   [失败] 插件文件被占用，说明 Zotero 还在运行。
-  echo   请完全退出 Zotero（含右下角托盘图标）后再双击本脚本。
-  echo.
+  echo   [失败] 见上面的原因。Zotero 必须完全退出后再试。
   pause
   exit /b 1
 )
-echo.
-echo   [成功] Papilot 已更新到 0.19.0（主题视觉重做 + 在线美图）。
-echo   现在打开 Zotero 即可看到新主题库。
 echo.
 pause

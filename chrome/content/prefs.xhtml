@@ -1423,11 +1423,11 @@
 
   <!-- ============ 分类 · 界面与效率（3 项） ============ -->
   <html:div class="pp-cat-label"><html:span class="pp-cat-name">界面与效率</html:span><html:span class="pp-cat-count">4 项</html:span></html:div>
-  <!-- 0.68.1 WPS 集成（个人版可用）：检测 + 一键修复；加载项本体 GPL-3.0 不随包分发 -->
-  <html:div class="pp-card pp-fold" data-fold="wps" data-search-strings-raw="wps 文字 引用 文献 插入 参考文献 zotero citation 加载项 代理 cors 个人版 writer">
+  <!-- WPS 集成：对接 Papilot Cite（加载项载荷随包分发；旧版 wps-zotero 一键清理） -->
+  <html:div class="pp-card pp-fold" data-fold="wps" data-search-strings-raw="wps 文字 引用 文献 插入 参考文献 zotero citation 加载项 papilot cite 代理 21932 信任 旧版 残留 清理 writer">
     <html:div class="pp-fold-head">
-      <html:span class="pp-card-icon">🧩</html:span><html:span class="pp-card-title">WPS 集成（个人版可用）</html:span>
-      <html:span class="pp-card-desc">在 WPS 文字里插入引文、生成参考文献表；本卡片负责检测链路与一键修复，不需要企业版也不需要 VBA</html:span>
+      <html:span class="pp-card-icon">🧩</html:span><html:span class="pp-card-title">WPS 集成（Papilot Cite）</html:span>
+      <html:span class="pp-card-desc">在 WPS 文字里插入引文、生成参考文献表；加载项随本插件分发，这里负责安装、检测与清理旧版残留</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -1451,39 +1451,31 @@
           <html:span id="pp-wps-trust" class="pp-hint">—</html:span>
         </html:div>
         <html:div class="pp-field">
-          <html:label class="pp-label">CORS 代理</html:label>
+          <html:label class="pp-label">本地代理</html:label>
           <html:span id="pp-wps-proxy" class="pp-hint">—</html:span>
         </html:div>
         <html:div class="pp-field">
           <html:label class="pp-label">Zotero 集成端口</html:label>
           <html:span id="pp-wps-zotero" class="pp-hint">—</html:span>
         </html:div>
+        <html:div class="pp-field">
+          <html:label class="pp-label">旧版残留</html:label>
+          <html:span id="pp-wps-legacy" class="pp-hint">—</html:span>
+        </html:div>
       </html:div>
 
       <html:div class="pp-row" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
         <html:button id="pp-wps-detect" class="pp-btn pp-btn-sm">重新检测</html:button>
-        <html:button id="pp-wps-fix" class="pp-btn pp-btn-primary pp-btn-sm">一键修复</html:button>
+        <html:button id="pp-wps-install" class="pp-btn pp-btn-primary pp-btn-sm">安装加载项</html:button>
         <html:button id="pp-wps-proxy-start" class="pp-btn pp-btn-sm">启动代理</html:button>
-        <html:button id="pp-wps-install-addon" class="pp-btn pp-btn-sm">下载并安装加载项</html:button>
+        <html:button id="pp-wps-clean" class="pp-btn pp-btn-sm">清理旧版残留</html:button>
         <html:button id="pp-wps-open-addon" class="pp-btn pp-btn-sm">打开加载项目录</html:button>
-        <html:button id="pp-wps-open-script" class="pp-btn pp-btn-sm">打开安装脚本目录</html:button>
-      </html:div>
-
-      <html:label class="pp-check" style="margin-top:8px;">
-        <html:input type="checkbox" id="pp-wps-autoproxy"/>
-        <html:span>启动 Zotero 时自动拉起代理（推荐；否则需每次手动点「启动代理」）</html:span>
-      </html:label>
-
-      <html:div class="pp-row" style="margin-top:6px;">
-        <html:span class="pp-label">安装脚本目录</html:span>
-        <html:input type="text" id="pp-wps-scriptdir" class="pp-input pp-grow" placeholder="Papilot 仓库根目录（含 scripts/wps-zotero/install.py）"/>
-        <html:button id="pp-wps-savedir" class="pp-btn pp-btn-sm">保存</html:button>
       </html:div>
 
       <html:div id="pp-wps-msg" class="pp-msg" style="margin-top:8px;"></html:div>
       <html:div class="pp-hint" style="margin-top:6px;">
-        链路 = WPS 加载项 → 本地代理（21931）→ Zotero 集成协议（23119）。加载项本体是 GPL-3.0，
-        <strong>不随 Papilot 分发</strong>，安装步骤见 docs/wps-zotero.md；装好后 WPS 会问一次
+        链路 = WPS 加载项 Papilot Cite → 本地代理（21932）→ Zotero 集成协议（23119）。
+        加载项与本插件同为 Apache-2.0，<strong>随包分发、点上面即可安装</strong>；装好后 WPS 会问一次
         「首次加载，是否信任？」→ 点【确定】（WPS 的安全设计，只能在 WPS 里点）。
       </html:div>
     </html:div>

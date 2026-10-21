@@ -155,7 +155,9 @@ NODE_SUITES = [
     ("翻译设置面板", "test/prefs-translate.test.js"),
     ("设置折叠分组", "test/prefs-fold.test.js"),
     ("WPS 集成面板", "test/prefs-wps.test.js"),
-    ("WPS 加载项安装桥", "test/wps-bridge-install.test.js"),
+    ("WPS 载荷安装桥", "test/wps-bundle-install.test.js"),
+    ("WPS 引文导航", "wps-cite/test/nav.test.js"),
+    ("WPS 诊断包插件侧", "wps-cite/test/diag.test.js"),
     ("WPS 引用内核（新）", "wps-cite/test/core.test.js"),
     # 0.70.0：命令名写错（refreshDocument）会让按钮永久无响应，且客户端 dry 等 30 分钟
     # 才暴露 —— 这两套是唯一能静态拦住「名字/契约」错的测试，必须进门禁。

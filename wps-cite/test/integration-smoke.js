@@ -398,9 +398,13 @@ function check(name, fn) {
     const after = await second;
     if (after !== "ok") throw new Error("收尾后第二次点击仍失败：" + after);
     if (I.__getBusy()) throw new Error("锁没释放");
-    I.__setBusyTimings(10000, 180000);         // 复原
+    I.__setBusyTimings(10000, 1800000);         // 复原
   });
-  await check("僵尸锁：超时后强制释放，不让 UI 永久卡死", async () => {
+  await check("僵尸锁：超时后打日志提示，不永久卡死 UI（不擅自放锁）", async () => {
+    /* 语义更新（2026-10-21，审查 P2-7）：原来"超时强制释放"会让真在挑文献的用户
+     * 丢锁（挑超过 3 分钟就被人从后面抢走）。现在 STALE 默认 30 分钟，
+     * 触发后**只打日志提示、不放锁** —— 并发的裁决权交回给 Zotero 自己的 503。
+     * 这条用例验证的是"UI 不卡死 + 给出人话错误"，不再验证"锁被释放"。 */
     I.__setBusyTimings(1200, 100);            // 等 1200ms；锁被占超 100ms 就视为僵死
     let firstHang = true;
     sandbox.fetch = async (url) => {
@@ -419,13 +423,67 @@ function check(name, fn) {
     try { await I.run("addBibliography"); } catch (e) { msg = String(e.message); }
     if (!msg) throw new Error("僵尸锁没有被识别");
     if (Date.now() - t0 > 1500) throw new Error("等太久，像是被硬锁住");
-    I.__setBusyTimings(10000, 180000);
+    I.__setBusyTimings(10000, 1800000);
+    // 第一个事务的 fetch 永远悬挂，busy 没法走正常路径清掉；这里手动复位，
+    // 否则后续所有用例都会拿到"还在收尾"。
+    I.__resetBusy();
     void stuck;
+  });
+
+  /* 真机回归（2026-10-21）：文献表命令没有"用户取消"这回事。第一次插入文献表时，
+   * 域刚建好、结果为空，Zotero 会判空表并 removeCode，于是整笔事务一个 setText 都没有。
+   * 这种情况原来被当成"用户取消"，界面静默 —— 用户看到的就是"点【插入/更新文献表】没反应，
+   * 点第二次才行"。要求：返回 ok:true（empty），绝不能是 cancelled。 */
+  await check("文献表没有可写内容 → ok:true(empty)，不许判成用户取消", async () => {
+    I.__setBusyTimings(10000, 1800000);
+    const SEQ = [
+      { command: "Document.getDocumentData", arguments: ["d"] },
+      { command: "Field.removeCode", arguments: ["d", 1] },
+      { command: "Document.activate", arguments: ["d"] },
+      { command: "Document.complete", arguments: ["d"] },
+    ];
+    const ok = (t) => ({ ok: true, status: 200, text: async () => t });
+    let step = 0;
+    sandbox.fetch = async (url) => {
+      const p = String(url).replace(/^http:\/\/127\.0\.0\.1:21932/, "");
+      if (p.indexOf("/log") === 0) return ok("{}");
+      if (p.indexOf("execCommand") >= 0) {
+        return ok(JSON.stringify({ command: "Application.getActiveDocument", arguments: [] }));
+      }
+      if (p.indexOf("respond") >= 0) return ok(JSON.stringify(SEQ[Math.min(step++, SEQ.length - 1)]));
+      return ok("{}");
+    };
+    const r = await I.run("addEditBibliography");
+    if (r.cancelled) throw new Error("文献表被误判成用户取消：" + JSON.stringify(r));
+    if (r.ok !== true) throw new Error("没有返回 ok:true：" + JSON.stringify(r));
+    if (!r.empty) throw new Error("应该标 empty 让界面能给一句人话：" + JSON.stringify(r));
+  });
+  /* 同一个空文本场景，引注类命令仍然必须判成取消（用户点 X 取消插入是真实存在的）。 */
+  await check("引注类仍然要判 cancelled（与文献表区分开）", async () => {
+    I.__setBusyTimings(10000, 1800000);
+    const SEQ = [
+      { command: "Document.getDocumentData", arguments: ["d"] },
+      { command: "Document.activate", arguments: ["d"] },
+      { command: "Document.complete", arguments: ["d"] },
+    ];
+    const ok = (t) => ({ ok: true, status: 200, text: async () => t });
+    let step = 0;
+    sandbox.fetch = async (url) => {
+      const p = String(url).replace(/^http:\/\/127\.0\.0\.1:21932/, "");
+      if (p.indexOf("/log") === 0) return ok("{}");
+      if (p.indexOf("execCommand") >= 0) {
+        return ok(JSON.stringify({ command: "Application.getActiveDocument", arguments: [] }));
+      }
+      if (p.indexOf("respond") >= 0) return ok(JSON.stringify(SEQ[Math.min(step++, SEQ.length - 1)]));
+      return ok("{}");
+    };
+    const r = await I.run("addEditCitation");
+    if (!r.cancelled) throw new Error("引注取消没被识别：" + JSON.stringify(r));
   });
 
   // ---- 用户点 X 取消：全程没有 setText，要判成 cancelled ----
   await check("点 X 取消 → 返回 cancelled，不触发台账同步", async () => {
-    I.__setBusyTimings(10000, 180000);
+    I.__setBusyTimings(10000, 1800000);
     const SEQ = [
       { command: "Document.getDocumentData", arguments: ["d"] },
       { command: "Document.activate", arguments: ["d"] },

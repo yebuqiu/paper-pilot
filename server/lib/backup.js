@@ -162,10 +162,25 @@ function prune(dataDir, opts) {
   return { kept: keep.size, removed };
 }
 
+/** 与 store.js 一致：tmp + fsync + rename，单文件不再半截 */
+function atomicWrite(file, buf) {
+  const tmp = file + '.tmp';
+  let fd = null;
+  try {
+    fd = fs.openSync(tmp, 'w');
+    fs.writeFileSync(fd, buf);
+    try { fs.fsyncSync(fd); } catch (_) { /* 某些文件系统不支持，退化为普通写 */ }
+  } finally {
+    if (fd !== null) { try { fs.closeSync(fd); } catch (_) { /* ignore */ } }
+  }
+  fs.renameSync(tmp, file);
+}
+
 /**
  * 回滚到指定快照。
  *  1. 先给当前现场打一份 `pre-restore` 快照（fail-safe：恢复错了还能再回滚回来）
- *  2. 用快照内存在的文件覆盖 data/ 下同名文件（快照里没有的文件不动）
+ *  2. 所有文件先写到临时目录（全部成功才进入下一步），再逐个 rename 到 data/——
+ *     仍非事务（第 N 个 rename 后崩溃前 N-1 个已生效），但单文件不再出现半截写。
  *  3. 返回每个文件的 sha256 校验结果 —— 复制后内容不一致必须能被发现
  * 调用方负责把内存里的 store 重新加载（JsonStore.reload()）。
  */
@@ -175,23 +190,37 @@ function restore(dataDir, id, { note } = {}) {
   const dir = path.join(backupRoot(dataDir), id);
   if (!fs.existsSync(dir)) return { error: '快照目录已丢失：' + id };
   const safety = snapshot(dataDir, 'pre-restore', { note: '回滚到 ' + id + ' 之前的现场', force: true });
-  const restored = [];
-  const mismatched = [];
-  for (const f of snap.files) {
-    const src = path.join(dir, f.name);
-    if (!fs.existsSync(src)) continue;
-    const buf = fs.readFileSync(src);
-    fs.writeFileSync(path.join(dataDir, f.name), buf);   // 覆盖写（可能写坏旧文件，但旧文件已在 safety 里）
-    const back = fs.readFileSync(path.join(dataDir, f.name));
-    const okHash = f.sha256 ? sha256(back) === f.sha256 : true;
-    restored.push({ name: f.name, size: back.length, ok: okHash });
-    if (!okHash) mismatched.push(f.name);
+  const stagedDir = path.join(dataDir, '.restore-tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8));
+  fs.mkdirSync(stagedDir, { recursive: true });
+  const staged = [];   // [{ name, tmp, buf }]
+  try {
+    for (const f of snap.files) {
+      const src = path.join(dir, f.name);
+      if (!fs.existsSync(src)) continue;
+      const buf = fs.readFileSync(src);
+      const tmp = path.join(stagedDir, f.name);
+      atomicWrite(tmp, buf);
+      staged.push({ name: f.name, tmp, sha256: f.sha256 });
+    }
+    const restored = [];
+    const mismatched = [];
+    for (const s of staged) {
+      const target = path.join(dataDir, s.name);
+      fs.renameSync(s.tmp, target);
+      const back = fs.readFileSync(target);
+      const okHash = s.sha256 ? sha256(back) === s.sha256 : true;
+      restored.push({ name: s.name, size: back.length, ok: okHash });
+      if (!okHash) mismatched.push(s.name);
+    }
+    return {
+      restored, mismatched,
+      safety: safety.snapshot ? safety.snapshot.id : null,
+      from: { id: snap.id, at: snap.at, reason: snap.reason },
+    };
+  } finally {
+    // 清理：rename 成功后 staging 已空；中途失败时残留 .tmp 也一并清掉
+    try { fs.rmSync(stagedDir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
   }
-  return {
-    restored, mismatched,
-    safety: safety.snapshot ? safety.snapshot.id : null,
-    from: { id: snap.id, at: snap.at, reason: snap.reason },
-  };
 }
 
 /** 给 /api/admin/backups 用的策略说明（后台直接展示，避免"为什么只有 30 份"的疑问） */

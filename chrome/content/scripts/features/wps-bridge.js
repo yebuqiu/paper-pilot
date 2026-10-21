@@ -1,37 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Cassiuschen. All rights reserved.
 
-/* Papilot · WPS 集成桥（0.68.1）
+/* Papilot · WPS 集成桥（0.2.0 起对接 Papilot Cite）
  *
- * 目标：让「非企业版 WPS（个人版，无 VBA）」也能用 Zotero 插文献。
+ * 这条链路现在长什么样（一句话）：Zotero 通过本地 23119 的 integration 协议对外服务，
+ * WPS 里的「Papilot Cite」加载项负责说话，本机 21932 的代理负责补 CORS 与转发。
  *
- * 原理（三句话）：
- *   ① 引用格式与文献库都在 Zotero 里，它通过本地 HTTP（127.0.0.1:23119）的
- *      integration 协议对外服务（/connector/document/execCommand）；
- *   ② WPS 个人版没有 VBA，只能用 WPS 官方 JS 加载项（jsapi）当"手和眼睛"；
- *   ③ 加载项跑在浏览器环境里会被同源策略拦住，所以需要一条本地 CORS 代理
- *      （127.0.0.1:21931 → 23119），并在转发时把 Host 改写回 127.0.0.1:23119
- *      （Zotero 10 会校验 Host，否则一律 400 Bad Request）。
+ * 本文件的职责（刻意收窄）：
+ *   ① 检测：加载项目录 / publish.xml 注册 / WPS 信任 / 21932 代理 / 23119 Zotero；
+ *   ② 安装：把随 xpi 分发的加载项载荷（chrome/content/tools/wps-cite）复制到 WPS 的
+ *      jsaddons 目录、写注册项、清掉旧信任记录 —— 等价于 wps-cite/tools/install.py；
+ *   ③ 起代理；
+ *   ④ **清理旧版残留**：0.68.x 那套 `wps-zotero` 加载项已被 Papilot Cite 取代，
+ *      两份同时装着会在 WPS 功能区打架，所以这里提供一键清掉（目录 + 注册项 + 旧代理目录）。
  *
- * 职责边界（刻意收窄，遵守 Apache-2.0 与 GPL 的边界）：
- *   - 只做「检测 / 修复 / 起停代理 / 打开目录」；
- *   - **不打包、不分发** WPS 加载项本体（上游 WPS-Zotero 是 GPL-3.0），
- *     加载项由用户按 docs/wps-zotero.md 自行安装；
- *   - 随插件分发的只有本文件与 proxy.py（均为 Apache-2.0 自有代码）。
- *
- * 关键约束：
- *   - WPS 会校验加载项目录的内容哈希，改动目录内任何文件都会触发
- *     「加载项已被修改，是否继续加载？」→ 所以代理**必须**放在加载项目录之外
- *     （%APPDATA%\Papilot\wps-zotero\proxy.py）。
- *   - `wps.OAAssist.ShellExecute` 在 WPS 12 已失效（上游 issue #16），
- *     加载项不能自己拉起代理，必须由外部（本桥 / 自启）负责。
+ * 已删除的东西（别再往回加）：
+ *   · 从 Gitee 下载 `papilot-wps-addon.bundle.json` 再落盘 —— 那装的是旧的 wps-zotero，
+ *     用户装完连不上 Zotero（实测），正是本次要清掉的"不要的内容"；
+ *   · `chrome/content/tools/wps/proxy.py`（21931 的旧代理）—— 现由 21932 的代理取代；
+ *   · 「安装脚本目录」这种要用户自己填路径的配置 —— 载荷随包分发，不需要外部脚本。
  */
-/* global Zotero, Services, PathUtils, IOUtils, Ci, Cc, Prefs */
+/* global Zotero, Services, PathUtils, IOUtils, Ci */
 
 var WpsBridge = {
-  ADDON_NAME: "wps-zotero",
+  ADDON_NAME: "papilot-cite",
+  LEGACY_NAME: "wps-zotero",
   ZOTERO_PORT: 23119,
-  PROXY_PORT: 21931,
+  PROXY_PORT: 21932,
   _rootURI: "",
 
   init({ rootURI } = {}) {
@@ -50,22 +45,11 @@ var WpsBridge = {
   },
 
   proxyHome() {
-    return PathUtils.join(this.appData(), "Papilot", "wps-zotero");
+    return PathUtils.join(this.appData(), "PapilotCite");
   },
 
   proxyPath() {
     return PathUtils.join(this.proxyHome(), "proxy.py");
-  },
-
-  /** 插件自带的 proxy.py（随 xpi 分发，Apache-2.0） */
-  bundledProxyPath() {
-    if (!this._rootURI) return "";
-    try {
-      const uri = Services.io.newURI(this._rootURI + "chrome/content/tools/wps/proxy.py");
-      return uri.QueryInterface(Ci.nsIFileURL).file.path;
-    } catch (e) {
-      return "";
-    }
   },
 
   // ---------- 小工具 ----------
@@ -105,501 +89,388 @@ var WpsBridge = {
     }
   },
 
-  /** 找到 wps-zotero_* 目录（取版本号最大者） */
-  async addonDir() {
-    const base = this.jsaddonsDir();
-    let names = [];
-    try {
-      names = await IOUtils.getChildren(base);
-    } catch (e) {
-      return null;
-    }
-    const dirs = names
-      .map((p) => PathUtils.filename(p))
-      .filter((n) => n === this.ADDON_NAME || n.indexOf(this.ADDON_NAME + "_") === 0)
-      .sort((a, b) => this._cmpVersion(this._verOf(b), this._verOf(a)));
-    for (const n of dirs) {
-      const index = PathUtils.join(base, n, "index.html");
-      if (await this._exists(index)) {
-        return { name: n, dir: PathUtils.join(base, n), version: this._verOf(n) };
-      }
-    }
-    return null;
-  },
-
   _verOf(name) {
-    const m = /_(\d+\.\d+\.\d+)$/.exec(name);
-    return m ? m[1] : "0.0.0";
+    const m = /_(\d+(?:\.\d+)*)$/.exec(String(name || ""));
+    return m ? m[1] : "";
   },
 
   _cmpVersion(a, b) {
-    const pa = String(a).split(".").map(Number);
-    const pb = String(b).split(".").map(Number);
-    for (let i = 0; i < 3; i++) {
+    const pa = String(a || "0").split(".").map(Number);
+    const pb = String(b || "0").split(".").map(Number);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
       const d = (pa[i] || 0) - (pb[i] || 0);
       if (d) return d;
     }
     return 0;
   },
 
+  async _children(path) {
+    try {
+      return await IOUtils.getChildren(path);
+    } catch (e) {
+      return [];
+    }
+  },
+
   // ---------- 检测 ----------
 
-  async status() {
-    const st = {
-      addon: null,
-      registered: false,
-      registeredBroken: false,
-      trusted: false,
-      proxy: false,
-      proxyFile: false,
-      zotero: false,
-      autoProxy: false,
-      scriptDir: "",
-      jsaddonsDir: this.jsaddonsDir(),
-      proxyHome: this.proxyHome(),
-      proxyPath: this.proxyPath(),
-      proxyUpstream: false,
-    };
+  /** 当前装着的 papilot-cite_<ver>（取版本最大者） */
+  async addonDir() {
+    const names = (await this._children(this.jsaddonsDir()))
+      .map((p) => PathUtils.filename(p))
+      .filter((n) => n === this.ADDON_NAME || n.indexOf(this.ADDON_NAME + "_") === 0);
+    if (!names.length) return null;
+    names.sort((a, b) => this._cmpVersion(this._verOf(b), this._verOf(a)));
+    const name = names[0];
+    return { name, version: this._verOf(name) || "?", path: PathUtils.join(this.jsaddonsDir(), name) };
+  },
 
-    const addon = await this.addonDir();
-    if (addon) {
-      st.addon = addon;
-      const html = await this._read(PathUtils.join(addon.dir, "index.html"));
-      // WPS 12 不执行 document.write，index.html 必须静态引入脚本
-      st.addonStaticScripts = /src=["']js\/ribbon\.js/.test(html);
+  /** 旧版（wps-zotero*）残留目录名 */
+  async legacyDirs() {
+    return (await this._children(this.jsaddonsDir()))
+      .map((p) => PathUtils.filename(p))
+      .filter((n) => n === this.LEGACY_NAME || n.indexOf(this.LEGACY_NAME + "_") === 0);
+  },
+
+  /** publish.xml 里本插件的注册项 */
+  async publishState() {
+    const path = PathUtils.join(this.jsaddonsDir(), "publish.xml");
+    const xml = await this._read(path);
+    const st = { registered: false, url: "", legacy: false };
+    const m = new RegExp('<jsplugin[^>]*name="' + this.ADDON_NAME + '"[^>]*url="([^"]*)"').exec(xml);
+    if (m) {
+      st.registered = true;
+      st.url = m[1] || "";
     }
+    st.legacy = new RegExp('<jsplugin[^>]*name="' + this.LEGACY_NAME + '"').test(xml);
+    return st;
+  },
 
-    const publish = await this._read(PathUtils.join(this.jsaddonsDir(), "publish.xml"));
-    st.registered = /name="wps-zotero"/.test(publish);
-    if (st.registered) {
-      const m = /<jsplugin[^>]*name="wps-zotero"[^>]*url="([^"]+)"/.exec(publish);
-      st.registeredUrl = m ? m[1] : "";
-      // 开发模式（http://127.0.0.1:3889/）在 WPS 12 上不加载；或指向的目录不存在
-      st.registeredBroken = /^https?:/.test(st.registeredUrl) || !addon;
-    }
-
-    const auth = await this._read(PathUtils.join(this.jsaddonsDir(), "authaddin.json"));
-    if (auth) {
-      try {
-        const data = JSON.parse(auth);
-        for (const comp of Object.values(data || {})) {
-          if (!comp || typeof comp !== "object") continue;
-          for (const v of Object.values(comp)) {
-            if (v && typeof v === "object" && String(v.name || "") === this.ADDON_NAME) {
-              st.trusted = !!v.isload;
-            }
-          }
+  /** authaddin.json 里有没有本加载项的信任记录 */
+  async trusted() {
+    const path = PathUtils.join(this.jsaddonsDir(), "authaddin.json");
+    const raw = await this._read(path);
+    if (!raw) return false;
+    try {
+      const data = JSON.parse(raw);
+      for (const comp of Object.values(data || {})) {
+        if (!comp || typeof comp !== "object") continue;
+        for (const v of Object.values(comp)) {
+          if (v && typeof v === "object" && String(v.name || "") === this.ADDON_NAME) return true;
         }
+      }
+    } catch (e) {
+      return false;
+    }
+    return false;
+  },
+
+  /**
+   * 随包分发的加载项载荷。
+   *
+   * ⚠️ 用户装的是 xpi（`jar:file:///…!/`），**jar 里没有可枚举的目录**、也拿不到 nsIFile，
+   *    所以载荷不能以"文件夹"形式随包 —— 打成 `chrome/content/tools/wps-cite.bundle.json`
+   *    （相对路径 → 文件内容），这里用 fetch 读出来（bootstrap 里唯一能读 jar 的通道；
+   *    Zotero.File.getContentsAsync 对 jar: 会抛 NS_ERROR_FAILURE，这是实测结论）。
+   */
+  async payload() {
+    if (this._payload) return this._payload;
+    const rel = "chrome/content/tools/wps-cite.bundle.json";
+    let json = null;
+    try {
+      const res = await fetch(this._rootURI + rel);
+      json = JSON.parse(String(await res.text()));
+    } catch (e) {
+      this._payload = { available: false, version: "", files: {}, proxy: "", error: String((e && e.message) || e) };
+      return this._payload;
+    }
+    const files = (json && json.files && typeof json.files === "object") ? json.files : {};
+    const ok = !!files["index.html"];
+    this._payload = {
+      available: ok,
+      version: String((json && json.version) || ""),
+      files,
+      proxy: String((json && json.proxy) || ""),
+    };
+    return this._payload;
+  },
+
+  async status() {
+    const addon = await this.addonDir();
+    const pub = await this.publishState();
+    const legacy = await this.legacyDirs();
+    const payload = await this.payload();
+    const proxyFile = await this._exists(this.proxyPath());
+
+    /* 端口检测交给**代理进程**做（它对 23119 只做一次 TCP connect，见 proxy.py 的
+     * /__health → zotero_alive()）。
+     *
+     * ★ 为什么不在本进程里直接请求 23119：这张卡跑在 Zotero 里面，让自己的 HTTP 客户端
+     *   去打自己的服务端，会在设置面板打开那一瞬偶发超时（实测就是"Zotero 没开？"那条假红）。
+     *   而且文案本身就错了 —— 卡片能显示出来，Zotero 必然在跑，不可能"没开"。
+     *   代理是外部进程，判断"端口有没有在监听"才是它擅长且已验证的事。 */
+    const health = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 2500);
+    let proxyUpstream = false;
+    let zoteroPort = null;                 // true / false / null=无法确认
+    if (health.ok) {
+      try {
+        const j = JSON.parse(health.body);
+        zoteroPort = !!j.zotero;
+        proxyUpstream = !!j.zotero;
       } catch (e) {
-        st.trusted = false;
+        proxyUpstream = true;
+      }
+    } else {
+      zoteroPort = await this._probeZoteroDirect();
+    }
+
+    return {
+      addon,
+      registered: pub.registered,
+      registeredUrl: pub.url,
+      registeredBroken: pub.registered && !!addon && pub.url !== addon.name,
+      trusted: await this.trusted(),
+      proxy: health.ok,
+      proxyFile,
+      proxyUpstream,
+      zotero: zoteroPort,
+      payload,
+      legacy: { dirs: legacy, publish: pub.legacy },
+      proxyHome: this.proxyHome(),
+      addonRoot: this.jsaddonsDir(),
+    };
+  },
+
+  /** 代理没跑时的兜底：进程内自连试一次。失败只能算"未知"，不能断言端口挂了。 */
+  async _probeZoteroDirect() {
+    const r = await this._get(`http://127.0.0.1:${this.ZOTERO_PORT}/connector/ping`, 1500);
+    return r.ok ? true : null;
+  },
+
+  // ---------- 安装 ----------
+
+  /** 写注册项（与 wps-cite/tools/install.py 的 upsert_publish 保持同一格式） */
+  async _upsertPublish(ver) {
+    const dir = this.jsaddonsDir();
+    await IOUtils.makeDirectory(dir, { ignoreExisting: true });
+    const path = PathUtils.join(dir, "publish.xml");
+    let xml = await this._read(path);
+    if (!xml) xml = "<jsplugins>\n</jsplugins>\n";
+    const target = `${this.ADDON_NAME}_${ver}`;
+    xml = xml.replace(new RegExp('[ \\t]*<jsplugin[^>]*name="' + this.ADDON_NAME + '"[^>]*/>\\s*', "g"), "");
+    if (xml.indexOf("</jsplugins>") < 0) xml = "<jsplugins>\n</jsplugins>\n";
+    const rec = `    <jsplugin name="${this.ADDON_NAME}" type="wps" url="${target}" `
+      + `version="${ver}" enable="enable_dev" install="null" customDomain=""/>`;
+    xml = xml.replace("</jsplugins>", rec + "\n</jsplugins>");
+    await this._write(path, xml);
+    return target;
+  },
+
+  /** 清掉本插件旧的授权记录：改了目录内容后 WPS 才肯重新问一次 */
+  async _dropAuth() {
+    const path = PathUtils.join(this.jsaddonsDir(), "authaddin.json");
+    const raw = await this._read(path);
+    if (!raw) return 0;
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      return 0;
+    }
+    let n = 0;
+    try {
+      for (const comp of Object.values(data || {})) {
+        if (!comp || typeof comp !== "object") continue;
+        const keep = {};
+        for (const [k, v] of Object.entries(comp)) {
+          const drop = k === "namelist" || (v && typeof v === "object" && String(v.name || "") === this.ADDON_NAME);
+          if (drop) { n++; continue; }
+          keep[k] = v;
+        }
+        for (const k of Object.keys(comp)) delete comp[k];
+        Object.assign(comp, keep);
+        comp.namelist = Object.keys(keep).join(";");
+      }
+      await this._write(path, JSON.stringify(data, null, 4));
+    } catch (e) {
+      return n;
+    }
+    return n;
+  },
+
+  /** 相对路径安全校验：载荷虽然是我们自己打的包，但落盘逻辑必须防穿越（测起来也放心） */
+  _safeRel(rel) {
+    const s = String(rel == null ? "" : rel).replace(/\\/g, "/");
+    if (!s || s.startsWith("/") || /^[a-zA-Z]:/.test(s)) return "";
+    const parts = s.split("/");
+    for (const p of parts) {
+      if (!p || p === "." || p === "..") return "";
+    }
+    return parts.join("/");
+  },
+
+  /** 从随包载荷安装/更新加载项（幂等；等价于 wps-cite/tools/install.py） */
+  async installAddon() {
+    const report = [];
+    const p = await this.payload();
+    if (!p.available) {
+      return {
+        ok: false,
+        error: "这个版本的插件没有随包分发加载项载荷（chrome/content/tools/wps-cite.bundle.json 缺失或读不出来）"
+          + (p.error ? "：" + p.error : ""),
+      };
+    }
+    const ver = p.version;
+    if (!/^\d+\.\d+\.\d+$/.test(ver)) {
+      return { ok: false, error: "载荷里的版本号读不出来（version.js）" };
+    }
+
+    const dst = PathUtils.join(this.jsaddonsDir(), `${this.ADDON_NAME}_${ver}`);
+    try { await IOUtils.remove(dst, { recursive: true }); } catch (e) { /* 不存在 */ }
+
+    let count = 0;
+    const bad = [];
+    for (const [rel, text] of Object.entries(p.files)) {
+      const safe = this._safeRel(rel);
+      if (!safe) { bad.push(rel); continue; }
+      // 按段 join：_safeRel 用 / 归一过，整段直接拼在 Windows 上会得到
+      // `...\papilot-cite_0.2.0\js/app.js` 这种混分隔符的路径
+      await this._write(PathUtils.join(dst, ...safe.split("/")), String(text));
+      count++;
+    }
+    report.push(`写入 ${count} 个文件`);
+    if (bad.length) report.push(`跳过非法路径 ${bad.length} 个`);
+    if (!(await this._exists(PathUtils.join(dst, "index.html")))) {
+      return { ok: false, error: "写完了还缺 index.html，安装中止（载荷不完整）", report };
+    }
+
+    // 清同名旧版本，避免 WPS 列出两份
+    for (const name of (await this._children(this.jsaddonsDir())).map((x) => PathUtils.filename(x))) {
+      if (name.indexOf(this.ADDON_NAME + "_") === 0 && name !== `${this.ADDON_NAME}_${ver}`) {
+        try { await IOUtils.remove(PathUtils.join(this.jsaddonsDir(), name), { recursive: true }); report.push("清旧版 " + name); } catch (e) { /* 忽略 */ }
       }
     }
 
-    st.proxyFile = await this._exists(this.proxyPath());
-    const health = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`);
-    st.proxy = health.ok;
-    if (health.ok) {
+    await this._upsertPublish(ver);
+    report.push("已写注册项");
+    const dropped = await this._dropAuth();
+    if (dropped) report.push(`清信任记录 ${dropped} 条（WPS 会再问一次，点确定）`);
+
+    // 代理随包带一份，落到 %APPDATA%\PapilotCite\ 供看门狗启动
+    if (p.proxy) {
       try {
-        st.proxyUpstream = !!JSON.parse(health.body).zotero;
-      } catch (e) { /* 保持 false */ }
+        await this._write(this.proxyPath(), p.proxy);
+        report.push("已部署代理");
+      } catch (e) {
+        report.push("代理部署失败：" + String((e && e.message) || e));
+      }
     }
-    st.zotero = (await this._get(`http://127.0.0.1:${this.ZOTERO_PORT}/connector/ping`)).ok;
-    st.autoProxy = !!(typeof Prefs !== "undefined" && Prefs.get("wpsAutoProxy", false));
-    st.scriptDir = (typeof Prefs !== "undefined" && Prefs.get("wpsScriptDir", "")) || "";
-    return st;
+    await this.startProxy();
+    return { ok: true, version: ver, report };
+  },
+
+  // ---------- 清理旧版 ----------
+
+  /** 清掉 0.68.x 的 wps-zotero 残留：目录 + publish.xml 条目 + 旧代理目录 */
+  async cleanupLegacy() {
+    const removed = [];
+    for (const name of await this.legacyDirs()) {
+      try {
+        await IOUtils.remove(PathUtils.join(this.jsaddonsDir(), name), { recursive: true });
+        removed.push(name);
+      } catch (e) { /* 目录被 WPS 占用：留给用户关掉 WPS 再点 */ }
+    }
+
+    const path = PathUtils.join(this.jsaddonsDir(), "publish.xml");
+    let xml = await this._read(path);
+    if (xml && new RegExp('name="' + this.LEGACY_NAME + '"').test(xml)) {
+      xml = xml.replace(new RegExp('[ \\t]*<jsplugin[^>]*name="' + this.LEGACY_NAME + '"[^>]*/>\\s*', "g"), "");
+      await this._write(path, xml);
+      removed.push("publish.xml 里的旧注册项");
+    }
+
+    const oldProxy = PathUtils.join(this.appData(), "Papilot", "wps-zotero");
+    if (await this._exists(oldProxy)) {
+      try {
+        await IOUtils.remove(oldProxy, { recursive: true });
+        removed.push("旧代理目录");
+      } catch (e) { /* 忽略 */ }
+    }
+    return { ok: true, removed };
   },
 
   // ---------- 代理 ----------
 
-  /** fire-and-forget：代理常驻，不能等它退出 */
-  _spawnDetached(exePath, args) {
-    const localFile = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-    localFile.initWithPath(exePath);
-    if (!localFile.exists()) throw new Error("找不到可执行文件: " + exePath);
-    const proc = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
-    proc.init(localFile);
-    proc.run(false, args, args.length);
-    return proc;
-  },
-
-  /** pythonw 候选：PATH 里的 pythonw 不可靠（Zotero 不继承用户 PATH），按目录探测 */
-  async _pythonw() {
-    const cands = [];
-    if (this._scriptDirAbs()) {
-      const dir = PathUtils.parent(this._scriptDirAbs());
-      cands.push(PathUtils.join(dir, "pythonw.exe"));
-    }
-    const local = Services.dirsvc.get("LocalAppData", Ci.nsIFile).path;
-    const prog = PathUtils.join(local, "Programs", "Python");
-    try {
-      for (const p of await IOUtils.getChildren(prog)) {
-        for (const v of ["pythonw.exe", "python.exe"]) {
-          cands.push(PathUtils.join(p, v));
-        }
-      }
-    } catch (e) { /* 目录不存在 */ }
-    cands.push("C:\\Python314\\pythonw.exe", "C:\\Python313\\pythonw.exe", "C:\\Python312\\pythonw.exe");
-    for (const c of cands) {
-      if (c && (await this._exists(c))) return c;
-    }
-    return "pythonw.exe"; // 交给系统 PATH 兜底
-  },
-
-  _scriptDirAbs() {
-    const d = (typeof Prefs !== "undefined" && Prefs.get("wpsScriptDir", "")) || "";
-    return d ? PathUtils.join(d, "install.py") : "";
-  },
-
-  /** 确保代理在跑；返回 {started, already, error} */
-  async startProxy() {
-    const health = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 800);
-    if (health.ok) return { started: true, already: true };
-    if (!(await this._exists(this.proxyPath()))) {
-      return { started: false, error: "代理脚本不存在，请先点「一键修复」" };
-    }
-    try {
-      const py = await this._pythonw();
-      this._spawnDetached(py, [this.proxyPath()]);
-    } catch (e) {
-      return { started: false, error: String((e && e.message) || e) };
-    }
-    for (let i = 0; i < 20; i++) {
-      await Zotero.Promise.delay(250);
-      if ((await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 600)).ok) {
-        return { started: true, already: false };
-      }
-    }
-    return { started: false, error: "代理启动超时（检查 Python 是否可用）" };
-  },
-
-  async stopProxy() {
-    try {
-      await Zotero.HTTP.request("POST", `http://127.0.0.1:${this.PROXY_PORT}/__stopproxy`, {
-        timeout: 1200,
-        successCodes: false,
-      });
-      return true;
-    } catch (e) {
-      return false;
-    }
-  },
-
-  // ---------- 修复 ----------
-
   /**
-   * 一键修复（幂等）：
-   *   ① 把随插件分发的 proxy.py 拷到 %APPDATA%\Papilot\wps-zotero\（加载项目录之外）
-   *   ② 重写 publish.xml 的注册记录为 WPS 12 认的本地格式（url = 目录名）
-   *   ③ 拉起代理
-   * 不触碰 authaddin.json：清它会强制重弹「是否信任」，属于用户侧确认。
+   * 启动时兜一层（main.js 的 boot 钩子会调它）：
+   * 代理已经由「开机自启 + 看门狗计划任务」照顾，这里只做"没在跑且确实装过就拉起来"。
+   * 没装过 Papilot Cite 的机器（没有 proxy.py）返回 false，绝不凭空起进程。
    */
-  async fix() {
-    const report = [];
-    const addon = await this.addonDir();
-    if (!addon) {
-      return {
-        ok: false,
-        report,
-        error:
-          "未检测到 WPS 加载项。请先按 docs/wps-zotero.md 第 3 节运行 install.py 安装加载项" +
-          "（本插件不分发 GPL 加载项，只负责检测与修复）。",
-      };
-    }
-
-    // ① 代理
-    const bundled = this.bundledProxyPath();
-    if (bundled && (await this._exists(bundled))) {
-      await this._write(this.proxyPath(), await IOUtils.readUTF8(bundled));
-      report.push("已部署代理到 " + this.proxyPath());
-    } else if (await this._exists(this.proxyPath())) {
-      report.push("沿用已有代理（插件内资源缺失）");
-    } else {
-      return { ok: false, report, error: "插件缺少 proxy.py 资源，无法部署代理" };
-    }
-
-    // ② 注册
-    const publishPath = PathUtils.join(this.jsaddonsDir(), "publish.xml");
-    let xml = await this._read(publishPath);
-    if (!xml) {
-      xml = '<?xml version="1.0" encoding="UTF-8"?>\n<jsplugins>\n</jsplugins>\n';
-    }
-    const bak = publishPath + ".papilot.bak";
-    if (!(await this._exists(bak))) {
-      try {
-        await IOUtils.writeUTF8(bak, xml);
-      } catch (e) { /* 备份失败不阻塞 */ }
-    }
-    xml = xml.replace(/[ \t]*<jsplugin[^>]*name="wps-zotero"[^>]*\/>\s*/g, "");
-    if (xml.indexOf("</jsplugins>") < 0) {
-      xml = '<?xml version="1.0" encoding="UTF-8"?>\n<jsplugins>\n</jsplugins>\n';
-    }
-    const record =
-      `    <jsplugin name="wps-zotero" type="wps" url="${addon.name}" version="${addon.version}" ` +
-      'enable="enable_dev" install="null" customDomain=""/>';
-    xml = xml.replace("</jsplugins>", record + "\n</jsplugins>");
-    await this._write(publishPath, xml);
-    report.push(`已写入注册记录（url=${addon.name}）`);
-
-    // ③ 代理起停
-    const started = await this.startProxy();
-    report.push(started.started ? (started.already ? "代理已在运行" : "代理已启动") : "代理启动失败：" + started.error);
-
-    return { ok: started.started, report, addon };
-  },
-
-  /** 启动时按 pref 自动拉起代理（默认关，用户在设置卡里勾选） */
   async ensureProxy() {
-    if (typeof Prefs === "undefined" || !Prefs.get("wpsAutoProxy", false)) return false;
+    const alive = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 800);
+    if (alive.ok) return true;
     if (!(await this._exists(this.proxyPath()))) return false;
     const r = await this.startProxy();
     return !!r.started;
   },
 
-  // ---------- 安装加载项（独立发布物，按需下载） ----------
-  //
-  // 加载项是 GPL-3.0，**不随 xpi 分发**；用户点击时从项目发布地址下载一个
-  // bundle.json（文件 → base64），落到 jsaddons 后与人工解压 zip 的结果一致。
-  // 用 bundle 而非 zip：不依赖 Gecko 的 ZipReader，逻辑是纯 JS + IOUtils，
-  // 可以被单测完整覆盖（本项目吃够了"没测到的运行时 API 静默失败"的亏）。
-  ADDON_URLS: [
-    "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-wps-addon.bundle.json",
-  ],
+  async startProxy() {
+    const alive = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 800);
+    if (alive.ok) return { started: true, already: true };
 
-  ADDON_REQUIRED: [
-    "index.html", "ribbon.xml", "version.js",
-    "js/ribbon.js", "js/zclient.js", "js/tools.js", "js/wpsif.js",
-  ],
+    const py = await this._whichPythonw();
+    if (!py) return { started: false, error: "找不到 pythonw.exe（Papilot Cite 依赖本机 Python 3）" };
+    const file = this.proxyPath();
+    if (!(await this._exists(file))) return { started: false, error: "代理还没部署到 " + file };
 
-  _shortUrl(url) {
     try {
-      const u = Services.io.newURI(url);
-      return u.host + "/…/" + PathUtils.filename(u.path);
+      const proc = Cc["@mozilla.org/process/util;1"].createInstance(Ci.nsIProcess);
+      const exe = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+      exe.initWithPath(py);
+      proc.init(exe);
+      proc.runw(false, [file], 1);
     } catch (e) {
-      return String(url).slice(0, 60);
+      return { started: false, error: String((e && e.message) || e) };
     }
+    for (let i = 0; i < 12; i++) {
+      await Zotero.Promise.delay(250);
+      const h = await this._get(`http://127.0.0.1:${this.PROXY_PORT}/__health`, 600);
+      if (h.ok) return { started: true, already: false };
+    }
+    return { started: false, error: "代理起来了但 3 秒内没应答（看 %APPDATA%\\PapilotCite\\proxy.log）" };
   },
 
-  async _getText(url) {
-    const xhr = await Zotero.HTTP.request("GET", url, {
-      timeout: 20000,
-      responseType: "text",
-      successCodes: false,
-    });
-    if (xhr.status !== 200) throw new Error("HTTP " + xhr.status);
-    return xhr.responseText || "";
-  },
-
-  /** base64 → Uint8Array（atob 不在就用纯 JS 兜底，避免作用域差异导致静默失败） */
-  _b64decode(b64) {
-    const str = String(b64 || "");
-    if (typeof atob === "function") {
-      const bin = atob(str);
-      const out = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-      return out;
+  async _whichPythonw() {
+    // 1) Papilot 自带 runtime（便携版优先）  2) PATH 里的 pythonw
+    const bundled = PathUtils.join(this.proxyHome(), "python", "pythonw.exe");
+    if (await this._exists(bundled)) return bundled;
+    for (const p of ["C:\\Python314\\pythonw.exe", "C:\\Python313\\pythonw.exe", "C:\\Python312\\pythonw.exe"]) {
+      if (await this._exists(p)) return p;
     }
-    const ABC = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    const clean = str.replace(/[^A-Za-z0-9+/]/g, "");
-    const out = new Uint8Array(Math.floor(clean.length * 3 / 4));
-    let buf = 0, bits = 0, o = 0;
-    for (const ch of clean) {
-      buf = (buf << 6) | ABC.indexOf(ch);
-      bits += 6;
-      if (bits >= 8) {
-        bits -= 8;
-        out[o++] = (buf >> bits) & 0xFF;
+    try {
+      const env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
+      const pathVar = env.get("PATH") || "";
+      for (const dir of pathVar.split(";")) {
+        if (!dir) continue;
+        const cand = PathUtils.join(dir.trim(), "pythonw.exe");
+        if (await this._exists(cand)) return cand;
       }
-    }
-    return out.subarray(0, o);
+    } catch (e) { /* 拿不到 PATH */ }
+    return "";
   },
 
-  /** 只接受相对路径：数据来自网络，必须挡目录穿越 */
-  _safeRel(rel) {
-    const r = String(rel || "");
-    if (!r || r.indexOf("..") >= 0 || r.startsWith("/") || /^[a-zA-Z]:/.test(r)) return "";
-    if (r.indexOf("\\") >= 0) return "";
-    return r;
-  },
-
-  async _writeTree(destDir, files) {
-    let n = 0;
-    for (const rel of Object.keys(files)) {
-      const safe = this._safeRel(rel);
-      if (!safe) continue;
-      const target = PathUtils.join(destDir, ...safe.split("/"));
-      await IOUtils.makeDirectory(PathUtils.parent(target), { ignoreExisting: true });
-      await IOUtils.write(target, this._b64decode(files[rel]));
-      n++;
-    }
-    return n;
-  },
-
-  async _copyTree(src, dst) {
-    await IOUtils.makeDirectory(dst, { ignoreExisting: true });
-    let names = [];
-    try {
-      names = await IOUtils.getChildren(src);
-    } catch (e) {
-      return;
-    }
-    for (const child of names) {
-      const name = PathUtils.filename(child);
-      if (name === "__pycache__" || name.indexOf(".pyc") >= 0) continue;
-      const to = PathUtils.join(dst, name);
-      const st = await IOUtils.stat(child);
-      if (st.type === "directory") await this._copyTree(child, to);
-      else await IOUtils.copy(child, to);
-    }
-  },
-
-  _localAddonSource() {
-    const d = (typeof Prefs !== "undefined" && Prefs.get("wpsScriptDir", "")) || "";
-    if (!d) return "";
-    return PathUtils.join(d, "tools", "wps-zotero", "addon");
-  },
-
-  /** 装新版后清掉同名的旧版本目录：WPS 会把同名的多份都列出来，容易点错 */
-  async _pruneOldAddons(keepDir) {
-    const removed = [];
-    let names = [];
-    try {
-      names = await IOUtils.getChildren(this.jsaddonsDir());
-    } catch (e) {
-      return removed;
-    }
-    for (const p of names) {
-      const name = PathUtils.filename(p);
-      if (name.indexOf(this.ADDON_NAME + "_") !== 0) continue;
-      if (PathUtils.join(this.jsaddonsDir(), name) === keepDir) continue;
-      try {
-        await IOUtils.remove(p, { recursive: true });
-        removed.push(name);
-      } catch (e) { /* 被占用就留着，下次再清 */ }
-    }
-    return removed;
-  },
-
-  /** 装好文件后统一收尾：校验静态引入 → 写注册 → 起代理 */
-  async _finalizeAddon(destDir, version) {
-    const index = await this._read(PathUtils.join(destDir, "index.html"));
-    if (!/src=["']js\/ribbon\.js/.test(index)) {
-      throw new Error("index.html 不是静态引入版（WPS 12 不执行 document.write）");
-    }
-    const fixed = await this.fix();
-    const pruned = await this._pruneOldAddons(destDir);
-    return {
-      ok: fixed.ok,
-      version,
-      dir: destDir,
-      report: [
-        `已安装加载项 ${version} → ${destDir}`,
-        ...(pruned.length ? [`已清理旧版本：${pruned.join("、")}`] : []),
-        ...(fixed.report || []),
-      ],
-      error: fixed.error,
-    };
-  },
-
-  async _installFromBundle(url) {
-    const text = await this._getText(url);
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (e) {
-      throw new Error("发布物不是合法 JSON（可能被登录页/镜像页替换）");
-    }
-    const files = (data && data.files) || {};
-    const version = String((data && data.version) || "");
-    if (!version || !Object.keys(files).length) throw new Error("发布物缺少 version/files");
-    const missing = this.ADDON_REQUIRED.filter((k) => !(k in files));
-    if (missing.length) throw new Error("发布物缺少文件：" + missing.join(", "));
-
-    const dest = PathUtils.join(this.jsaddonsDir(), `${this.ADDON_NAME}_${version}`);
-    // 先写临时目录再整体替换：中途失败不会留下半个加载项
-    const tmp = dest + ".installing";
-    if (await this._exists(tmp)) await IOUtils.remove(tmp, { recursive: true });
-    await this._writeTree(tmp, files);
-    if (await this._exists(dest)) await IOUtils.remove(dest, { recursive: true });
-    await IOUtils.move(tmp, dest);
-    return this._finalizeAddon(dest, version);
-  },
-
-  async _installFromDir(src) {
-    const verText = await this._read(PathUtils.join(src, "version.js"));
-    const m = /VERSION\s*=\s*'([^']+)'/.exec(verText);
-    const version = m ? m[1] : "0.0.0";
-    const dest = PathUtils.join(this.jsaddonsDir(), `${this.ADDON_NAME}_${version}`);
-    const tmp = dest + ".installing";
-    if (await this._exists(tmp)) await IOUtils.remove(tmp, { recursive: true });
-    await this._copyTree(src, tmp);
-    if (await this._exists(dest)) await IOUtils.remove(dest, { recursive: true });
-    await IOUtils.move(tmp, dest);
-    return this._finalizeAddon(dest, version);
-  },
-
-  /**
-   * 安装/重装加载项：先试发布地址，再退本地仓库目录（开发机）。
-   * 返回 {ok, version, dir, report, error}
-   */
-  async installAddon() {
-    const report = [];
-    const custom = (typeof Prefs !== "undefined" && Prefs.get("wpsAddonUrl", "")) || "";
-    const urls = [];
-    if (custom) urls.push(custom);
-    for (const u of this.ADDON_URLS) if (urls.indexOf(u) < 0) urls.push(u);
-
-    for (const url of urls) {
-      try {
-        const r = await this._installFromBundle(url);
-        report.push("下载源：" + this._shortUrl(url));
-        report.push(...(r.report || []));
-        return { ok: r.ok, version: r.version, dir: r.dir, report, error: r.error };
-      } catch (e) {
-        report.push("下载失败：" + this._shortUrl(url) + " → " + String((e && e.message) || e));
-      }
-    }
-
-    const local = this._localAddonSource();
-    if (local && (await this._exists(local))) {
-      try {
-        const r = await this._installFromDir(local);
-        report.push("本地源：" + local);
-        report.push(...(r.report || []));
-        return { ok: r.ok, version: r.version, dir: r.dir, report, error: r.error };
-      } catch (e) {
-        report.push("本地源失败：" + String((e && e.message) || e));
-      }
-    }
-
-    return {
-      ok: false,
-      report,
-      error: "无法获取加载项：检查网络，或在下面填「安装脚本目录」改用本地安装",
-    };
-  },
-
-  // ---------- 打开目录 ----------
+  // ---------- 目录 ----------
 
   openDir(kind) {
-    const map = {
-      addon: this.jsaddonsDir(),
-      proxy: this.proxyHome(),
-      script: (typeof Prefs !== "undefined" && Prefs.get("wpsScriptDir", "")) || "",
-    };
-    const dir = map[kind];
-    if (!dir) return false;
+    let path = "";
+    if (kind === "addon") path = this.jsaddonsDir();
+    else if (kind === "proxy") path = this.proxyHome();
+    if (!path) return false;
     try {
-      Zotero.Utilities.Internal.exec("explorer.exe", [dir]);
+      Zotero.File.reveal(path);
       return true;
     } catch (e) {
-      try {
-        const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
-        f.initWithPath(dir);
-        f.launch();
-        return true;
-      } catch (e2) {
-        return false;
-      }
+      return false;
     }
   },
 };

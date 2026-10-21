@@ -13,11 +13,42 @@ Zotero.Papilot = {
   _initialized: false,
   _prefObserverSymbols: null,
   _paneID: null,
-  // 0.63.0 pdf.js 实例（启动时载入；null = 渲染引擎不可用，OCR 功能按此降级）
+  // 0.63.0 pdf.js 实例（**懒加载**：null = 尚未加载或不可用；OCR 首次调用时经
+  // _ensurePdfjs() 载入，失败置 _pdfjsFailed 并降级——见 init 内装配段注释）
   _pdfjs: null,
+  _pdfjsFailed: false,
 
   _diag(msg) {
     try { _ppDiag(msg); } catch (e) { /* bootstrap 未提供则忽略 */ }
+  },
+
+  /**
+   * 0.63.0 pdf.js 无头渲染引擎（≈320KB UMD）——懒加载入口（审查 P1-3）。
+   * 此前启动时无条件 loadSubScript，不用 OCR 的用户也白付解析/编译成本；
+   * 现延迟到 OCR 首次真正需要库时调用（OcrService._lib 包装点见 init）。
+   * 同步载入（loadSubScript 本身同步），幂等；失败只记一次诊断、置 null 降级。
+   * ⚠️ 文本形态被 check-wiring 50.x 与 test/ocr.test.js 钉住：
+   *    pdf.min.js 引用必须在模块加载循环之前、且包裹在 try/catch 中。
+   */
+  _ensurePdfjs() {
+    if (this._pdfjs || this._pdfjsFailed) return this._pdfjs;
+    try {
+      Services.scriptloader.loadSubScript(
+        this.rootURI + "chrome/content/vendor/pdfjs/pdf.min.js?v=" + this.version);
+      const pdfjs = (typeof pdfjsLib !== "undefined" && pdfjsLib) ? pdfjsLib : null;
+      if (!pdfjs) throw new Error("pdfjsLib 未挂到全局");
+      if (pdfjs.GlobalWorkerOptions) {
+        pdfjs.GlobalWorkerOptions.workerSrc =
+          this.rootURI + "chrome/content/vendor/pdfjs/pdf.worker.min.js";
+      }
+      this._pdfjs = pdfjs;
+      this._diag("pdfjs lazy loaded (version=" + (pdfjs.version || "?") + ", worker=direct)");
+    } catch (e) {
+      this._pdfjs = null;
+      this._pdfjsFailed = true;   // 失败只试一次：不反复 loadSubScript，诊断也只记一行
+      this._diag("pdfjs lazy load FAILED: " + (e && (e.stack || e.message) || e));
+    }
+    return this._pdfjs;
   },
 
   /**
@@ -97,26 +128,13 @@ Zotero.Papilot = {
     this.version = version;
     this.rootURI = rootURI;
 
-    // 0.63.0 PDF 无头渲染 + 视觉 OCR：先把 pdf.js 3.11 UMD（chrome/content/vendor/pdfjs/，
-    // Apache-2.0，见 THIRD-PARTY-NOTICES.md）载入 bootstrap 作用域，features/ocr.js 运行期
-    // 从全局取 pdfjsLib。⚠️ 这一步**绝不能拖垮启动**：失败只写一行诊断，OCR 功能自己降级
-    // （菜单点了会提示「渲染引擎不可用」）。worker 的三种加载方式（direct / blob / inline）
-    // 由 OcrService.openDocument 逐级降级，这里只装首选方式与初始 workerSrc。
-    try {
-      Services.scriptloader.loadSubScript(
-        rootURI + "chrome/content/vendor/pdfjs/pdf.min.js?v=" + version);
-      const pdfjs = (typeof pdfjsLib !== "undefined" && pdfjsLib) ? pdfjsLib : null;
-      if (!pdfjs) throw new Error("pdfjsLib 未挂到全局");
-      if (pdfjs.GlobalWorkerOptions) {
-        pdfjs.GlobalWorkerOptions.workerSrc =
-          rootURI + "chrome/content/vendor/pdfjs/pdf.worker.min.js";
-      }
-      this._pdfjs = pdfjs;
-      await this._diag("pdfjs loaded (version=" + (pdfjs.version || "?") + ", worker=direct)");
-    } catch (e) {
-      this._pdfjs = null;
-      await this._diag("pdfjs load FAILED: " + (e && (e.stack || e.message) || e));
-    }
+    // 0.63.0 PDF 无头渲染 + 视觉 OCR 的 pdf.js（3.11 UMD，chrome/content/vendor/pdfjs/，
+    // Apache-2.0，见 THIRD-PARTY-NOTICES.md）**不再随启动加载**（审查 P1-3：≈320KB UMD
+    // 的 fetch+解析+编译对不用 OCR 的用户是纯浪费）。延迟到 OCR 首次调用时由
+    // this._ensurePdfjs() 同步载入（定义在本文件顶部，装配点见下方 this.ocr 之后）。
+    // `_pdfjs` 的 null 语义不变：不可用 → OcrService 走「渲染引擎不可用」降级；
+    // worker 的三种加载方式（direct / blob / inline）仍由 OcrService.openDocument 逐级降级。
+    await this._diag("pdfjs deferred (lazy load on first OCR use)");
 
     // 按依赖顺序加载子模块（共享同一全局作用域，var 声明互相可见）
     const files = [
@@ -228,7 +246,8 @@ Zotero.Papilot = {
       // 0.42.0 翻译多引擎同屏对比小窗（翻译面板「对比引擎」按钮调起）
       "features/translate-compare.js",
       "features/attach-doctor.js",
-      // 0.63.0 PDF 无头渲染 + 视觉 OCR（扫描件补全文）：消费启动时载入的 pdfjsLib 与
+      // 0.63.0 PDF 无头渲染 + 视觉 OCR（扫描件补全文）：消费**懒加载**的 pdfjsLib
+      // （首次 openDocument 时才载入，见 _ensurePdfjs 与下方装配点）与
       // AIClient（运行期惰性调用）、attach-doctor 的 noText 检测结果。OcrService 只在
       // 菜单/问答回退时按需调用，故对加载顺序无依赖，紧跟 attach-doctor 便于对照阅读。
       "features/ocr.js",
@@ -447,6 +466,27 @@ Zotero.Papilot = {
     this.attachDoctor = AttachDoctor;
     // 0.63.0 PDF 无头渲染 + 视觉 OCR（菜单/问答回退/排障经此访问；加载失败置 null 防崩）
     this.ocr = (typeof OcrService !== "undefined") ? OcrService : null;
+    // 审查 P1-3：pdf.js 懒加载装配点。`_lib()` 是 OcrService 取 pdfjsLib 的唯一入口
+    // （openDocument / runForSelected 的引擎闸门 / _numPages 全走它），包一层：
+    // 首次取不到库时先 _ensurePdfjs() 同步载入再重取；载入失败 _lib() 仍返回 null，
+    // 各调用点照常走「渲染引擎不可用」降级（`_pdfjs` 的 null 语义不变）。
+    try {
+      if (this.ocr && typeof this.ocr._lib === "function" && !this.ocr._lib._ppLazyPdf) {
+        const origLib = this.ocr._lib;
+        const self = this;
+        this.ocr._lib = function () {
+          let r = null;
+          try { r = origLib.apply(this, arguments); } catch (e) { r = null; }
+          if (r) return r;
+          try { self._ensurePdfjs(); } catch (e) { /* 降级交给原流程 */ }
+          try { return origLib.apply(this, arguments); } catch (e) { return null; }
+        };
+        this.ocr._lib._ppLazyPdf = true;
+        await this._diag("pdfjs lazy loader armed (on first OCR _lib miss)");
+      }
+    } catch (e) {
+      await this._diag("ocr lazy-pdfjs wiring FAILED: " + (e && (e.stack || e.message) || e));
+    }
     // 0.23.0 自动化（对话框与菜单经此访问）
     this.automation = Automation;
     this.autoRead = AutoRead;
@@ -566,10 +606,15 @@ Zotero.Papilot = {
       await this._diag("cloud auto sync FAILED: " + (e && (e.stack || e.message) || e));
     }
 
-    // 0.68.1 WPS 集成：勾了「自动代理」就在启动后把 21931 拉起来（默认关）
+    // WPS 集成：代理没在跑就拉起来（仅当本机确实装过 Papilot Cite；没装过不会起进程）
+    // 审查 P1-2：不再 await——ensureProxy 含 800ms 健康探测 + 可能起进程后轮询最长 ~3s，
+    // 串行 await 会把这段网络等待塞进启动关键路径。改为 fire-and-forget，日志保留。
     try {
-      if (this.wpsBridge && (await this.wpsBridge.ensureProxy())) {
-        await this._diag("wps proxy ensured");
+      if (this.wpsBridge) {
+        Promise.resolve(this.wpsBridge.ensureProxy())
+          .then((ok) => { if (ok) this._diag("wps proxy ensured"); })
+          .catch((e) => this._diag("wps proxy FAILED: " + (e && (e.stack || e.message) || e)));
+        await this._diag("wps proxy ensure scheduled (non-blocking)");
       }
     } catch (e) {
       await this._diag("wps proxy FAILED: " + (e && (e.stack || e.message) || e));
@@ -1313,6 +1358,8 @@ Zotero.Papilot = {
       // 0.18.1 补 redraw 兜底——不同 Zotero 版本对行数据缓存处理不一致，
       // 只 refreshColumns() 在部分版本上不会重取 dataProvider，表现为
       // 「设置改了没反应」。
+      // 审查 P1-4：renderCell 的 prefs 预算缓存在此统一刷新（每行不再重读 pref）
+      try { RankColumn._refreshRenderPrefs(); } catch (e) { /* ignore */ }
       try { RankColumn._lookupCache.clear(); } catch (e) { /* ignore */ }
       try { Zotero.ItemTreeManager.refreshColumns(); } catch (e) { /* ignore */ }
       try { Zotero.Notifier.trigger("redraw", "item", []); } catch (e) { /* ignore */ }
@@ -1321,6 +1368,8 @@ Zotero.Papilot = {
       try { UiTheme.apply(); } catch (e) { /* ignore */ }
       // 两处主题按钮的提示文字同步（界面主题名变了）
       try { ThemeToggle.refresh(); } catch (e) { /* ignore */ }
+      // 审查 P1-5：主题切换会改 --color-accent/--accent-green，进度列色值缓存失效
+      try { if (typeof ProgressColumn !== "undefined" && ProgressColumn) ProgressColumn._invalidateVarCache(); } catch (e) { /* ignore */ }
     } else if (key === "pdfTheme" || key === "pdfThemeCustomColor" || key === "pdfThemeCustomOpacity") {
       // PDF 阅读主题即时生效：重刷全部已打开 reader（不用重开文档）
       try { PdfTheme.refresh(); } catch (e) { /* ignore */ }
@@ -1348,6 +1397,8 @@ Zotero.Papilot = {
     } else if (key === "progressBarStyle" || key === "progressBasis" || key === "progressColorByState") {
       // 0.46.0 进度样式/口径/着色变化：立即重绘（同 rank 列的修复口径——
       // 只 refreshColumns() 在部分版本不会重取 dataProvider，须补 redraw）
+      // 审查 P1-5：着色开关变化时同步失效进度列色值缓存（防御性，成本为零）
+      try { if (typeof ProgressColumn !== "undefined" && ProgressColumn) ProgressColumn._invalidateVarCache(); } catch (e) { /* ignore */ }
       try { Zotero.ItemTreeManager.refreshColumns(); } catch (e) { /* ignore */ }
       try { Zotero.Notifier.trigger("redraw", "item", []); } catch (e) { /* ignore */ }
     } else if (key === "progressRowEnabled") {

@@ -3541,99 +3541,65 @@ ok("保持当前通道" in _pj and "channelTouched" in _pj,
    "59.25 ★ 重开向导不改变现有通道（没点过通道卡片 = 保持现状）")
 
 
-# ---------- 60. 0.68.1 WPS 集成（个人版可用：检测 / 一键修复 / 代理） ----------
-# 设计约束：加载项本体是 GPL-3.0，**不随本插件分发**；插件只带自有代码
-# （prefs-wps.js / wps-bridge.js / tools/wps/proxy.py），所以这里额外守一条
-# 「chrome/ 下不得出现加载项资源」，防止以后图省事把 GPL 代码打进 xpi。
+# ---------- 60. WPS 集成（Papilot Cite；0.71.1 起加载项随包分发） ----------
+# 背景：0.68.x 那套 wps-zotero 加载项 + 21931 代理 + 从 Gitee 下 bundle.json 的方案已废弃
+#   （装上了连不上 Zotero，用户实测），现由 wps-cite/ 的 Papilot Cite 取代：
+#   加载项本体是我们自己的 Apache-2.0 代码，构建时同步进 xpi，卡片里一键安装。
+# 这里守四件事：①接线在；②名字/端口对；③面板 id 齐；④旧方案不许悄悄回来。
 _PWPS_JS = os.path.join(ROOT, "chrome", "content", "prefs-wps.js")
 _WB_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "wps-bridge.js")
-_WPROXY = os.path.join(ROOT, "chrome", "content", "tools", "wps", "proxy.py")
+_WPS_SRC = os.path.join(ROOT, "wps-cite", "addon")          # 加载项单一真源（构建时同步，不在 chrome/ 复制）
+_WPS_PROXY = os.path.join(ROOT, "wps-cite", "proxy", "proxy.py")
 
 ok(os.path.exists(_PWPS_JS), "60.1 prefs-wps.js 存在（设置面板脚本）")
 ok("prefs-wps.js" in mainjs, "60.2 main.js 注册 prefs-wps.js（scripts 列表）")
-ok(os.path.exists(_WB_JS), "60.3 features/wps-bridge.js 存在（检测/修复/代理桥）")
+ok(os.path.exists(_WB_JS), "60.3 features/wps-bridge.js 存在（检测/安装/清理）")
 ok("features/wps-bridge.js" in mainjs, "60.4 main.js 加载 features/wps-bridge.js")
 ok("this.wpsBridge" in mainjs, "60.5 main.js 暴露 Zotero.Papilot.wpsBridge（面板经此访问）")
-ok(os.path.exists(_WPROXY), "60.6 随包分发的 CORS 代理 chrome/content/tools/wps/proxy.py 存在")
+ok(os.path.exists(os.path.join(_WPS_SRC, "index.html")) and os.path.exists(os.path.join(_WPS_SRC, "version.js")),
+   "60.6 加载项单一真源 wps-cite/addon 在库")
+ok(os.path.exists(_WPS_PROXY), "60.7 代理源 wps-cite/proxy/proxy.py 在库")
+_BUILD_XPI = os.path.join(ROOT, "scripts", "build-xpi.py")
+_bx = io.open(_BUILD_XPI, encoding="utf-8").read() if os.path.exists(_BUILD_XPI) else ""
+ok("wps-cite" in _bx and "tools" in _bx,
+   "60.8 ★ build-xpi.py 会把 wps-cite 载荷同步进包（否则卡片里装不了加载项）")
 
 _wb = io.open(_WB_JS, encoding="utf-8").read() if os.path.exists(_WB_JS) else ""
-ok("ZOTERO_PORT: 23119" in _wb and "PROXY_PORT: 21931" in _wb,
-   "60.7 桥接端口常量正确（21931 → 23119）")
-_wproxy_src = io.open(_WPROXY, encoding="utf-8").read() if os.path.exists(_WPROXY) else ""
-ok("Host: %s:%d" in _wproxy_src and "Zotero 10" in _wproxy_src,
-   "60.8 ★ 随包代理保留了 Host 改写（Zotero 10 不回写 Host 就全 400）")
-ok("authaddin.json" in _wb and "isload" in _wb,
-   "60.9 信任状态读取基于 authaddin.json 的 isload 字段")
-ok(re.search(r"wps-zotero_\d", _wb) is None,
-   "60.10 桥接不硬编码加载项版本目录名（按目录探测，版本号来自磁盘）")
+ok('ADDON_NAME: "papilot-cite"' in _wb, "60.9 桥接对接的是 papilot-cite")
+ok("PROXY_PORT: 21932" in _wb and "ZOTERO_PORT: 23119" in _wb,
+   "60.10 端口常量正确（21932 → 23119）")
+ok("installAddon" in _wb and "wps-cite.bundle.json" in _wb,
+   "60.11 桥接从随包 bundle 安装加载项（不依赖网络）")
+ok("fetch(" in _wb and "jar" in _wb,
+   "60.11b ★ 载荷必须用 fetch 读（jar 里没有可枚举目录，改回目录复制会静默装不上）")
+ok("_safeRel" in _wb and '_safeRel(rel)' in _wb,
+   "60.11c ★ 落盘前做相对路径穿越校验")
+ok("cleanupLegacy" in _wb and 'LEGACY_NAME: "wps-zotero"' in _wb,
+   "60.12 ★ 桥接提供旧版残留清理（两份同时装着会在功能区打架）")
+ok("authaddin.json" in _wb, "60.13 安装后清信任记录（否则 WPS 不会重新确认）")
+ok("publish.xml" in _wb and 'customDomain=""' in _wb,
+   "60.14 注册项格式与 install.py 一致（customDomain 必须为空）")
 
-for _wid in ("pp-wps-detect", "pp-wps-fix", "pp-wps-proxy-start", "pp-wps-autoproxy",
-             "pp-wps-scriptdir", "pp-wps-savedir", "pp-wps-addon", "pp-wps-trust",
-             "pp-wps-proxy", "pp-wps-zotero", "pp-wps-reg", "pp-wps-msg"):
-    ok(_wid in prefs_xhtml, "60.11 面板含 #%s" % _wid)
+for _wid in ("pp-wps-detect", "pp-wps-install", "pp-wps-proxy-start", "pp-wps-clean",
+             "pp-wps-addon", "pp-wps-trust", "pp-wps-proxy", "pp-wps-zotero",
+             "pp-wps-legacy", "pp-wps-reg", "pp-wps-msg"):
+    ok(_wid in prefs_xhtml, "60.15 面板含 #%s" % _wid)
 
-ok('pref("extensions.zotero.papilot.wpsAutoProxy", false);' in prefsdef,
-   "60.12 prefs.js 有 wpsAutoProxy 默认值（默认关，用户勾选才自启代理）")
-ok('pref("extensions.zotero.papilot.wpsScriptDir", "");' in prefsdef,
-   "60.13 prefs.js 有 wpsScriptDir 默认值")
-_pwps_src = io.open(_PWPS_JS, encoding="utf-8").read() if os.path.exists(_PWPS_JS) else ""
-ok("Zotero.Prefs.set" in _pwps_src and
-   re.search(r"(?<!Zotero\.)Prefs\.(get|set)\(", _pwps_src) is None,
-   "60.17 ★ 面板脚本只用 Zotero.Prefs（设置窗口作用域没有裸 Prefs，用了会静默失效）")
-
-_gpl_leaks = []
-for _root, _dirs, _files in os.walk(os.path.join(ROOT, "chrome")):
-    for _f in _files:
-        if _f in ("ribbon.xml",) or _f.startswith("wps-zotero"):
-            _gpl_leaks.append(os.path.join(_root, _f))
-ok(not _gpl_leaks,
-   "60.14 ★ chrome/ 下不得出现 WPS 加载项资源（GPL-3.0 不随 Apache-2.0 插件分发）→ %s" % _gpl_leaks[:3])
+# 旧方案的四件东西：必须已经从包里/库里消失，否则用户会再被装一次坏加载项
+ok("pp-wps-fix" not in prefs_xhtml,
+   "60.16 ★ 旧的「一键修复」按钮已删除（它只会重写 wps-zotero 的注册项）")
+ok(not os.path.exists(os.path.join(ROOT, "chrome", "content", "tools", "wps")),
+   "60.17 ★ 旧的 21931 CORS 代理不再随包")
+ok(not os.path.exists(os.path.join(ROOT, "tools", "wps-zotero")),
+   "60.18 ★ 旧加载项源码 tools/wps-zotero 已删除")
+ok(not os.path.exists(os.path.join(ROOT, "dist", "papilot-wps-addon.bundle.json")),
+   "60.19 ★ 旧发布物 papilot-wps-addon.bundle.json 已删除（别再往用户机器上装它）")
+ok("wpsAutoProxy" not in prefsdef and "wpsScriptDir" not in prefsdef,
+   "60.20 旧偏好项 wpsAutoProxy / wpsScriptDir 已清理")
 
 ok(os.path.exists(os.path.join(ROOT, "test", "prefs-wps.test.js")),
-   "60.15 test/prefs-wps.test.js 在库")
-ok("prefs-wps.test.js" in _preflight_src, "60.16 preflight 注册 WPS 集成测试")
-
-# 0.68.2：加载项作为**独立发布物**（GPL-3.0 不进 xpi），卡片内按需下载安装
-ok('pref("extensions.zotero.papilot.wpsAddonUrl", "");' in prefsdef,
-   "60.18 prefs.js 有 wpsAddonUrl 默认值（留空=内置发布地址，可被镜像覆盖）")
-ok("pp-wps-install-addon" in prefs_xhtml, "60.19 面板含「下载并安装加载项」按钮")
-ok("async installAddon" in _wb and "ADDON_URLS" in _wb,
-   "60.20 桥接提供 installAddon() 与下载源清单")
-ok(".bundle.json" in _wb,
-   "60.21 ★ 下载的是 bundle.json（纯 JS 落盘，不依赖 ZipReader，可单测）")
-ok("_safeRel" in _wb and 'indexOf("..")' in _wb,
-   "60.22 ★ 落盘前做目录穿越校验（数据来自网络）")
-_BUILD_ADDON = os.path.join(ROOT, "scripts", "wps-zotero", "build-addon-zip.py")
-ok(os.path.exists(_BUILD_ADDON), "60.23 加载项打包脚本 build-addon-zip.py 在库")
-_GI = io.open(os.path.join(ROOT, ".gitignore"), encoding="utf-8").read() if os.path.exists(os.path.join(ROOT, ".gitignore")) else ""
-ok("!dist/papilot-wps-addon.zip" in _GI and "!dist/papilot-wps-addon.bundle.json" in _GI,
-   "60.24 发布物被 .gitignore 放行（否则 Gitee raw 直链 404）")
-ok(os.path.exists(os.path.join(ROOT, "test", "wps-bridge-install.test.js")),
-   "60.25 test/wps-bridge-install.test.js 在库")
-ok("wps-bridge-install.test.js" in _preflight_src, "60.26 preflight 注册加载项安装桥测试")
-
-# 加载项中文化（1.0.1）：文案回归守卫 + 发布物版本一致性
-_RIBBON = os.path.join(ROOT, "tools", "wps-zotero", "addon", "ribbon.xml")
-_ribbon_src = io.open(_RIBBON, encoding="utf-8").read() if os.path.exists(_RIBBON) else ""
-_ribbon_labels = re.findall(r'label="([^"]+)"', _ribbon_src)
-_cn = [x for x in _ribbon_labels if re.search(r"[一-鿿]", x)]
-ok(len(_ribbon_labels) >= 10 and len(_cn) == len(_ribbon_labels),
-   "60.27 ★ 功能区 label 全部中文（中文化回退守卫）→ 实际 %d/%d" % (len(_cn), len(_ribbon_labels)))
-ok(_ribbon_src.count("screentip=") >= 8 and _ribbon_src.count("supertip=") >= 8,
-   "60.28 每个按钮都带中文悬浮说明 screentip/supertip（英文原名只出现在 supertip 里）")
-_ADDON_VER = os.path.join(ROOT, "tools", "wps-zotero", "addon", "version.js")
-_addon_ver = ""
-if os.path.exists(_ADDON_VER):
-    _m = re.search(r"VERSION\s*=\s*'([^']+)'", io.open(_ADDON_VER, encoding="utf-8").read())
-    _addon_ver = _m.group(1) if _m else ""
-_MANIFEST_ADDON = os.path.join(ROOT, "dist", "papilot-wps-addon.manifest.json")
-if _addon_ver and os.path.exists(_MANIFEST_ADDON):
-    import json as _json2
-    _mv = str(_json2.load(io.open(_MANIFEST_ADDON, encoding="utf-8")).get("version", ""))
-    ok(_mv == _addon_ver,
-       "60.29 ★ 发布物版本与加载项源码一致（忘了重打包会在这里红）→ %s / %s" % (_mv, _addon_ver))
-else:
-    ok(False, "60.29 找不到加载项版本或发布物清单")
+   "60.21 test/prefs-wps.test.js 在库")
+ok("prefs-wps.test.js" in _preflight_src, "60.22 preflight 注册 WPS 集成测试")
 
 
 # ==================== 61. 设置面板交互与隐私（0.68.3） ====================

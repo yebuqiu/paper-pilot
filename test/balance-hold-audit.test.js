@@ -33,6 +33,9 @@ process.env.PP_PORT = '0';
 delete process.env.PP_RESEND_KEY;
 process.env.PP_LOGIN_MAX = '500';
 process.env.PP_REG_MAX = '50';
+// 1.9.1（P1-4）：本套件用 CF-Connecting-IP 模拟多客户端以规避 GATEWAY_MAX 单 IP 限速
+// （见 154 行注释）——必须显式声明「这是隧道部署」否则 1.9.1 起不再信代理头。
+process.env.PP_TRUST_PROXY = '1';
 
 let pass = 0;
 const fails = [];

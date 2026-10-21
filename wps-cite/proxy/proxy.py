@@ -20,12 +20,15 @@ import base64
 import json
 import logging
 import os
+import platform
+import re
 import socket
 import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+import zipfile
 
 ZOTERO = "127.0.0.1"
 ZOTERO_PORT = 23119
@@ -33,6 +36,7 @@ LISTEN_PORT = 21932
 HOME = os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PapilotCite")
 LINKS = os.path.join(HOME, "links.json")
 CONFIG = os.path.join(HOME, "config.json")
+DIAG_DIR = os.path.join(HOME, "diag")
 
 CORS = (
     "Access-Control-Allow-Origin: *\r\n"
@@ -40,6 +44,30 @@ CORS = (
     "Access-Control-Allow-Headers: *\r\n"
     "Access-Control-Max-Age: 86400\r\n"
 )
+
+# ---------- 跨源/命令白名单 ----------
+# 代理监听 127.0.0.1，但浏览器有一个坑：任意外站网页里 fetch("http://127.0.0.1:21932/...")
+# 也会把请求发到这里（Private Network Access 之前，这就是 CSRF 的温床）。所以：
+#   - 带 Origin 头的（一律是浏览器发的）只允许 127.0.0.1 / localhost / null
+#     （CEF file:// 加载项发的是 null）；
+#   - 不带 Origin 的（curl / python / 本机工具）不是浏览器场景，放行。
+# 这样即使别人诱导用户访问一个恶意站点，它也无法驱使代理去翻 Zotero 库或开文件。
+_ALLOW_ORIGIN = re.compile(
+    r"^(?:https?://(?:127\.0\.0\.1|localhost)(?::\d+)?|null)$", re.IGNORECASE)
+
+
+def origin_ok(headers):
+    """带 Origin 才校验；不带就是本机命令行工具，放行。"""
+    for k, v in (headers or {}).items():
+        if k.lower() == "origin":
+            return bool(_ALLOW_ORIGIN.match(str(v).strip()))
+    return True
+
+
+# /open 只放两类东西：zotero:// 协议链接（Zotero 自己接管）；
+# 或本机已存在的**文档**路径（用来"打开引用它的那份文件"）。
+# .exe/.bat/... 一开放就是远程任意命令执行（配合上面的 Origin 白名单也不该开）。
+_DOC_EXT = (".docx", ".doc", ".pdf", ".xlsx", ".pptx", ".txt", ".md")
 
 _LOCK = threading.RLock()
 STOP = threading.Event()
@@ -58,8 +86,16 @@ def setup_log():
     os.makedirs(HOME, exist_ok=True)
     path = os.path.join(HOME, "proxy.log")
     try:
+        # ★ 超限不能直接删：proxy.log 是排障唯一凭据，删掉等于把上一次出问题的现场抹掉。
+        #   与下面 .prev 一个思路：改名成 .1 留着（已有 .1 就先覆盖掉）。
         if os.path.exists(path) and os.path.getsize(path) > 512 * 1024:
-            os.remove(path)
+            rotated = path + ".1"
+            try:
+                if os.path.exists(rotated):
+                    os.remove(rotated)
+                os.replace(path, rotated)
+            except OSError:
+                pass
         # 旧版本用系统编码（GBK）写过日志；混进一个非 UTF-8 字节，整个文件就会
         # 被 grep / 编辑器判定为 binary，排查时读不出来。启动时挪走。
         if os.path.exists(path) and not _is_utf8(path):
@@ -94,6 +130,123 @@ def write_json(path, data):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
     os.replace(tmp, path)
+
+
+# ---------- 把 Zotero 的「添加引注」浮窗拉到最前 ----------
+# 为什么要在外部进程做：引注框是 Zotero 自己的窗口，WPS 里的加载项（一个隐藏的浏览器页）
+# 完全没有能力控制操作系统的窗口层级。用户点完按钮、Zotero 弹框后，只要点一下 WPS 正文，
+# 浮窗就沉到后面去，看起来像"按钮没反应"。
+#
+# 策略（保守）：只在 Zotero 进程的窗口里找；优先标题像引注框的，其次主窗口；
+# 找到就把引注框置顶 + 前置；找不到什么都不做（绝不乱动别的程序）。
+_RAISE_WORDS = ("引注", "引文", "参考文献", "citation", "bibliograph")
+
+
+def _proc_image_name(pid):
+    """返回进程可执行文件名（小写），取不到返回空串。"""
+    import ctypes
+    from ctypes import wintypes
+    k = ctypes.windll.kernel32
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    h = k.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+    if not h:
+        return ""
+    try:
+        buf = ctypes.create_unicode_buffer(1024)
+        size = wintypes.DWORD(1024)
+        if k.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size)):
+            return os.path.basename(buf.value).lower()
+        return ""
+    except OSError:
+        return ""
+    finally:
+        try:
+            k.CloseHandle(h)
+        except OSError:
+            pass
+
+
+def _zotero_windows():
+    """枚举 zotero 进程的所有可见顶层窗口 → [(hwnd, title, w, h)]"""
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.windll.user32
+    out = []
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def cb(hwnd, _lparam):
+        try:
+            if not u.IsWindowVisible(hwnd):
+                return True
+            pid = wintypes.DWORD()
+            u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if _proc_image_name(pid.value) != "zotero.exe":
+                return True
+            n = u.GetWindowTextLengthW(hwnd)
+            if n <= 0:
+                return True
+            buf = ctypes.create_unicode_buffer(n + 1)
+            u.GetWindowTextW(hwnd, buf, n + 1)
+            rect = wintypes.RECT()
+            u.GetWindowRect(hwnd, ctypes.byref(rect))
+            out.append((hwnd, buf.value, rect.right - rect.left, rect.bottom - rect.top))
+            return True
+        except Exception:
+            return True
+
+    u.EnumWindows(WNDENUMPROC(cb), 0)
+    return out
+
+
+def raise_zotero_dialog(timeout=15.0, interval=0.3):
+    """等 Zotero 的引注浮窗出现并把它拉到最前；最多等 timeout 秒。
+
+    判定"这是不是引注框"用两条互补的信号，都不靠窗口标题的本地化文案：
+      1. **新出现的窗口** —— 调用时先给现存窗口拍个快照，之后冒出来的那个就是刚弹的框；
+      2. 标题里带引注/参考文献字样（框已经开着时走这条）。
+    找不到就什么都不做。**不会**去动 Zotero 主窗口（把主窗口拉到前面毫无意义，
+    还会把用户正在看的别的东西挤走）。
+    """
+    try:
+        import ctypes
+        u = ctypes.windll.user32
+    except Exception as e:
+        return {"ok": False, "why": "ctypes unavailable: %s" % e}
+
+    HWND_TOPMOST = -1
+    SWP_NOSIZE, SWP_NOMOVE, SWP_SHOWWINDOW = 0x0001, 0x0002, 0x0040
+    SW_RESTORE = 9
+
+    first = _zotero_windows()
+    before = set(h[0] for h in first)
+    deadline = time.time() + max(1.0, timeout)
+    seen = [t for (_h, t, _w, _hh) in first]
+    while time.time() < deadline:
+        wins = _zotero_windows()
+        seen = [t for (_h, t, _w, _hh) in wins]
+        pick = None
+        kind = ""
+        for hwnd, title, w, h in wins:
+            low = title.lower()
+            if hwnd not in before:                      # 刚冒出来的窗口
+                pick, kind = (hwnd, title), "new"
+                break
+            if any(word in title or word in low for word in _RAISE_WORDS):
+                pick, kind = (hwnd, title), "keyword"
+                break
+        if pick:
+            hwnd, title = pick
+            try:
+                u.ShowWindow(hwnd, SW_RESTORE)
+                u.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                               SWP_NOSIZE | SWP_NOMOVE | SWP_SHOWWINDOW)
+                u.SetForegroundWindow(hwnd)
+                u.BringWindowToTop(hwnd)
+                return {"ok": True, "title": title, "kind": kind}
+            except Exception as e:
+                return {"ok": False, "why": str(e), "title": title}
+        time.sleep(interval)
+    return {"ok": False, "why": "没等到新窗口", "seen": seen[:6]}
 
 
 def zotero_alive():
@@ -175,10 +328,151 @@ def links_query(item_key, page=None, doc=None):
     data = read_json(LINKS, {"v": 1, "items": {}})
     rows = list((data.get("items") or {}).get(item_key, []))
     if page not in (None, "", 0, "0"):
-        rows = [r for r in rows if int(r.get("page") or 0) == int(page)]
+        # ★ page 是从 query string 来的（"abc"、"1.5"、"None" 都可能传进来），
+        #   直接 int() 会 ValueError → 整个 /links 请求 500，前端只看到"查台账失败"。
+        try:
+            want = int(page)
+        except (TypeError, ValueError):
+            want = None
+        if want is not None:
+            rows = [r for r in rows if int(r.get("page") or 0) == want]
     if doc:
         rows = [r for r in rows if os.path.normcase(r.get("doc", "")) != os.path.normcase(doc)]
     return rows
+
+
+# ---------------- 一键诊断包 ----------------
+# 为什么要有：用户说"某个按钮不好使"时，我们没法远程连他的机器，也不该让他手动翻目录找日志。
+# 让他点一下"导出诊断包"，把生成的 zip 发过来，现场就在里面了：
+# 日志尾巴、脱敏后的配置、文档里有哪些域、Zotero/API 通不通。
+DIAG_TAIL_LINES = 400      # 只留日志尾巴：proxy.log 可能几十 MB，整个塞进 zip 没人看得下去
+DIAG_LINKS_KEEP = 20       # 台账可能很大，只留条数 + 前 20 条摘要
+
+# 诊断包是要发出去的，config.json 里可能有 Zotero API key / token，
+# 键名命中这些词的，值一律打码，绝不带明文凭据出门。
+_SECRET_HINTS = ("key", "token", "secret", "password", "passwd", "pwd", "密码", "令牌", "密钥", "凭证")
+
+
+def _looks_secret(name):
+    low = str(name or "").lower()
+    return any(h in low for h in _SECRET_HINTS)
+
+
+def redact(obj):
+    """递归把像密钥的字段值换成 ***；其余原样。"""
+    if isinstance(obj, dict):
+        return {k: ("***" if _looks_secret(k) else redact(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact(v) for v in obj]
+    return obj
+
+
+def tail_lines(path, n=DIAG_TAIL_LINES):
+    """只保留最后 n 行，用 deque 滚动，避免把大文件整个读进内存。"""
+    from collections import deque
+    buf = deque(maxlen=max(1, int(n)))
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                buf.append(line.rstrip("\r\n"))
+    except OSError:
+        return "（读不到 %s）\n" % path
+    return "\n".join(buf) + "\n"
+
+
+def _doc_line(doc_path):
+    if not doc_path:
+        return "（未提供，可能没打开文档）"
+    # 诊断包是从 HTTP 入口进来的，docPath 可能被传成 list/dict/数字，
+    # 直接走 os.path.exists 会 TypeError 把整份 summary 搞挂。
+    if not isinstance(doc_path, str):
+        return "（docPath 类型异常：%r）" % (type(doc_path).__name__,)
+    try:
+        if os.path.exists(doc_path):
+            return "%s（存在，%d 字节）" % (doc_path, os.path.getsize(doc_path))
+        return "%s（不存在）" % doc_path
+    except OSError as e:
+        return "%s（读不到：%s）" % (doc_path, e)
+
+
+def build_summary(payload):
+    """summary.txt：人先看的那一页，不用解开 zip 里的别的文件就能判断个大概。"""
+    alive = zotero_alive()
+    lines = [
+        "Papilot Cite 诊断包",
+        "生成时间: %s" % time.strftime("%Y-%m-%d %H:%M:%S"),
+        "插件版本: %s" % (payload.get("version") or "（未知）"),
+        "文档: %s" % _doc_line(payload.get("docPath")),
+        "Zotero 进程: %s" % ("在跑" if alive else "没在跑"),
+        "Zotero 本地 API: %s" % ("可用" if (alive and local_api_ok()) else "不可用"),
+        "代理监听: 127.0.0.1:%d" % LISTEN_PORT,
+        "Python: %s (%s)" % (platform.python_version(), sys.platform),
+        "系统: %s" % platform.platform(),
+    ]
+    fields = payload.get("fields") or []
+    lines.append("字段清单 (%d):" % len(fields))
+    for f in fields:
+        if not isinstance(f, dict):
+            continue
+        lines.append("  #%s %s %sB %s" % (
+            f.get("index"), f.get("kind") or "other", f.get("codeLen") or 0, f.get("label") or ""))
+    if not fields:
+        lines.append("  （文档里没扫到域）")
+    lines.append("备注: %s" % (payload.get("note") or "（无）"))
+    return "\n".join(lines) + "\n"
+
+
+def build_links_digest():
+    """links.json 只留条数与前若干条摘要：整份台账可能很大，而且对排障没那么关键。"""
+    data = read_json(LINKS, {})
+    items = (data.get("items") if isinstance(data, dict) else None) or {}
+    keys = list(items.keys())
+    out = ["台账条数: %d" % len(keys),
+           "（每篇文献一条，值是引用它的文档列表）", ""]
+    for key in keys[:DIAG_LINKS_KEEP]:
+        rows = items.get(key) or []
+        docs = []
+        for r in rows[:3]:
+            if not isinstance(r, dict):
+                continue
+            name = os.path.basename(str(r.get("doc") or "")) or "?"
+            page = r.get("page")
+            docs.append(name + (" p%s" % page if page not in (None, "", 0, "0") else ""))
+        out.append("%s: %d 条引用 ← %s" % (key, len(rows), ", ".join(docs) or "（无文档）"))
+    if len(keys) > DIAG_LINKS_KEEP:
+        out.append("…（仅列前 %d 条）" % DIAG_LINKS_KEEP)
+    return "\n".join(out) + "\n"
+
+
+def diag_build(payload):
+    """打一个 zip，返回 {"ok":True,"path","size"}。失败时异常交给 diag_handle 兜。"""
+    os.makedirs(DIAG_DIR, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = os.path.join(DIAG_DIR, "papilot-diag-%s.zip" % stamp)
+    n = 2
+    while os.path.exists(path):                    # 同一秒内连点两次也不能互相覆盖
+        path = os.path.join(DIAG_DIR, "papilot-diag-%s-%d.zip" % (stamp, n))
+        n += 1
+    cfg = redact(read_json(CONFIG, {}))
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("summary.txt", build_summary(payload))
+        z.writestr("proxy.tail.log", tail_lines(os.path.join(HOME, "proxy.log")))
+        z.writestr("config.json", json.dumps(cfg, ensure_ascii=False, indent=1))
+        z.writestr("links.json", build_links_digest())
+    size = os.path.getsize(path)
+    logging.info("diag %s (%d bytes, fields=%d)", path, size, len(payload.get("fields") or []))
+    return {"ok": True, "path": path, "size": size}
+
+
+def diag_handle(payload):
+    """POST /diag 的实现入口。**绝不抛**：打包失败也只是回一个 ok:false。"""
+    try:
+        if not isinstance(payload, dict):
+            return {"ok": False, "error": "请求体必须是 JSON 对象"}
+        return diag_build(payload)
+    except Exception as e:                          # noqa: BLE001 —— 这里的意图就是"什么错都不许炸"
+        logging.warning("diag failed: %r", e)
+        return {"ok": False, "error": str(e)}
 
 
 # ---------------- HTTP ----------------
@@ -259,6 +553,13 @@ def handle(client):
         if method == "OPTIONS":
             return send(client, 200, b"", extra="")
 
+        # ★ Origin 白名单：外站网页能 fetch 到 127.0.0.1 上的代理（浏览器不拦），
+        #   不挡就是 CSRF。带 Origin 必须是本机/localhost/null（CEF file:// 页发 null），
+        #   否则 403；不带 Origin 的是 curl/python/同机工具，不是浏览器场景，放行。
+        if not origin_ok(headers):
+            logging.warning("reject origin: %r", headers.get("Origin") or headers.get("origin"))
+            return send(client, 403, {"error": "origin not allowed"})
+
         if path == "/__beacon":
             # 1x1 透明 GIF：图片请求不受 CORS 约束，用来确认"加载项页面能不能碰到代理"。
             # 用户报"连不上"时，先看日志里有没有这行 —— 有=网通、问题在别处；没有=请求就被拦了。
@@ -283,6 +584,20 @@ def handle(client):
             logging.info("ADDON %s%s", payload.get("msg", ""),
                          (" | " + json.dumps(extra, ensure_ascii=False))[:600] if extra else "")
             return send(client, 200, {"ok": True})
+
+        if path == "/raise":
+            r = raise_zotero_dialog()
+            logging.info("raise %s", json.dumps(r, ensure_ascii=False))
+            return send(client, 200, r)
+
+        if path == "/diag" and method == "POST":
+            # 一键诊断包：用户报"按钮不好使"时，把现场打成 zip 让他回传。
+            try:
+                payload = json.loads(body.decode("utf-8") or "{}")
+            except ValueError:
+                return send(client, 400, {"ok": False, "error": "bad json"})
+            res = diag_handle(payload)              # 自己兜异常，不会把代理带崩
+            return send(client, 200 if res.get("ok") else 500, res)
 
         if path.startswith("/zit/"):
             # Zotero 集成协议（execCommand/respond）：**长轮询**——Zotero 会把"下一条命令"
@@ -354,6 +669,19 @@ def handle(client):
                 return send(client, 400, {"error": "bad json"})
             target_uri = payload.get("uri") or ""
             target_path = payload.get("path") or ""
+            # ★ 白名单：os.startfile 等价于双击，uri/path 不做限制就是"远程双击任意文件"，
+            #   一个钓鱼网页就能借它启动 .exe。只允许：
+            #     - zotero:// 协议（交给 Zotero 的协议处理器）
+            #     - 本机已存在的文档类文件（.docx/.pdf/...，见 _DOC_EXT）
+            if target_uri:
+                if not str(target_uri).lower().startswith("zotero://"):
+                    logging.warning("open 拒绝非 zotero:// 的 uri: %r", target_uri)
+                    return send(client, 403, {"error": "uri scheme not allowed"})
+            elif target_path:
+                ext = os.path.splitext(str(target_path))[1].lower()
+                if ext not in _DOC_EXT:
+                    logging.warning("open 拒绝非文档扩展名: %r", target_path)
+                    return send(client, 403, {"error": "path extension not allowed"})
             try:
                 if target_uri:
                     os.startfile(target_uri)          # zotero:// 由系统协议处理器接管
@@ -369,7 +697,12 @@ def handle(client):
         if path == "/config":
             if method == "GET":
                 return send(client, 200, read_json(CONFIG, {}))
-            payload = json.loads(body.decode("utf-8") or "{}")
+            # ★ 与 /links/upsert、/queue 的写法对齐：坏 JSON 要回 400，
+            #   不能让它冒到外层 Exception → 500（那是"服务器内部错"，不是"请求错"）。
+            try:
+                payload = json.loads(body.decode("utf-8") or "{}")
+            except ValueError:
+                return send(client, 400, {"error": "bad json"})
             cfg = read_json(CONFIG, {})
             cfg.update(payload)
             write_json(CONFIG, cfg)

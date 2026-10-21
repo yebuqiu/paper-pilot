@@ -4,19 +4,43 @@
             <tab id="ppcTab" label="Papilot 引用">
                 <group id="ppcCiteGroup" label="引文">
                     <button id="btnCite" label="插入引文" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true" size="large"
-                            screentip="从 Zotero 检索并插入引文" supertip="标题：插入引文&#10;说明：在右侧窗格检索条目，选中后写入光标处；可多选，同一处引多篇会合并成一个编号组。"/>
+                            screentip="从 Zotero 检索并插入引文" supertip="标题：插入引文&#10;说明：打开 Zotero 的「添加引注」框。光标停在某条已有引注里时，会直接编辑那一条（可增删条目）。"/>
                     <button id="btnBib" label="插入/更新文献表" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true" size="large"
-                            screentip="在文末生成参考文献表" supertip="标题：插入/更新文献表&#10;说明：按当前引文与样式重建文末文献表。"/>
+                            screentip="在文末生成或更新参考文献表" supertip="标题：插入/更新文献表&#10;说明：已有文献表就更新它，没有才新建一张。"/>
                     <button id="btnRefresh" label="刷新" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true" size="large"
                             screentip="重排编号、正文与文献表" supertip="标题：刷新&#10;说明：改了文献库或换了样式后，点它全文重排，并同步「谁引用了谁」的台账。"/>
+                </group>
+                <group id="ppcStyleGroup" label="样式与排版">
+                    <button id="btnStyleGb" label="GB/T 7714" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="切换为 GB/T 7714-2015 顺序编码制" supertip="标题：GB/T 7714-2015&#10;说明：中文期刊与学位论文常用，正文右上角标加文末序号表。"/>
+                    <button id="btnStyleApa" label="APA" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="切换为 APA 第 7 版" supertip="标题：APA&#10;说明：著者-出版年制，社科常用。"/>
+                    <button id="btnStyleNature" label="Nature" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="切换为 Nature 样式" supertip="标题：Nature&#10;说明：数字上标、文末编号，理工科投稿常用。"/>
+                    <button id="btnStyleIeee" label="IEEE" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="切换为 IEEE 样式" supertip="标题：IEEE&#10;说明：工程类文献常用。"/>
+                    <button id="btnPrefs" label="文档首选项…" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="打开 Zotero 的文档首选项（全部样式、语言、注文制）" supertip="标题：文档首选项&#10;说明：要选上面四个之外的样式，或改语言、脚注制，从这里进。"/>
+                </group>
+                <group id="ppcNavGroup" label="引文导航">
+                    <button id="btnNavPrev" label="上一条" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="跳到光标之前的最后一条引文" supertip="标题：上一条引文&#10;说明：长文档改稿时按顺序过一遍引文。到头会回到最后一条。"/>
+                    <button id="btnNavNext" label="下一条" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="跳到光标之后的第一条引文" supertip="标题：下一条引文&#10;说明：到头会回到第一条。"/>
+                    <button id="btnNavList" label="引文列表" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="列出全文引文，输入序号直接跳过去" supertip="标题：引文列表&#10;说明：按文档顺序列出每一条引文，输入序号跳转。"/>
                 </group>
                 <group id="ppcLinkGroup" label="双向链接">
                     <button id="btnGoto" label="回到原文" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true" size="large"
                             screentip="跳到 PDF 的对应页或高亮" supertip="标题：回到原文&#10;说明：光标放在引文里，点它让 Zotero 打开该条目的 PDF 并定位到当初引用的那一页（有标注时精确到高亮）。"/>
-                    <button id="btnFind" label="查看引用" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true" size="large"
+                    <button id="btnFind" label="查看引用" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
                             screentip="看还有哪些文档引用了它" supertip="标题：查看引用&#10;说明：读取本机台账，列出其它文档对同一文献（同一页）的引用，可直接打开。"/>
                 </group>
-                <group id="ppcHelpGroup" label="帮助">
+                <group id="ppcToolGroup" label="工具">
+                    <button id="btnUncited" label="补入未引文献" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="把读过但正文没引用的文献补进文末文献表" supertip="标题：补入未引用文献&#10;说明：先插好引文和文献表，再用关键词检索库里的条目，选中后它会出现在文献表里（不占正文编号）。"/>
+                    <button id="btnDiag" label="诊断包" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="导出一份排障用的诊断包" supertip="标题：导出诊断包&#10;说明：把版本、文档里的域清单、代理日志尾部打成一个 zip，报障时把它发给我们即可。"/>
                     <button id="btnAbout" label="关于" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
                             screentip="版本与许可" supertip="标题：关于&#10;说明：版本、依赖与许可说明。"/>
                 </group>

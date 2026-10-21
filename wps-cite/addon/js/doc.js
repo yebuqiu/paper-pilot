@@ -118,14 +118,24 @@
       try { sel.Collapse(0); } catch (e) { /* 不支持就保持整段 */ }
     }
     sel.Text = String(text == null ? "" : text);
-    // 用写入后的范围挂书签（sel 会随文本更新）
-    const r = app().Selection.Range;
-    if (r.Start > 0) {
-      try {
+    // 用写入后的范围挂书签（sel 会随文本更新）。
+    // ★ Selection.Range 这一步也可能抛（页面没焦点时 ActiveDocument 拿不到 Selection），
+    //   原来不包 try，异常直接冒到 insertCitation 的 catch，书签建不出来、用户只看到
+    //   "插入失败"，但文本其实**已经写进正文了**。取不到 Selection 就退化到写入用的 sel，
+    //   sel 本身就是"刚写入那段文本"的范围。
+    let r = null;
+    try {
+      r = app().Selection.Range;
+    } catch (e) {
+      r = sel;
+    }
+    if (!r) r = sel;
+    try {
+      if (Number(r.Start) > 0) {
         r.Start = r.Start - String(text).length;
         r.End = r.Start + String(text).length;
-      } catch (e) { /* 取不到就整段挂 */ }
-    }
+      }
+    } catch (e) { /* 取不到就整段挂 */ }
     try {
       d.Bookmarks.Add(name, r);
     } catch (e) {

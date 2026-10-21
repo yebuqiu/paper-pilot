@@ -110,7 +110,9 @@
     try {
       await Z.call("/links/upsert", { method: "POST", body: { doc: docPath, cites: cites } });
     } catch (e) {
-      console.warn("台账写入失败（不影响文档）:", e);
+      // ★ console.warn 在 WPS 加载项里用户看不到（没有 devtools 可开），
+      //   "双向链接不工作"会变成无法排查的哑巴问题。走代理日志留痕。
+      log("台账写入失败（不影响文档）", { err: String((e && e.message) || e) });
     }
   }
 
@@ -231,7 +233,13 @@
     const plan0 = M.plan(probe, byKey, style());
     const text = (plan0.edits.find((e) => e.name === names[0]) || {}).text || "[]";
 
-    Doc.insertAtCursor(text, names[0]);
+    // ★ 失败必须抛：insertAtCursor 返回 {ok:false, error} 说明书签没挂上，
+    //   正文里却已有文本（既不报错也不带书签的文本等于"幽灵引文"——之后刷新不到它）。
+    //   原来丢弃返回值、继续走 refreshAll，等于把失败假报成成功。
+    const ins = Doc.insertAtCursor(text, names[0]);
+    if (!ins || !ins.ok) {
+      throw new Error("引文插入失败（书签没能写入文档）：" + ((ins && ins.error) || "未知原因"));
+    }
     for (let i = 1; i < names.length; i++) {
       // 后续成员紧跟在第一个书签之后，占位长度为 0，仅用于记住条目身份
       const bm = d.Bookmarks.Item(names[0]);
@@ -491,6 +499,117 @@
     return true;
   }
 
+  /* ---------- 样式切换 / 未引文献补入 / 导航 / 诊断包（工具箱） ---------- */
+
+  /* 常用样式。styleID 必须与 Zotero 样式库里的 ID 完全一致；
+   * 选了没装过的样式，Zotero 会自己去取，取不到会在 refresh 阶段报错（我们照实转述）。 */
+  const ZOTERO_STYLES = {
+    gb7714: { id: "http://www.zotero.org/styles/china-national-standard-gb-t-7714-2015-numeric", label: "GB/T 7714-2015" },
+    apa: { id: "http://www.zotero.org/styles/apa", label: "APA" },
+    nature: { id: "http://www.zotero.org/styles/nature", label: "Nature" },
+    ieee: { id: "http://www.zotero.org/styles/ieee", label: "IEEE" },
+  };
+
+  /**
+   * 换样式：改文档数据里的 styleID，再让 Zotero 重排一遍。
+   * 为什么不调 setDocPrefs：那会弹 Zotero 自己的对话框，用户还得在里面找样式 ——
+   * 我们要的是"点一下就好"。真正的重排仍然由 Zotero 做（refresh），所以编号、文献表、
+   * 上标格式全都跟官方一致，不是我们自己拼的字符串。
+   */
+  async function switchZoteroStyle(key) {
+    const st = ZOTERO_STYLES[key];
+    if (!st) return { ok: false, error: "未知样式：" + key };
+    const I = root.PPIntegration;
+    if (!I || typeof I.changeStyle !== "function") {
+      msg("换样式功能没就绪（integration.changeStyle 缺失），请把这条提示反馈给我们。");
+      return { ok: false };
+    }
+    const r = await I.changeStyle(st.id);
+    if (r && r.ok && r.changed) msg("已切换为 " + st.label + "，全文已按新样式重排。");
+    else if (r && r.ok) msg("当前已经是 " + st.label + "，不必切换。");
+    return r;
+  }
+
+  function itemTitle(d) {
+    const t = String((d && (d.title || (d.Case || d.name))) || "").trim();
+    return t.length > 46 ? t.slice(0, 46) + "…" : (t || "(无标题)");
+  }
+  function itemYear(d) {
+    const m = /(1[6-9]\d\d|20\d\d)/.exec(String((d && d.date) || ""));
+    return m ? m[1] : "";
+  }
+
+  /**
+   * 补入未引用文献：Zotero 的文献表域代码里有一个 uncited 数组，放进去的条目会出现在
+   * 文末列表里但**不占正文编号**（学位论文的"阅读书目"就是这么来的）。
+   * 这里只做"检索 → 选序号 → 写进 uncited → 刷新"，不重造轮子。
+   */
+  async function addUncitedFlow() {
+    const I = root.PPIntegration;
+    if (!I || typeof I.addUncited !== "function") {
+      msg("补入功能没就绪（integration.addUncited 缺失）。请先插入至少一条引文和文献表。");
+      return { ok: false };
+    }
+    let q = "";
+    try {
+      q = prompt("补入未引用文献\n\n输入关键词（标题/作者）检索 Zotero 库：") || "";
+    } catch (e) {
+      msg("这个 WPS 版本没有可用的输入框，无法检索。");
+      return { ok: false };
+    }
+    if (!q.trim()) return { ok: true, cancelled: true };
+
+    const rows = await Z.search(q.trim(), 8);
+    if (!rows.length) { msg("没搜到条目。换个关键词试试。"); return { ok: true, empty: true }; }
+    const lines = rows.map((r, i) => {
+      const y = itemYear(r.data);
+      return (i + 1) + ". " + itemTitle(r.data) + (y ? "（" + y + "）" : "");
+    }).join("\n");
+
+    let ans = "";
+    try {
+      ans = prompt("检索到 " + rows.length + " 条，输入要补入的序号（可多个，用逗号分隔）：\n\n" + lines) || "";
+    } catch (e) { return { ok: false }; }
+    if (!ans.trim()) return { ok: true, cancelled: true };
+
+    const idx = ans.split(/[,，\s]+/).map((x) => parseInt(x, 10)).filter((n) => n >= 1 && n <= rows.length);
+    if (!idx.length) { msg("没有有效的序号。"); return { ok: false }; }
+    const keys = [...new Set(idx.map((n) => rows[n - 1].key))];
+
+    const r = await I.addUncited(keys);
+    msg("已补入 " + (r && r.added != null ? r.added : keys.length) + " 条，文献表共 "
+      + (r && r.uncited != null ? r.uncited : "?") + " 条。");
+    return r;
+  }
+
+  /** 引文导航：没有弹窗打扰，跳转本身有光标与滚动反馈 */
+  function navCall(kind) {
+    const N = root.PPNav;
+    if (!N || typeof N[kind] !== "function") {
+      msg("引文导航模块没加载（nav.js 缺失），请把这条提示反馈给我们。");
+      return { ok: false };
+    }
+    const r = N[kind]();
+    if (r && r.ok === false && r.error) msg(r.error);
+    return r || { ok: false };
+  }
+
+  /** 一键诊断包：报障时不用再远程连用户的机器 */
+  async function exportDiag() {
+    const D = root.PPDiag;
+    if (!D || typeof D.export !== "function") {
+      msg("诊断模块没加载（diag.js 缺失）。");
+      return { ok: false };
+    }
+    const r = await D.export();
+    if (!r || !r.ok) {
+      msg("导出诊断包失败：" + ((r && r.error) || "未知原因"));
+      return r || { ok: false };
+    }
+    msg("诊断包已导出：\n" + r.path + "\n\n把它发给维护者即可。");
+    return r;
+  }
+
   function OnAction(control) {
     const id = control && control.Id;
     log("action", { id: id });
@@ -513,13 +632,35 @@
        *   addCitation 只会无脑新建，于是在已有引注里点插入会嵌域。
        *   addEditBibliography 同理：已有文献表就编辑、没有才新建（:860），
        *   而 addBibliography 每次都新建一条，会把文档里堆出好几张文献表。 */
-      btnCite: () => nativeRun("addEditCitation"),
+      btnCite: () => {
+        /* 先把 Zotero 的引注浮窗"预约"到最前（代理会轮询最多 15 秒等它出现），再发起事务。
+         * 反过来（事务开始后再叫）不行：协议循环里多发一个请求会被当成一次 respond。 */
+        try { root.PPIntegration.raiseWindow(); } catch (e) { /* 置顶失败不影响插入 */ }
+        return nativeRun("addEditCitation");
+      },
       btnBib: () => nativeRun("addEditBibliography"),
       btnRefresh: () => nativeRun("refresh"),
+
+      /* 样式：四个常用样式一键切 + 需要其它样式时进 Zotero 的文档首选项 */
+      btnStyleGb: () => switchZoteroStyle("gb7714"),
+      btnStyleApa: () => switchZoteroStyle("apa"),
+      btnStyleNature: () => switchZoteroStyle("nature"),
+      btnStyleIeee: () => switchZoteroStyle("ieee"),
+      btnPrefs: () => nativeRun("setDocPrefs"),
+
+      /* 引文导航 */
+      btnNavPrev: () => navCall("prev"),
+      btnNavNext: () => navCall("next"),
+      btnNavList: () => navCall("list"),
+
+      /* 工具箱 */
+      btnUncited: () => addUncitedFlow(),
+      btnDiag: () => exportDiag(),
+
       btnGoto: () => gotoSource(),
       btnFind: () => findCitations(),
       btnAbout: () => msg(`Papilot Cite ${root.PPC_VERSION || ""}\n\n` +
-        `引用插入 + 引文与原文双向链接。\n` +
+        `引用插入 + 引文与原文双向链接 + 样式切换 + 引文导航。\n` +
         `许可：Apache-2.0（本加载项）；样式算法自实现。`),
     }[id];
     if (!run) {
@@ -543,6 +684,12 @@
     const map = {
       btnCite: "img/cite.svg", btnRefresh: "img/refresh.svg", btnBib: "img/bib.svg",
       btnGoto: "img/goto.svg", btnFind: "img/find.svg", btnAbout: "img/about.svg",
+      // 新增按钮复用三张新图标：样式类、导航类、工具类
+      btnStyleGb: "img/style.svg", btnStyleApa: "img/style.svg",
+      btnStyleNature: "img/style.svg", btnStyleIeee: "img/style.svg",
+      btnPrefs: "img/style.svg",
+      btnNavPrev: "img/nav.svg", btnNavNext: "img/nav.svg", btnNavList: "img/nav.svg",
+      btnUncited: "img/bib.svg", btnDiag: "img/tools.svg",
     };
     try {
       return map[control.Id] || "";
@@ -554,6 +701,7 @@
   root.PPApp = {
     OnAddinLoad, OnAction, GetImage, proxyBat, beacon, connError, log, pickerUrl,
     refreshAll, insertCitation, gotoSource, findCitations,
+    switchZoteroStyle, addUncitedFlow, navCall, exportDiag, ZOTERO_STYLES,
     style, setStyle, STYLES, ANCHOR, citationHere,
   };
 }(typeof globalThis !== "undefined" ? globalThis : this));

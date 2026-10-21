@@ -3,6 +3,17 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.71.1",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.71.1.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "WPS 集成卡片改为对接 Papilot Cite：加载项随包分发、一键安装、旧版 wps-zotero 残留一键清理；启动诊断节流、列渲染缓存、pdf.js 延迟加载"
+        },
+        {
           "version": "0.71.0",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.71.0.xpi",
           "applications": {

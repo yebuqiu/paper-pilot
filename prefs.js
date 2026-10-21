@@ -448,10 +448,7 @@ pref("extensions.zotero.papilot.progressAutoFinishPct", 95);
 // 登录密码直连 WebDAV 会 401（实测）。remember=true 时应用密码存 pref（本机明文，
 // 面板有开关）；false 时只留在内存，重启需重填。
 // 0.68.1 WPS 集成（个人版可用）：自动拉起 CORS 代理 + 安装脚本目录（仓库根）
-pref("extensions.zotero.papilot.wpsAutoProxy", false);
-pref("extensions.zotero.papilot.wpsScriptDir", "");
 // 加载项下载地址（留空 = 用内置发布地址；内网/镜像可覆盖）
-pref("extensions.zotero.papilot.wpsAddonUrl", "");
 
 pref("extensions.zotero.papilot.cloudSyncEnabled", true);
 pref("extensions.zotero.papilot.cloudSyncEmail", "");

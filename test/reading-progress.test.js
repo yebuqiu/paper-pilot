@@ -535,11 +535,18 @@ const flush = (ms) => new Promise((r) => setTimeout(r, ms || 15));
   const itemT = mkItem(401, 'KT', []);
   PC._pageCache.set(401, 6);
   const ovHeat = PC._buildRowOverlay(PC.lookup(itemT), itemT, miniDoc);
-  eq(ovHeat.children.length, 6, '⑦ heat：总页数 6 → 每页一格');
+  // 0.71.x（审查 P1-6）：每页一格的 N 个 span → 单节点 linear-gradient 硬止点，
+  // DOM 节点从 N+1 降为 1（外观等价：等宽分段、逐页纯色、顺序不变），断言随之改写
+  eq(ovHeat.children.length, 0, '⑦ heat：单节点渐变（不再每页建一个 span）');
+  const grad = ovHeat._style;
+  ok(grad.indexOf('linear-gradient(to right') >= 0, '⑦ heat：linear-gradient 一次绘出');
+  eq((grad.match(/rgba\(/g) || []).length, 12, '⑦ 6 页 × 2 个硬止点 = 12 段色标（每页一段）');
   // 饱和度：mean=0.75, max=3 → mv=max(0.75+1.125, 1.5)=1.875；页2=3min→夹紧 1；页5=1.5/1.875=0.8
-  ok(ovHeat.children[1]._style.indexOf(',1.000)') >= 0, '⑦ 读满一页（3min ≥ 1.5min 基线）全深');
-  ok(ovHeat.children[4]._style.indexOf('0.800') >= 0, '⑦ 1.5 分钟的页 0.8 透明度（zotero-style 同款公式）');
-  ok(ovHeat.children[0]._style.indexOf(',0.000)') >= 0, '⑦ 没读过的页透明');
+  ok(grad.indexOf(',1.000)') >= 0, '⑦ 读满一页（3min ≥ 1.5min 基线）全深');
+  ok(grad.indexOf('0.800') >= 0, '⑦ 1.5 分钟的页 0.8 透明度（zotero-style 同款公式）');
+  ok(grad.indexOf(',0.000)') >= 0, '⑦ 没读过的页透明');
+  ok(grad.indexOf(',0.000)') < grad.indexOf(',1.000)') && grad.indexOf(',1.000)') < grad.indexOf('0.800'),
+    '⑦ ★ 色标按页序排列（页1透明 → 页2全深 → 页5 0.8，顺序不变）');
 
   // heat 无每页数据（旧数据/刚装）→ 回退整体填充
   Prefs.set('readingProgress', JSON.stringify({ schema: 1, items: { KU: { p: 12, t: 24, a: 1 } } }));

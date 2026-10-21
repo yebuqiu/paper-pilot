@@ -40,7 +40,7 @@ var RankColumn = {
   COLUMN_KEY: "papilot-journalRank",
   _data: {},        // 内置示例数据（真兜底）
   _customData: {},  // 用户自定义 JSON（最高优先级）
-  _lookupCache: new Map(), // itemID -> {text, badges, detail}（空结果不缓存，见 lookup）
+  _lookupCache: new Map(), // itemID -> {text, badges, detail} | null（含负缓存，口径见 lookup）
   _registered: false,
   _pendingRefresh: new Set(), // 等待数据的 itemID（数据到达后精准 redraw）
 
@@ -109,7 +109,10 @@ var RankColumn = {
     "abdc", "jci", "cpu", "cscd", "pku", "zhongguokejihexin", "cssci",
   ],
 
-  /** 启用的数据集 kind 集合（pref rankDataSets，逗号分隔；空 = 默认 on 的集合） */
+  /** 启用的数据集 kind 集合（pref rankDataSets，逗号分隔；空 = 默认 on 的集合）
+   *  ⚠️ 渲染热路径（renderCell）不直接调它——每行重读 pref + 建 Set 是纯浪费
+   *  （审查 P1-4）。热路径读 _renderPrefs 预算缓存（load 时建立、pref observer 刷新）；
+   *  本方法保留给设置面板等需要实时真值的低频调用方。 */
   enabledKinds() {
     const raw = String(Prefs.get("rankDataSets", "") || "").trim();
     const def = this.DATASETS.filter((d) => d.on).map((d) => d.kind);
@@ -128,6 +131,20 @@ var RankColumn = {
 
   badgeStyleMode() {
     return String(Prefs.get("rankBadgeStyle", "color") || "color"); // color | mono
+  },
+
+  /* renderCell 每行渲染用的 pref 预算缓存（审查 P1-4）：
+   * null = 尚未建立（load 时建立；rankDataSets/rankMaxBadges/rankBadgeStyle 的
+   * pref observer 通道里统一刷新——见 main.js _onPrefChanged）。 */
+  _renderPrefs: null,
+
+  _refreshRenderPrefs() {
+    this._renderPrefs = {
+      kinds: this.enabledKinds(),
+      max: this.maxBadges(),
+      mono: this.badgeStyleMode() === "mono",
+    };
+    return this._renderPrefs;
   },
 
   /* ================= easyScholar 在线源 ================= */
@@ -543,7 +560,9 @@ var RankColumn = {
         this._esEnqueue(pubName);
         return { pending: true, text: "…", detail: "重试中：" + pubName };
       }
-      return { text: "", badges: [], detail: hit.failReason || "" };
+      // negTemp=true（瞬态失败，retryAfter 未到期）：条目级负缓存必须跳过它，
+      // 否则到期后的自动重查永远触发不到（见 lookup 的缓存口径）
+      return { text: "", badges: [], detail: hit.failReason || "", neg: true, negTemp: !!hit.retryAfter };
     }
     // 旧版缓存（无 badges 字段）兼容：包装单色 badge 显示
     if (!hit.badges) {
@@ -634,6 +653,7 @@ var RankColumn = {
       }
     }
     this._lookupCache.clear();
+    this._refreshRenderPrefs();   // P1-4：renderCell 热路径的 pref 预算缓存（observer 通道刷新）
     await this._esLoadCache();
     this._migrateDataSets181();
     // 账号托管的 Key（1.9.0）：不阻塞启动；本机已有自备 Key 时无需取回
@@ -724,9 +744,11 @@ var RankColumn = {
     }
   },
 
-  _badgeCss(badge) {
-    const mono = this.badgeStyleMode() === "mono";
-    const bg = mono ? "var(--color-accent, #2563eb)" : this._badgeColor(badge);
+  _badgeCss(badge, mono) {
+    // mono 由调用方（renderCell 热路径）从 _renderPrefs 缓存传入；
+    // 未传时实时读 pref（设置面板预览等低频路径兼容旧行为）
+    const isMono = (mono !== undefined) ? mono : this.badgeStyleMode() === "mono";
+    const bg = isMono ? "var(--color-accent, #2563eb)" : this._badgeColor(badge);
     let css = "background:" + bg + ";color:#fff;border-radius:4px;" +
       "padding:0 5px;font-size:11px;line-height:16px;margin-inline-end:4px;" +
       "white-space:nowrap;display:inline-block;";
@@ -738,8 +760,12 @@ var RankColumn = {
 
   /** 返回 {text, badges, detail, pending} 或 null（无数据）。
    *  优先级：用户自定义 JSON > easyScholar 在线 > 内置示例数据。
-   *  空结果不写入 _lookupCache——负缓存条目在 easyScholar 负缓存过期后
-   *  可自动重查（此前缓存 "" 导致失败后永久空白）。 */
+   *  0.71.x（审查 P1-4）负缓存：bundled/custom 均 miss 的空结果（含 null）也写
+   *  _lookupCache——此前每行渲染都重扫两张离线表（_match 是 O(表大小) 的子串扫描）。
+   *  缓存失效走已有通道：load/reload 统一 clear，easyScholar 开关/密钥与显示配置的
+   *  pref observer 也 clear。
+   *  唯一例外：easyScholar **瞬态**负缓存（查询失败、retryAfter 未到期）不写入——
+   *  到期后要靠重新 lookup 触发自动重查；「…」占位同理不缓存（待刷新重查）。 */
   lookup(item) {
     if (!item || !item.isRegularItem || !item.isRegularItem()) return null;
     if (this._lookupCache.has(item.id)) return this._lookupCache.get(item.id);
@@ -748,6 +774,7 @@ var RankColumn = {
     const abbr = get("journalAbbreviation");
     const bundled = () => this._match(pub, this._data) || this._match(abbr, this._data);
     let out = null;
+    let esTempNeg = false;
     // 1. 用户自定义 JSON（最高优先级）
     const custom = this._match(pub, this._customData) || this._match(abbr, this._customData);
     if (custom) {
@@ -764,15 +791,18 @@ var RankColumn = {
         // 3. 在线无此期刊 → 内置示例数据兜底（0.18.1：示例数据不再压过在线源）
         const b = bundled();
         if (b) out = this._offlineOut(b, "内置示例数据");
-        else out = r.detail ? { text: "", badges: [], detail: r.detail } : null;
+        else {
+          esTempNeg = !!r.negTemp;
+          out = r.detail ? { text: "", badges: [], detail: r.detail } : null;
+        }
       }
     } else {
       // 未启用在线源 → 内置示例数据兜底
       const b = bundled();
       out = b ? this._offlineOut(b, "内置数据") : null;
     }
-    // "…" 占位与空结果都不缓存（占位待刷新重查；空结果待负缓存过期重查）
-    if (out && !out.pending && (out.text || (out.badges || []).length)) {
+    // 缓存口径见方法头注释：正结果 + 空结果（负缓存）都写；占位与瞬态负缓存不写
+    if (!esTempNeg && (!out || !out.pending)) {
       this._lookupCache.set(item.id, out);
     }
     return out;
@@ -805,14 +835,16 @@ var RankColumn = {
           return span;
         }
         // badge 渲染（按启用数据集过滤 + 数量上限）
-        const kinds = self.enabledKinds();
+        // 审查 P1-4：prefs 读预算缓存（load 建立 / pref observer 刷新），每行不再重读 pref
+        const rp = self._renderPrefs || self._refreshRenderPrefs();
+        const kinds = rp.kinds;
         const all = (data.badges || []).filter((b) => kinds.has(b.kind));
-        const max = self.maxBadges();
+        const max = rp.max;
         const shown = all.slice(0, max);
         for (const b of shown) {
           const el = doc.createElementNS("http://www.w3.org/1999/xhtml", "span");
           el.textContent = b.text;
-          el.style.cssText = self._badgeCss(b);
+          el.style.cssText = self._badgeCss(b, rp.mono);
           span.appendChild(el);
         }
         if (all.length > shown.length) {
