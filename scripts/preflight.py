@@ -113,6 +113,7 @@ NODE_SUITES = [
     ("检索订阅", "test/search-subs.test.js"),
     ("订阅多源适配", "test/sub-sources.test.js"),
     ("订阅面板渲染", "test/prefs-subs.test.js"),
+    ("订阅落地桥", "test/subs-bridge.test.js"),
     ("期刊订阅目录", "test/journal-catalog.test.js"),
     ("综述工作台", "test/review-workbench.test.js"),
     ("会员域集成", "test/membership.test.js"),

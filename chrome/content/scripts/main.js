@@ -248,6 +248,9 @@ Zotero.Papilot = {
       "features/sub-sources.js",
       // 0.53.0 检索订阅（ArxivFetch 消费；独立 60s 轮询）
       "features/search-subs.js",
+      // 0.71.0 订阅落地桥：把订阅落到「库内分类 + 原生 RSS」两处用户看得见的地方。
+      // 必须排在 search-subs.js 之后（入库钩子要用它），prefs-subs.js 之前。
+      "features/subs-bridge.js",
       // 0.46.0 阅读进度 2.0：位置进度数据域（心跳捕获 + 原生上次位置 + 标注页融合）。
       // 须排在 reading-stats.js 之后（复用其焦点解析 activeReader）与
       // progress-column.js 之前（列的 lookup 走它的 compute/entryOf）
@@ -407,6 +410,8 @@ Zotero.Papilot = {
     // 0.53.0 检索订阅 / 综述工作台（0.57.0 起订阅增加多源适配层 SubSources）
     this.searchSubs = SearchSubs;
     this.subSources = (typeof SubSources !== "undefined") ? SubSources : null;
+    // 0.71.0 订阅落地桥（分类 + 原生 RSS；设置面板与排障共用入口）
+    this.subsBridge = (typeof SubsBridge !== "undefined") ? SubsBridge : null;
     this.reviewWorkbench = ReviewWorkbench;
     // 0.48.0 Agent 工具层 + 命令标签（设置面板 prefs-agent.js 经此访问；
     // 测试与排障同入口）

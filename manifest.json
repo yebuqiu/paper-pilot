@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Papilot 文献副驾",
-  "version": "0.70.0",
-  "description": "Papilot 文献副驾 · Zotero 的 AI 文献副驾：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、参考文献一键入库、阅读进度与题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.70.0 新增「标签管理」：左下角标签右键多出「Papilot 标签工具」，可批量重命名 / 合并 / 加父标签 / 改路径 / 套配色，一律先预览再执行、执行前自动快照可回滚；独立窗口还有标签体检（重复、孤儿、过深）与体系视图。同版本还包括「按期刊订阅」：内置 525 种跨学科期刊（18 个学科、中文别名，ISSN 已逐条在线核验），搜中文名 / 缩写 / ISSN 即可一键订阅该刊最新文章，不用再去期刊官网找 RSS 或手拼检索式，目录外的期刊可直接搜 OpenAlex 3 万+ 刊源；以及 Papilot Cite 的 WPS 加载项命令修正（刷新 / 插入引文 / 文献表改用官方命令名，不再无响应）。",
+  "version": "0.71.0",
+  "description": "Papilot 文献副驾 · Zotero 的 AI 文献副驾：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、参考文献一键入库、阅读进度与题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.71.0 让「检索订阅」真正落到左侧：订阅期刊后自动在「我的文库」下建「订阅期刊 / 刊名」分类，新文章入库即归类、历史文章一键回填，中文刊同样有效；能解析到 RSS 的刊（Elsevier / Nature / Science / BMJ / 知网等）再自动挂一条到 Zotero 原生【订阅】区，点开就能看新文章。设置面板「检索订阅 → 我的订阅」下方新增「同步到左侧面板」按钮与状态行（期刊订阅 N 本 · 分类 N/N · RSS N/N）。",
   "author": "Cassiuschen",
   "homepage_url": "https://gitee.com/cassiuschen9261/zotero-papilot",
   "icons": {

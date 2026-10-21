@@ -975,6 +975,13 @@
           <html:button id="pp-subs-feedback-clear" class="pp-btn pp-btn-sm" title="清空「收藏 / 忽略」学习记录（之后预览不再据此加减分）">清空反馈学习</html:button>
           <html:span class="pp-hint">导出只含配置（名称 / 条件 / 来源 / 频率 / 开关），不含运行记录；导入会重新分配 id，并跳过同名订阅。</html:span>
         </html:div>
+        <!-- 3c2.3b 订阅落地（0.71.0）：检索订阅不是 RSS，左侧原本看不到任何入口。
+             这里把它落到「我的文库 → 订阅期刊 / <刊名>」分类，并尽力挂成原生【订阅】的 RSS 源。 -->
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+          <html:button id="pp-subs-bridge" class="pp-btn pp-btn-sm" title="在「我的文库」下建「订阅期刊」分类并把已入库的文章归档；能给到 RSS 的刊同时挂到左侧【订阅】">同步到左侧面板</html:button>
+          <html:span id="pp-subs-bridge-msg" class="pp-hint" style="flex:1 1 100%;"></html:span>
+        </html:div>
+        <html:div class="pp-hint">左侧【订阅】是 Zotero 原生 RSS 区，而这里的订阅走 OpenAlex / Crossref 接口检索，两者本来不相通。点上面的按钮会：①在「我的文库」下建「订阅期刊」分类（每本刊一个子分类，已入库的文章一并归档，中文刊同样有效）；②对能解析到 RSS 的刊（Elsevier / Nature / Science / BMJ / 知网等）再挂一条到左侧【订阅】。</html:div>
         <html:div id="pp-subs-list" class="pp-datasets"></html:div>
         <html:div id="pp-subs-detail" style="margin-top:6px;"></html:div>
       </html:div>

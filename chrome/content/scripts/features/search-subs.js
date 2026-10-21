@@ -841,6 +841,7 @@ var SearchSubs = {
           const item = this._buildItem(e, (sub && sub.name) || "收藏");
           await item.saveTx();
           itemID = item.id == null ? null : item.id;
+          await this._attachArchive(item, sub);
         }
       }
     } catch (err) {
@@ -1050,6 +1051,22 @@ var SearchSubs = {
   },
 
   /* ================== 库访问（防御式） ================== */
+
+  /**
+   * 0.71.0：入库后把条目归类到「订阅期刊/<刊名>」（SubsBridge 管分类树）。
+   * 归类是增强，不是主业务 —— 模块没加载 / 分类建不出来 / 条目已删，
+   * 一律静默返回 false，绝不把异常抛回入库循环（否则会被计成 failed 并重跑）。
+   */
+  async _attachArchive(item, sub) {
+    try {
+      const B = (typeof SubsBridge !== "undefined") ? SubsBridge : null;
+      if (!B || typeof B.attachItem !== "function") return false;
+      return !!(await B.attachItem(item, sub));
+    } catch (e) {
+      this._log("attachArchive failed", e);
+      return false;
+    }
+  },
 
   _libID() {
     try {
@@ -1469,6 +1486,8 @@ var SearchSubs = {
               added++;
               status = "added";
               itemID = item.id == null ? null : item.id;
+              // 0.71.0 归类到「订阅期刊/<刊名>」：失败不打断入库（attach 内部已兜住异常）
+              await this._attachArchive(item, sub);
               if (fp) this._seenPut(seen, fp, itemID, stamp);
             } catch (e) {
               // 单条失败不中断整次订阅；不记账，下次运行会重试

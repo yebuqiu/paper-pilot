@@ -3,6 +3,17 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.71.0",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.71.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "订阅的期刊现在会出现在左侧：自动在「我的文库」下建「订阅期刊 / 刊名」分类，新文章入库即归类、历史文章可一键回填（中文刊同样有效）；能解析到 RSS 的刊（Elsevier / Nature / Science / BMJ / 知网等）再自动挂到 Zotero 原生【订阅】区，点开就能看新文章。设置面板「我的订阅」下方新增「同步到左侧面板」按钮与状态行。"
+        },
+        {
           "version": "0.70.0",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.70.0.xpi",
           "applications": {

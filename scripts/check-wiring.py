@@ -3882,6 +3882,75 @@ ok("test/tag-menu.test.js" in _preflight_src,
 ok("_hook.nodes" in _tmenu_src,
    "63.33 ★ 注入节点按引用摘除（只靠 getElementById 会在异常路径漏删 → 菜单越堆越多）")
 
+# ==================== 64. 订阅落地桥（0.71.0） ====================
+# 背景：检索订阅是「接口检索 + 入库」，左侧【订阅】是 Zotero 原生 RSS，两套机制不通，
+# 用户订阅完左侧一片空白。这一层把订阅落到「库内分类 + 原生 RSS」两处。
+# 静默失败点（每一条都真实踩过或差点踩到）：
+#   ① 子分类用 col.parentID 而不是 parentKey → 全建成了顶层分类（Collection._initSave
+#      只认 this._parentKey），用户在「我的文库」下看到一堆散落的刊名；
+#   ② 归类用 item.saveTx 二次保存 → 改 dateModified、白白多一次写；
+#   ③ 归类异常冒泡回入库循环 → 被计成 failed 且下次重跑（同一条论文反复出现）；
+#   ④ RSS 不校验直接建源 → 左侧【订阅】里多出一堆报错的空源；
+#   ⑤ 新测试没进 preflight → 等于没有回归网。
+_bridge_path = os.path.join(ROOT, "chrome", "content", "scripts", "features", "subs-bridge.js")
+ok(os.path.exists(_bridge_path),
+   "64.1 ★ 落地桥模块在 chrome/content/scripts/features/subs-bridge.js（必须随包走）")
+_bridge_src = io.open(_bridge_path, encoding="utf-8").read() if os.path.exists(_bridge_path) else ""
+ok("var SubsBridge" in _bridge_src, "64.2 暴露全局 SubsBridge")
+ok("PARENT_NAME: \"订阅期刊\"" in _bridge_src,
+   "64.3 父分类名固定为「订阅期刊」（用户能在左侧一眼认出）")
+ok("col.parentKey = parent.key" in _bridge_src,
+   "64.4 ★ 子分类走 parentKey（写成 parentID 会被 _initSave 忽略 → 全变顶层分类）")
+ok(".parentID =" not in _bridge_src,
+   "64.5 ★ 不出现 parentID 赋值（同上，防止有人「顺手改回去」；读 parentID 判顶层是允许的）")
+ok("Zotero.DB.executeTransaction" in _bridge_src and "col.addItem(" in _bridge_src,
+   "64.6 ★ 归类走 Collection.addItem + 事务（不是 item.saveTx 二次保存）")
+ok("attachItem(itemOrID, sub)" in _bridge_src and "this._log(\"attachItem failed\", e)" in _bridge_src,
+   "64.7 ★ 归类异常内部吞掉（绝不把入库计成 failed）")
+ok("itemsByTag" in _bridge_src.replace("_itemsByTag", "itemsByTag")
+   and "new Zotero.Search()" in _bridge_src,
+   "64.8 回填走 Zotero.Search 按标签查（不拉全库）")
+ok("existsByURL" in _bridge_src and "new Zotero.Feed()" in _bridge_src,
+   "64.9 ★ 建 RSS 源前按 URL 去重（否则每次点都多一个源）")
+ok("Zotero.FeedReader" in _bridge_src and "feedProperties" in _bridge_src,
+   "64.10 ★ 建源前用 FeedReader 现场解析（解析不了的刊不建空源）")
+ok("probeFeed(url)" in _bridge_src and "PROBE_TIMEOUT" in _bridge_src,
+   "64.11 ★ 探测有超时（坏地址不拖死订阅流程）")
+ok("rss.sciencedirect.com/publication/science/" in _bridge_src,
+   "64.12 Elsevier 按 ISSN 直连（实测 200 + 真 RSS）")
+ok("nature.com/" in _bridge_src and "NATURE_SLUGS" in _bridge_src,
+   "64.13 Nature 系走 slug 表")
+ok("navi.cnki.net/knavi/rss/" in _bridge_src and "CNKI_CODES" in _bridge_src,
+   "64.14 知网刊号表（中文刊主要靠这条）")
+ok("rssUrl" in _bridge_src,
+   "64.15 订阅可带手填 RSS 地址（解析不到的刊有兜底）")
+ok("subsBridge" in io.open(os.path.join(ROOT, "chrome", "content", "scripts", "main.js"),
+                           encoding="utf-8").read(),
+   "64.16 main.js 把 SubsBridge 挂到 Zotero.Papilot（面板与排障入口）")
+
+_ss_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "search-subs.js"),
+                  encoding="utf-8").read()
+ok("_attachArchive(item, sub)" in _ss_src,
+   "64.17 ★ search-subs 入库后调用归类钩子")
+ok(_ss_src.count("this._attachArchive(") >= 2,
+   "64.18 ★ 两条入库路径（run 自动入库 / accept 收藏）都接了钩子（当前 %d 处）"
+   % _ss_src.count("this._attachArchive("))
+ok("async _attachArchive(" in _ss_src and "this._log(\"attachArchive failed\", e)" in _ss_src,
+   "64.19 ★ 钩子自己包 try（SubsBridge 缺位 / 分类建不出来都不影响入库）")
+
+ok('id="pp-subs-bridge"' in prefs_xhtml and 'id="pp-subs-bridge-msg"' in prefs_xhtml,
+   "64.20 面板有「同步到左侧面板」按钮与状态位")
+_ps_src = io.open(os.path.join(ROOT, "chrome", "content", "prefs-subs.js"),
+                  encoding="utf-8").read()
+ok("bridgeAfterSubscribe(created)" in _ps_src,
+   "64.21 ★ 期刊订阅成功后自动落地（不用用户再点一次）")
+ok("renderBridgeMsg()" in _ps_src and "doBridgeSync" in _ps_src,
+   "64.22 状态行随列表刷新 + 手动同步入口")
+ok("Zotero.Papilot.subsBridge" in _ps_src,
+   "64.23 面板经 Zotero.Papilot.subsBridge 取模块（不直接引用全局，便于降级）")
+ok("test/subs-bridge.test.js" in _preflight_src,
+   "64.24 ★ preflight 注册落地桥测试（幂等 / 回填 / 建源去重是这一层的核心不变量）")
+
 print("=" * 60)
 for p in passes:
     print("  OK  " + p)

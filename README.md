@@ -2,7 +2,7 @@
 
 **给 Zotero 装一个 AI 副驾**：划词翻译、PDF 左右对照译文、库内问答、参考文献一键入库、自动化规则、阅读进度——一个插件覆盖「读文献」的整条链路。
 
-![version](https://img.shields.io/badge/version-0.70.0-blue)
+![version](https://img.shields.io/badge/version-0.71.0-blue)
 ![zotero](https://img.shields.io/badge/Zotero-7%20%7C%208%20%7C%209%20%7C%2010-orange)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)

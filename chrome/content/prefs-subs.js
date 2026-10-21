@@ -43,6 +43,8 @@
   ];
   const $ = (id) => document.getElementById(id);
   const S = () => ((typeof Zotero !== "undefined" && Zotero.Papilot && Zotero.Papilot.searchSubs) || null);
+  // 0.71.0 订阅落地桥（库内分类 + 原生 RSS）：模块缺位时按钮自己降级成提示，不报错
+  const B = () => ((typeof Zotero !== "undefined" && Zotero.Papilot && Zotero.Papilot.subsBridge) || null);
 
   let editingId = "";
   let pendingDraft = null;
@@ -330,6 +332,8 @@
     if (subs.length > shown.length) {
       host.appendChild(el("div", { class: "pp-hint" }, "共 " + subs.length + " 条订阅，仅显示前 " + MAX_ROWS + " 条。"));
     }
+    // 0.71.0 落地状态（只读探测；建分类/RSS 由按钮或订阅流程触发）
+    renderBridgeMsg();
   }
 
   /* ================== 试跑预览 ================== */
@@ -698,6 +702,8 @@
         + "可在下方「我的订阅」改成每周或仅手动）", "good");
       journalSelected.clear();
       renderList();
+      // 0.71.0：订阅完立刻落到左侧（分类同步建；RSS 逐个试，慢且可能失败，所以不 await 也不挡提示）
+      bridgeAfterSubscribe(created);
     } else if (skipped.some((x) => x && x.reason === "exists")) {
       journalMsg("这些期刊已经订阅过了，无需重复添加");
     } else {
@@ -705,6 +711,96 @@
     }
     renderJournals();
     updateJournalSel();
+  }
+
+  /* ================== 落地桥（0.71.0）：库内分类 + 原生 RSS ================== */
+
+  /** 当前所有「期刊订阅」（有 ISSN 或刊名；主题订阅不算） */
+  function journalSubs() {
+    const s = S();
+    if (!s || typeof s.list !== "function") return [];
+    let subs = [];
+    try { subs = s.list() || []; } catch (e) { subs = []; }
+    return subs.filter((x) => x && (
+      (Array.isArray(x.issns) && x.issns.length) || (Array.isArray(x.journals) && x.journals.length)));
+  }
+
+  /**
+   * 状态行：几本刊有分类、几个有 RSS。
+   * 每条都在 SubsBridge 里只读探测（不建分类、不发请求），所以可以在每次 renderList 里刷。
+   */
+  function renderBridgeMsg(extra, tone) {
+    const node = $("pp-subs-bridge-msg");
+    if (!node) return;
+    const b = B();
+    if (!b || typeof b.status !== "function") {
+      node.textContent = "订阅落地模块未就绪（重启 Zotero 后可用）";
+      node.style.color = "var(--pp-muted)";
+      return;
+    }
+    const list = journalSubs();
+    let st = { total: 0, withCol: 0, withFeed: 0 };
+    try { st = b.status(list) || st; } catch (e) { /* 探测失败不影响列表 */ }
+    const base = st.total
+      ? "期刊订阅 " + st.total + " 本 · 左侧「订阅期刊」分类 " + st.withCol + "/" + st.total
+        + " · 左侧【订阅】RSS " + st.withFeed + "/" + st.total
+      : "还没有期刊订阅（订阅后会自动建左侧分类）";
+    node.textContent = extra ? base + " —— " + extra : base;
+    node.style.color = tone === "bad" ? "var(--pp-danger)"
+      : tone === "good" ? "var(--pp-success)" : "var(--pp-muted)";
+  }
+
+  /** 「同步到左侧面板」：建分类 + 回填历史文章 + 尽力挂 RSS（慢操作，按钮期间禁用） */
+  async function doBridgeSync() {
+    const b = B();
+    const btn = $("pp-subs-bridge");
+    if (!b || typeof b.sync !== "function") {
+      renderBridgeMsg("模块未就绪，重启 Zotero 后可用", "bad");
+      return;
+    }
+    const subs = journalSubs();
+    if (!subs.length) { renderBridgeMsg("没有期刊订阅可同步", "bad"); return; }
+    if (btn) btn.disabled = true;
+    renderBridgeMsg("正在建分类、回填历史文章（首次可能要十几秒）…");
+    let r = null;
+    try { r = await b.sync(subs, { feeds: true, backfill: true }); }
+    catch (e) { r = null; }
+    if (btn) btn.disabled = false;
+    if (!r) { renderBridgeMsg("同步失败（详见 Zotero 调试输出）", "bad"); return; }
+    const colNew = (r.collections && r.collections.created) || 0;
+    const moved = (r.backfill && r.backfill.moved) || 0;
+    const feeds = (r.feeds || []).filter((x) => x && x.ok);
+    const feedsNew = feeds.filter((x) => !x.existed).length;
+    const existed = feeds.length - feedsNew;
+    renderBridgeMsg("新建分类 " + colNew + " 个 · 回填文章 " + moved + " 篇 · 左侧【订阅】新增 "
+      + feedsNew + " 个源" + (existed > 0 ? "（" + existed + " 个已存在）" : ""), "good");
+    renderList();
+  }
+
+  /**
+   * 订阅成功后自动落地：分类立刻建（毫秒级），RSS 逐个试（每本最多 1~3 个候选地址，
+   * 单个候选 12s 超时）。失败不是错误 —— 有些刊（尤其中文刊）本来就没有公开 RSS。
+   */
+  async function bridgeAfterSubscribe(created) {
+    const b = B();
+    if (!b || !created || !created.length) return;
+    let colMsg = "";
+    try {
+      const r = await b.ensureCollections(created);
+      colMsg = "左侧已建分类 " + ((r && r.created) || 0) + " 个";
+    } catch (e) { colMsg = ""; }
+    renderBridgeMsg((colMsg ? colMsg + "，" : "") + "正在尝试挂 RSS…");
+    let ok = 0;
+    for (const sub of created) {
+      try {
+        const r = await b.ensureFeed(sub);
+        if (r && r.ok) ok++;
+      } catch (e) { /* 单本失败不影响其它刊 */ }
+    }
+    renderBridgeMsg(colMsg + (ok
+      ? "；左侧【订阅】新增 " + ok + " 个 RSS 源"
+      : "；这几本刊暂未找到可用 RSS（库内分类照常可用）"), ok ? "good" : "muted");
+    renderList();
   }
 
   /* ================== 推荐 ================== */
@@ -1113,6 +1209,10 @@
       bind("pp-subs-feedback-clear", "click", (ev) => {
         try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
         doFeedbackClear();
+      });
+      bind("pp-subs-bridge", "click", (ev) => {
+        try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
+        doBridgeSync();
       });
       bind("pp-sub-ai", "click", (ev) => {
         try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
