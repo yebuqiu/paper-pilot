@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Papilot 引文快取 · 设置</title>
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+<main class="page">
+  <header class="head">
+    <img src="../../icons/icon48.png" alt="" width="40" height="40">
+    <div>
+      <h1>Papilot 引文快取</h1>
+      <p class="sub">在论文页面点扩展图标，取一条可直接粘贴的引文。</p>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>默认格式</h2>
+    <label class="field">
+      <select id="default-format">
+        <option value="gbt">GB/T 7714-2015（中文期刊常用）</option>
+        <option value="apa">APA 7</option>
+        <option value="mla">MLA 9</option>
+        <option value="bibtex">BibTeX</option>
+        <option value="ris">RIS（EndNote / NoteExpress）</option>
+      </select>
+    </label>
+    <label class="check">
+      <input type="checkbox" id="close-after-copy">
+      <span>复制后自动关闭弹窗</span>
+    </label>
+  </section>
+
+  <section class="card">
+    <h2>工作原理</h2>
+    <ul class="list">
+      <li>只读取你当前打开的论文页面里的 <code>citation_*</code> 元标签与 JSON-LD，不上传页面内容。</li>
+      <li>页面信息不全且存在 DOI 时，才向 <code>api.crossref.org</code> 查询这一次 DOI 的公开元数据。</li>
+      <li>格式在本地计算；不使用账号、不上传文献库、不写入 Zotero。</li>
+      <li>不读取浏览历史，不申请全站访问权限（仅在你点击图标时读取当前页）。</li>
+    </ul>
+  </section>
+
+  <footer class="foot">
+    <button id="btn-save" class="primary">保存设置</button>
+    <span id="save-msg" class="msg"></span>
+  </footer>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>

@@ -113,6 +113,7 @@ NODE_SUITES = [
     ("检索订阅", "test/search-subs.test.js"),
     ("订阅多源适配", "test/sub-sources.test.js"),
     ("订阅面板渲染", "test/prefs-subs.test.js"),
+    ("期刊订阅目录", "test/journal-catalog.test.js"),
     ("综述工作台", "test/review-workbench.test.js"),
     ("会员域集成", "test/membership.test.js"),
     ("价格表", "test/price.test.js"),
@@ -154,6 +155,11 @@ NODE_SUITES = [
     ("设置折叠分组", "test/prefs-fold.test.js"),
     ("WPS 集成面板", "test/prefs-wps.test.js"),
     ("WPS 加载项安装桥", "test/wps-bridge-install.test.js"),
+    ("WPS 引用内核（新）", "wps-cite/test/core.test.js"),
+    # 0.70.0：命令名写错（refreshDocument）会让按钮永久无响应，且客户端 dry 等 30 分钟
+    # 才暴露 —— 这两套是唯一能静态拦住「名字/契约」错的测试，必须进门禁。
+    ("WPS 引用集成烟测", "wps-cite/test/integration-smoke.js"),
+    ("WPS 引用协议", "wps-cite/test/qa-protocol.test.js"),
     ("pref 命名空间", "test/pref-namespace.test.js"),
     ("顶部快捷按钮", "test/toolbar-quick.test.js"),
     ("阅读器翻译面板", "test/translate-pane.test.js"),
@@ -171,6 +177,8 @@ NODE_SUITES = [
     ("技能包核心域", "test/skill-packs.test.js"),
     ("技能包商店窗口", "test/skill-store.test.js"),
     ("快捷键注册表", "test/hotkeys.test.js"),
+    ("设置直达导航", "test/prefs-anchors.test.js"),
+    ("设置面板交互", "test/prefs-panel-ux.test.js"),
     ("参考文献面板", "test/ref-pane.test.js"),
     ("划词拼接与批注标记", "test/reader-popup-concat.test.js"),
     ("新数据列与译文写回", "test/columns-extra.test.js"),
@@ -194,6 +202,12 @@ NODE_SUITES = [
     ("凭据中心窗口渲染", "test/cred-vault-ui.test.js"),
     ("历史根因探针", "test/legacy-rootcause.probe.js"),
     ("全模块加载冒烟", "test/smoke-load.test.js"),
+    # 0.70.0 标签管理：筛选/改名/合并/层级 plan/快照 diff/CSV 的纯函数层（破坏性操作的前置闸门）
+    ("标签管理(规则层)", "test/tag-ops.test.js"),
+    # 0.70.0 标签管理窗口：迷你 DOM 真渲染（列表/筛选/预览/快照页），防「窗口空白」类回归
+    ("标签管理(窗口渲染)", "test/tag-manager-ui.test.js"),
+    # 0.70.0 标签管理：左下角 #tag-menu 注入（幂等 / 重建不堆叠 / 只读库禁用 / 保护翻转）
+    ("标签管理(右键入口)", "test/tag-menu.test.js"),
 ]
 
 

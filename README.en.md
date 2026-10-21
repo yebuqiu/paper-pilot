@@ -2,7 +2,7 @@
 
 **An AI co-pilot for Zotero.** Selection translation, side-by-side PDF translation, library-wide Q&A, one-click reference import, automation rules, reading progress — one plugin for the whole "read the literature" loop.
 
-![version](https://img.shields.io/badge/version-0.68.2-blue)
+![version](https://img.shields.io/badge/version-0.70.0-blue)
 ![zotero](https://img.shields.io/badge/Zotero-7%20%7C%208%20%7C%209%20%7C%2010-orange)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
@@ -52,6 +52,7 @@ All entries are reachable from the **Feature Hub** (`Tools → Papilot ▸ → P
 - **Ask the library**: one question → two-stage retrieval (title/tag/abstract scoring, then full-text index verification) → the model answers from the candidates with clickable `[n]` citations; scope to the current collection, restrict to items with attachments, save the answer as a library-level note.
 - **Retrieve only**: candidate list and matching snippets without calling the model.
 - **Discovery (daily arXiv)**: build an interest profile from your library → pull the latest submissions by category → score and rank → automatically exclude items already in the library; results can be filed into an "arXiv recommendations" collection or saved as a note. Off by default.
+- **Search subscriptions**: **subscribe by journal** — 525 built-in journals across 18 disciplines (Chinese aliases included, every ISSN verified). Search by name, abbreviation or ISSN and subscribe in one click — no RSS hunting, no query syntax. Journals outside the catalog can be found through OpenAlex (30k+ sources). You can also subscribe to a topic recommended from your library (including author tracking) or describe it in one sentence; preview before saving, then scheduled multi-source search (arXiv / OpenAlex / Crossref / Europe PMC / PubMed), de-duplicated import and a digest note.
 
 ### 2.3 Notes & Cards
 

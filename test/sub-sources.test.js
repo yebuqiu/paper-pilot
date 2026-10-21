@@ -494,6 +494,99 @@ async function main() {
     has(String(r.bySource.openalex.reason), 'api_key=***', '⑨ 脱敏成 api_key=***');
     has(String(r.bySource.openalex.reason), '&x=1', '⑨ 只遮凭据，不动其余信息');
   }
+  {
+    // ⑩ 期刊订阅（0.69.0）：ISSN 是独立检索轴，不需要关键词
+    const { S } = makeEnv();
+    eq(S.normIssn('0028-4793'), '0028-4793', '⑩ ISSN 原样');
+    eq(S.normIssn('00284793'), '0028-4793', '⑩ 无连字符也补回来');
+    eq(S.normIssn('0028-479x'), '0028-479X', '⑩ 小写 x 统一大写');
+    eq(S.normIssn('bad'), '', '⑩ 非法返回空');
+    eq(JSON.stringify(S.issnsOf({ issns: ['0028-4793', '00284793', '0140-6736'] })),
+      '["0028-4793","0140-6736"]', '⑩ issnsOf 去重保序');
+    eq(JSON.stringify(S.issnsOf({ issns: 'a,b' })), '[]', '⑩ 非法 ISSN 全丢');
+
+    has(S.europePmcQuery(sub({ keywords: '', issns: ['0028-4793'] })),
+      'ISSN:"0028-4793"', '⑩ Europe PMC 用 ISSN 原生字段');
+    has(S.europePmcQuery(sub({ keywords: '', issns: ['0028-4793', '0140-6736'] })),
+      'OR', '⑩ 多 ISSN 并集');
+    has(S.pubmedTerm(sub({ keywords: '', journals: ['The Lancet'] })), '[ta]', '⑩ PubMed 用刊名 [ta]');
+    has(S.pubmedTerm(sub({ keywords: '', journals: ['The Lancet'], issns: ['0140-6736'] })),
+      'The Lancet', '⑩ PubMed 只需要刊名');
+    eq(S.pubmedTerm(sub({ keywords: '', issns: ['0140-6736'] })), '',
+      '⑩ PubMed 没有 ISSN 检索字段（不硬编假语法）');
+    has(S.europePmcQuery(sub({ keywords: 'sepsis', mode: 'all', issns: ['0140-6736'] })),
+      'AND', '⑩ 期刊 + 关键词是 AND（只看该刊的相关文章）');
+
+    ok(S.isJournalSub(sub({ issns: ['0028-4793'] })), '⑩ 有 ISSN 即期刊订阅');
+    ok(S.isJournalSub(sub({ journals: ['Nature'] })), '⑩ 只有刊名也算');
+    ok(!S.isJournalSub(sub({ keywords: 'x' })), '⑩ 关键词订阅不算');
+  }
+  {
+    // ⑩ 期刊订阅的请求 URL：ISSN 过滤必须在源侧（否则会把整库按日期倒序拉回来）
+    const urls = [];
+    const { S } = makeEnv({
+      http: (url) => {
+        urls.push(url);
+        if (url.indexOf('openalex.org/works') >= 0) return { status: 200, body: { results: [] } };
+        if (url.indexOf('crossref.org/works') >= 0) return { status: 200, body: { message: { items: [] } } };
+        if (url.indexOf('europepmc') >= 0) return { status: 200, body: { resultList: { result: [] } } };
+        return { status: 200, body: {} };
+      },
+    });
+    const r = await S.search(sub({ keywords: '', sources: ['openalex', 'crossref', 'europepmc'], issns: ['0028-4793'] }),
+      { limit: 5, now: AT });
+    const oa = urls.filter((u) => u.indexOf('openalex.org/works') >= 0)[0] || '';
+    const cr = urls.filter((u) => u.indexOf('crossref.org/works') >= 0)[0] || '';
+    const ep = urls.filter((u) => u.indexOf('europepmc') >= 0)[0] || '';
+    has(decodeURIComponent(oa), 'primary_location.source.issn:0028-4793', '⑩ OpenAlex 按 ISSN 过滤');
+    ok(decodeURIComponent(oa).indexOf('search=') < 0, '⑩ 无关键词时不带空 search');
+    has(decodeURIComponent(cr), 'issn:0028-4793', '⑩ Crossref 按 ISSN 过滤');
+    has(decodeURIComponent(ep), 'ISSN:"0028-4793"', '⑩ Europe PMC 按 ISSN 过滤');
+    ok(r.ok, '⑩ 只有 ISSN 也能检索（不再报「需要关键词」）');
+  }
+  {
+    // ⑩ 本地 ISSN 复核：印刷号与 ISSN-L 不同不能误杀；明显串刊要拦
+    const { S } = makeEnv();
+    const target = { issns: ['2168-6203'] };
+    ok(S.matches(target, { title: 'T', summary: 's', issn: '2168-6203', issnAll: ['2168-6203', '1072-4710'] }),
+      '⑩ 条目 ISSN 列表与订阅交集 → 保留');
+    ok(S.matches(target, { title: 'T', summary: 's', issn: '2168-6203', issnAll: ['2168-6203'] }),
+      '⑩ 单个 ISSN 命中 → 保留');
+    ok(!S.matches(target, { title: 'T', summary: 's', issn: '0140-6736', issnAll: ['0140-6736'] }),
+      '⑩ ★ 串刊（ISSN 完全不同）→ 过滤');
+    ok(S.matches(target, { title: 'T', summary: 's' }), '⑩ 条目没有 ISSN → 不误杀');
+  }
+  {
+    // ⑩ 在线期刊检索：ISSN 直查 / 刊名搜索 / 失败降级
+    const urls = [];
+    const { S } = makeEnv({
+      http: (url) => {
+        urls.push(url);
+        if (url.indexOf('/sources/issn:') >= 0) {
+          return { status: 200, body: { display_name: 'Nature', issn_l: '0028-0836', issn: ['0028-0836', '1476-4687'] } };
+        }
+        return {
+          status: 200,
+          body: { results: [{ display_name: 'Cell', issn_l: '0092-8674', issn: ['0092-8674'], works_count: 100 }] },
+        };
+      },
+    });
+    const a = await S.lookupJournals('0028-0836');
+    ok(a.ok && a.items.length === 1, '⑩ ISSN 直查命中');
+    eq(a.items[0].name, 'Nature', '⑩ ISSN 直查返回刊名');
+    has(urls.join(' '), 'sources/issn:0028-0836', '⑩ 走 ISSN 实体端点');
+    ok(a.items[0].issnAll.length === 2, '⑩ 保留同刊多个 ISSN（印刷/网络）');
+
+    const b = await S.lookupJournals('cell');
+    ok(b.ok && b.items[0].name === 'Cell', '⑩ 刊名搜索命中');
+    has(decodeURIComponent(urls[urls.length - 1]), 'filter=type:journal', '⑩ 只查期刊类型');
+
+    const { S: S2 } = makeEnv({ http: () => new Error('offline') });
+    const c = await S2.lookupJournals('cell');
+    eq(c.ok, false, '⑩ 离线 → ok:false（不抛）');
+    eq(JSON.stringify(c.items), '[]', '⑩ 离线 → 空列表');
+    eq((await S2.lookupJournals('')).reason, 'empty', '⑩ 空词 → empty');
+  }
 }
 
 main().then(() => {

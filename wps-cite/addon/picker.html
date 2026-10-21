@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body{font:13px/1.5 "Microsoft YaHei",system-ui,sans-serif;margin:0;padding:10px;color:#1f2328;background:#fff}
+  .row{display:flex;gap:6px;margin-bottom:8px}
+  input[type=text]{flex:1;padding:6px 8px;border:1px solid #d1d9e0;border-radius:6px;font:inherit}
+  button{padding:6px 10px;border:1px solid #d1d9e0;border-radius:6px;background:#f6f8fa;cursor:pointer;font:inherit}
+  button.primary{background:#0969da;border-color:#0969da;color:#fff}
+  #list{max-height:calc(100vh - 130px);overflow:auto;border-top:1px solid #eee}
+  .item{display:flex;gap:8px;padding:7px 4px;border-bottom:1px solid #f0f0f0;cursor:pointer}
+  .item:hover{background:#f6f8fa}
+  .item input{margin-top:3px}
+  .t{font-weight:600}
+  .m{color:#59636e;font-size:12px}
+  #msg{padding:4px 2px;color:#59636e;min-height:18px}
+  .tag{display:inline-block;padding:0 5px;border-radius:4px;background:#eef2f5;color:#59636e;font-size:11px;margin-right:4px}
+  .head{display:flex;align-items:center;gap:8px;margin:-10px -10px 10px;padding:8px 10px;background:#f6f8fa;border-bottom:1px solid #e5e9ee}
+  .ttl{font-weight:600}
+  .sty{color:#59636e;font-size:11px;flex:1;text-align:right}
+  .x{border:none;background:transparent;font-size:14px;color:#59636e;cursor:pointer;padding:0 4px}
+  .x:hover{color:#d1242f}
+</style>
+</head>
+<body>
+  <div class="head">
+    <span class="ttl">插入引文</span>
+    <span class="sty" id="style"></span>
+    <button class="x" id="close" title="关闭">✕</button>
+  </div>
+  <div class="row">
+    <input type="text" id="q" placeholder="检索标题/作者/年份，回车搜索"/>
+    <button class="primary" id="go">搜索</button>
+  </div>
+  <div class="row">
+    <button id="ins">插入选中（0）</button>
+    <button id="clr">清空</button>
+  </div>
+  <div id="msg">在 Zotero 里存好文献后，这里搜关键词即可。</div>
+  <div id="list"></div>
+  <script src="version.js"></script>
+  <script src="js/codes.js"></script>
+  <script src="js/styles/util.js"></script>
+  <script src="js/styles/gb7714.js"></script>
+  <script src="js/styles/apa.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/links.js"></script>
+    <script src="js/zfields.js"></script>
+    <script src="js/integration.js"></script>
+  <script src="js/zotero.js"></script>
+  <script src="js/doc.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/picker.js"></script>
+</body>
+</html>

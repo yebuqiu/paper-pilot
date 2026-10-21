@@ -3,7 +3,9 @@
 
 /* Papilot 设置窗格脚本 · 检索订阅 v2（0.58.0）
  *
- * 交互模型（四步，任何一步失败都不阻断其余功能）：
+ * 交互模型（五步，任何一步失败都不阻断其余功能）：
+ *   ⓿ 期刊：内置 500+ 种期刊目录（18 个学科、中文别名），输入即过滤；目录外自动查
+ *      OpenAlex Sources（3 万+ 刊）；勾选/点「订阅」即建订阅（ISSN 自动带出，不用查地址）
  *   ① 推荐：扫描库内画像 → 3 张可解释的主题卡（含「追踪作者」）→ [预览] / [创建] / [忽略]
  *   ② 一句话：AI 只做「描述 → 检索条件」的翻译，结果填进表单（不创建、不入库）
  *   ③ 试跑：preview 只取数不入库、不记账；结果卡上可 [收藏]（入库 + 记为感兴趣）
@@ -11,14 +13,17 @@
  *   ④ 保存/运行：列表里可暂停、编辑、看历史；运行时显示 +N 新入库 / M 跳过
  *
  * 集成方在 prefs.xhtml 里提供的节点（缺任何一个都不会炸，只是那块不渲染）：
+ *   期刊：#pp-sub-journal-q / #pp-sub-journal-search / #pp-sub-journal-msg
+ *         / #pp-sub-journal-subjects / #pp-sub-journal-list / #pp-sub-journal-subscribe
+ *         / #pp-sub-journal-sel
  *   推荐：#pp-subs-reco / #pp-subs-reco-refresh / #pp-subs-reco-msg
  *   一句话：#pp-sub-nl / #pp-sub-ai / #pp-sub-nl-msg
  *   列表：#pp-subs-list / #pp-subs-detail / #pp-subs-export / #pp-subs-import
  *         / #pp-subs-feedback-clear（清空收藏/忽略学习）
- *   表单：#pp-sub-name / -keywords / -cats / -authors / -exclude / -mode / -freq / -time
- *         / -weekdays / -maxagedays / -max / -src-arxiv / -src-openalex / -src-crossref
- *         / -src-pubmed / -src-europepmc / -auto / -notify / -ai-rerank / -ai-digest / -seed
- *         / #pp-subs-add / #pp-subs-preview / #pp-subs-cancel / #pp-sub-msg
+ *   表单：#pp-sub-name / -keywords / -cats / -authors / -exclude / -journals / -journals-clear
+ *         / -mode / -freq / -time / -weekdays / -maxagedays / -max / -src-arxiv / -src-openalex
+ *         / -src-crossref / -src-pubmed / -src-europepmc / -auto / -notify / -ai-rerank / -ai-digest
+ *         / -seed / #pp-subs-add / #pp-subs-preview / #pp-subs-cancel / #pp-sub-msg
  *
  * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测 #pp-subs-list，
  *    不存在就延迟重试（同 prefs-schedule.js / prefs-agent.js 纪律）。
@@ -43,6 +48,19 @@
   let pendingDraft = null;
   let recoItems = [];
   let recoLoading = false;
+
+  // 期刊订阅（0.69.0）
+  let journalRows = [];            // 当前结果（未按学科过滤）
+  let journalTotal = 0;            // 本次查询的命中总数（journalRows 只取前 200 条，
+                                   // 提示「共 N 种」必须用总数，否则默认列表会错报「共 200 种」）
+  let journalSubject = "";         // 学科筛选（"" = 全部）
+  let journalQuery = "";           // 上一次搜索词（换词时自动回到「全部」学科）
+  let journalSelected = new Map(); // issn → item（批量订阅）
+  let journalTimer = null;
+  let journalBusy = false;
+  let journalAutoTried = "";       // 已自动在线补搜过的词（同一个词只补一次）
+  let editIssns = [];              // 编辑中的订阅自带 ISSN（表单只展示，不手填）
+  let editJournals = [];
 
   const el = (tag, attrs, text) => {
     const node = document.createElementNS(HTML_NS, tag);
@@ -267,6 +285,9 @@
         setMsg("pp-sub-msg", "已删除订阅：" + (sub.name || ""), "good");
         if (editingId === sub.id) resetForm();
         renderList();
+        // 0.69.1 真机实证：删完只刷「我的订阅」，上面期刊列表里该刊仍显示「已订阅」
+        // （按钮 disabled），用户会以为删不掉。这里让两处状态同源。
+        try { renderJournals(); } catch (e) { /* 期刊区块未初始化时忽略 */ }
       } else {
         msg.textContent = "删除失败（订阅可能已不存在）";
         msg.style.color = "var(--pp-danger)";
@@ -484,6 +505,208 @@
     entries.forEach((e, i) => host.appendChild(previewCard(e, i, currentSubId)));
   }
 
+  /* ================== 期刊订阅（0.69.0） ==================
+   *
+   * 这一块的唯一目标：把「订阅一本刊」压缩到「输两个字 → 点订阅」。
+   * 目录在 chrome/content/scripts/data/journals.js（525 种 / 18 学科 / 中文别名），
+   * 目录外的刊走 OpenAlex Sources 在线检索（3 万+），两条路都不需要用户知道 ISSN 或 RSS。
+   */
+
+  function journalMsg(text, tone) {
+    setMsg("pp-sub-journal-msg", text, tone);
+  }
+
+  function renderJournalSubjects() {
+    const host = $("pp-sub-journal-subjects");
+    if (!host) return;
+    while (host.firstChild) host.removeChild(host.firstChild);
+    const s = S();
+    let subjects = [];
+    try {
+      const cat = (s && typeof s.journalCatalog === "function") ? s.journalCatalog() : null;
+      subjects = (cat && cat.subjects) || [];
+    } catch (e) { subjects = []; }
+    const chips = [{ id: "", name: "全部" }].concat(subjects);
+    for (const c of chips) {
+      const active = journalSubject === c.id;
+      const b = el("button", {
+        class: "pp-btn pp-btn-sm" + (active ? " pp-btn-primary" : ""),
+        style: "padding:2px 8px;font-size:12px;margin-top:0;",
+      }, c.name);
+      b.addEventListener("click", () => {
+        journalSubject = c.id;
+        renderJournalSubjects();
+        renderJournals();
+      });
+      host.appendChild(b);
+    }
+  }
+
+  function updateJournalSel() {
+    const btn = $("pp-sub-journal-subscribe");
+    const txt = $("pp-sub-journal-sel");
+    const n = journalSelected.size;
+    if (btn) btn.disabled = n === 0;
+    if (txt) txt.textContent = n ? ("已选 " + n + " 种期刊") : "未选择期刊";
+  }
+
+  function journalRow(item) {
+    const s = S();
+    let subscribed = false;
+    try {
+      subscribed = !!(s && typeof s.journalSubscribed === "function"
+        && s.journalSubscribed(item.issn, item.name));
+    } catch (e) { subscribed = false; }
+
+    const row = el("div", {
+      class: "pp-row pp-subs-jrow",
+      style: "align-items:center;gap:8px;border-bottom:1px solid var(--pp-border);padding:6px 0;margin-top:0;flex-wrap:wrap;",
+    });
+    const cb = el("input", { type: "checkbox", title: subscribed ? "已订阅" : "勾选后一起订阅" });
+    cb.checked = journalSelected.has(item.issn);
+    cb.disabled = subscribed;
+    cb.addEventListener("change", () => {
+      if (cb.checked) journalSelected.set(item.issn, item);
+      else journalSelected.delete(item.issn);
+      updateJournalSel();
+    });
+    row.appendChild(cb);
+
+    const main = el("div", { style: "flex:1 1 300px;min-width:220px;" });
+    main.appendChild(el("span", { style: "font-weight:600;" }, item.name || "(未命名)"));
+    const meta = [];
+    if (item.subjectName) meta.push(item.subjectName);
+    if (item.issn) meta.push("ISSN " + item.issn);
+    if (item.publisher) meta.push(item.publisher);
+    if (item.online) meta.push("在线检索");
+    if (meta.length) main.appendChild(el("span", { class: "pp-hint", style: "margin-left:8px;" }, meta.join(" · ")));
+    row.appendChild(main);
+
+    const btn = el("button", { class: "pp-btn pp-btn-sm" + (subscribed ? "" : " pp-btn-primary") },
+      subscribed ? "已订阅" : "订阅");
+    btn.disabled = subscribed;
+    btn.addEventListener("click", () => doSubscribeJournals([item]));
+    row.appendChild(btn);
+    return row;
+  }
+
+  function renderJournals() {
+    const host = $("pp-sub-journal-list");
+    if (!host) return;
+    while (host.firstChild) host.removeChild(host.firstChild);
+
+    let items = journalRows.slice();
+    if (journalSubject) items = items.filter((x) => x.subject === journalSubject);
+    if (!items.length) {
+      host.appendChild(el("div", { class: "pp-hint" },
+        journalBusy ? "正在搜索…"
+          : "没有匹配的期刊。换个写法（英文全名 / 缩写 / ISSN），或点「在线搜索」到全球 3 万+ 期刊里找。"));
+      return;
+    }
+    const MAX_SHOW = 50;
+    const shown = items.slice(0, MAX_SHOW);
+    for (const item of shown) host.appendChild(journalRow(item));
+    // 提示里的「共 N 种」必须用真实命中数：本地查询 journalRows 只取前 200 条
+    // （0.69.0 真机首次打开面板时错报「共 200 种期刊」，实际 525 种）。
+    // 按学科筛选时总数为该学科在这批结果里的条数，不能用全局总数。
+    const total = journalSubject ? items.length : Math.max(journalTotal, items.length);
+    if (total > shown.length) {
+      host.appendChild(el("div", { class: "pp-hint" },
+        "共 " + total + " 种期刊，先显示前 " + MAX_SHOW + " 种；继续输入可缩小范围。"));
+    }
+  }
+
+  async function loadJournalList(opts) {
+    const o = opts || {};
+    const s = S();
+    const input = $("pp-sub-journal-q");
+    const q = String((input && input.value) || "").trim();
+    if (!s || (typeof s.journalFind !== "function" && typeof s.journalSearch !== "function")) {
+      journalRows = [];
+      journalTotal = 0;
+      renderJournals();
+      return;
+    }
+    if (journalBusy && !o.force) return;
+    // 换搜索词时回到「全部」学科：否则「选了临床医学 → 搜 Nature」会得到空列表，
+    // 用户会以为期刊不存在（真实原因是被学科筛选挡住了）
+    if (q !== journalQuery) {
+      journalQuery = q;
+      if (journalSubject) {
+        journalSubject = "";
+        renderJournalSubjects();
+      }
+    }
+    journalBusy = true;
+    try {
+      if (o.online && typeof s.journalSearch === "function") {
+        journalMsg("在线检索 3 万+ 期刊中…");
+        const r = await s.journalSearch(q, { online: true, limit: 60 });
+        journalRows = (r && r.items) || [];
+        journalTotal = Math.max(0, parseInt(r && r.total, 10) || journalRows.length);
+        if (r && r.online) journalMsg("");
+        else {
+          journalMsg(journalRows.length
+            ? "在线检索暂不可用，先显示本地目录结果"
+            : "在线检索暂不可用（检查网络后重试）", journalRows.length ? "" : "bad");
+        }
+      } else {
+        const r = s.journalFind(q, { limit: 200 });
+        journalRows = (r && r.items) || [];
+        journalTotal = Math.max(0, parseInt(r && r.total, 10) || journalRows.length);
+        journalMsg("");
+        // 目录里没有 + 至少 2 个字 → 自动到在线库补一次（同一个词只补一次，避免每敲一键都发请求）
+        if (!journalRows.length && q.length >= 2 && journalAutoTried !== q
+          && typeof s.journalSearch === "function") {
+          journalAutoTried = q;
+          journalBusy = false;
+          return loadJournalList({ online: true, force: true });
+        }
+      }
+    } catch (e) {
+      journalRows = [];
+      journalTotal = 0;
+      journalMsg("期刊检索失败：" + ((e && (e.message || e)) || e), "bad");
+    }
+    journalBusy = false;
+    renderJournals();
+    updateJournalSel();
+  }
+
+  /** 一键订阅：单条（行内按钮）或批量（订阅所选）。失败原因直接说人话。 */
+  function doSubscribeJournals(items) {
+    const s = S();
+    if (!s || typeof s.subscribeJournals !== "function") {
+      journalMsg("检索订阅模块未就绪（请重启 Zotero 后再试）", "bad");
+      return;
+    }
+    let r = null;
+    try { r = s.subscribeJournals(items); } catch (e) { r = null; }
+    if (!r) {
+      journalMsg("订阅失败（本地配置不可写）", "bad");
+      return;
+    }
+    const created = r.created || [];
+    const skipped = r.skipped || [];
+    if (created.length) {
+      const names = created.slice(0, 3).map((x) => x.name).join("、")
+        + (created.length > 3 ? " 等 " + created.length + " 种" : "");
+      // 「首次会立即补跑」必须写明：调度是「到点后 6 小时内补跑」，下午订阅的刊
+      // 会当场抓一次（真机实证：13:53 订阅当场入库 10 条），不提示用户会莫名其妙
+      // 看到库里多出一批文章。
+      journalMsg("已订阅：" + names + "（每天 08:00 取近 30 天新文章，今天已过点会立即补跑一次；"
+        + "可在下方「我的订阅」改成每周或仅手动）", "good");
+      journalSelected.clear();
+      renderList();
+    } else if (skipped.some((x) => x && x.reason === "exists")) {
+      journalMsg("这些期刊已经订阅过了，无需重复添加");
+    } else {
+      journalMsg("订阅失败（期刊缺少 ISSN 或本地配置不可写）", "bad");
+    }
+    renderJournals();
+    updateJournalSel();
+  }
+
   /* ================== 推荐 ================== */
 
   function recoCard(item) {
@@ -666,10 +889,14 @@
 
   function clearForm() {
     for (const id of ["pp-sub-name", "pp-sub-keywords", "pp-sub-cats", "pp-sub-authors", "pp-sub-exclude",
-      "pp-sub-time", "pp-sub-weekdays", "pp-sub-maxagedays", "pp-sub-max"]) {
+      "pp-sub-journals", "pp-sub-time", "pp-sub-weekdays", "pp-sub-maxagedays", "pp-sub-max"]) {
       const node = $(id);
       if (node) node.value = "";
     }
+    editIssns = [];
+    editJournals = [];
+    const clearBtn = $("pp-sub-journals-clear");
+    if (clearBtn) clearBtn.style.display = "none";
     for (const src of SOURCES) {
       const node = $(src.el);
       if (node) node.checked = src.id === "arxiv";
@@ -704,6 +931,13 @@
     set("pp-sub-weekdays", Array.isArray(o.weekdays) ? o.weekdays.join(",") : o.weekdays);
     set("pp-sub-maxagedays", o.maxAgeDays ? String(o.maxAgeDays) : "");
     set("pp-sub-max", o.max ? String(o.max) : "");
+    // 期刊条件：只展示，不在这里手填 —— ISSN 由「按期刊订阅」带出，避免「改了刊名但 ISSN 还是旧的」
+    editIssns = Array.isArray(o.issns) ? o.issns.slice() : (o.issns ? [o.issns] : []);
+    editJournals = Array.isArray(o.journals) ? o.journals.slice()
+      : (o.journals ? String(o.journals).split(/[;；\n]+/).map((x) => x.trim()).filter(Boolean) : []);
+    set("pp-sub-journals", editJournals.join("; "));
+    const clearJournals = $("pp-sub-journals-clear");
+    if (clearJournals) clearJournals.style.display = (editJournals.length || editIssns.length) ? "" : "none";
     const srcs = Array.isArray(o.sources) && o.sources.length ? o.sources : ["arxiv"];
     for (const src of SOURCES) {
       const node = $(src.el);
@@ -736,6 +970,9 @@
       keywords: val("pp-sub-keywords"),
       categories: val("pp-sub-cats"),
       authors: val("pp-sub-authors"),
+      // 期刊条件随编辑态带出（输入框只读）：清空按钮会把这两个数组清掉
+      issns: editIssns.slice(),
+      journals: editJournals.slice(),
       exclude: val("pp-sub-exclude"),
       sources: sources.length ? sources : ["arxiv"],
       mode: val("pp-sub-mode") || "all",
@@ -765,8 +1002,9 @@
       if (n && n.focus) try { n.focus(); } catch (e) { /* ignore */ }
       return;
     }
-    if (!draft.keywords && !draft.categories && !draft.authors) {
-      setMsg("pp-sub-msg", "关键词、分类、作者至少填一个", "bad");
+    if (!draft.keywords && !draft.categories && !draft.authors
+      && !(draft.issns && draft.issns.length) && !(draft.journals && draft.journals.length)) {
+      setMsg("pp-sub-msg", "关键词、分类、作者、期刊至少要有一个", "bad");
       const n = $("pp-sub-keywords");
       if (n && n.focus) try { n.focus(); } catch (e) { /* ignore */ }
       return;
@@ -778,7 +1016,7 @@
       sub = null;
     }
     if (!sub) {
-      setMsg("pp-sub-msg", "保存失败（名称与检索条件必填：关键词 / 分类 / 作者至少一个）", "bad");
+      setMsg("pp-sub-msg", "保存失败（名称与检索条件必填：关键词 / 分类 / 作者 / 期刊至少一个）", "bad");
       return;
     }
     setMsg("pp-sub-msg", (editingId ? "已保存：" : "已创建：") + sub.name, "good");
@@ -853,11 +1091,13 @@
       bind("pp-subs-preview", "click", (ev) => {
         try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
         const draft = readForm();
-        if (!draft.keywords && !draft.categories && !draft.authors) {
-          setMsg("pp-sub-msg", "关键词、分类、作者至少填一个再试跑", "bad");
+        if (!draft.keywords && !draft.categories && !draft.authors
+          && !(draft.issns && draft.issns.length) && !(draft.journals && draft.journals.length)) {
+          setMsg("pp-sub-msg", "关键词、分类、作者、期刊至少有一个再试跑", "bad");
           return;
         }
-        if (!draft.name) draft.name = draft.keywords || draft.categories || draft.authors;
+        if (!draft.name) draft.name = draft.keywords || draft.categories || draft.authors
+          || (draft.journals && draft.journals[0]) || "";
         commitDraftForPreview(draft);
       });
       bind("pp-subs-cancel", "click", () => { resetForm(); setMsg("pp-sub-msg", "已取消编辑"); });
@@ -877,6 +1117,46 @@
       bind("pp-sub-ai", "click", (ev) => {
         try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
         aiParse();
+      });
+      // 期刊订阅（0.69.0）：学科 chips + 本地目录即时过滤 + 在线兜底
+      renderJournalSubjects();
+      loadJournalList();
+      bind("pp-sub-journal-search", "click", (ev) => {
+        try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
+        loadJournalList({ online: true, force: true });
+      });
+      const jq = $("pp-sub-journal-q");
+      if (jq) {
+        jq.addEventListener("input", () => {
+          journalAutoTried = "";
+          if (journalTimer) { try { window.clearTimeout(journalTimer); } catch (e) { /* ignore */ } }
+          journalTimer = window.setTimeout(() => { journalTimer = null; loadJournalList(); }, 260);
+        });
+        jq.addEventListener("keydown", (ev) => {
+          if (ev && ev.key === "Enter") {
+            try { ev.preventDefault(); } catch (e) { /* ignore */ }
+            if (journalTimer) { try { window.clearTimeout(journalTimer); } catch (e) { /* ignore */ } journalTimer = null; }
+            loadJournalList({ online: true, force: true });
+          }
+        });
+      }
+      bind("pp-sub-journal-subscribe", "click", (ev) => {
+        try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
+        if (!journalSelected.size) {
+          journalMsg("先勾选期刊（或直接点某一行的「订阅」）");
+          return;
+        }
+        doSubscribeJournals(Array.from(journalSelected.values()));
+      });
+      bind("pp-sub-journals-clear", "click", (ev) => {
+        try { if (ev && ev.preventDefault) ev.preventDefault(); } catch (e) { /* ignore */ }
+        editIssns = [];
+        editJournals = [];
+        const n = $("pp-sub-journals");
+        if (n) n.value = "";
+        const b = $("pp-sub-journals-clear");
+        if (b) b.style.display = "none";
+        setMsg("pp-sub-msg", "已清空期刊条件（点「保存订阅」后生效）");
       });
       const nl = $("pp-sub-nl");
       if (nl) nl.addEventListener("keydown", (ev) => {

@@ -205,8 +205,8 @@ var ThirdSource = {
     const zh = this._zh();
     if (!gate || gate.ok) return "";
     if (gate.reason === "not-logged-in") {
-      return zh ? "该实验功能面向 Pro 会员试用：请先登录 Papilot 账号"
-        : "Pro-only trial: sign in to your Papilot account first";
+      return zh ? "该实验功能面向 Pro 会员试用：请先登录 Papilot 账号（没有账号可在 设置 → Papilot 里点「注册账号」）"
+        : "Pro-only trial: sign in to your Papilot account first (no account? Settings → Papilot → Register)";
     }
     return zh ? "该实验功能面向 Pro 会员试用：当前账号非 Pro，可在设置面板「账号」卡片升级"
       : "Pro-only trial: current plan is not Pro (upgrade in Settings → Account)";

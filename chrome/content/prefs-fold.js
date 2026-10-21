@@ -20,8 +20,9 @@
  *    preference= 声明式绑定也不受 display 影响。设置项的读写路径零改动。
  * ⚠️ Zotero 先加载本脚本、后插入 fragment DOM（_loadPane 顺序）——init 必须
  *    探测关键节点、不存在就延迟重试，否则 null 崩溃导致面板永远不 loaded（同 prefs-pane）。
- * ⚠️ 测试用迷你 DOM 只实现了 getElementById / querySelectorAll 与 classList.toggle，
- *    所以这里只用这两样能力（不依赖 querySelector / classList.contains / dataset）。
+ * ⚠️ 测试用迷你 DOM 只实现了 getElementById / querySelectorAll(单类选择器) / classList.toggle，
+ *    所以这里只用这几样能力（不依赖 querySelector / classList.contains / dataset /
+ *    closest()，也不用逗号选择器——桩会把 "a, b" 整体当一个类名，静默查不到）。
  */
 /* global Zotero, window, document */
 
@@ -44,6 +45,17 @@
       return Array.prototype.slice.call(
         document.querySelectorAll(".pp-root .pp-fold[data-fold]"));
     } catch (e) { return []; }
+  }
+
+  /**
+   * 面板根节点（滚动容器 .pp-root）。提到模块作用域是因为三处都要用：
+   * 搜索态判定（apply / toggle）与「直达」滚动同步。拿不到就返回 null。
+   */
+  function rootOf() {
+    try {
+      const rs = document.querySelectorAll(".pp-root");
+      return rs && rs.length ? rs[0] : null;
+    } catch (e) { return null; }
   }
 
   /** 把「已展开键集合」应用到 DOM（不在集合里 = 收起） */
@@ -72,15 +84,33 @@
     try { el.classList.toggle(c, !!on); } catch (e) { /* ignore */ }
   };
 
-  /** 卡片索引：标题 + 说明 + 关键词（data-search-strings-raw）+ 折叠键 */
+  /** 卡片索引：标题 + 说明 + 关键词（data-search-strings-raw）+ 卡内小标题/字段名 + 折叠键 */
   function buildIndex() {
     return sections().map((sec) => {
       const pick = (sel) => { try { return sec.querySelector(sel); } catch (e) { return null; } };
+      // 卡片里的子分区标题与字段名同样是用户会搜的词（「字体」「价格」「退款」「日志」「恢复」…）。
+      // 只收标题与关键词时这些词全是 0 命中，用户会以为功能不存在。
+      // ⚠️ 测试桩只支持单类选择器，所以逐个查、逐个 try（本函数禁止异常外溢）。
+      const textsOf = (sel) => {
+        try {
+          const list = sec.querySelectorAll(sel);
+          if (!list) return [];
+          const out = [];
+          for (let i = 0; i < list.length; i++) {
+            const n = list[i];
+            if (n && n.textContent) out.push(String(n.textContent));
+          }
+          return out;
+        } catch (e) { return []; }
+      };
       const title = pick(".pp-card-title");
       const desc = pick(".pp-card-desc");
       const raw = sec.getAttribute("data-search-strings-raw") || "";
       const key = sec.getAttribute("data-fold") || "";
-      const text = [title && title.textContent, desc && desc.textContent, raw, key]
+      const text = []
+        .concat([title && title.textContent, desc && desc.textContent, raw, key])
+        .concat(textsOf(".pp-sub-title"))
+        .concat(textsOf(".pp-label"))
         .filter(Boolean).join(" ").toLowerCase();
       return { sec, text };
     });
@@ -97,13 +127,6 @@
     const idx = buildIndex();
     const total = idx.length;
     const baseText = countEl ? String(countEl.textContent || "") : "";
-
-    const rootOf = () => {
-      try {
-        const rs = document.querySelectorAll(".pp-root");
-        return rs && rs.length ? rs[0] : null;
-      } catch (e) { return null; }
-    };
 
     function apply(q) {
       const terms = String(q || "").toLowerCase().split(/\s+/).filter(Boolean).slice(0, 6);
@@ -133,6 +156,9 @@
         countEl.textContent = searching ? (matched + " / " + total + " 项") : baseText;
         toggleCls(countEl, "pp-count-hit", searching);
       }
+      // 0 命中空态：整屏空白会被当成「面板坏了」，给一句可操作的提示
+      const empty = $("pp-prefs-empty");
+      if (empty) empty.style.display = (searching && matched === 0) ? "" : "none";
       if (clearBtn) clearBtn.style.display = searching ? "" : "none";
       return matched;
     }
@@ -148,6 +174,10 @@
     });
     if (clearBtn) clearBtn.addEventListener("click", reset);
     apply(input.value || "");
+    // 让「直达」能先清掉搜索态：搜索时未命中的卡是 display:none，
+    // 点 chip 滚到该分类只会看到空白（用户会以为直达坏了）。挂到 window 上是最轻的约定，
+    // 两个脚本不共享模块作用域。
+    try { window.PapilotPrefsSearch = { reset: reset, apply: apply }; } catch (e) { /* ignore */ }
     return true;
   }
 
@@ -192,6 +222,9 @@
       } catch (e) { /* 老环境没有 setAttribute 也无所谓，功能不受影响 */ }
 
       const toggle = () => {
+        // 搜索态下 CSS 强制 `.pp-card-body { display: block }`，此时点折叠头视觉毫无变化，
+        // 但 toggle 会静默改写 prefsFoldOpen（下次开面板折叠态莫名变了）。直接不响应。
+        if (hasCls(rootOf(), "pp-searching")) return;
         const cur = getOpen();
         if (cur.has(key)) cur.delete(key); else cur.add(key);
         apply(cur);
@@ -221,6 +254,21 @@
 
     // 搜索框与折叠互不影响：搜索只切 .pp-hidden，不动 prefsFoldOpen
     try { initSearch(); } catch (e) { /* 搜索不可用不影响折叠 */ }
+
+    // 供「直达」展开分类首卡（P1-5）。直接 classList.remove("pp-fold-closed") 是不写
+    // prefsFoldOpen 的：下次开面板又收起，读屏也仍报「已折叠」。走这里才等于「用户真的展开了」。
+    try {
+      window.PapilotPrefsFold = {
+        open(key) {
+          if (!key) return false;
+          const set = getOpen();
+          set.add(key);
+          apply(set);
+          setOpen(set);
+          return true;
+        },
+      };
+    } catch (e) { /* ignore */ }
 
     // 深链滚动定位（等一帧让布局先稳定）
     if (focusKey) {

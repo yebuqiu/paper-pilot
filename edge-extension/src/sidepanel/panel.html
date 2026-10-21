@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Papilot 学术阅读</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <img src="../../icons/icon32.png" alt="" width="24" height="24">
+      <div class="brand-text">
+        <strong>Papilot</strong>
+        <span>学术阅读</span>
+      </div>
+    </div>
+    <button id="btn-settings" class="icon-btn" title="设置" aria-label="设置">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M19.4 13.5a7.8 7.8 0 0 0 0-3l1.7-1.3-1.8-3.1-2 .8a7.7 7.7 0 0 0-2.6-1.5L14.4 3h-3.6l-.3 2.4a7.7 7.7 0 0 0-2.6 1.5l-2-.8-1.8 3.1L5.8 10.5a7.8 7.8 0 0 0 0 3l-1.7 1.3 1.8 3.1 2-.8a7.7 7.7 0 0 0 2.6 1.5l.3 2.4h3.6l.3-2.4a7.7 7.7 0 0 0 2.6-1.5l2 .8 1.8-3.1-1.7-1.3Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </header>
+
+  <div id="banner" class="banner hidden">
+    <span id="banner-text"></span>
+    <button id="banner-action" class="link-btn">去设置</button>
+  </div>
+
+  <nav class="view-tabs" role="tablist" aria-label="视图">
+    <button data-view="chat" aria-selected="true" role="tab">对话</button>
+    <button data-view="compare" aria-selected="false" role="tab">对照</button>
+    <button data-view="excerpts" aria-selected="false" role="tab">摘录 <span id="excerpt-count" class="badge">0</span></button>
+  </nav>
+
+  <section id="view-chat" class="view">
+    <section class="context" id="context-card">
+      <div class="ctx-head">
+        <span id="page-title" class="page-title">尚未读取页面</span>
+        <button id="btn-read" class="ghost-btn">读取本页</button>
+      </div>
+      <div id="ctx-meta" class="meta">在论文页面点击「读取本页」，或直接选中文字提问。</div>
+      <div id="pdf-row" class="pdf-row hidden">
+        <button id="btn-pdf" class="ghost-btn">解析 PDF 全文</button>
+        <span class="tip">Edge 内置阅读器无法直接注入，需在面板内解析</span>
+      </div>
+    </section>
+
+    <section id="selection-card" class="selection hidden">
+      <div class="sel-head">
+        <span>已选中 <b id="sel-count">0</b> 字</span>
+        <span class="sel-actions">
+          <button id="sel-save" class="link-btn">存摘录</button>
+          <button id="sel-clear" class="icon-btn small" title="清除选区" aria-label="清除选区">×</button>
+        </span>
+      </div>
+      <div id="sel-preview" class="sel-preview"></div>
+    </section>
+
+    <div class="actions" id="actions">
+      <button class="chip" data-action="explain">解释选中</button>
+      <button class="chip" data-action="translate">翻译选中</button>
+      <button class="chip" data-action="summarize">本页摘要</button>
+      <button class="chip" data-action="critique">创新与局限</button>
+    </div>
+
+    <main id="messages" class="messages" aria-live="polite">
+      <div class="empty" id="empty">
+        <p class="empty-title">把论文读薄一点</p>
+        <p>1. 在学术页面点「读取本页」<br>2. 选中不懂的句子，点「解释选中」<br>3. 读完让「本页摘要」给你四段式卡片</p>
+        <p class="empty-note">首次使用请先在设置里配置模型或登录 Papilot 账号。</p>
+      </div>
+    </main>
+
+    <form id="composer" class="composer">
+      <textarea id="input" rows="2" placeholder="追问本文，例如：这篇的实验设置有什么问题？（Ctrl+Enter 发送）"></textarea>
+      <div class="composer-bar">
+        <span id="hint" class="hint"></span>
+        <button type="submit" id="send" class="primary-btn">发送</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="view-compare" class="view hidden">
+    <div class="view-head">
+      <div>
+        <b>整页对照</b>
+        <span id="cmp-progress" class="meta">未开始</span>
+      </div>
+      <div class="view-actions">
+        <button id="btn-cmp-stop" class="ghost-btn hidden">停止</button>
+        <button id="btn-cmp-start" class="ghost-btn">翻译本页</button>
+      </div>
+    </div>
+    <p id="cmp-hint" class="view-hint">逐段翻译，最多 20 段；每段单独请求，可随时停止。已译内容会缓存在本次会话中。</p>
+    <div id="cmp-list" class="cmp-list"></div>
+    <div class="view-foot">
+      <button id="btn-cmp-export" class="link-btn">导出对照 Markdown</button>
+    </div>
+  </section>
+
+  <section id="view-excerpts" class="view hidden">
+    <div class="view-head">
+      <div>
+        <b>摘录本</b>
+        <span id="ex-count-label" class="meta">0 条</span>
+      </div>
+      <div class="view-actions">
+        <button id="btn-ex-export" class="ghost-btn">导出</button>
+        <button id="btn-ex-clear" class="ghost-btn">清空</button>
+      </div>
+    </div>
+    <p class="view-hint">选中文字后点页内气泡的「存摘录」，或在回答下方点「存摘录」。只保存在本机。</p>
+    <div id="ex-list" class="ex-list"></div>
+  </section>
+
+  <footer class="foot">
+    <button id="btn-export" class="link-btn">导出对话</button>
+    <button id="btn-clear" class="link-btn">清空</button>
+    <span id="status" class="status">…</span>
+  </footer>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="../vendor/pdfjs/pdf.min.js"></script>
+  <script type="module" src="panel.js"></script>
+</body>
+</html>

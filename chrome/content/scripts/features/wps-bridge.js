@@ -458,6 +458,27 @@ var WpsBridge = {
     return PathUtils.join(d, "tools", "wps-zotero", "addon");
   },
 
+  /** 装新版后清掉同名的旧版本目录：WPS 会把同名的多份都列出来，容易点错 */
+  async _pruneOldAddons(keepDir) {
+    const removed = [];
+    let names = [];
+    try {
+      names = await IOUtils.getChildren(this.jsaddonsDir());
+    } catch (e) {
+      return removed;
+    }
+    for (const p of names) {
+      const name = PathUtils.filename(p);
+      if (name.indexOf(this.ADDON_NAME + "_") !== 0) continue;
+      if (PathUtils.join(this.jsaddonsDir(), name) === keepDir) continue;
+      try {
+        await IOUtils.remove(p, { recursive: true });
+        removed.push(name);
+      } catch (e) { /* 被占用就留着，下次再清 */ }
+    }
+    return removed;
+  },
+
   /** 装好文件后统一收尾：校验静态引入 → 写注册 → 起代理 */
   async _finalizeAddon(destDir, version) {
     const index = await this._read(PathUtils.join(destDir, "index.html"));
@@ -465,11 +486,16 @@ var WpsBridge = {
       throw new Error("index.html 不是静态引入版（WPS 12 不执行 document.write）");
     }
     const fixed = await this.fix();
+    const pruned = await this._pruneOldAddons(destDir);
     return {
       ok: fixed.ok,
       version,
       dir: destDir,
-      report: [`已安装加载项 ${version} → ${destDir}`, ...(fixed.report || [])],
+      report: [
+        `已安装加载项 ${version} → ${destDir}`,
+        ...(pruned.length ? [`已清理旧版本：${pruned.join("、")}`] : []),
+        ...(fixed.report || []),
+      ],
       error: fixed.error,
     };
   },

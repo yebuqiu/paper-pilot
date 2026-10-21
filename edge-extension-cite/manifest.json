@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Papilot 引文快取",
+  "version": "0.1.0",
+  "description": "在论文页面一键取引文，当场渲染 GB/T 7714、APA、MLA、BibTeX、RIS，复制即可粘贴进 Word。",
+  "minimum_chrome_version": "102",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "取这条文献的引文",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  },
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["https://api.crossref.org/*"]
+}

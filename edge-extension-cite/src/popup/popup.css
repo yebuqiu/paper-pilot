@@ -1,0 +1,188 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1f2328;
+  --muted: #5f6b76;
+  --line: #e4e9ed;
+  --card: #f7f9f8;
+  --card-2: #eef3f1;
+  --accent: #0f6e56;
+  --accent-soft: #e1f5ee;
+  --danger: #a32d2d;
+  --danger-soft: #fcebeb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #15191c;
+    --fg: #e8edf0;
+    --muted: #98a4ac;
+    --line: #2a3237;
+    --card: #1c2226;
+    --card-2: #232b30;
+    --accent: #5dcaa5;
+    --accent-soft: #12302a;
+    --danger: #f09595;
+    --danger-soft: #3a1d1d;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; }
+
+body {
+  width: 420px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.6 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font: inherit; color: inherit; cursor: pointer; }
+.hidden { display: none !important; }
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 8px;
+}
+
+.brand { display: flex; align-items: center; gap: 8px; }
+.brand img { border-radius: 6px; }
+.brand-text { display: flex; flex-direction: column; line-height: 1.25; }
+.brand-text strong { font-size: 13px; font-weight: 600; }
+.brand-text span { font-size: 10.5px; color: var(--muted); }
+
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0;
+  border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: var(--muted);
+}
+.icon-btn:hover { background: var(--card-2); color: var(--fg); }
+
+.source {
+  margin: 0 12px 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.paper-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.paper-meta {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.formats {
+  display: flex;
+  gap: 6px;
+  padding: 0 12px 10px;
+  flex-wrap: wrap;
+}
+
+.tab {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.tab:hover { border-color: var(--accent); color: var(--accent); }
+.tab[aria-selected="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+.tab:disabled { opacity: .45; cursor: default; }
+
+.output-wrap {
+  margin: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  min-height: 150px;
+}
+
+.output {
+  margin: 0;
+  padding: 10px 11px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px/1.7 ui-monospace, SFMono-Regular, Consolas, "Microsoft YaHei", monospace;
+  color: var(--fg);
+}
+
+.output:focus { outline: none; }
+
+.error {
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-radius: 10px;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 12px;
+}
+
+.primary {
+  padding: 6px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.primary:hover { filter: brightness(.94); }
+.primary:disabled { opacity: .5; cursor: default; }
+
+.status { color: var(--muted); font-size: 11px; flex: 1; }
+
+.link-btn {
+  border: 0; background: none; padding: 0;
+  color: var(--muted); font-size: 11.5px;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.link-btn:hover { color: var(--accent); }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 54px;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(31, 35, 40, .92);
+  color: #fff;
+  font-size: 11px;
+  pointer-events: none;
+}

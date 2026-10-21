@@ -4,7 +4,7 @@
 /* Papilot 主入口：装配各模块
  * 由 bootstrap.js 通过 Services.scriptloader 加载，共享 bootstrap 作用域
  */
-/* global Zotero, Services, Prefs, IOUtils, PathUtils, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, SkillPacks, CloudSync, WebDAV, OcrService, NoteTools, pdfjsLib, _ppDiag */
+/* global Zotero, Services, Prefs, WizardGate, IOUtils, PathUtils, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, SkillPacks, CloudSync, WebDAV, OcrService, NoteTools, pdfjsLib, TagOps, TagMenu, _ppDiag */
 
 Zotero.Papilot = {
   id: null,
@@ -221,6 +221,10 @@ Zotero.Papilot = {
       // 0.22.0 库内问答 / 标签治理 / 附件体检
       "features/lib-search.js",
       "features/tag-curator.js",
+      // 0.70.0 标签管理：数据/规则层（TagOps）+ 左下角右键入口（TagMenu）。
+      // 顺序硬约束：tag-ops 必须先于 tag-menu（后者 install 时直接引用 TagOps.protectList）。
+      "features/tag-ops.js",
+      "features/tag-menu.js",
       // 0.42.0 翻译多引擎同屏对比小窗（翻译面板「对比引擎」按钮调起）
       "features/translate-compare.js",
       "features/attach-doctor.js",
@@ -236,6 +240,9 @@ Zotero.Papilot = {
       "features/reading-stats.js",
       // 0.49.0 定时任务（研究晨报/阅读周报/库体检；依赖 reading-stats / meta-lint 的运行时探测）
       "features/scheduler.js",
+      // 0.69.0 期刊订阅内置目录（全局 JournalCatalog：525 种跨学科期刊的 ISSN/学科/别名）。
+      // 必须在 search-subs.js 之前加载——面板首次渲染就要用它做本地即时过滤。
+      "data/journals.js",
       // 0.57.0 检索订阅 v2 的多源适配层（必须排在 search-subs.js 之前：
       // 后者在运行时经全局 SubSources 取 arXiv/OpenAlex/Crossref/PubMed）
       "features/sub-sources.js",
@@ -429,6 +436,9 @@ Zotero.Papilot = {
     // 0.22.0 库内问答 / 标签治理 / 附件体检（功能中心与 lib-ask 窗口经此访问）
     this.libSearch = LibSearch;
     this.tagCurator = TagCurator;
+    // 0.70.0 标签管理：数据层与左下角入口（排障/测试经此访问）
+    this.tagOps = (typeof TagOps !== "undefined") ? TagOps : null;
+    this.tagMenu = (typeof TagMenu !== "undefined") ? TagMenu : null;
     this.attachDoctor = AttachDoctor;
     // 0.63.0 PDF 无头渲染 + 视觉 OCR（菜单/问答回退/排障经此访问；加载失败置 null 防崩）
     this.ocr = (typeof OcrService !== "undefined") ? OcrService : null;
@@ -527,13 +537,18 @@ Zotero.Papilot = {
       // 0.23.0：restore 完成后做一次会话仓库自检，把「几份副本 / 最新一份来自哪里 /
       // 是否已登录 / 落盘结果」写进启动日志。下次再出现「更新后掉登录」，
       // boot.log 第一段就能给出结论，不必靠 account.log 逐行倒推。
-      Account.restore()
+      //
+      // 0.68.3：把这条链的 promise 存下来（`_accountRestore`）。会话是**异步读盘**的，
+      // 之前没人等它，导致启动后紧接着判断 `isLoggedIn()` 一律为 false —— 首启向导
+      // 因此把已登录的老用户当成新用户（重复弹窗根因之一）。其余启动流程仍不阻塞。
+      this._accountRestore = Account.restore()
         .then(() => Account.selfCheck())
         .then((snap) => this._diag(snap))
         .then(() => this._checkRenewal())   // 0.24.4：临近到期/已过期提示一次
         .catch((e) => this._diag("account restore/selfCheck failed: " + (e && e.message)));
       await this._diag("account restore scheduled");
     } catch (e) {
+      this._accountRestore = null;
       await this._diag("account restore schedule FAILED: " + (e && (e.stack || e.message) || e));
     }
 
@@ -633,17 +648,21 @@ Zotero.Papilot = {
     ]);
     await this._diag("ui ready (or timed out)");
 
-    // 首次使用向导（0.68.0）：只在「从未走过」时弹一次（wizardDone 为空）。
+    // 首次使用向导（0.68.0 / 0.68.3）：只在「从未走过 + 还没配过」时弹一次。
     // 延迟 3s 是为了避开 Zotero 自己的欢迎页/启动焦点争抢；失败不影响启动。
+    //
+    // ★ 0.68.3 修的两个逻辑错误：
+    //   ① 必须在 `Account.restore()` 落定之后判断登录态——否则读盘还没完成，
+    //      已登录老用户被当成未登录，向导照弹（用户看到的是「我已登录还被反复引导」）；
+    //   ② 已登录 / 已有自定义通道的人不再自动弹，并补写 wizardDone=skipped，
+    //      免得每次启动都重新判一遍、哪次状态慢一拍就又弹出来。
     try {
-      if (!Prefs.get("wizardDone", "")) {
-        const w = Zotero.getMainWindow();
-        const later = (fn, ms) => (w && w.setTimeout ? w.setTimeout(fn, ms) : setTimeout(fn, ms));
-        later(() => {
-          try { this.openWizard(); } catch (e) { /* 弹不出来也不能挡启动 */ }
-        }, 3000);
-        await this._diag("first-run wizard scheduled");
-      }
+      const restored = this._accountRestore || Promise.resolve();
+      restored
+        .catch(() => {})                       // 恢复失败按未登录处理，不挡启动
+        .then(() => this._maybeFirstRunWizard())
+        .catch((e) => this._diag("first-run wizard gate FAILED: " + (e && e.message || e)));
+      await this._diag("first-run wizard gate armed (after account restore)");
     } catch (e) {
       await this._diag("first-run wizard FAILED: " + (e && e.message || e));
     }
@@ -769,6 +788,16 @@ Zotero.Papilot = {
       await this._diag("menus registered");
     } catch (e) {
       await this._diag("menus FAILED: " + (e && (e.stack || e.message) || e));
+    }
+
+    // 0.70.0 左下角标签入口：在原生 #tag-menu 末尾追加「Papilot 标签工具 ▸」。
+    // 注意这不是完整功能——批量选择/删除/改名/合并都在独立窗口 tag-manager.xhtml，
+    // 因为 tag selector 是 react-virtualized 虚拟列表，插复选框会被重渲染抹掉。
+    try {
+      TagMenu.install();
+      await this._diag("tag menu hook registered");
+    } catch (e) {
+      await this._diag("tag menu FAILED: " + (e && (e.stack || e.message) || e));
     }
 
     // 0.16.0 主题系统：界面主题（CSS 变量换肤）+ PDF 阅读主题（叠色/反色）
@@ -1148,6 +1177,50 @@ Zotero.Papilot = {
     }
   },
 
+  /**
+   * 0.68.3 首启向导的「该不该自动弹」判定与触发（由 init 在会话恢复后调用）。
+   *
+   * 三个输入都必须**取真值**，否则判定形同虚设：
+   *   · wizardDone —— pref，写过 done/skipped 就永不再自动弹；
+   *   · loggedIn   —— 必须等 Account.restore() 落定（调用方已保证）；
+   *   · configured —— 是否已有非官方通道（自建接口的老用户同样不该被当新用户）。
+   * 判定本身在 WizardGate.decide（纯函数，test/wizard.test.js 有矩阵用例）。
+   */
+  async _maybeFirstRunWizard() {
+    try {
+      let configured = false;
+      try {
+        const list = (Channels && Channels.list) ? Channels.list() : [];
+        configured = (list || []).some((c) => c && !c.official);
+      } catch (e) { configured = false; }
+      const gate = (typeof WizardGate !== "undefined" && WizardGate)
+        ? WizardGate.decide({
+          wizardDone: Prefs.get("wizardDone", ""),
+          loggedIn: !!(Account && Account.isLoggedIn && Account.isLoggedIn()),
+          configured: configured,
+        })
+        // 兜底：WizardGate 缺失时退回旧行为（有值不弹），绝不因判定缺失而反复弹
+        : { show: !Prefs.get("wizardDone", ""), mark: "", reason: "fallback" };
+
+      if (gate.mark) {
+        // 补记一笔，否则每次启动都要重新判；某个时刻会话恢复慢一拍就会又弹出来
+        try { Prefs.set("wizardDone", gate.mark); } catch (e) { /* 写不进去也不能崩 */ }
+      }
+      if (!gate.show) {
+        await this._diag("first-run wizard skipped (" + gate.reason + ")");
+        return;
+      }
+      const w = Zotero.getMainWindow();
+      const later = (fn, ms) => (w && w.setTimeout ? w.setTimeout(fn, ms) : setTimeout(fn, ms));
+      later(() => {
+        try { this.openWizard(); } catch (e) { /* 弹不出来也不能挡启动 */ }
+      }, 3000);
+      await this._diag("first-run wizard scheduled");
+    } catch (e) {
+      await this._diag("first-run wizard FAILED: " + (e && e.message || e));
+    }
+  },
+
   /** 0.68.0 打开「首次使用向导」（单例：已开则聚焦）。
    *  入口：首启自动弹一次 / 工具菜单 / 设置面板「推荐配置」旁的手动入口。 */
   openWizard() {
@@ -1327,6 +1400,8 @@ Zotero.Papilot = {
       this._prefObserverSymbols = null;
     }
     try { Menus.destroy(); } catch (e) { Zotero.logError(e); }
+    // 0.70.0 先摘掉 #tag-menu 上的注入项与捕获监听，再谈其它
+    try { TagMenu.unregister(); } catch (e) { Zotero.logError(e); }
     try { ThemeToggle.unregister(); } catch (e) { Zotero.logError(e); }
     try { ToolbarQuick.unregister(); } catch (e) { Zotero.logError(e); }
     // 0.54.1（审查 P1-8）：双栏窗口持有 _win/_rightReader 强引用，且右栏 reader 是预览实例、

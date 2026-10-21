@@ -536,8 +536,8 @@ var I18n = (() => {
     tpNoText: zh ? "请先划词或粘贴要翻译的文本" : "Select or paste text first",
     tpNoPairs: zh ? "还没有全文译文，请先点「开始」" : "No full-text result yet — click Start first",
     chatNotLoggedIn: zh
-      ? "官方模型需要登录：请在 设置 → Papilot 登录账号（调用从 AI 额度扣费），或在「AI 模型通道」中配置自己的接口"
-      : "The official model requires login: open Settings → Papilot to log in, or configure your own channel",
+      ? "官方模型需要登录：在 设置 → Papilot「账号与会员」里登录；没有账号点「注册账号」当场注册（注册即赠额度），或在「AI 模型通道」中配置自己的接口"
+      : "The official model requires login: open Settings → Papilot → Account to log in — or click “Register” there if you don't have an account yet — or configure your own channel",
     chatNoKeyConfigured: zh
       ? "当前模型通道缺少 API Key：请在 设置 → Papilot → AI 模型通道 中补全"
       : "The active channel has no API key — fill it in under Settings → Papilot → AI Channels",
@@ -546,6 +546,8 @@ var I18n = (() => {
     menuAttachDoctor: zh ? "附件体检（断链/重复/扫描件/孤儿文件）" : "Attachment Doctor (broken/dup/scanned)",
     menuTagCurator: zh ? "标签治理（扫描变体，只读）" : "Tag Curator (scan, read-only)",
     menuTagNormalize: zh ? "标签归一（执行合并，需确认）" : "Normalize Tags (merge, confirm)",
+    // 0.70.0 标签管理器：左下角/条目右键共用同一个窗口
+    menuTagManager: zh ? "标签管理器（批量删除/改名/合并/层级）…" : "Tag Manager (batch edit)…",
     // ---- 0.23.0 自动化引擎 / 入库自动精读 ----
     menuAutomation: zh ? "自动化规则（触发→条件→动作）…" : "Automation Rules…",
     menuAutomationRun: zh ? "按自动化规则处理所选（先预览）" : "Run Automation Rules on Selection (preview)",
@@ -731,5 +733,33 @@ var ItemSel = {
           : "No processable items. Select at least one item first (selecting a PDF attachment works too — its parent item is used)."
       );
     } catch (e) { /* ignore */ }
+  },
+};
+
+/**
+ * 首启向导自动弹出闸门（0.68.3）
+ *
+ * 为什么单独抽出来：这段判断决定「老用户会不会被反复当成新用户」，
+ * 而它依赖三个**异步/易错**的状态（pref 是否已写过、会话是否已恢复、通道是否已配）。
+ * 放在纯函数里就能用矩阵穷举，而不是靠真机点一遍。
+ *
+ * 判定顺序（先到先得）：
+ *   ① wizardDone 非空（done / skipped）→ 永不自动弹（菜单仍可手动开）
+ *   ② 已登录 → 不再自动弹，并补写 wizardDone=skipped（老用户升级过来时最常见）
+ *   ③ 已有自定义通道（非 official）→ 同上（没账号但自己配过接口的人）
+ *   ④ 其余（真空档）→ 弹
+ *
+ * 注意：②③ 必须**补写 pref**。否则每次启动都要重新判断一遍，
+ * 一旦哪次会话恢复慢了一拍，用户就会莫名其妙又看到向导。
+ */
+var WizardGate = {
+  /** @returns {{show:boolean, mark:(''|'skipped'), reason:string}} */
+  decide(input) {
+    const src = input || {};
+    const done = String(src.wizardDone == null ? "" : src.wizardDone).trim();
+    if (done) return { show: false, mark: "", reason: "done" };
+    if (src.loggedIn) return { show: false, mark: "skipped", reason: "logged-in" };
+    if (src.configured) return { show: false, mark: "skipped", reason: "configured" };
+    return { show: true, mark: "", reason: "first-run" };
   },
 };

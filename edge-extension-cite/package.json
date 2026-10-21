@@ -1,0 +1,13 @@
+{
+  "name": "papilot-edge-cite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Papilot 引文快取（Microsoft Edge Add-ons 独立扩展，MVP）",
+  "scripts": {
+    "test": "node test/run.js",
+    "test:e2e": "node test/e2e.js",
+    "check": "node tools/check.js",
+    "pack": "python tools/pack.py"
+  }
+}

@@ -3,6 +3,61 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.70.0",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.70.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "新增「标签管理」：右键任一标签即可批量重命名/合并/加父标签/改路径/套配色，一律先预览再执行、执行前自动快照可回滚，另有标签体检（重复、孤儿、过深）与体系视图。同版本还带来「按期刊订阅」（内置 525 种跨学科期刊，搜中文名/缩写/ISSN 一键订阅，目录外走 OpenAlex 3 万+ 刊源），以及 Papilot Cite 的 WPS 加载项命令修正（刷新/插入引文/文献表不再无响应）。"
+        },
+        {
+          "version": "0.69.1",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.69.1.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "按期刊订阅三处真机修复：首屏总数、删除后状态同步、首次补跑提示"
+        },
+        {
+          "version": "0.69.0",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.69.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "检索订阅新增「按期刊订阅」：内置 525 种跨学科期刊（18 个学科、中文别名，ISSN 已逐条在线核验），搜中文名 / 缩写 / ISSN 即可一键订阅该刊最新文章，不用再去期刊官网找 RSS 或手拼检索式；目录外的期刊可直接搜 OpenAlex 3 万+ 刊源。期刊条件可与关键词叠加（如「The Lancet + 心肌梗死」）；默认每天 08:00 取近 30 天、最多 10 条、命中自动入库，可在订阅列表改频率。功能中心的「检索订阅」入口现在直接落到这张卡。"
+        },
+        {
+          "version": "0.68.4",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.68.4.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "修「直达」点了不跳：设置面板的滚动容器有嵌套，面板外侧 Zotero 的容器才是真正滚动的那一层，而中间可能有 overflow:hidden 的裁切层——旧实现写到裁切层上，scrollTop 不动也不报错。现在改成「写完回读 scrollTop，没变就换下一层」，并显式兜底 Zotero 的 #prefs-content；跳转后目标分类会闪一下，确保看得见落点。若仍失败会把现场写进 diagJump 便于排查。"
+        },
+        {
+          "version": "0.68.3",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.68.3.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "设置面板修订：账号邮箱默认脱敏（首 2 字 + ***，点击可看完整地址），并修掉「昵称为空时标题回显完整邮箱」的泄露；修复「直达」按钮点了没反应（HTML 按钮误绑 XUL 的 command 事件），直达现在会先清搜索、展开目标卡并记住折叠状态，滚动时高亮当前分类；搜索可命中卡片内的设置项名，0 命中给出提示；工具条计数修正为 19 项；首次进入默认展开「账号与会员」；会员对比表默认收起；知网 / 坚果云卡片增加「也可存到账号与密钥」提示。"
+        },
+        {
           "version": "0.68.2",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.68.2.xpi",
           "applications": {

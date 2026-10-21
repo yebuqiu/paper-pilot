@@ -73,7 +73,7 @@
       const chk = el("input", { type: "checkbox" });
       if (r.enabled !== false) chk.setAttribute("checked", "true");
 
-      btnRec.addEventListener("command", () => {
+      btnRec.addEventListener("click", () => {
         const resultBox = $("pp-hotkeys-result");
         setMsg(resultBox, zh ? "请按下新的组合键（Esc 取消）…" : "Press new combo (Esc to cancel)…", "");
         btnRec.setAttribute("disabled", "true");
@@ -107,12 +107,12 @@
           }, 30000);
         }
       });
-      btnReset.addEventListener("command", () => {
+      btnReset.addEventListener("click", () => {
         try { hk.resetCombo(r.id); } catch (e) { /* ignore */ }
         setMsg($("pp-hotkeys-result"), zh ? "已恢复默认" : "Reset to default");
         renderHotkeys();
       });
-      chk.addEventListener("command", () => {
+      chk.addEventListener("change", () => {
         try { hk.setEnabled(r.id, !!chk.checked); } catch (e) { /* ignore */ }
         renderHotkeys();
       });
@@ -129,10 +129,204 @@
 
   /* ---------------- ② 锚点目录 ---------------- */
 
+  /** 已生成的 chip 列表：[{ chip, target }]。滚动同步与高亮都靠它（顺序 = 分类顺序） */
+  let _chips = [];
+
+  /** 把某个 chip 标成「当前分类」，其余取消（0.68.4） */
+  function markActiveByIndex(idx) {
+    for (let i = 0; i < _chips.length; i++) {
+      const c = _chips[i].chip;
+      if (!c || !c.classList) continue;
+      try {
+        if (i === idx) { if (c.classList.add) c.classList.add("pp-anchor-active"); }
+        else if (c.classList.remove) c.classList.remove("pp-anchor-active");
+      } catch (e) { /* 老环境没有 classList.add 也不影响跳转 */ }
+    }
+  }
+
+  /**
+   * 滚动时同步高亮（0.68.4）。
+   * 取「最后一个 top 已经越过吸顶高度 + 8」的分类标签——即当前视口顶部所在的那一类。
+   * 全部都在视口下方时退化为第 1 个。
+   */
+  function syncActiveByScroll() {
+    if (!_chips.length) return;
+    const limit = stickyOffset() + 8;
+    let best = -1;
+    for (let i = 0; i < _chips.length; i++) {
+      const t = _chips[i].target;
+      if (!t || !t.getBoundingClientRect) continue;
+      let top = null;
+      try { top = t.getBoundingClientRect().top; } catch (e) { top = null; }
+      if (top === null || typeof top !== "number") continue;
+      if (top <= limit) best = i;
+    }
+    markActiveByIndex(best < 0 ? 0 : best);
+  }
+
+  /**
+   * 给滚动容器挂节流监听（0.68.4）。
+   * 滚动容器是 `.pp-root`（prefs.xhtml 里 style="overflow-y:auto"）。
+   * ⚠️ 测试桩没有 document.querySelector，拿不到就安静跳过——绝不能因此抛错。
+   */
+  function bindScrollSync() {
+    try {
+      if (typeof document === "undefined" || typeof document.querySelector !== "function") return;
+      const root = document.querySelector(".pp-root");
+      if (!root || !root.addEventListener) return;
+      let ticking = false;
+      const run = () => {
+        ticking = false;
+        try { syncActiveByScroll(); } catch (e) { /* ignore */ }
+      };
+      root.addEventListener("scroll", () => {
+        if (ticking) return;
+        ticking = true;
+        try {
+          if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+            window.requestAnimationFrame(run);
+          } else if (typeof window !== "undefined" && window.setTimeout) {
+            window.setTimeout(run, 120);
+          } else { run(); }
+        } catch (e) { run(); }
+      });
+    } catch (e) { /* 同步高亮是锦上添花，失败不影响直达 */ }
+  }
+
+  /**
+   * 吸顶工具条挡住多少像素（0.68.3）。
+   *
+   * 顶部工具条是 `position: sticky`（见 prefs.css），滚到顶部的分类标签会被它盖住，
+   * 表现为「点直达好像没动」。这里量一下它的高度，滚动时留出这段距离；
+   * 量不到就退回经验值 56（单行工具条约 44px + 12px 间距）。
+   */
+  function stickyOffset() {
+    try {
+      const bar = document.querySelector ? document.querySelector(".pp-toolbar") : null;
+      if (!bar || !bar.getBoundingClientRect) return 56;
+      const st = (typeof window !== "undefined" && window.getComputedStyle)
+        ? window.getComputedStyle(bar) : null;
+      if (st && st.position !== "sticky" && st.position !== "fixed") return 8;
+      return Math.round((bar.getBoundingClientRect().height || 44) + 12);
+    } catch (e) { return 56; }
+  }
+
+  /**
+   * 滚到某个分类标签（0.68.4 重写）。
+   *
+   * 旧实现（0.68.3）的致命缺陷：**找到第一个「scrollHeight > clientHeight」的祖先就 break，
+   * 从不验证 scrollTop 是否真的变了**。Zotero 设置窗格里 pane 外面套着
+   * `<div id="prefs-content">`（`overflow:auto scroll`，见 Zotero 的 preferences.xhtml），
+   * 中间层还可能有 `overflow:hidden` 的裁切盒——它们同样满足 `scrollHeight > clientHeight`，
+   * 但 `scrollTop` 写进去纹丝不动。于是代码「以为滚了」，界面完全不动，
+   * 用户看到的就是「直达没反应」（真机实测：prefsFoldOpen 已写入 → 点击生效，纯粹滚不动）。
+   *
+   * 现在的判定标准换成**可验证的事实**：
+   *   ① 先调标准 `scrollIntoView()`（不带 options —— smooth 在 chrome 的 scrollbox 上会静默失败），
+   *      用「调用前后 rect.top 是否变化」判断它到底有没有生效；
+   *   ② 没生效就逐层往上写 scrollTop，**写完立刻回读**，没变就继续往上（不再 break）；
+   *   ③ 还没动就显式试 Zotero 的滚动容器 `#prefs-content`（id 来自官方 preferences.xhtml）；
+   *   ④ 全都失败时把现场写进 diagJump pref（不打扰用户，排查时读 profile/prefs.js 即可）。
+   */
+  function rectTop(node) {
+    try { return Number(node.getBoundingClientRect().top); } catch (e) { return null; }
+  }
+
+  /** 在某一层上滚动，返回「scrollTop 是否真的变了」——这是判断它是不是真滚动框的唯一可靠信号 */
+  function bumpScroll(container, delta) {
+    try {
+      const before = Number(container.scrollTop) || 0;
+      container.scrollTop = Math.max(0, before + delta);
+      const after = Number(container.scrollTop) || 0;
+      return Math.abs(after - before) > 1;
+    } catch (e) { return false; }
+  }
+
+  /** 把目标滚到「吸顶工具条下方」这个位置；返回是否真的滚动了 */
+  function scrollByGeometry(target, off) {
+    let moved = false;
+    let p = target.parentNode;
+    while (p && p.nodeType === 1) {
+      try {
+        const sh = Number(p.scrollHeight) || 0;
+        const ch = Number(p.clientHeight) || 0;
+        if (sh > ch + 4 && ch > 0) {
+          const box = rectTop(p);
+          const me = rectTop(target);
+          if (box !== null && me !== null && bumpScroll(p, me - box - off)) { moved = true; break; }
+        }
+      } catch (e) { /* 这一层不行就继续往上 */ }
+      p = p.parentNode;
+    }
+    if (!moved) {
+      // 显式兜底：Zotero 设置窗口自己的滚动容器
+      try {
+        const box = document.getElementById("prefs-content");
+        if (box) {
+          const bt = rectTop(box);
+          const me = rectTop(target);
+          if (bt !== null && me !== null) moved = bumpScroll(box, me - bt - off);
+        }
+      } catch (e) { /* ignore */ }
+    }
+    return moved;
+  }
+
+  /** 滚到位后闪一下：即使几何量不准，用户也能看出跳到了哪个分类 */
+  function flashLabel(target) {
+    try {
+      if (!target || !target.classList || !target.classList.add) return;
+      target.classList.add("pp-jump-flash");
+      if (typeof window !== "undefined" && window.setTimeout) {
+        window.setTimeout(() => {
+          try { target.classList.remove("pp-jump-flash"); } catch (e) { /* ignore */ }
+        }, 900);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function scrollToLabel(target) {
+    const off = stickyOffset();
+    try { target.style.scrollMarginTop = off + "px"; } catch (e) { /* ignore */ }
+
+    let moved = false;
+    const t0 = rectTop(target);
+    try { target.scrollIntoView(); } catch (e) { /* ignore */ }
+    const t1 = rectTop(target);
+    // scrollIntoView 生效的证据 = 调用前后位置真的变了（不凭「没抛异常」就认定成功）
+    if (t0 !== null && t1 !== null && Math.abs(t1 - t0) > 2) {
+      moved = true;
+      // 它把目标顶到了滚动口最上沿，会被吸顶工具条盖住 → 再补一点
+      if (t1 < off - 2) moved = scrollByGeometry(target, off) || moved;
+    } else if (t1 !== null) {
+      moved = scrollByGeometry(target, off);
+    }
+
+    flashLabel(target);
+
+    if (!moved) {
+      try {
+        const chain = [];
+        let p = target.parentNode;
+        while (p && p.nodeType === 1 && chain.length < 5) {
+          chain.push({
+            id: p.id || "", cls: String(p.className || "").slice(0, 24),
+            sh: Number(p.scrollHeight) || 0, ch: Number(p.clientHeight) || 0,
+            top: rectTop(p),
+          });
+          p = p.parentNode;
+        }
+        Zotero.Prefs.set("extensions.zotero.papilot.diagJump",
+          JSON.stringify({ at: Date.now(), off: off, t0: t0, t1: t1, chain: chain }), true);
+      } catch (e) { /* 诊断写入失败不影响功能 */ }
+    }
+  }
+
   function renderAnchors() {
     const host = $("pp-anchor-nav");
     if (!host) return;
     while (host.firstChild) host.removeChild(host.firstChild);
+    _chips = [];   // 重建前清空：chip 是新建节点，旧的引用全部作废
     const labels = document.querySelectorAll(".pp-cat-label");
     if (!labels || !labels.length) {
       host.style.display = "none";
@@ -146,23 +340,48 @@
       const text = (nameEl && nameEl.textContent) || lab.textContent || "";
       const chip = el("button", { class: "pp-btn pp-btn-sm", title: text }, text);
       const target = lab;
-      chip.addEventListener("command", () => {
+      const slot = _chips.length;
+      _chips.push({ chip: chip, target: target });
+      // ★ 必须用 click：下面是 createElementNS(XHTML) 出来的 **HTML** 按钮，
+      //   不派发 XUL 的 command 事件。0.65.0~0.68.2 绑的是 command，
+      //   于是「直达」所有 chip 点了都没反应（用户报的「设置里面直达不可用」）。
+      chip.addEventListener("click", () => {
+        // 1) 先清搜索态：搜索时未命中的卡是 display:none，滚过去只会看到空白。
+        //    reset 内部会 input.focus()，这里不再抢焦点（保持 reset 现状）。
         try {
-          target.scrollIntoView({ behavior: "smooth", block: "start" });
-          // 展开该分类第一张折叠卡，避免「滚到了但还是收起状态」
+          const S = window.PapilotPrefsSearch;
+          if (S && typeof S.reset === "function") S.reset();
+        } catch (e) { /* 搜索模块不在也能直达 */ }
+        // 2) 滚动定位（含吸顶工具条让位）
+        scrollToLabel(target);
+        // 3) 展开该分类第一张折叠卡：优先走 prefs-fold.js 的钩子，它会把展开态
+        //    写进 prefsFoldOpen 并同步 aria-expanded；没有钩子才退回直接改类名。
+        try {
           let n = target.nextElementSibling;
           while (n) {
             if (n.classList && n.classList.contains("pp-fold")) {
-              n.classList.remove("pp-fold-closed");
+              let done = false;
+              try {
+                const F = window.PapilotPrefsFold;
+                if (F && typeof F.open === "function" && n.getAttribute) {
+                  done = !!F.open(n.getAttribute("data-fold"));
+                }
+              } catch (e) { done = false; }
+              if (!done) n.classList.remove("pp-fold-closed");
               break;
             }
             if (n.classList && n.classList.contains("pp-cat-label")) break;
             n = n.nextElementSibling;
           }
         } catch (e) { /* ignore */ }
+        // 4) 当前分类高亮
+        try { markActiveByIndex(slot); } catch (e) { /* ignore */ }
       });
       host.appendChild(chip);
     }
+    // 首屏按当前位置标一次，之后跟着滚动走
+    try { syncActiveByScroll(); } catch (e) { /* ignore */ }
+    bindScrollSync();
   }
 
   /* ---------------- ③ 笔记模板导入导出 ---------------- */
@@ -171,7 +390,7 @@
     const btnExp = $("pp-tpl-export");
     const btnImp = $("pp-tpl-import");
     if (!btnExp || !btnImp) return;
-    btnExp.addEventListener("command", async () => {
+    btnExp.addEventListener("click", async () => {
       const box = $("pp-tpl-result");
       const nt = NT();
       if (!nt || typeof nt.exportAll !== "function") {
@@ -187,7 +406,7 @@
         setMsg(box, String(e && e.message || e), "var(--pp-danger, #c00)");
       }
     });
-    btnImp.addEventListener("command", async () => {
+    btnImp.addEventListener("click", async () => {
       const box = $("pp-tpl-result");
       const nt = NT();
       if (!nt || typeof nt.importJSON !== "function") {

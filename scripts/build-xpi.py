@@ -71,7 +71,19 @@ def _whats_new(ver, argv):
         with open(note_file, "r", encoding="utf-8") as f:
             txt = f.read().strip()
         if txt:
-            return txt
+            # 发行说明是给人读的长文（Markdown），但 Zotero 更新卡片里只显示一小段。
+            # 优先取显式摘要标记；否则取「第一个非标题、非列表的段落」压成一行。
+            # 直接把整篇塞进去会让用户看到一堆 # 和 **（0.70.0 首跑踩过）。
+            m = re.search(r"<!--\s*whatsNew\s*:\s*(.+?)\s*-->", txt, re.S)
+            if m:
+                return re.sub(r"\s+", " ", m.group(1)).strip()
+            for para in re.split(r"\n\s*\n", txt):
+                p = para.strip()
+                if not p or p.startswith("#") or p.startswith("- ") or p.startswith("* "):
+                    continue
+                p = re.sub(r"[*_`]", "", p)
+                return re.sub(r"\s+", " ", p).strip()[:300]
+            return re.sub(r"\s+", " ", txt.splitlines()[0]).strip()[:300]
     print("!! 没有 --note，也没有 docs/release-notes/%s.md —— whatsNew 写成占位文案" % ver)
     return "本版更新见发行说明（docs/release-notes/%s.md 未提供）" % ver
 

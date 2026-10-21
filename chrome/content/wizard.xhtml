@@ -46,29 +46,62 @@
     <!-- 主体 -->
     <html:div class="wz-body">
 
-      <!-- 步骤 1：账号 -->
+      <!-- 步骤 1：账号（登录 / 注册，可跳过） -->
       <html:div id="pp-wz-step-1" class="wz-panel wz-on">
-        <html:div class="wz-h">1 · 登录 Papilot 账号</html:div>
-        <html:div class="wz-sub">登录后可直接使用官方 AI 模型（按额度扣费，注册赠送额度）。&#160;不想现在登录也可以跳过，之后在「设置 → 账号与会员」里登录。</html:div>
+        <html:div class="wz-h">1 · 登录或注册 Papilot 账号</html:div>
+        <html:div class="wz-sub">登录后可直接使用官方 AI 模型（按额度扣费，注册即赠送额度）。&#160;已有账号直接登录；没有账号就在下面注册——不用跳浏览器。不想现在弄也可以跳过，之后在「设置 → 账号与会员」里补。</html:div>
         <html:div id="pp-wz-acc-on" class="wz-acc" style="display:none;">
           <html:div class="pp-row">
             <html:span class="pp-label">已登录：</html:span>
             <html:span id="pp-wz-acc-email" class="pp-label"></html:span>
             <html:span id="pp-wz-acc-tier" class="pp-chip pp-chip-on"></html:span>
+            <html:span id="pp-wz-acc-msg" class="pp-msg"></html:span>
           </html:div>
         </html:div>
         <html:div id="pp-wz-acc-off">
-          <html:div class="wz-field">
-            <html:label class="pp-label">邮箱</html:label>
-            <html:input id="pp-wz-email" type="text" class="pp-input" placeholder="you@example.com"/>
+          <!-- 登录视图（默认） -->
+          <html:div id="pp-wz-login-view">
+            <html:div class="wz-field">
+              <html:label class="pp-label">邮箱</html:label>
+              <html:input id="pp-wz-email" type="text" class="pp-input" placeholder="you@example.com"/>
+            </html:div>
+            <html:div class="wz-field">
+              <html:label class="pp-label">密码</html:label>
+              <html:input id="pp-wz-password" type="password" class="pp-input" placeholder="登录密码（只用于登录请求，不会保存）"/>
+            </html:div>
+            <html:div class="pp-row">
+              <html:button id="pp-wz-login" type="button" class="pp-btn pp-btn-primary">登录</html:button>
+              <html:button id="pp-wz-reg-link" type="button" class="pp-btn pp-btn-ghost pp-btn-sm">没有账号？立即注册</html:button>
+              <html:span id="pp-wz-login-msg" class="pp-msg"></html:span>
+            </html:div>
           </html:div>
-          <html:div class="wz-field">
-            <html:label class="pp-label">密码</html:label>
-            <html:input id="pp-wz-password" type="password" class="pp-input" placeholder="登录密码（只用于登录请求，不会保存）"/>
-          </html:div>
-          <html:div class="pp-row">
-            <html:button id="pp-wz-login" type="button" class="pp-btn pp-btn-primary">登录</html:button>
-            <html:span id="pp-wz-login-msg" class="pp-msg"></html:span>
+
+          <!-- 注册视图（0.68.3）：直接调服务端 /api/auth/register，与设置面板同源 -->
+          <html:div id="pp-wz-reg-view" style="display:none;">
+            <html:div class="wz-grid2">
+              <html:div class="wz-field">
+                <html:label class="pp-label">邮箱</html:label>
+                <html:input id="pp-wz-reg-email" type="text" class="pp-input" placeholder="you@example.com"/>
+              </html:div>
+              <html:div class="wz-field">
+                <html:label class="pp-label">昵称（可选）</html:label>
+                <html:input id="pp-wz-reg-nickname" type="text" class="pp-input" placeholder="怎么称呼你"/>
+              </html:div>
+              <html:div class="wz-field">
+                <html:label class="pp-label">密码（至少 8 位）</html:label>
+                <html:input id="pp-wz-reg-password" type="password" class="pp-input" placeholder="至少 8 位"/>
+              </html:div>
+              <html:div class="wz-field">
+                <html:label class="pp-label">确认密码</html:label>
+                <html:input id="pp-wz-reg-password2" type="password" class="pp-input" placeholder="再输一次"/>
+              </html:div>
+            </html:div>
+            <html:div class="pp-hint">注册后需到邮箱点验证链接激活（24 小时内有效）；站点未配置邮件服务时会直接激活。&#160;密码只用于注册/登录请求，不会保存在本机。</html:div>
+            <html:div class="pp-row">
+              <html:button id="pp-wz-reg" type="button" class="pp-btn pp-btn-primary">注册并登录</html:button>
+              <html:button id="pp-wz-back-login" type="button" class="pp-btn pp-btn-ghost pp-btn-sm">已有账号？去登录</html:button>
+              <html:span id="pp-wz-reg-msg" class="pp-msg"></html:span>
+            </html:div>
           </html:div>
         </html:div>
       </html:div>
@@ -82,7 +115,7 @@
           <html:span class="wz-choice-mark"></html:span>
           <html:span class="wz-choice-main">
             <html:span class="wz-choice-t">官方通道（推荐）</html:span>
-            <html:span class="wz-choice-d">登录账号即可使用，按 AI 额度扣费；模型随会员等级变化。</html:span>
+            <html:span class="wz-choice-d">登录或注册账号即可使用，按 AI 额度扣费；模型随会员等级变化。</html:span>
           </html:span>
         </html:button>
         <html:button id="pp-wz-ch-custom" type="button" class="wz-choice">
@@ -118,7 +151,7 @@
           <html:span class="wz-choice-mark"></html:span>
           <html:span class="wz-choice-main">
             <html:span class="wz-choice-t">AI 大模型（推荐）</html:span>
-            <html:span class="wz-choice-d">走你的活动通道，术语表能生效，专业术语全文一致。</html:span>
+            <html:span class="wz-choice-d">走你的活动通道，术语表能生效，专业术语全文一致；通道不可用时会自动改用免费引擎。</html:span>
           </html:span>
         </html:button>
         <html:button id="pp-wz-tr-free" type="button" class="wz-choice">
@@ -144,6 +177,7 @@
     <!-- 底部操作 -->
     <html:div class="wz-foot">
       <html:button id="pp-wz-skip" type="button" class="pp-btn pp-btn-ghost pp-btn-sm">稍后再说</html:button>
+      <html:button id="pp-wz-settings" type="button" class="pp-btn pp-btn-sm" style="display:none;">打开设置</html:button>
       <html:div class="wz-foot-spacer"></html:div>
       <html:button id="pp-wz-back" type="button" class="pp-btn" style="display:none;">上一步</html:button>
       <html:button id="pp-wz-next" type="button" class="pp-btn pp-btn-primary">下一步</html:button>

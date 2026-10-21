@@ -63,6 +63,9 @@ var Menus = {
     { id: "tag-normalize", group: "tags", labelKey: "menuTagNormalize", run: () => TagCurator.run(true) },
     // 0.42.0 嵌套标签树（#a/b 层级只读视图，独立窗口）
     { id: "tag-nested", group: "tags", labelKey: "menuTagNested", run: () => TagCurator.openNestedView() },
+    // 0.70.0 标签管理器（多选批量删除/改名/合并/层级/颜色 + 快照撤销）；
+    // 左下角 tag selector 的右键也有一份入口（TagMenu），这里给条目右键与工具菜单用
+    { id: "tag-manager", group: "tags", labelKey: "menuTagManager", run: () => TagMenu.openManager() },
     // 元数据治理
     { id: "meta-enrich", group: "meta", labelKey: "menuMetaEnrich", run: () => MetaEnrich.runForSelected() },
     { id: "fake-check", group: "meta", labelKey: "menuFakeCheck", run: () => FakeCheck.runForSelected() },

@@ -76,6 +76,8 @@ var SearchSubs = {
   FEEDBACK_AUTHORS: 3,
   /** 订阅可填的作者数上限 */
   MAX_AUTHORS: 6,
+  /** 订阅可填的期刊数上限（ISSN 与刊名各自最多这么多） */
+  MAX_JOURNALS: 6,
   /** 单条订阅每次最多取多少条（与 add 的夹紧区间一致） */
   MAX_LIMIT: 30,
   MIN_LIMIT: 1,
@@ -254,6 +256,48 @@ var SearchSubs = {
     return out;
   },
 
+  /**
+   * ISSN 归一（0.69.0）：`NNNN-NNNX` 大写、去重、最多 MAX_JOURNALS 个。
+   * 复用 SubSources.normIssn（单一真源），模块缺位时退回本地正则。
+   */
+  _normIssns(raw) {
+    const list = Array.isArray(raw) ? raw : String(raw == null ? "" : raw).split(/[,;\s]+/);
+    const SS = this._subSources();
+    const out = [];
+    for (const x of list) {
+      let v = "";
+      if (SS && typeof SS.normIssn === "function") v = SS.normIssn(x);
+      else {
+        const s = String(x == null ? "" : x).toUpperCase().replace(/[^0-9X]/g, "");
+        v = s.length === 8 ? s.slice(0, 4) + "-" + s.slice(4) : "";
+      }
+      if (v && out.indexOf(v) < 0) out.push(v);
+      if (out.length >= this.MAX_JOURNALS) break;
+    }
+    return out;
+  },
+
+  /**
+   * 刊名归一：逗号**不能**当分隔符——真实刊名里就有逗号
+   * （"Forum of Mathematics, Pi"、"CA: A Cancer Journal for Clinicians"）。
+   * 只按分号 / 换行切分；去重（大小写不敏感）、限长、最多 MAX_JOURNALS 个。
+   */
+  _normJournals(raw) {
+    const list = Array.isArray(raw) ? raw : String(raw == null ? "" : raw).split(/[;；\n]+/);
+    const out = [];
+    const seen = new Set();
+    for (const x of list) {
+      const name = String(x == null ? "" : x).replace(/\s+/g, " ").trim().slice(0, 120);
+      if (name.length < 2) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+      if (out.length >= this.MAX_JOURNALS) break;
+    }
+    return out;
+  },
+
   _normRunLog(raw) {
     const arr = Array.isArray(raw) ? raw : [];
     const out = [];
@@ -291,6 +335,10 @@ var SearchSubs = {
       keywords: String(r.keywords == null ? "" : r.keywords).trim(),
       categories: String(r.categories == null ? "" : r.categories).trim(),
       authors: this._normAuthors(r.authors).join(", "),
+      // 期刊订阅（0.69.0）：issns 是真正参与检索的条件；journals 供 PubMed [ta]
+      // 与面板展示（老订阅没有这两个字段 → 空数组 / 空串，不影响任何旧行为）
+      issns: this._normIssns(r.issns),
+      journals: this._normJournals(r.journals),
       mode: mode,
       exclude: String(r.exclude == null ? "" : r.exclude).trim(),
       maxAgeDays: this._clampAge(r.maxAgeDays),
@@ -355,7 +403,13 @@ var SearchSubs = {
   _coerce(input, id) {
     const o = input || {};
     const hm = this._parseTime(o.dailyTime);
-    const sources = this._normSources(o.sources);
+    const issns = this._normIssns(o.issns);
+    const journals = this._normJournals(o.journals);
+    // 期刊订阅没有关键词：默认走有 ISSN 能力的两个源（arXiv 对期刊没有意义）
+    const rawSources = (Array.isArray(o.sources) && o.sources.length)
+      ? o.sources
+      : ((issns.length || journals.length) ? ["openalex", "crossref"] : ["arxiv"]);
+    const sources = this._normSources(rawSources);
     const mode = String(o.mode || "all").toLowerCase();
     const base = {
       id: id || "",
@@ -365,6 +419,8 @@ var SearchSubs = {
       keywords: String(o.keywords == null ? "" : o.keywords).trim(),
       categories: String(o.categories == null ? "" : o.categories).trim(),
       authors: this._normAuthors(o.authors).join(", "),
+      issns: issns,
+      journals: journals,
       mode: mode === "any" || mode === "phrase" ? mode : "all",
       exclude: String(o.exclude == null ? "" : o.exclude).trim(),
       maxAgeDays: this._clampAge(o.maxAgeDays),
@@ -405,8 +461,10 @@ var SearchSubs = {
     const keywords = String(o.keywords == null ? "" : o.keywords).trim();
     const categories = String(o.categories == null ? "" : o.categories).trim();
     const authors = this._normAuthors(o.authors).join(", ");
+    const issns = this._normIssns(o.issns);
+    const journals = this._normJournals(o.journals);
     if (!name) return null;
-    if (!keywords && !categories && !authors) return null;
+    if (!keywords && !categories && !authors && !issns.length && !journals.length) return null;
     const list = this._loadList();
     const sub = this._coerce(o, this._newId(list));
     sub.createdAt = Date.now();
@@ -438,7 +496,11 @@ var SearchSubs = {
     if ("keywords" in p) next.keywords = String(p.keywords == null ? "" : p.keywords).trim();
     if ("categories" in p) next.categories = String(p.categories == null ? "" : p.categories).trim();
     if ("authors" in p) next.authors = this._normAuthors(p.authors).join(", ");
-    if (!next.keywords && !next.categories && !next.authors) return null;
+    if ("issns" in p) next.issns = this._normIssns(p.issns);
+    if ("journals" in p) next.journals = this._normJournals(p.journals);
+    if (!next.keywords && !next.categories && !next.authors
+      && !(Array.isArray(next.issns) && next.issns.length)
+      && !(Array.isArray(next.journals) && next.journals.length)) return null;
     if ("sources" in p) next.sources = this._normSources(p.sources);
     if ("mode" in p) {
       const m = String(p.mode || "all").toLowerCase();
@@ -1148,6 +1210,20 @@ var SearchSubs = {
     for (const c of (e && e.categories) || []) {
       if (cats.indexOf(c) >= 0) { score += 2; reasons.push(c); break; }
     }
+    // 期刊命中（0.69.0）：来源已按 ISSN 过滤，这里给固定加分保证排序稳定。
+    // 只加分不扣分——刊名缩写差异（N Engl J Med）不该让正确结果沉底。
+    const journals = (Array.isArray(sub && sub.journals) ? sub.journals : this._splitList(sub && sub.journals));
+    if (journals.length) {
+      const venue = String((e && e.venue) || "").toLowerCase();
+      for (const j of journals) {
+        const key = j.toLowerCase();
+        if (venue && (venue.indexOf(key) >= 0 || key.indexOf(venue) >= 0)) {
+          score += 6;
+          reasons.push("期刊:" + String((e && e.venue) || j));
+          break;
+        }
+      }
+    }
     // 新近度：7 天内 3 → 0
     try {
       const t = new Date(e && e.published).getTime();
@@ -1197,6 +1273,8 @@ var SearchSubs = {
 
   _condLine(sub) {
     const parts = [];
+    if (Array.isArray(sub.journals) && sub.journals.length) parts.push("期刊：" + sub.journals.join(", "));
+    else if (Array.isArray(sub.issns) && sub.issns.length) parts.push("期刊 ISSN：" + sub.issns.join(", "));
     if (sub.keywords) parts.push("关键词：" + sub.keywords + (sub.mode === "any" ? "（任一）" : sub.mode === "phrase" ? "（短语）" : "（全部）"));
     if (sub.categories) parts.push("分类：" + sub.categories);
     if (sub.authors) parts.push("作者：" + sub.authors);
@@ -1288,7 +1366,11 @@ var SearchSubs = {
     if (!sub) return Object.assign({ ok: false, reason: "no_sub" }, zero);
     if (this._running[id]) return Object.assign({ ok: false, reason: "busy" }, zero);
     if (!this._subSources() && !this._arxiv()) return Object.assign({ ok: false, reason: "no_arxiv" }, zero);
-    if (!sub.keywords && !sub.categories && !sub.authors) return Object.assign({ ok: false, reason: "no_query" }, zero);
+    if (!sub.keywords && !sub.categories && !sub.authors
+      && !(Array.isArray(sub.issns) && sub.issns.length)
+      && !(Array.isArray(sub.journals) && sub.journals.length)) {
+      return Object.assign({ ok: false, reason: "no_query" }, zero);
+    }
 
     this._running[id] = true;
     let added = 0;
@@ -1461,7 +1543,11 @@ var SearchSubs = {
     } else {
       sub = this._coerce(input || {});
     }
-    if (!sub.keywords && !sub.categories && !sub.authors) return { ok: false, entries: [], bySource: {}, reason: "no_query" };
+    if (!sub.keywords && !sub.categories && !sub.authors
+      && !(Array.isArray(sub.issns) && sub.issns.length)
+      && !(Array.isArray(sub.journals) && sub.journals.length)) {
+      return { ok: false, entries: [], bySource: {}, reason: "no_query" };
+    }
     if (!this._subSources() && !this._arxiv()) return { ok: false, entries: [], bySource: {}, reason: "no_arxiv" };
 
     const limit = Math.max(1, Math.min(this.MAX_LIMIT, parseInt(o.limit, 10) || 10));
@@ -1874,10 +1960,230 @@ var SearchSubs = {
     };
   },
 
+  /* ================== 期刊订阅（0.69.0） ==================
+   *
+   * 用户痛点：想追一本刊的新文章，以前要么去官网找 RSS（地址每题不同），要么自己查 ISSN
+   * 再拼检索式。这里把「找刊 → 点一下 → 每天自动收」压成三步以内：
+   *   journalCatalog()  内置目录（500+ 种，按学科分组，带中文别名）
+   *   journalFind()     本地即时过滤（输入即出结果，不联网）
+   *   journalSearch()   本地 + OpenAlex Sources（3 万+ 刊，目录外兜底）
+   *   subscribeJournals() 一键批量创建，默认每天 08:00 / 近 30 天 / 最多 10 条 / 自动入库
+   */
+
+  /** 内置目录快照（只读副本；模块缺位时返回空壳，面板自动只走在线搜索） */
+  journalCatalog() {
+    let cat = null;
+    try { if (typeof JournalCatalog !== "undefined" && JournalCatalog) cat = JournalCatalog; } catch (e) { cat = null; }
+    const subjects = [];
+    if (cat && Array.isArray(cat.subjects)) {
+      for (const s of cat.subjects) {
+        if (s && s.id && s.name) subjects.push({ id: String(s.id), name: String(s.name) });
+      }
+    }
+    const list = [];
+    if (cat && Array.isArray(cat.list)) {
+      for (const j of cat.list) {
+        if (!j || !j.n || !j.i) continue;
+        const issn = this._normIssns([j.i])[0] || "";
+        if (!issn) continue;
+        list.push({
+          name: String(j.n),
+          issn: issn,
+          subject: String(j.s || ""),
+          aliases: String(j.a || "").split("|").map((x) => x.trim()).filter(Boolean),
+          publisher: String(j.p || ""),
+          hot: !!j.h,
+        });
+      }
+    }
+    return { subjects: subjects, list: list };
+  },
+
+  _journalSubjectName(id) {
+    const key = String(id || "");
+    if (!key) return "";
+    const cat = this.journalCatalog();
+    for (const s of cat.subjects) if (s.id === key) return s.name;
+    return "";
+  },
+
+  /** 目录条目 → 面板统一行（目录 / 在线两种来源同形状） */
+  _journalRow(it, online) {
+    return {
+      name: String(it.name || ""),
+      issn: String(it.issn || ""),
+      issns: it.issn ? [String(it.issn)] : [],
+      subject: String(it.subject || ""),
+      subjectName: this._journalSubjectName(it.subject),
+      publisher: String(it.publisher || ""),
+      aliases: Array.isArray(it.aliases) ? it.aliases : [],
+      hot: !!it.hot,
+      online: !!online,
+    };
+  },
+
+  /**
+   * 本地目录过滤（纯本地、零网络）。
+   * 多词 AND；ISSN 只输数字也能命中（自动忽略连字符）。
+   * @returns {{total:number, items:Array}} total 是命中总数（面板用来提示「还有几条」）
+   */
+  journalFind(q, opts) {
+    const o = opts || {};
+    const limit = Math.max(1, Math.min(200, Number(o.limit) || 40));
+    const raw = String(q == null ? "" : q).replace(/\s+/g, " ").trim().toLowerCase();
+    const terms = raw.split(/[\s,;，；]+/).filter(Boolean);
+    const issnQ = raw.replace(/[^0-9x]/g, "");
+    const cat = this.journalCatalog();
+    // 学科名也要能搜（"临床医学" 是最自然的中文输入），先建一次映射避免逐条回查
+    const subName = {};
+    for (const s of cat.subjects) subName[s.id] = s.name;
+    const hits = [];
+    for (const it of cat.list) {
+      const name = it.name.toLowerCase();
+      const aliasBlob = it.aliases.join(" ").toLowerCase();
+      let score = 0;
+      if (!terms.length) {
+        score = it.hot ? 50 : 10;
+      } else if (issnQ.length >= 4 && it.issn.replace(/-/g, "").indexOf(issnQ) >= 0) {
+        score = 90;
+      } else {
+        const blob = name + " " + aliasBlob + " " + it.publisher.toLowerCase() + " " + it.issn
+          + " " + String(subName[it.subject] || "").toLowerCase();
+        const all = terms.every((t) => blob.indexOf(t) >= 0);
+        if (all) {
+          score = 40;
+          if (name === raw) score = 100;
+          else if (name.indexOf(raw) === 0) score = 85;
+          else if (name.indexOf(raw) >= 0) score = 70;
+          else if (aliasBlob.indexOf(raw) >= 0) score = 60;
+          if (it.hot) score += 3;
+        }
+      }
+      if (score > 0) hits.push({ it: it, score: score });
+    }
+    hits.sort((a, b) => (b.score - a.score)
+      || (Number(b.it.hot) - Number(a.it.hot))
+      || a.it.name.localeCompare(b.it.name));
+    return { total: hits.length, items: hits.slice(0, limit).map((x) => this._journalRow(x.it, false)) };
+  },
+
+  /** 该刊是否已有订阅（ISSN 优先；没有 ISSN 才按刊名） */
+  journalSubscribed(issn, name) {
+    const v = this._normIssns([issn])[0] || "";
+    const nm = String(name || "").replace(/\s+/g, " ").trim().toLowerCase();
+    for (const sub of this._loadList()) {
+      if (v && Array.isArray(sub.issns) && sub.issns.indexOf(v) >= 0) return true;
+      if (!v && nm && Array.isArray(sub.journals)
+        && sub.journals.some((j) => String(j).toLowerCase() === nm)) return true;
+    }
+    return false;
+  },
+
+  /** 在线期刊检索：交给 SubSources.lookupJournals（OpenAlex Sources）；失败不抛 */
+  async _journalLookup(q, limit) {
+    const SS = this._subSources();
+    if (!SS || typeof SS.lookupJournals !== "function") return { ok: false, reason: "no_source", items: [] };
+    try {
+      const r = await SS.lookupJournals(q, { limit: limit || 12 });
+      return r || { ok: false, reason: "failed", items: [] };
+    } catch (e) {
+      return { ok: false, reason: "failed", items: [] };
+    }
+  },
+
+  /**
+   * 期刊搜索：本地目录优先；本地零命中（或显式 forceOnline）时再查在线库。
+   * @param {string} q
+   * @param {{limit?:number, online?:boolean}} [opts]
+   * @returns {Promise<{ok:boolean, items:Array, localCount:number, online:boolean, reason:string}>}
+   */
+  async journalSearch(q, opts) {
+    const o = opts || {};
+    const query = String(q == null ? "" : q).replace(/\s+/g, " ").trim();
+    const limit = Math.max(1, Math.min(60, Number(o.limit) || 30));
+    const local = this.journalFind(query, { limit: limit });
+    const wantOnline = !!o.online || (query.length >= 2 && local.total === 0);
+    let onlineItems = [];
+    let onlineOk = false;
+    let reason = "";
+    if (wantOnline) {
+      const r = await this._journalLookup(query, Math.min(15, limit));
+      onlineOk = !!r.ok;
+      reason = r.reason || "";
+      for (const x of (r.items || [])) {
+        if (!x || !x.name || !x.issn) continue;
+        onlineItems.push(this._journalRow({
+          name: x.name, issn: this._normIssns([x.issn])[0] || "",
+          subject: "", publisher: x.publisher || "", hot: false,
+        }, true));
+      }
+    }
+    // 合并：本地优先，在线只补本地没有的刊（按 ISSN 去重）
+    const seen = new Set(local.items.map((x) => x.issn).filter(Boolean));
+    const merged = local.items.slice();
+    for (const x of onlineItems) {
+      if (x.issn && seen.has(x.issn)) continue;
+      if (x.issn) seen.add(x.issn);
+      merged.push(x);
+      if (merged.length >= limit) break;
+    }
+    // total 与 journalFind 同语义（「这次一共找到多少」），只是在线补充部分的真实总量
+    // 拿不到（OpenAlex 只回前 N 条），因此这里等于返回条数；面板只把它当提示文案用。
+    return { ok: true, items: merged, total: merged.length, localCount: local.total, online: onlineOk, reason: reason };
+  },
+
+  /**
+   * 一键订阅一批期刊（面板「订阅」/「订阅所选」）。
+   * 默认值就是「订阅一本刊」最合理的形态：每天 08:00 看一次、只取近 30 天、每次最多 10 条、
+   * 命中直接入库、有新增弹通知。用户之后可在列表里改成每周或仅手动。
+   * @param {Array<{name:string, issn:string}>} items
+   * @param {{freq?:string, dailyTime?:string, maxAgeDays?:number, max?:number,
+   *          autoImport?:boolean, notify?:boolean}} [opts]
+   * @returns {{ok:boolean, created:Array, skipped:Array}}
+   */
+  subscribeJournals(items, opts) {
+    const o = opts || {};
+    const list = Array.isArray(items) ? items : [];
+    const created = [];
+    const skipped = [];
+    const seenIssn = new Set();
+    for (const it of list.slice(0, 20)) {
+      const name = String((it && (it.name || it.n)) || "").replace(/\s+/g, " ").trim();
+      const issn = this._normIssns([(it && (it.issn || it.i)) || ""])[0] || "";
+      if (!name) { skipped.push({ name: "", reason: "no_name" }); continue; }
+      if (!issn) { skipped.push({ name: name, reason: "no_issn" }); continue; }
+      if (seenIssn.has(issn) || this.journalSubscribed(issn, name)) {
+        skipped.push({ name: name, reason: "exists" });
+        continue;
+      }
+      seenIssn.add(issn);
+      let sub = null;
+      try {
+        sub = this.add({
+          name: name.length > 40 ? name.slice(0, 40) : name,
+          issns: [issn],
+          journals: [name],
+          sources: ["openalex", "crossref"],
+          freq: o.freq || "daily",
+          dailyTime: o.dailyTime || "08:00",
+          maxAgeDays: o.maxAgeDays === undefined ? 30 : o.maxAgeDays,
+          max: o.max || 10,
+          autoImport: o.autoImport === undefined ? true : !!o.autoImport,
+          notify: o.notify === undefined ? true : !!o.notify,
+        });
+      } catch (e) {
+        sub = null;
+      }
+      if (sub) created.push(sub);
+      else skipped.push({ name: name, reason: "write_failed" });
+    }
+    return { ok: created.length > 0, created: created, skipped: skipped };
+  },
+
   /* ================== 导出 / 导入（剪贴板；多机同步、点对点分享） ================== */
 
   /** 导出时会带上的配置字段（顺序即 JSON 里的顺序，便于人工核对） */
-  EXPORT_FIELDS: ["name", "enabled", "sources", "keywords", "categories", "authors", "mode", "exclude",
+  EXPORT_FIELDS: ["name", "enabled", "sources", "keywords", "categories", "authors", "issns", "journals", "mode", "exclude",
     "maxAgeDays", "freq", "dailyTime", "weekdays", "max", "autoImport", "notify", "aiRerank", "aiDigest", "seedProfile"],
 
   /**
@@ -1951,7 +2257,9 @@ var SearchSubs = {
     for (const item of arr) {
       if (!item || typeof item !== "object" || Array.isArray(item)) { skipped++; continue; }
       const sub = this._coerce(item, "");
-      if (!sub.name || (!sub.keywords && !sub.categories && !sub.authors)) { skipped++; continue; }
+      if (!sub.name || (!sub.keywords && !sub.categories && !sub.authors
+        && !(Array.isArray(sub.issns) && sub.issns.length)
+        && !(Array.isArray(sub.journals) && sub.journals.length))) { skipped++; continue; }
       const nk = nameKey(sub);
       if (names.has(nk)) { skipped++; continue; }
       sub.id = this._newId(list.concat(fresh));

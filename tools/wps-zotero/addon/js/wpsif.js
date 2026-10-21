@@ -26,7 +26,7 @@ const zc_consts = {
 }
 
 function zc_alert(msg) {
-    alert(`WPS-Zotero: ${msg}`);
+    alert(`Zotero 引用：${msg}`);
 }
 
 /**
@@ -45,7 +45,7 @@ function zc_getDocumentInDocuments(doc) {
             return doc1;
         }
     }
-    throw new Error("Can't find document in collection!");
+    throw new Error("在当前文档集合里找不到该文档（文档 ID 可能已失效）。");
 }
 
 // Was desgined to contain the records of all opening documents.
@@ -832,12 +832,12 @@ function zc_replaceFieldRichText(field, text, bibStyle) {
             zc_insertBibEntries(range, text, bibStyle_);
         }
         else {
-            range.InsertAfter("Missing bibliography formatting style, please restart Zotero and click update");
+            range.InsertAfter("缺少文献表格式样式：请重启 Zotero，再点一次「刷新」");
         }
     }
     else {
         ret = zc_insertRichText(range, text);
-        if (!ret) range.InsertAfter('{Error}');
+        if (!ret) range.InsertAfter('{错误}');
     }
     // Remove the guarding <
     if (field.Result.Text.length > 1) {
@@ -951,12 +951,12 @@ var zc_wps = {
             zc_alert(msg);
             r = 1;
         } else if (buttons <= 2) {
-            r = confirm('WPS-Zotero: ' + msg) ? 1 : 0;
+            r = confirm('Zotero 引用：' + msg) ? 1 : 0;
         } else {
             // TODO: Make a three button dialog.
-            r = confirm('WPS-Zotero: ' + msg + '\n\n' + "(There are 3 options: 'ok', 'no' and 'cancel', this is page 1/2, 'no' and 'cancel' can be chosen by selecting 'cancel' to open another dialog)");
+            r = confirm('Zotero 引用：' + msg + '\n\n' + '（这里有 3 个选项：确定 / 否 / 取消。这是第 1 页，共 2 页；选「取消」可进入下一页，在那里选择「否」或「取消」）');
             if (!r) {
-                r = confirm('WPS-Zotero: ' + msg + '\n\n' + "(There are 3 options, this is page 2/2, now 'ok' and 'cancel' represents 'no' and 'cancel')");
+                r = confirm('Zotero 引用：' + msg + '\n\n' + '（第 2 页，共 2 页：此时「确定」代表「否」，「取消」代表「取消」）');
                 r = r ? 1 : 0;
             } else {
                 r = 2;
@@ -992,7 +992,7 @@ var zc_wps = {
         const client = zc_getClientById(docId);
         const field = client.getField(fieldId);
         if (!field || field.Index < 1) {
-            throw new Error(`field with the id of ${fieldId} is not valid!`);
+            throw new Error(`引文域 ${fieldId} 无效（域代码可能被手工编辑破坏，建议对该处重新插入引文）。`);
         }
         field.Code.Text = code_;
     },
@@ -1137,7 +1137,7 @@ var zc_wps = {
         range.Collapse(wps.Enum.wdCollapseEnd);
         range.InsertParagraph();
         range.Collapse(wps.Enum.wdCollapseEnd);
-        range.InsertAfter('The Zotero citations in this document have been converted to a format that can be safely transferred between word processors. Open this document in a supported word processor and press Refresh in the Zotero plugin to continue working with the citations.');
+        range.InsertAfter('本文档中的 Zotero 引文已转换为可在文字处理器之间安全传递的格式。请用支持的文字处理器打开本文档，并在 Zotero 插件里点一次「刷新」，即可继续编辑引文。');
         range.Collapse(wps.Enum.wdCollapseEnd);
         range.InsertParagraph();
         range.Collapse(wps.Enum.wdCollapseEnd);

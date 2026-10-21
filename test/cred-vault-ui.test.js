@@ -276,7 +276,7 @@ function resetDom() {
   const tOut = mainText();
   ok(!tOut.includes('sk-UI-SECRET-9999'), 'G5 未登录不显示任何值');
   ok(tOut.includes('登录'), 'G6 未登录提示去登录', tOut.slice(0, 120));
-  ok(buttons(nodes.get('v-main'), '去登录').length === 1, 'G7 未登录有登录按钮');
+  ok(buttons(nodes.get('v-main'), '去登录 / 注册').length === 1, 'G7 未登录有登录/注册按钮');
 
   if (fails.length) {
     console.error(`\n✗ 账号与密钥窗口烟测失败 ${fails.length} 项 / 通过 ${pass} 项`);

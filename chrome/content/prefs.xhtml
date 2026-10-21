@@ -12,7 +12,7 @@
      样式在 prefs.css（经 register 的 stylesheets 参数随面板加载——官方推荐通道），
      配色经 CSS 变量随系统明暗主题切换；全部选择器以 .pp- 前缀收在 .pp-root 作用域内。 -->
 <!-- 0.38.0 折叠式：卡片 = 可折叠分组（.pp-fold），展开状态记在 prefsFoldOpen pref。 -->
-<!-- 0.65.0 信息架构重组（本次）：设置项增至 18 组后，按「用户真正要做的事」重新分为 7 类，
+<!-- 0.65.0 信息架构重组：设置项增至 19 组后，按「用户真正要做的事」重新分为 7 类，
      每类带标题 + 计数，顶部提供「搜索 + 全部展开/收起 + 大类直达」工具条：
        ① 账号与会员   ② AI 能力      ③ 阅读与翻译   ④ 文献获取
        ⑤ 条目与标签   ⑥ 界面与效率   ⑦ 数据与同步
@@ -35,7 +35,7 @@
       <html:button id="pp-prefs-search-clear" class="pp-search-clear" title="清空搜索" style="display:none;">×</html:button>
     </html:div>
     <html:div class="pp-toolbar-actions">
-      <html:span id="pp-pref-count" class="pp-count">18 项 · 7 类</html:span>
+      <html:span id="pp-pref-count" class="pp-count">19 项 · 7 类</html:span>
       <html:button id="pp-recommend" class="pp-btn pp-btn-sm" title="把「推荐项」一次改齐（先列出将要修改的项）">⚡ 推荐配置</html:button>
       <html:button id="pp-wizard-open" class="pp-btn pp-btn-sm" title="重新运行首次使用向导（登录 / 通道 / 翻译）">首次使用向导</html:button>
       <html:button id="pp-fold-expand" class="pp-btn pp-btn-sm">全部展开</html:button>
@@ -48,12 +48,16 @@
   <!-- 大类直达（由 prefs-hotkeys.js 按 .pp-cat-label 动态生成，点击滚动定位并展开首张卡） -->
   <html:div id="pp-anchor-nav" class="pp-anchor-nav"></html:div>
 
+  <!-- 搜索 0 命中空态（0.68.4）：默认隐藏，由 prefs-fold.js 的 apply() 按命中数开关。
+       没有它时「搜了个不存在的词」表现为整屏空白，用户以为面板坏了。 -->
+  <html:div id="pp-prefs-empty" class="pp-empty" style="display:none;">没有匹配的设置项 —— 试试「额度」「翻译」「同步」「快捷键」</html:div>
+
   <!-- ============ 分类 · 账号与会员（1 项） ============ -->
   <html:div class="pp-cat-label"><html:span class="pp-cat-name">账号与会员</html:span><html:span class="pp-cat-count">1 项</html:span></html:div>
-  <html:div class="pp-card pp-fold" data-fold="account" data-search-strings-raw="账号 登录 注册 会员 余额 订单 激活码 设备 account login register membership balance order redeem">
+  <html:div class="pp-card pp-fold" data-fold="account" data-search-strings-raw="账号 登录 注册 会员 余额 订单 激活码 设备 account login register membership balance order redeem 邮箱 密码 找回">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">👤</html:span><html:span class="pp-card-title">账号与会员</html:span>
-      <html:span class="pp-card-desc">登录后使用官方 AI 模型（按额度扣费）；会员权益、AI 额度与登录设备都在这一张卡里</html:span>
+      <html:span class="pp-card-desc">登录或注册后使用官方 AI 模型（按额度扣费）；会员权益、AI 额度与登录设备都在这一张卡里</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
@@ -225,8 +229,10 @@
           </html:div>
           <!-- 0.60.2 免费版 vs 专业版对照表：把「会员与非会员到底差在哪」一次说清。
              内容按**真实门控**写，不照抄营销文案：除了 AI 额度 / 模型范围 /
-             第三方文献源（试验）与支持方式，其余核心功能免费版同样可用。 -->
-        <html:div id="pp-mb-compare" class="pp-mb-compare">
+             第三方文献源（试验）与支持方式，其余核心功能免费版同样可用。
+             0.68.4：默认收起（8 行表常驻会把「当前套餐 / 升级」挤出首屏），点标题展开。 -->
+        <html:span id="pp-mb-compare-toggle" class="pp-link" role="button" tabindex="0" aria-expanded="false">免费版 vs 专业版差异 ▾</html:span>
+        <html:div id="pp-mb-compare" class="pp-mb-compare" style="display:none;">
           <html:div class="pp-mb-compare-head">免费版 vs 专业版</html:div>
           <html:table>
             <html:thead>
@@ -603,7 +609,7 @@
 
   <!-- ============ 分类 · 阅读与翻译（3 项） ============ -->
   <html:div class="pp-cat-label"><html:span class="pp-cat-name">阅读与翻译</html:span><html:span class="pp-cat-count">3 项</html:span></html:div>
-  <html:div class="pp-card pp-fold" data-fold="translate" data-search-strings-raw="翻译 引擎 术语表 目标语言 translate engine glossary language">
+  <html:div class="pp-card pp-fold" data-fold="translate" data-search-strings-raw="翻译 引擎 术语表 目标语言 translate engine glossary language 字体 字号 语言">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">🌐</html:span><html:span class="pp-card-title">翻译引擎与术语表</html:span>
       <html:span class="pp-card-desc">划词、全文对照、标题摘要共用一套引擎；可选 AI 大模型、免费引擎或自填密钥，术语表保证全文一致</html:span>
@@ -854,7 +860,7 @@
 
   <!-- ============ 分类 · 文献获取（4 项） ============ -->
   <html:div class="pp-cat-label"><html:span class="pp-cat-name">文献获取</html:span><html:span class="pp-cat-count">4 项</html:span></html:div>
-  <html:div class="pp-card pp-fold" data-fold="cnki" data-search-strings-raw="知网 CNKI 登录 账号 校园网 IP 授权 验证 转换器 cnki login campus verify translator">
+  <html:div class="pp-card pp-fold" data-fold="cnki" data-search-strings-raw="知网 CNKI 登录 账号 校园网 IP 授权 验证 转换器 cnki login campus verify translator 邮箱 手机号 密码">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">📚</html:span><html:span class="pp-card-title">知网账号与校园网</html:span>
       <html:span class="pp-card-desc">校园网自动识别 IP 授权；非校园网可登录个人账号兜底。浏览器抓取也依赖这里的会话</html:span>
@@ -875,6 +881,7 @@
           <html:input type="password" id="pp-cnki-pass" class="pp-input" placeholder="只存本机 Zotero，不进云端"/>
         </html:div>
       </html:div>
+      <html:div class="pp-hint">也可以存到「账号与密钥」：加密托管到你自己的账号，换机一键取回；那里默认脱敏显示。</html:div>
       <html:div class="pp-row">
         <html:button id="pp-cnki-login-btn" class="pp-btn pp-btn-primary">登录知网</html:button>
         <html:button id="pp-cnki-detect-btn" class="pp-btn pp-btn-sm">检测权限</html:button>
@@ -913,15 +920,32 @@
     </html:div>
   </html:div>
 
-  <html:div class="pp-card pp-fold" data-fold="subscriptions" data-search-strings-raw="订阅 检索 定时 自动入库 arxiv openalex pubmed 速递 推荐 作者 收藏 忽略 通知 反馈 subscription search saved query author notify feedback">
+  <html:div class="pp-card pp-fold" data-fold="subscriptions" data-search-strings-raw="订阅 检索 定时 自动入库 arxiv openalex pubmed 速递 推荐 作者 收藏 忽略 通知 反馈 期刊 杂志 刊 一键订阅 journal journals issn 期刊订阅 subscription search saved query author notify feedback 价格 续费 邮件">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">📡</html:span><html:span class="pp-card-title">检索订阅</html:span>
-      <html:span class="pp-card-desc">按研究领域推荐主题（含作者追踪），一句话建订阅；先试跑预览，再定时多源检索、去重入库、生成速递</html:span>
+      <html:span class="pp-card-desc">按期刊一键订阅（500+ 种内置、3 万+ 可搜）；也可按研究领域推荐主题（含作者追踪），一句话建订阅；定时多源检索、去重入库、生成速递</html:span>
       <html:span class="pp-fold-arrow">▾</html:span>
     </html:div>
     <html:div class="pp-card-body">
-      <!-- 3c2.1 智能推荐 -->
+      <!-- 3c2.0 按期刊订阅（0.69.0）：内置 500+ 种期刊目录 + 在线搜 3 万+ 刊，点一下就订阅 -->
       <html:div class="pp-sub" style="margin-top:0;">
+        <html:div class="pp-sub-title">按期刊订阅</html:div>
+        <html:div class="pp-hint">不用去期刊官网找 RSS、不用查 ISSN：输入刊名（中文名、缩写、ISSN 都认），点「订阅」即可。默认每天 08:00 取近 30 天新文章、最多 10 条，可在下方列表改成每周或仅手动。</html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center;">
+          <html:input id="pp-sub-journal-q" class="pp-input pp-grow" style="min-width:280px;" placeholder="搜期刊：Nature / 柳叶刀 / NEJM / 0028-4793 / 临床医学"/>
+          <html:button id="pp-sub-journal-search" class="pp-btn pp-btn-sm">在线搜索</html:button>
+          <html:span id="pp-sub-journal-msg" class="pp-msg"></html:span>
+        </html:div>
+        <html:div id="pp-sub-journal-subjects" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></html:div>
+        <html:div id="pp-sub-journal-list" class="pp-journal-list"></html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center;">
+          <html:button id="pp-sub-journal-subscribe" class="pp-btn pp-btn-primary pp-btn-sm" disabled="disabled">订阅所选</html:button>
+          <html:span id="pp-sub-journal-sel" class="pp-hint">未选择期刊</html:span>
+        </html:div>
+      </html:div>
+
+      <!-- 3c2.1 智能推荐 -->
+      <html:div class="pp-sub" style="margin-top:12px;">
         <html:div class="pp-sub-title">根据你的研究领域推荐</html:div>
         <html:div class="pp-hint">扫描库内文献的标题 / 标签 / 摘要，给出可解释的主题订阅。默认只预览、不创建。</html:div>
         <html:div id="pp-subs-reco" style="margin-top:6px;"></html:div>
@@ -963,6 +987,11 @@
           <html:input id="pp-sub-keywords" class="pp-input" placeholder="关键词（逗号分隔，建议英文）" style="width:240px;"/>
           <html:input id="pp-sub-cats" class="pp-input" placeholder="arXiv 分类（cs.LG,cs.CL）" style="width:180px;"/>
           <html:input id="pp-sub-authors" class="pp-input" placeholder="作者（逗号分隔，最多 6 位）" style="width:220px;"/>
+        </html:div>
+        <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+          <html:input id="pp-sub-journals" class="pp-input pp-grow" style="min-width:320px;" readonly="readonly" placeholder="（可选）期刊条件：用上方「按期刊订阅」添加，ISSN 自动带出，不用手填"/>
+          <html:button id="pp-sub-journals-clear" class="pp-btn pp-btn-sm" style="display:none;" title="只清掉期刊条件，其它条件与频率不变">清空期刊条件</html:button>
+          <html:span class="pp-hint">期刊条件可与关键词叠加，例如「The Lancet + 心肌梗死」只看该刊的相关文章</html:span>
         </html:div>
         <html:div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;align-items:center;">
           <html:span class="pp-hint">来源：</html:span>
@@ -1277,7 +1306,7 @@
     </html:div>
   </html:div>
 
-  <html:div class="pp-card pp-fold" data-fold="enhance" data-search-strings-raw="增强 附件命名 笔记模板 Anki 对照翻译 补全文 OCR 扫描件 识别 文字层 渲染 template anki attachment unpaywall scihub ocr scan render">
+  <html:div class="pp-card pp-fold" data-fold="enhance" data-search-strings-raw="增强 附件命名 笔记模板 Anki 对照翻译 补全文 OCR 扫描件 识别 文字层 渲染 template anki attachment unpaywall scihub ocr scan render 字体 路径 附件 重命名">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">🧰</html:span><html:span class="pp-card-title">工具与增强</html:span>
       <html:span class="pp-card-desc">阅读状态 / 附件命名 / 补全文 / Anki 制卡 / 笔记模板 / 扫描件 OCR</html:span>
@@ -1453,7 +1482,7 @@
     </html:div>
   </html:div>
 
-  <html:div class="pp-card pp-fold" data-fold="uitheme" data-search-strings-raw="界面主题 壁纸 配色 theme wallpaper appearance">
+  <html:div class="pp-card pp-fold" data-fold="uitheme" data-search-strings-raw="界面主题 壁纸 配色 theme wallpaper appearance 字体 颜色 背景 大小">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">🎨</html:span><html:span class="pp-card-title">界面主题与壁纸</html:span>
       <html:span class="pp-card-desc">主题 = 配色 + 壁纸一体包，点击卡片立即应用；与 PDF 阅读主题可独立搭配</html:span>
@@ -1571,7 +1600,7 @@
     </html:div>
   </html:div>
 
-  <html:div class="pp-card pp-fold" data-fold="menu" data-search-strings-raw="菜单 右键 分组 直达 menu context group quick">
+  <html:div class="pp-card pp-fold" data-fold="menu" data-search-strings-raw="菜单 右键 分组 直达 menu context group quick 快捷键 图标">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">🧭</html:span><html:span class="pp-card-title">菜单定制</html:span>
       <html:span class="pp-card-desc">右键菜单与「工具」菜单的结构、分组与高频直达项，所有改动即时生效</html:span>
@@ -1604,7 +1633,7 @@
     </html:div>
   </html:div>
 
-  <html:div class="pp-card pp-fold" data-fold="hotkeys" data-search-strings-raw="快捷键 录制 改键 hotkey shortcut keyboard">
+  <html:div class="pp-card pp-fold" data-fold="hotkeys" data-search-strings-raw="快捷键 录制 改键 hotkey shortcut keyboard 键位 冲突">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">⌨️</html:span><html:span class="pp-card-title">快捷键</html:span>
       <html:span class="pp-card-desc">点击「录制」后按下新组合键即可改键，改动即时生效</html:span>
@@ -1619,7 +1648,7 @@
 
   <!-- ============ 分类 · 数据与同步（1 项） ============ -->
   <html:div class="pp-cat-label"><html:span class="pp-cat-name">数据与同步</html:span><html:span class="pp-cat-count">1 项</html:span></html:div>
-  <html:div class="pp-card pp-fold" data-fold="cloud" data-search-strings-raw="云同步 坚果云 webdav 备份 同步 技能包 安装包 冲突 应用密码 断点续传 nutstore sync backup">
+  <html:div class="pp-card pp-fold" data-fold="cloud" data-search-strings-raw="云同步 坚果云 webdav 备份 同步 技能包 安装包 冲突 应用密码 断点续传 nutstore sync backup 邮箱 密码 日志 恢复 续传 端口 路径 设置项">
     <html:div class="pp-fold-head">
       <html:span class="pp-card-icon">☁️</html:span><html:span class="pp-card-title">云同步与备份</html:span>
       <html:span class="pp-card-desc">设置、AI 对话、技能包与安装包统一走坚果云 WebDAV：增量同步、冲突不丢数据、断点续传</html:span>
@@ -1650,6 +1679,7 @@
           <html:input type="password" id="pp-cloud-token" class="pp-input" placeholder="在坚果云安全设置里生成的应用密码"/>
         </html:div>
       </html:div>
+      <html:div class="pp-hint">也可以存到「账号与密钥」：加密托管到你自己的账号，换机一键取回；那里默认脱敏显示。</html:div>
       <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
         <html:label class="pp-check"><html:input type="checkbox" id="pp-cloud-remember"/> 在本机记住应用密码</html:label>
         <html:button id="pp-cloud-save" class="pp-btn pp-btn-primary">保存并测试</html:button>

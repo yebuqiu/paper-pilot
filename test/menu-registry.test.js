@@ -73,7 +73,7 @@ const ok = (cond, name) => {
 // 0.61.0 +国标参考文献导出 → 51；0.62.0 +Obsidian 导出 → 52；0.63.0 +OCR → 53，
 // 0.63.0 +笔记工具 → 54
 const reg = Menus.ITEM_REGISTRY;
-ok(reg.length === 54, "注册表恰好 54 条（实测 " + reg.length + "；0.63.0 +笔记工具）");
+ok(reg.length === 55, "注册表恰好 55 条（实测 " + reg.length + "；0.63.0 +笔记工具；0.70.0 +标签管理器）");
 
 // ② id 唯一 + group 合法
 const ids = reg.map((i) => i.id);

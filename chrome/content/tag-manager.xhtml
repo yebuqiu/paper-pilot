@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
+<!-- Papilot 标签管理器（0.70.0）
+     为什么要有独立窗口：Zotero 左下角 tag selector 是 React + react-virtualized 虚拟列表
+     （div.tag-selector-item 只渲染可视区，点击=加减筛选条件），既插不进复选框，也不能多选。
+     批量操作只能在独立窗口里做；左下角只保留一个右键入口。
+
+     骨架只留容器，内容全部由 tag-manager.js 动态创建（与 tag-nested 同款做法），
+     避免在这里堆 HTML 命名实体 —— 未定义实体（如常见的空格实体）会让整个窗口空白（§30 守卫）。 -->
+<!DOCTYPE window>
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Papilot · 标签管理"
+        windowtype="papilot:tag-manager"
+        width="1120" height="720">
+
+  <script src="chrome://papilot/content/tag-manager.js"></script>
+
+  <vbox flex="1" style="padding:10px 12px 8px 12px;gap:8px;">
+
+    <!-- 头部：库名 / 概览 / 刷新 / 关闭 -->
+    <hbox id="pp-tm-head" style="align-items:center;gap:8px;">
+      <html:span id="pp-tm-title" style="font-size:14px;font-weight:600;color:var(--fill-primary,#1a1a1a);">标签管理</html:span>
+      <html:span id="pp-tm-lib" style="font-size:11.5px;color:var(--fill-secondary,#6b6b6b);"></html:span>
+      <spacer flex="1"/>
+      <html:span id="pp-tm-summary" style="font-size:11.5px;color:var(--fill-secondary,#6b6b6b);"></html:span>
+      <html:button id="pp-tm-refresh">刷新</html:button>
+      <html:button id="pp-tm-close">关闭</html:button>
+    </hbox>
+
+    <!-- 视图切换 -->
+    <hbox id="pp-tm-views" style="gap:4px;"></hbox>
+
+    <!-- 主区：左列表 / 右操作台 -->
+    <hbox flex="1" style="gap:10px;min-height:0;">
+      <vbox id="pp-tm-left" style="width:430px;flex:none;min-height:0;gap:6px;">
+        <hbox id="pp-tm-filters" style="gap:6px;flex-wrap:wrap;"></hbox>
+        <html:div id="pp-tm-list"
+          style="flex:1;min-height:0;overflow-y:auto;border:1px solid var(--fill-tertiary,#c9c9c9);border-radius:6px;background:var(--material-surface,#fff);color:var(--fill-primary,#1a1a1a);font-size:12.5px;"/>
+        <hbox id="pp-tm-selectbar" style="gap:6px;align-items:center;flex-wrap:wrap;"></hbox>
+      </vbox>
+      <vbox id="pp-tm-right" flex="1" style="min-height:0;min-width:0;">
+        <html:div id="pp-tm-panel"
+          style="flex:1;min-height:0;overflow-y:auto;border:1px solid var(--fill-tertiary,#c9c9c9);border-radius:6px;padding:10px 12px;background:var(--material-surface,#fff);color:var(--fill-primary,#1a1a1a);font-size:12.5px;"/>
+      </vbox>
+    </hbox>
+
+    <!-- 状态栏 -->
+    <hbox id="pp-tm-foot" style="align-items:center;gap:8px;min-height:22px;">
+      <html:span id="pp-tm-status" style="font-size:11.5px;color:var(--fill-secondary,#6b6b6b);"></html:span>
+      <spacer flex="1"/>
+      <html:progress id="pp-tm-progress" max="100" value="0" style="width:180px;height:10px;display:none;"/>
+    </hbox>
+  </vbox>
+</window>

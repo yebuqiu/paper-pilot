@@ -125,7 +125,9 @@ async function makeBridge({ http, appData, prefs = {}, localDir }) {
   await fsp.mkdir(jsaddons, { recursive: true });
   const url = 'https://example.com/papilot-wps-addon.bundle.json';
 
-  /* ① 正常安装 */
+  /* ① 正常安装（顺带验证旧版本目录被清理） */
+  await fsp.mkdir(path.join(jsaddons, 'wps-zotero_0.0.1'), { recursive: true });
+  await fsp.writeFile(path.join(jsaddons, 'wps-zotero_0.0.1', 'index.html'), 'old');
   {
     const { B } = await makeBridge({
       appData,
@@ -143,6 +145,8 @@ async function makeBridge({ http, appData, prefs = {}, localDir }) {
     const svg = await fsp.readFile(path.join(dest, 'images', 'default.svg'), 'utf8');
     includes(svg, '<svg/>', '① 二进制/资源文件内容正确（base64 解码无误）');
     includes((r.report || []).join('|'), '已安装加载项 9.9.9', '① report 说明装到了哪');
+    ok(!fs.existsSync(path.join(jsaddons, 'wps-zotero_0.0.1')), '① ★ 旧版本目录已被清理（避免 WPS 列出两份）');
+    includes((r.report || []).join('|'), '已清理旧版本', '① report 说明清理了哪些旧版本');
   }
 
   /* ② 目录穿越必须被丢弃 */

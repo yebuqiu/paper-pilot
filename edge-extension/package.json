@@ -1,0 +1,16 @@
+{
+  "name": "papilot-edge-reader",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Papilot 学术阅读侧边栏（Microsoft Edge Add-ons 伴生扩展，MVP）",
+  "scripts": {
+    "test": "node test/run.js",
+    "test:e2e": "node test/e2e.js",
+    "check": "node tools/check.js",
+    "pack": "python tools/pack.py"
+  },
+  "devDependencies": {
+    "pdfjs-dist": "3.11.174"
+  }
+}

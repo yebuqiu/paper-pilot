@@ -1,0 +1,26 @@
+<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" onLoad="PPApp.OnAddinLoad">
+    <ribbon startFromScratch="false">
+        <tabs>
+            <tab id="ppcTab" label="Papilot 引用">
+                <group id="ppcCiteGroup" label="引文">
+                    <button id="btnCite" label="插入引文" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true" size="large"
+                            screentip="从 Zotero 检索并插入引文" supertip="标题：插入引文&#10;说明：在右侧窗格检索条目，选中后写入光标处；可多选，同一处引多篇会合并成一个编号组。"/>
+                    <button id="btnBib" label="插入/更新文献表" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true" size="large"
+                            screentip="在文末生成参考文献表" supertip="标题：插入/更新文献表&#10;说明：按当前引文与样式重建文末文献表。"/>
+                    <button id="btnRefresh" label="刷新" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true" size="large"
+                            screentip="重排编号、正文与文献表" supertip="标题：刷新&#10;说明：改了文献库或换了样式后，点它全文重排，并同步「谁引用了谁」的台账。"/>
+                </group>
+                <group id="ppcLinkGroup" label="双向链接">
+                    <button id="btnGoto" label="回到原文" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true" size="large"
+                            screentip="跳到 PDF 的对应页或高亮" supertip="标题：回到原文&#10;说明：光标放在引文里，点它让 Zotero 打开该条目的 PDF 并定位到当初引用的那一页（有标注时精确到高亮）。"/>
+                    <button id="btnFind" label="查看引用" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true" size="large"
+                            screentip="看还有哪些文档引用了它" supertip="标题：查看引用&#10;说明：读取本机台账，列出其它文档对同一文献（同一页）的引用，可直接打开。"/>
+                </group>
+                <group id="ppcHelpGroup" label="帮助">
+                    <button id="btnAbout" label="关于" onAction="PPApp.OnAction" getImage="PPApp.GetImage" visible="true"
+                            screentip="版本与许可" supertip="标题：关于&#10;说明：版本、依赖与许可说明。"/>
+                </group>
+            </tab>
+        </tabs>
+    </ribbon>
+</customUI>

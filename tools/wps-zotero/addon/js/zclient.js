@@ -17,17 +17,17 @@ function zc_createClient(documentId, processor) {
     function requestStatusHint(status) {
         if (status >= 300) {
             if (status < 400) {
-                zc_alert(`Received unexpected redirection message ${status}!`);
+                zc_alert(`收到非预期的重定向响应（HTTP ${status}），请重试；若持续出现请反馈。`);
             }
             else if (status < 500) {
-                zc_alert(`Client error ${status}`);
+                zc_alert(`请求被拒绝（HTTP ${status}）。常见原因：文档 ID 无效，或 Zotero 侧上一次事务没走完——重启 Zotero 后重试。`);
             }
             else {
                 if (status === 503) {
-                    zc_alert('Zotero is serving another program, restart it if this is not the case.');
+                    zc_alert('Zotero 提示正在服务另一个程序（HTTP 503）。若并非如此，请重启 Zotero。');
                 }
                 else {
-                    zc_alert(`Server error ${status}`);
+                    zc_alert(`Zotero 服务端错误（HTTP ${status}），请重启 Zotero 后重试。`);
                 }
             }
         }
@@ -78,12 +78,12 @@ function zc_createClient(documentId, processor) {
         catch (error) {
             state = false;
             console.error('Error occurred:', error);
-            const guide = flag ? '\nYou will have to restart Zotero.' : '';
+            const guide = flag ? '\n请重启 Zotero。' : '';
             if (error.name === 'NetworkError') {
-                zc_alert('Network error occurred, is Zotero running?' + guide);
+                zc_alert('连接不上本地代理或 Zotero。请确认 Zotero 已启动；\n若 Zotero 已在运行，打开 Papilot 设置 →「WPS 集成」→ 点「一键修复」。' + guide);
             }
             else {
-                zc_alert(`Error occurred ${error.name}, please click dev tool, navigate to console and report the issue.` + guide);
+                zc_alert(`发生错误（${error.name}）。请打开开发者工具查看控制台日志，并把它反馈给我们。` + guide);
             }
         }
 
@@ -204,7 +204,7 @@ function zc_createClient(documentId, processor) {
 
         convertPlaceholdersToFields: function(args) {
             // TODO: The meaning of this?
-            zc_alert('convertPlaceholderToFields is not implemented yet!');
+            zc_alert('该文档里的引文是「占位符」形式，本加载项暂不支持批量转成可刷新的域。请在 Word（装有 Zotero 插件）里打开并点一次 Refresh，再回到 WPS 使用。');
             return respond(null);
         },
 

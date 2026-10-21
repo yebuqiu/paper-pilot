@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Papilot 设置</title>
+<link rel="stylesheet" href="options.css">
+</head>
+<body>
+<main class="page">
+  <header class="head">
+    <img src="../../icons/icon48.png" alt="" width="40" height="40">
+    <div>
+      <h1>Papilot 学术阅读侧边栏</h1>
+      <p class="sub">所有配置只保存在本机浏览器；密码不落盘，只换取登录令牌。</p>
+    </div>
+  </header>
+
+  <section class="card">
+    <h2>模型来源</h2>
+    <div class="radio-row">
+      <label class="radio">
+        <input type="radio" name="provider" value="custom">
+        <span><b>自带 API Key</b><em>任何 OpenAI 兼容接口，数据直连该服务商</em></span>
+      </label>
+      <label class="radio">
+        <input type="radio" name="provider" value="papilot">
+        <span><b>Papilot 账号</b><em>走官方网关，按会员额度计费</em></span>
+      </label>
+    </div>
+
+    <div id="custom-panel" class="panel">
+      <div class="grid">
+        <label class="field">
+          <span>接口地址</span>
+          <input id="base-url" type="url" placeholder="https://api.deepseek.com" autocomplete="off">
+          <small>不用带 /v1/chat/completions，填到域名或 /v1 均可。</small>
+        </label>
+        <label class="field">
+          <span>模型名</span>
+          <input id="model" type="text" placeholder="deepseek-chat" autocomplete="off">
+        </label>
+        <label class="field wide">
+          <span>API Key</span>
+          <input id="api-key" type="password" placeholder="sk-…" autocomplete="off">
+          <small>只存在 chrome.storage.local，不参与浏览器账号同步。</small>
+        </label>
+      </div>
+    </div>
+
+    <div id="papilot-panel" class="panel hidden">
+      <div id="account-box" class="account-box">
+        <div id="account-status" class="account-status">未登录</div>
+        <button id="btn-logout" class="ghost hidden">退出登录</button>
+      </div>
+      <div id="login-form" class="grid">
+        <label class="field">
+          <span>邮箱</span>
+          <input id="email" type="email" placeholder="you@example.com" autocomplete="username">
+        </label>
+        <label class="field">
+          <span>密码</span>
+          <input id="password" type="password" placeholder="登录密码" autocomplete="current-password">
+        </label>
+        <div class="field wide">
+          <button id="btn-login" class="primary">登录 Papilot</button>
+          <span id="login-msg" class="msg"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>阅读偏好</h2>
+    <div class="grid">
+      <label class="field">
+        <span>回答语言</span>
+        <select id="lang">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>上下文上限（字）</span>
+        <input id="max-context" type="number" min="4000" max="40000" step="1000">
+        <small>越大越完整，消耗也越高；默认 18,000。</small>
+      </label>
+      <label class="field wide check-line">
+        <input id="bubble" type="checkbox">
+        <span>划词时显示页内气泡（翻译 / 解释 / 存摘录）</span>
+      </label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>术语表</h2>
+    <p class="desc">每行一条，格式 <code>原文 = 译名</code>。回答会严格按表翻译，保证同一篇文章前后一致。</p>
+    <textarea id="glossary" rows="8" spellcheck="false" placeholder="embedding = 嵌入&#10;ablation study = 消融实验&#10;transformer = Transformer"></textarea>
+    <div class="row">
+      <span id="glossary-count" class="muted">0 条</span>
+      <span class="muted">支持 = / → / 制表符 / 冒号 分隔，最多 60 条</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>隐私</h2>
+    <ul class="privacy">
+      <li>只在你主动点击动作或发送问题时，才把<b>当前页正文节选</b>与<b>选中文本</b>发送到你选择的模型接口。</li>
+      <li>不使用遥测、不做行为分析、不读取浏览历史；不申请全站访问权限。</li>
+      <li>登录密码只用于换取令牌，令牌保存在本机；退出登录即清除。</li>
+      <li>解析 PDF 时只在你点击后下载当前文档，不缓存到第三方。</li>
+    </ul>
+  </section>
+
+  <footer class="foot">
+    <button id="btn-save" class="primary">保存设置</button>
+    <span id="save-msg" class="msg"></span>
+    <span class="spacer"></span>
+    <button id="btn-shortcuts" class="ghost">快捷键</button>
+  </footer>
+</main>
+
+<script type="module" src="options.js"></script>
+</body>
+</html>

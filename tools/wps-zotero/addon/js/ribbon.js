@@ -22,7 +22,7 @@ const GLOBAL_MAP = {};
 function OnAddinLoad(ribbonUI) {
     if (typeof (wps.Enum) !== "object") {
         wps.Enum = WPS_Enum;
-        zc_alert('You are using an old version of WPS, this plugin might not work properly!');
+        zc_alert('当前 WPS 版本较旧，这个加载项可能无法正常工作。建议升级 WPS 后重试。');
     }
     if (typeof (wps.ribbonUI) !== "object"){
         wps.ribbonUI = ribbonUI;
@@ -78,7 +78,7 @@ function OnAction(control) {
             zc_clearRegistry();
             break;
         case "btnExport":
-            if (confirm('Convert this document to a format for other word processors to import from? You may want to make a backup first.'))
+            if (confirm('把本文档转换成其它文字处理器可导入的格式？\n建议先备份一份，转换后引文会变成纯文本域。'))
             {
                zc_bind().export();
             }
@@ -92,7 +92,11 @@ function OnAction(control) {
             zc_clearRegistry();
             break;
         case "btnAbout":
-            alert(`WPS-Zotero (${VERSION})\n\nThis add-on is licensed under GPL-3.0: <http://www.gnu.org/licenses/>, it comes with no warranty.\n\nAuthor: Tang, Kewei\nhttps://github.com/tankwyn/WPS-Zotero`);
+            alert(`Zotero 引用 for WPS · Papilot 中文版 ${VERSION}\n\n`
+        + `用法：光标放到正文 → 点「插入/编辑引文」；文末点「插入/编辑文献表」；\n`
+        + `换了样式或改了文献库 → 点「刷新」。\n\n`
+        + `汉化与维护：Papilot\n上游作者：Tang, Kewei\nhttps://github.com/tankwyn/WPS-Zotero\n\n`
+        + `许可：GPL-3.0 <http://www.gnu.org/licenses/>，不提供任何担保。`);
         default:
             break
     }

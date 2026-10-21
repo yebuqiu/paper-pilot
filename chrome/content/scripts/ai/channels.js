@@ -285,7 +285,7 @@ var Channels = {
     this._ensureOfficial(doc);
     if (!doc.channels.some((c) => c && c.id === id)) return { ok: false, error: "通道不存在" };
     if (id === this.OFFICIAL_ID && !Account.isLoggedIn()) {
-      return { ok: false, error: "请先登录 Papilot 账号后再使用官方模型（调用从 AI 额度扣费）" };
+      return { ok: false, error: "请先登录 Papilot 账号后再使用官方模型（还没有账号可在 设置 → Papilot 里点「注册账号」；调用从 AI 额度扣费）" };
     }
     doc.active = id;
     this._save(doc);

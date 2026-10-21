@@ -935,6 +935,24 @@ const flush = () => new Promise((r) => setImmediate(r));
     eq(registry.get('pp-mb-online').style.display, 'none', 'K40 未开通 → 会员单不显示在线支付');
   }
 
+  /* ============ L. 账号邮箱默认脱敏（0.68.3） ============ */
+  {
+    const c2 = boot({});
+    await flush();
+    c2.registry.get('pp-account-refresh').click();   // 触发 renderAccount
+    await flush(); await flush();
+    const emailEl = c2.registry.get('pp-account-email');
+    has(emailEl.textContent, '***', 'L1 ★ 账号邮箱默认脱敏（设置面板是截图/投屏高发界面）');
+    ok(String(emailEl.textContent).indexOf('me@test.local') < 0, 'L2 默认视图不含完整地址', emailEl.textContent);
+    eq(String(emailEl.textContent), 'me***@test.local', 'L3 脱敏保留首 2 字 + 域名（认得出是哪个号）');
+    emailEl.click();
+    await flush();
+    eq(String(emailEl.textContent), 'me@test.local', 'L4 点一下显示完整地址');
+    emailEl.click();
+    await flush();
+    has(emailEl.textContent, '***', 'L5 再点收起');
+  }
+
   function dlgRootFor(reg) { return reg.get('pp-dlg-root'); }
 
   console.log('\n会员面板渲染测试：' + pass + ' 项通过，' + fails.length + ' 项失败');

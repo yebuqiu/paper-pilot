@@ -2,7 +2,7 @@
 
 **给 Zotero 装一个 AI 副驾**：划词翻译、PDF 左右对照译文、库内问答、参考文献一键入库、自动化规则、阅读进度——一个插件覆盖「读文献」的整条链路。
 
-![version](https://img.shields.io/badge/version-0.68.2-blue)
+![version](https://img.shields.io/badge/version-0.70.0-blue)
 ![zotero](https://img.shields.io/badge/Zotero-7%20%7C%208%20%7C%209%20%7C%2010-orange)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
@@ -52,6 +52,7 @@ Papilot 是运行在 **Zotero 7–10** 内的第三方插件，定位是「文�
 - **库内问答（问整个库）**：一句话提问 → 两阶段检索（标题/标签/摘要加权 → 全文索引复核）→ AI 依据候选作答，结论带 `[n]` 引用编号并可点击定位；可限定当前分类、只搜有附件条目，回答可存为库级笔记。
 - **库内检索**：只出候选与命中片段，不调用 AI。
 - **文献发现（arXiv 每日推荐）**：用库内文献建兴趣画像 → 按分类拉最新提交 → 打分排序 → 自动排除已入库；结果可收藏到「arXiv 推荐」分类或存为笔记。默认关闭。
+- **检索订阅**：**按期刊订阅**——内置 525 种跨学科期刊（18 个学科、中文别名，ISSN 已逐条核验），搜中文名 / 缩写 / ISSN 就能一键订阅该刊新文章，不用去期刊官网找 RSS、也不用自己拼检索式；目录外的刊可直接搜 OpenAlex 3 万+ 刊源。也可按库内研究领域推荐主题（含作者追踪）或用一句话建订阅；先试跑预览，定时多源检索（arXiv / OpenAlex / Crossref / Europe PMC / PubMed）、去重入库、生成速递笔记。
 
 ### 2.3 笔记与卡片
 

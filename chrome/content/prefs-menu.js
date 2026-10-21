@@ -13,6 +13,9 @@
  * 写 pref 后由 menus.js 的 pref 观察者即时重建主窗口菜单，本脚本不需要（也不能）
  * 直接操作主窗口 DOM。
  *
+ * ⚠️ 事件纪律（0.68.3）：这里的复选框/下拉都是 `html:input` / `html:select`，
+ *   只会派发 change，**不会**派发 XUL 的 command——绑 command 等于没绑（0.29.0~0.68.2 的 bug）。
+ *
  * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测关键节点，
  *    不存在就延迟重试，否则 null 崩溃会让整个面板永远不 loaded（同 prefs-pane）。
  * ⚠️ 动态创建的节点一律经变量持有，**不要**用 $(…) 去取动态节点，
@@ -83,7 +86,7 @@
       const label = el("label", { class: "pp-check" });
       const cb = el("input", { type: "checkbox" });
       if (!hidden.has(g.id)) cb.setAttribute("checked", "true");
-      cb.addEventListener("command", () => {
+      cb.addEventListener("change", () => {
         const cur = new Set(parseCsv(getPref(PREF.hidden, "")));
         if (cb.checked) cur.delete(g.id);
         else cur.add(g.id);
@@ -97,8 +100,32 @@
   }
 
   /* ---------- 高频直达项下拉 ×3 ---------- */
+  function quickSelects() {
+    return [$("pp-menu-quick-0"), $("pp-menu-quick-1"), $("pp-menu-quick-2")];
+  }
+
+  /**
+   * 下拉变化：写 pref + 重绘（重绘只为刷新其它下拉的「已占用」灰显态）。
+   * ★ 事件只在 wireQuick() 里绑一次（0.68.3）：旧实现把 addEventListener 写在
+   *   renderQuick 里，而 handler 末尾又调 renderQuick → 每次改选都多挂一个监听器，
+   *   监听器数量指数增长（`command` 时代从不触发，所以一直没暴露）。
+   */
+  function onQuickChange() {
+    const cur = quickSelects().map((s) => (s ? s.value : "")).filter(Boolean);
+    const dedup = [...new Set(cur)];
+    setPref(PREF.quick, dedup.join(","));
+    setMsg(zh ? "已更新直达项（右键菜单即时生效）" : "Quick items updated");
+    renderQuick();
+  }
+
+  function wireQuick() {
+    if (wireQuick._done) return;
+    wireQuick._done = true;
+    for (const s of quickSelects()) if (s) s.addEventListener("change", onQuickChange);
+  }
+
   function renderQuick() {
-    const selects = [$("pp-menu-quick-0"), $("pp-menu-quick-1"), $("pp-menu-quick-2")];
+    const selects = quickSelects();
     const cand = quickCandidates();
     if (!cand.length || selects.some((s) => !s)) return;
     const chosen = parseCsv(getPref(PREF.quick, "ai-summary,bilingual-view"));
@@ -115,13 +142,6 @@
         sel.appendChild(opt);
       }
       sel.value = chosen[idx] || "";
-      sel.addEventListener("command", () => {
-        const cur = selects.map((s) => s.value).filter(Boolean);
-        const dedup = [...new Set(cur)];
-        setPref(PREF.quick, dedup.join(","));
-        setMsg(zh ? "已更新直达项（右键菜单即时生效）" : "Quick items updated");
-        renderQuick(); // 重渲染灰显态
-      });
     }
   }
 
@@ -137,6 +157,7 @@
     init._done = true;
     try {
       renderGroups();
+      wireQuick();     // 先绑一次事件，再渲染（renderQuick 内部不再绑）
       renderQuick();
     } catch (e) { /* 渲染失败不影响面板其余部分 */ }
   }

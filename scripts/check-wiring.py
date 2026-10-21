@@ -1251,8 +1251,8 @@ ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
 for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
     ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
 _item_reg_src = menus_js.split("GROUPS:")[0]
-ok(_item_reg_src.count("labelKey:") == 54,
-   "23.7 ★ 注册表恰好 54 条命令（实测 %d；0.53.0 +综述工作台；0.61.0 +国标参考文献导出、0.62.0 +Obsidian 导出、0.63.0 +OCR 与笔记工具；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源）" % _item_reg_src.count("labelKey:"))
+ok(_item_reg_src.count("labelKey:") == 55,
+   "23.7 ★ 注册表恰好 55 条命令（实测 %d；0.53.0 +综述工作台；0.61.0 +国标参考文献导出、0.62.0 +Obsidian 导出、0.63.0 +OCR 与笔记工具、0.70.0 +标签管理器；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源）" % _item_reg_src.count("labelKey:"))
 ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
@@ -1926,8 +1926,8 @@ ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
    "31.4 prefs.xhtml 的 19 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务；0.53.0 检索订阅；0.56.0 云同步；0.68.1 WPS 集成）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
 ok(prefs_xhtml.count('class="pp-card pp-fold"') == 19,
    "31.5 折叠卡片共 19 张（0.49.0 定时任务，0.53.0 检索订阅，0.56.0 云同步，0.68.1 WPS 集成；不多不少，防止漏包一张）")
-ok('pref("extensions.zotero.papilot.prefsFoldOpen", "");' in prefsdef,
-   "31.6 prefs.js 有 prefsFoldOpen 默认值（空 = 全收起）")
+ok('pref("extensions.zotero.papilot.prefsFoldOpen", "account");' in prefsdef,
+   "31.6 prefs.js 有 prefsFoldOpen 默认值（默认展开账号卡；点过全部收起后写空串，记忆优先）")
 ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
    "31.7 prefs-fold.js 读写 prefsFoldOpen 并切换 pp-fold-closed")
 ok(".pp-fold-closed .pp-card-body { display: none; }" in prefs_css,
@@ -3079,8 +3079,8 @@ ok("s.accept(" in _psrc and "s.ignoreEntry(" in _psrc and "feedbackClear" in _ps
    "49.22 ★ 预览卡接了收藏 / 忽略，按钮行接了清空反馈")
 ok('id="pp-subs-feedback-clear"' in prefs_xhtml and "pp-subs-feedback-clear" in _psrc,
    "49.22b 清空反馈学习按钮接线完整")
-ok("关键词、分类、作者至少填一个" in _psrc,
-   "49.22c 表单校验文案同步（作者也算检索条件）")
+ok("关键词、分类、作者、期刊至少要有一个" in _psrc,
+   "49.22c 表单校验文案同步（0.69.0 起期刊也是检索条件）")
 
 # ---------- 50. 0.63.0 PDF 无头渲染 + 视觉 OCR / 笔记工具（A2） ----------
 # 这两条链路都有「静默降级」的失败面，用户侧只表现为「点了没反应」，所以用静态断言钉住：
@@ -3504,6 +3504,42 @@ ok(os.path.exists(os.path.join(ROOT, "test", "prefs-recommend.test.js")),
    "59.11 test/prefs-recommend.test.js 在库")
 ok("prefs-recommend.test.js" in _preflight_src, "59.12 preflight 注册推荐配置测试")
 
+# ---- 59.13~59.16（0.68.3）向导「能打开但用不了 / 老用户反复被弹」回归守卫 ----
+# 真机根因：openDialog 打开的 chrome 窗口没有 Zotero 全局，wizard.js 却裸用 Zotero.Prefs，
+# 于是 pref 读写全失败（wizardDone 永远为空 → 每次启动都弹）且 account/channels 拿不到
+# （登录回「账号模块未就绪」）。静态层必须钉住「作用域只从 window.arguments 来」。
+ok("window.arguments" in _pj and "ARGS.Zotero" in _pj,
+   "59.13 ★ 向导窗口经 window.arguments 取 Zotero（窗口作用域没有 Zotero 全局）")
+ok("Zotero.Prefs.set(PFX" not in _pj and "Zotero.Prefs.get(PFX" not in _pj,
+   "59.14 ★ 向导不裸用 Zotero.Prefs（写入走 pSet → 失败会记进 failed）")
+ok("out.failed" in _pj and "没能保存" in _pj,
+   "59.15 ★ 写入失败在完成页如实列出（不再显示「成功」）")
+ok("_accountRestore" in _mn and "WizardGate.decide" in _mn and "_maybeFirstRunWizard" in _mn,
+   "59.16 ★ 首启闸门等会话恢复后判定：已登录 / 已配通道 → 不弹并补写 skipped")
+_wz_test = io.open(os.path.join(ROOT, "test", "wizard.test.js"), encoding="utf-8").read()
+ok("window.arguments" in _wz_test and "WizardGate" in _wz_test,
+   "59.17 向导测试覆盖窗口作用域与闸门矩阵（不只测纯逻辑）")
+
+# ---- 59.18~59.22（0.68.3）「第一步只给登录」与「选 AI 却必然失败」两个逻辑漏洞 ----
+# 用户原话：首次引导里没有注册选项，极其不合理。向导是新用户唯一会打开的界面，
+# 只给登录 = 没账号的人无路可走；同理未登录却把翻译留在 llm = 第一次用必然失败。
+ok("pp-wz-reg-view" in _wx and 'id="pp-wz-reg"' in _wx and "pp-wz-reg-link" in _wx,
+   "59.18 ★ 向导第一步有注册入口（登录/注册双视图，可互相切换）")
+ok("A.register" in _pj and "needVerify" in _pj,
+   "59.19 ★ 向导复用 account.register，并按 needVerify 决定是否自动登录")
+ok("密码至少 8 位" in _pj and "两次输入的密码不一致" in _pj,
+   "59.20 注册校验与设置面板同标准（≥8 位 / 两次一致 / 邮箱格式）")
+ok("自动改用免费" in _pj and "channelUsable" in _pj,
+   "59.21 ★ 第 3 步：没有可用通道时自动回落免费引擎并说明")
+ok("注册" in _ut and "chatNotLoggedIn" in _ut,
+   "59.22 未登录指引提到注册（AI 未就绪提示是 34 处功能的统一出口）")
+ok("isPro" in _pj and "plan === 'pro'" not in _pj,
+   "59.23 ★ 档位用 account.isPro() 判断（服务端是 'Pro' 大写，比 'pro' 会把专业版显示成免费版）")
+ok("pp-wz-settings" in _wx and "openSettings" in _pj,
+   "59.24 完成页有「打开设置」入口（只写「去设置里改」却不给入口 = 死路）")
+ok("保持当前通道" in _pj and "channelTouched" in _pj,
+   "59.25 ★ 重开向导不改变现有通道（没点过通道卡片 = 保持现状）")
+
 
 # ---------- 60. 0.68.1 WPS 集成（个人版可用：检测 / 一键修复 / 代理） ----------
 # 设计约束：加载项本体是 GPL-3.0，**不随本插件分发**；插件只带自有代码
@@ -3576,6 +3612,275 @@ ok(os.path.exists(os.path.join(ROOT, "test", "wps-bridge-install.test.js")),
    "60.25 test/wps-bridge-install.test.js 在库")
 ok("wps-bridge-install.test.js" in _preflight_src, "60.26 preflight 注册加载项安装桥测试")
 
+# 加载项中文化（1.0.1）：文案回归守卫 + 发布物版本一致性
+_RIBBON = os.path.join(ROOT, "tools", "wps-zotero", "addon", "ribbon.xml")
+_ribbon_src = io.open(_RIBBON, encoding="utf-8").read() if os.path.exists(_RIBBON) else ""
+_ribbon_labels = re.findall(r'label="([^"]+)"', _ribbon_src)
+_cn = [x for x in _ribbon_labels if re.search(r"[一-鿿]", x)]
+ok(len(_ribbon_labels) >= 10 and len(_cn) == len(_ribbon_labels),
+   "60.27 ★ 功能区 label 全部中文（中文化回退守卫）→ 实际 %d/%d" % (len(_cn), len(_ribbon_labels)))
+ok(_ribbon_src.count("screentip=") >= 8 and _ribbon_src.count("supertip=") >= 8,
+   "60.28 每个按钮都带中文悬浮说明 screentip/supertip（英文原名只出现在 supertip 里）")
+_ADDON_VER = os.path.join(ROOT, "tools", "wps-zotero", "addon", "version.js")
+_addon_ver = ""
+if os.path.exists(_ADDON_VER):
+    _m = re.search(r"VERSION\s*=\s*'([^']+)'", io.open(_ADDON_VER, encoding="utf-8").read())
+    _addon_ver = _m.group(1) if _m else ""
+_MANIFEST_ADDON = os.path.join(ROOT, "dist", "papilot-wps-addon.manifest.json")
+if _addon_ver and os.path.exists(_MANIFEST_ADDON):
+    import json as _json2
+    _mv = str(_json2.load(io.open(_MANIFEST_ADDON, encoding="utf-8")).get("version", ""))
+    ok(_mv == _addon_ver,
+       "60.29 ★ 发布物版本与加载项源码一致（忘了重打包会在这里红）→ %s / %s" % (_mv, _addon_ver))
+else:
+    ok(False, "60.29 找不到加载项版本或发布物清单")
+
+
+# ==================== 61. 设置面板交互与隐私（0.68.3） ====================
+# 用户报的两个问题：
+#   ① 「设置里面【直达】不可用」——chip 是 createElementNS(XHTML) 的 **HTML** 按钮，
+#      只派发 click，而脚本按 XUL 习惯绑了 command → 点了永远没反应（静默、无报错）。
+#   ② 「设置里面隐藏账户的邮箱」——账号卡默认明文显示邮箱（没昵称时甚至显示两次）。
+# 静态层盯住「HTML 元素不得用 command」「邮箱必须脱敏」两件事，行为层由
+# test/prefs-anchors.test.js 与 test/membership-panel.test.js（L1~L5）覆盖。
+_PHK = os.path.join(ROOT, "chrome", "content", "prefs-hotkeys.js")
+_PMU = os.path.join(ROOT, "chrome", "content", "prefs-menu.js")
+_PAC = os.path.join(ROOT, "chrome", "content", "prefs-account.js")
+_phk = io.open(_PHK, encoding="utf-8").read() if os.path.exists(_PHK) else ""
+_pmu = io.open(_PMU, encoding="utf-8").read() if os.path.exists(_PMU) else ""
+_pac = io.open(_PAC, encoding="utf-8").read() if os.path.exists(_PAC) else ""
+ok(os.path.exists(_PHK) and os.path.exists(_PMU) and os.path.exists(_PAC),
+   "61.1 设置面板三个脚本在库（hotkeys / menu / account）")
+# 只查「绑定调用」，不误伤注释里的说明文字
+_bad_cmd = []
+for _name, _src in (("prefs-hotkeys.js", _phk), ("prefs-menu.js", _pmu)):
+    for _m in re.finditer(r'addEventListener\(\s*["\']command["\']', _src):
+        _bad_cmd.append(_name + "@" + str(_src[:_m.start()].count("\n") + 1))
+ok(not _bad_cmd, "61.2 ★ 设置面板不得对 HTML 元素绑 command（只派发 click/change）：%s" % (_bad_cmd[:3] or "无"))
+ok('chip.addEventListener("click"' in _phk,
+   "61.3 ★ 直达 chip 绑的是 click（绑 command = 点了没反应）")
+ok("scrollToLabel" in _phk and "scrollTop" in _phk,
+   "61.4 直达有 scrollIntoView 失效时的 scrollTop 兜底（并让出吸顶工具条高度）")
+ok('cb.addEventListener("change"' in _pmu and 'sel.addEventListener("change"' not in _pmu,
+   "61.5 菜单定制：复选框绑 change，下拉只在 wireQuick 里绑一次（renderQuick 内不再挂监听器）")
+ok("wireQuick" in _pmu and "onQuickChange" in _pmu,
+   "61.5b ★ 下拉事件只绑一次（旧实现边渲染边绑 + 末尾重渲染 = 监听器指数增长）")
+ok("function maskEmail" in _pac and "paintEmail" in _pac,
+   "61.6 ★ 账号卡邮箱默认脱敏（maskEmail + paintEmail）")
+ok('$("pp-account-email").textContent = u.email' not in _pac,
+   "61.7 账号卡不再把完整邮箱直接写进界面")
+ok(os.path.exists(os.path.join(ROOT, "test", "prefs-anchors.test.js")),
+   "61.8 test/prefs-anchors.test.js 在库（直达行为冒烟）")
+ok("prefs-anchors.test.js" in _preflight_src, "61.9 preflight 注册直达锚点测试")
+
+# 61.10 工具条计数 vs 真实卡片数（0.68.4）
+# 0.68.1 加「WPS 集成」卡时忘了改计数，工具条写着「18 项」而实际 19 张卡；
+# 各分类的 .pp-cat-count 相加同样是 19。这种纯文案漂移单靠人眼永远看不出来。
+_m_pc = re.search(r'id="pp-pref-count"[^>]*>\s*(\d+)\s*项', prefs_xhtml)
+_hdr_count = int(_m_pc.group(1)) if _m_pc else -1
+_card_count = prefs_xhtml.count('class="pp-card pp-fold"')
+_cat_nums = [int(x) for x in re.findall(r'class="pp-cat-count">\s*(\d+)\s*项', prefs_xhtml)]
+_cat_sum = sum(_cat_nums)
+ok(_hdr_count == _card_count and _cat_sum == _card_count and _card_count > 0,
+   "61.10 ★ 工具条计数 = 实际卡片数 = 各分类计数之和（防止 0.68.1 加卡漏改计数，曾出现 18 vs 19）"
+   " → 工具条 %d / 卡片 %d / 分类和 %d（%s）"
+   % (_hdr_count, _card_count, _cat_sum, "+".join(str(x) for x in _cat_nums)))
+
+# 61.11 搜索空态与索引扩展（0.68.4）
+# 只收「卡片标题 + 说明 + 关键词」时，搜「邮箱」「字体」「价格」「退款」「日志」「恢复」全是 0 命中，
+# 用户结论是「这个功能不存在」。空态文案 + 卡内小标题/字段名入索引，两件事必须同时在库。
+ok('id="pp-prefs-empty"' in prefs_xhtml,
+   "61.11a ★ 搜索 0 命中空态容器 #pp-prefs-empty 在 prefs.xhtml")
+ok(".pp-root .pp-empty" in prefs_css,
+   "61.11b prefs.css 有空态样式 .pp-root .pp-empty（与 .pp-hint 同语气）")
+ok('id="pp-prefs-empty"' in prefs_xhtml and "#pp-prefs-empty + .pp-cat-label" in prefs_css,
+   "61.11c ★ 插入空态节点后补了 #pp-prefs-empty + .pp-cat-label 的相邻选择器（否则首个分类上边距失效）")
+ok('".pp-sub-title"' in _pfold_js and '".pp-label"' in _pfold_js,
+   "61.11d ★ buildIndex 把卡内 .pp-sub-title / .pp-label 一并入索引（否则搜字段名 0 命中）")
+
+# 61.12 直达 × 折叠 × 搜索 三者的联动（0.68.4）
+# 三个静默失败点：① 搜索态下点直达 → 目标全是 display:none，看到空白；
+#                ② 直达展开首卡不写折叠记忆 → 下次开面板又收起、读屏仍报「已折叠」；
+#                ③ 搜索态下点折叠头 → 视觉无变化却静默改写 prefsFoldOpen。
+ok("PapilotPrefsSearch" in _phk and "PapilotPrefsFold" in _phk,
+   "61.12a ★ 直达先清搜索态、再经折叠钩子展开首卡（prefs-hotkeys.js）")
+ok("window.PapilotPrefsFold" in _pfold_js and "pp-searching" in _pfold_js,
+   "61.12b ★ prefs-fold.js 暴露 PapilotPrefsFold 并在搜索态下忽略折叠头点击")
+ok("pp-anchor-active" in _phk and "pp-anchor-active" in prefs_css,
+   "61.12c 直达 chip 有「当前分类」高亮（prefs-hotkeys.js + prefs.css）")
+_anch_nav_block = re.search(r"\.pp-root \.pp-anchor-nav\s*\{([^}]*)\}", prefs_css)
+ok(bool(_anch_nav_block) and "sticky" not in _anch_nav_block.group(1)
+   and "fixed" not in _anch_nav_block.group(1),
+   "61.12d ★ #pp-anchor-nav 不做 sticky/fixed（双吸顶会遮挡分类标签，明确不做）")
+
+# 61.13 P0–P2 十项修订的行为回归（0.68.4）
+# 上一轮的修订全靠临时脚本验证，跑完即删 —— 等价于没有回归网：任何人「顺手简化」
+# 都能把脱敏 / 空态 / 直达联动 / 不静默改 pref 重新挖开，且静态守卫看不出来。
+ok(os.path.exists(os.path.join(ROOT, "test", "prefs-panel-ux.test.js")),
+   "61.13a ★ test/prefs-panel-ux.test.js 在库（P0–P2 修订的行为回归）")
+ok("prefs-panel-ux.test.js" in _preflight_src,
+   "61.13b ★ preflight 注册 prefs-panel-ux 测试（否则新测试永远不跑）")
+
+
+# 62 期刊订阅（0.69.0）：内置目录 + ISSN 检索轴 + 面板一键订阅
+# 这条链路的静默失败点：① 目录没被打包 / 加载顺序错 → 面板首次渲染空白；
+# ② ISSN 拼进 search 而不是 filter → 把整库按日期倒序拉回来（用户以为订到了）；
+# ③ 面板节点缺失 → 整块不渲染（脚本里都有判空，所以不会报错）；
+# ④ 新测试没进 preflight → 等于没有回归网。
+_jc_path = os.path.join(ROOT, "chrome", "content", "scripts", "data", "journals.js")
+ok(os.path.exists(_jc_path),
+   "62.1 ★ 内置期刊目录在 chrome/content/scripts/data/journals.js（必须随包走）")
+_js_cat = io.open(_jc_path, encoding="utf-8").read() if os.path.exists(_jc_path) else ""
+_cat_rows = _js_cat.count('{ n: "')
+ok(_cat_rows >= 400, "62.2 ★ 目录规模 ≥ 400 种（当前 %d）" % _cat_rows)
+ok("var JournalCatalog" in _js_cat and "module.exports" in _js_cat,
+   "62.3 目录暴露全局 JournalCatalog（Node 侧可 require 做校验）")
+ok("subjects: [" in _js_cat and _js_cat.count('{ id: "') >= 15,
+   "62.4 目录按学科分组（≥15 个学科，面板 chips 靠它）")
+
+_main_js = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "main.js"), encoding="utf-8").read()
+_at_data = _main_js.find('"data/journals.js"')
+_at_src = _main_js.find('"features/sub-sources.js"')
+_at_subs = _main_js.find('"features/search-subs.js"')
+ok(_at_data > 0 and _at_data < _at_src and _at_data < _at_subs,
+   "62.5 ★ main.js 先加载期刊目录，再加载 sub-sources / search-subs（顺序错 → 首次渲染空白）")
+
+_js_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "sub-sources.js"),
+                  encoding="utf-8").read()
+ok("normIssn(raw)" in _js_src and "issnsOf(sub)" in _js_src,
+   "62.6 ★ ISSN 归一与 issnsOf 在数据源层（单一真源，UI 不自己解析）")
+ok("primary_location.source.issn:" in _js_src,
+   "62.7 ★ OpenAlex 用 ISSN filter（不是把 ISSN 丢进 search）")
+ok('filters.push("issn:' in _js_src, "62.8 ★ Crossref 用 issn filter")
+ok('ISSN:"' in _js_src, '62.9 ★ Europe PMC 用 ISSN:"xxxx-xxxx" 原生字段')
+ok('"[ta]"' in _js_src, "62.10 PubMed 期刊走刊名 [ta]（PubMed 没有 ISSN 检索字段）")
+ok("lookupJournals" in _js_src and "/sources/issn:" in _js_src,
+   "62.11 ★ 在线期刊检索（OpenAlex Sources，目录外 3 万+ 刊）")
+
+_js_ss = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "features", "search-subs.js"),
+                 encoding="utf-8").read()
+ok("_normIssns(raw)" in _js_ss and "journals: this._normJournals" in _js_ss,
+   "62.12 ★ 订阅模型含 issns / journals（旧订阅缺字段 → 空值，行为不变）")
+ok("journalCatalog()" in _js_ss and "journalFind(q, opts)" in _js_ss,
+   "62.13 本地目录过滤 API")
+ok("journalSearch(q, opts)" in _js_ss and "_journalLookup" in _js_ss,
+   "62.14 ★ 本地 + 在线合并检索")
+ok("subscribeJournals(items, opts)" in _js_ss and "journalSubscribed(issn, name)" in _js_ss,
+   "62.15 ★ 一键订阅与已订阅判重")
+ok("!issns.length && !journals.length" in _js_ss,
+   "62.16 ★ add 放行「只有期刊」的订阅（不再强制关键词）")
+
+_js_ps = io.open(os.path.join(ROOT, "chrome", "content", "prefs-subs.js"), encoding="utf-8").read()
+ok("renderJournalSubjects" in _js_ps and "loadJournalList" in _js_ps and "doSubscribeJournals" in _js_ps,
+   "62.17 ★ 面板期刊区块三段（学科 chips / 搜索 / 订阅）")
+for _nid in ["pp-sub-journal-q", "pp-sub-journal-search", "pp-sub-journal-subjects",
+             "pp-sub-journal-list", "pp-sub-journal-subscribe", "pp-sub-journal-sel",
+             "pp-sub-journals", "pp-sub-journals-clear"]:
+    ok('id="%s"' % _nid in prefs_xhtml, "62.18 面板节点 %s" % _nid)
+ok("期刊条件可与关键词叠加" in prefs_xhtml,
+   "62.19 表单说明「期刊可与关键词叠加」（用户不必猜两个轴能不能一起用）")
+ok("期刊 杂志" in prefs_xhtml and "按期刊订阅" in prefs_xhtml,
+   "62.20 卡片可被「期刊 / 杂志」搜到（搜索索引含新关键词）")
+ok("editIssns" in _js_ps and "pp-sub-journals-clear" in _js_ps,
+   "62.21 ★ 编辑订阅保留 ISSN（清空走单独按钮，避免「改刊名但 ISSN 没变」）")
+ok("test/journal-catalog.test.js" in _preflight_src,
+   "62.22 ★ preflight 注册期刊目录测试（否则新套件永远不跑）")
+_jc_test_path = os.path.join(ROOT, "test", "journal-catalog.test.js")
+_jc_test = io.open(_jc_test_path, encoding="utf-8").read() if os.path.exists(_jc_test_path) else ""
+ok("issnValid" in _jc_test and "mod 11" in _jc_test,
+   "62.23 ★ 目录测试校验 ISSN 校验位（手写错号是最常见的数据错误）")
+ok("名称不重复" in _jc_test and "ISSN 不重复" in _jc_test,
+   "62.24 目录测试覆盖重复名称 / 重复 ISSN")
+
+# ==================== 63. 标签管理（0.70.0） ====================
+# 设计前提（改代码前先读这段，否则很容易"好心办坏事"）：
+#   · Zotero 10 的 tag selector 是 React + react-virtualized 虚拟列表
+#     （components/tagSelector/tagSelectorList.js），div.tag-selector-item 只渲染可视区，
+#     点击 = 加/减筛选条件。**不能**在 chip 里插复选框，也不能靠遍历 DOM 统计标签。
+#   · 原生 #tag-menu 已有「指派颜色/重命名/拆分/删除」四条单标签操作，
+#     所以本功能的增量只可能是批量、规则化、可撤销、体检 —— 不要重复实现单条删除。
+#   · removeFromLibrary 直接 DELETE itemTags，**不可撤销**，删除前必须 snapshot。
+_TM_OPS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "tag-ops.js")
+_TM_MENU = os.path.join(ROOT, "chrome", "content", "scripts", "features", "tag-menu.js")
+_TM_UI = os.path.join(ROOT, "chrome", "content", "tag-manager.js")
+_TM_XHTML = os.path.join(ROOT, "chrome", "content", "tag-manager.xhtml")
+ok(os.path.exists(_TM_OPS), "63.1 ★ 标签数据层 tag-ops.js 存在（必须随包走）")
+ok(os.path.exists(_TM_MENU), "63.2 ★ 左下角入口 tag-menu.js 存在")
+ok(os.path.exists(_TM_UI) and os.path.exists(_TM_XHTML), "63.3 ★ 管理器窗口脚本与 xhtml 成对存在")
+
+_tops_src = io.open(_TM_OPS, encoding="utf-8").read() if os.path.exists(_TM_OPS) else ""
+_tmenu_src = io.open(_TM_MENU, encoding="utf-8").read() if os.path.exists(_TM_MENU) else ""
+_tmui_src = io.open(_TM_UI, encoding="utf-8").read() if os.path.exists(_TM_UI) else ""
+_tmx_src = io.open(_TM_XHTML, encoding="utf-8").read() if os.path.exists(_TM_XHTML) else ""
+
+ok("var TagOps = {" in _tops_src, "63.4 数据层暴露全局 TagOps")
+ok("planRename" in _tops_src and "planMerge" in _tops_src and "planAddParent" in _tops_src,
+   "63.5 ★ 改名/合并/层级都是「先出计划再执行」（plan* 纯函数）")
+ok("async snapshot(" in _tops_src and "async undo(" in _tops_src,
+   "63.6 ★ 快照与撤销成对存在（删除不可逆，只能靠快照回滚）")
+ok("removeFromLibrary" in _tops_src, "63.7 删除走 Zotero.Tags.removeFromLibrary")
+ok("getSelectedLibraryID" in _tops_src,
+   "63.8 ★ 库 ID 取当前选中库（TagCurator 写死 userLibraryID 的坑不再重犯）")
+ok("mode:" not in _tops_src,
+   "63.9 ★ IOUtils.writeUTF8 不传 mode（传了会截断/权限异常，项目铁律 4）")
+ok("isProtected" in _tops_src and "#状态/*" in _tops_src,
+   "63.10 ★ 保护名单默认含系统标签（#状态/*、#治理/*）")
+
+# 装配：三个文件都得进 main.js 的加载清单，且顺序不能反（tag-menu 的 install 直接读 TagOps）
+ok('"features/tag-ops.js"' in mainjs and '"features/tag-menu.js"' in mainjs,
+   "63.11 ★ main.js 装配清单含 tag-ops.js 与 tag-menu.js")
+_i_ops = mainjs.find('"features/tag-ops.js"')
+_i_menu = mainjs.find('"features/tag-menu.js"')
+ok(_i_ops > 0 and _i_menu > _i_ops,
+   "63.12 ★ tag-ops 先于 tag-menu 加载（反了 install 时 TagOps 未定义 → 右键入口静默失效）")
+ok("this.tagOps = " in mainjs and "this.tagMenu = " in mainjs,
+   "63.13 main.js 把 TagOps / TagMenu 挂到 Zotero.Papilot（排障入口）")
+ok("TagMenu.install()" in mainjs, "63.14 ★ 启动时安装左下角右键钩子")
+ok("TagMenu.unregister()" in mainjs, "63.15 ★ 卸载时摘钩子（否则禁用/重装后菜单重复）")
+
+# 左下角注入：必须挂原生 #tag-menu，且用 popupshowing 重建（原生每次右键会重置 disabled）
+ok('getElementById("tag-menu")' in _tmenu_src,
+   "63.16 ★ 注入点是原生 #tag-menu（不要去劫持 React 的 contextmenu）")
+ok("popupshowing" in _tmenu_src and "_rebuild" in _tmenu_src,
+   "63.17 ★ 每次 popupshowing 重建注入项（防重复堆叠 + 跟随原生 disabled）")
+ok(".handleTagContext(" not in _tmenu_src,
+   "63.18 不去调用/覆盖原生 handleTagContext（版本升级时最容易断裂的接缝）")
+ok("openManager" in _tmenu_src and "WINDOW_TYPE" in _tmenu_src,
+   "63.19 ★ 单实例窗口复用（Services.wm.getEnumerator）")
+
+# 窗口
+ok('windowtype="papilot:tag-manager"' in _tmx_src, "63.20 xhtml 声明 windowtype")
+ok('"papilot:tag-manager"' in _tmenu_src,
+   "63.21 ★ windowtype 与 tag-menu.js 常量一致（不一致 = 单实例失效，会开出多个窗口）")
+ok("DOMContentLoaded" in _tmui_src and "readyState" in _tmui_src,
+   "63.22 ★ 窗口脚本有 DOM 就绪守卫（XUL 的 <script src> 可能早于 DOM 执行 → 窗口空白）")
+_i_snap = _tmui_src.find("T.snapshot(S.libID, p.names")
+_i_del = _tmui_src.find("T.deleteTags(")
+ok(_i_snap > 0 and _i_del > _i_snap,
+   "63.23 ★ 执行删除时 snapshot 在 deleteTags 之前（顺序反了就没有回滚点）")
+ok(".protected" in _tmui_src and "cbInc" in _tmui_src,
+   "63.24 ★ 批量删除默认过滤受保护标签，只有显式勾选才包含")
+ok("预览删除" in _tmui_src and "确认删除" in _tmui_src,
+   "63.25 ★ 破坏性操作两步走：预览 → 确认（没有一键直删）")
+ok("已选" in _tmui_src and "可见" not in _tmui_src,
+   "63.26 选择语义在界面上写明（全选作用于筛选结果，不是全库）")
+
+# 注册点：菜单 / 文案 / pref / 测试
+ok('{ id: "tag-manager", group: "tags"' in io.open(
+    os.path.join(ROOT, "chrome", "content", "scripts", "menus.js"), encoding="utf-8").read(),
+   "63.27 ★ 条目右键「标签治理」组里有管理器入口")
+_utils_src = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "core", "utils.js"),
+                     encoding="utf-8").read()
+ok("menuTagManager:" in _utils_src, "63.28 菜单文案键 menuTagManager 存在")
+_prefs_src = io.open(os.path.join(ROOT, "prefs.js"), encoding="utf-8").read()
+for _pk in ["tagMenuEnabled", "tagProtect", "tagSnapshotKeep"]:
+    ok("papilot.%s" % _pk in _prefs_src, "63.29 pref 默认值 %s" % _pk)
+ok("test/tag-ops.test.js" in _preflight_src, "63.30 ★ preflight 注册标签规则层测试")
+ok("test/tag-manager-ui.test.js" in _preflight_src, "63.31 ★ preflight 注册标签窗口渲染测试")
+ok("test/tag-menu.test.js" in _preflight_src,
+   "63.32 ★ preflight 注册右键注入测试（幂等 / 重建不堆叠是这一层的核心不变量）")
+ok("_hook.nodes" in _tmenu_src,
+   "63.33 ★ 注入节点按引用摘除（只靠 getElementById 会在异常路径漏删 → 菜单越堆越多）")
 
 print("=" * 60)
 for p in passes:

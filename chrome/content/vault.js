@@ -421,7 +421,7 @@
     const acc = V.access();
     box.appendChild(el("div", "v-lock-title", acc.loggedIn
       ? T("账号与密钥中心需要专业版", "Credential center requires Pro")
-      : T("登录后使用账号与密钥中心", "Sign in to manage credentials")));
+      : T("登录或注册后使用账号与密钥中心", "Sign in or register to manage credentials")));
     box.appendChild(el("div", "v-lock-text",
       T("把第三方服务的账号与密钥收在一处，避免散落在各个设置卡里：",
         "Keep third-party credentials in one place:")));
@@ -433,7 +433,7 @@
         "Pro unlocks masked viewing, on-demand reveal, encrypted hosting in your own account, and a local access log.")));
     const acts = el("div", "v-lock-actions");
     const b = el("button", "v-btn v-btn-primary", acc.loggedIn
-      ? T("升级专业版", "Upgrade to Pro") : T("去登录", "Sign in"));
+      ? T("升级专业版", "Upgrade to Pro") : T("去登录 / 注册", "Sign in / Register"));
     b.addEventListener("click", () => openSettings("account"));
     acts.appendChild(b);
     box.appendChild(acts);

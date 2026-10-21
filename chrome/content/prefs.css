@@ -216,6 +216,21 @@
   background: var(--pp-accent-soft);
   border-color: var(--pp-accent-line);
 }
+/* 直达跳转后的落点反馈（0.68.4）：滚动若被 Zotero 的容器吃掉，至少能看见「跳到了哪一类」 */
+.pp-root .pp-jump-flash { animation: pp-jump-flash 0.9s ease-out; border-radius: 6px; }
+@keyframes pp-jump-flash {
+  0%   { background: var(--pp-accent-soft); }
+  60%  { background: var(--pp-accent-soft); }
+  100% { background: transparent; }
+}
+/* 当前所在分类的 chip（0.68.4）：滚动同步 / 点击后高亮，给「我在哪一类」一个视觉落点。
+   注意 #pp-anchor-nav 本身**不做 sticky**——双吸顶会盖住分类标签。 */
+.pp-root .pp-anchor-nav .pp-btn.pp-anchor-active {
+  color: var(--pp-accent);
+  background: var(--pp-accent-soft);
+  border-color: var(--pp-accent-line);
+  font-weight: 600;
+}
 
 /* 大类标签：小号字距 + 左侧强调竖条 + 右侧计数 + 细分隔线 */
 .pp-root .pp-cat-label {
@@ -255,6 +270,17 @@
 }
 /* 首个大类紧贴直达条，不必再吃 22px 上边距 */
 .pp-root #pp-anchor-nav + .pp-cat-label { margin-top: 4px; }
+/* 0.68.4 直达条与首个大类之间插了搜索空态节点，相邻选择器不再命中——同样补一条 */
+.pp-root #pp-prefs-empty + .pp-cat-label { margin-top: 4px; }
+
+/* 搜索 0 命中空态（0.68.4）：语气与 .pp-hint 一致，上下留白避免「整屏空白像是坏了」 */
+.pp-root .pp-empty {
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  line-height: 1.6;
+  padding: 10px 2px 4px;
+  text-align: center;
+}
 /* 搜索态：命中的卡即使处于折叠状态也展开内容，便于直接看到命中的设置项 */
 .pp-root.pp-searching .pp-card:not(.pp-hidden) .pp-card-body { display: block; }
 .pp-root.pp-searching .pp-card:not(.pp-hidden) .pp-fold-arrow { transform: rotate(0deg); }
@@ -565,7 +591,14 @@
   box-shadow: var(--pp-shadow-1);
 }
 .pp-root .pp-account-name { font-size: 14px; color: var(--pp-text-strong); }
-.pp-root .pp-account-email { font-size: 12px; color: var(--pp-muted); }
+.pp-root .pp-account-email {
+  font-size: 12px;
+  color: var(--pp-muted);
+  /* 0.68.3 默认脱敏：点一下可显示完整地址，所以给一个可点的视觉提示 */
+  cursor: pointer;
+  border-bottom: 1px dashed var(--pp-border-strong, #c3cdd6);
+}
+.pp-root .pp-account-email:hover { color: var(--pp-accent, #0969da); }
 .pp-root .pp-account-meta { font-size: 12px; color: var(--pp-muted); margin-top: 8px; line-height: 1.75; }
 
 /* ========================================================================
@@ -902,6 +935,15 @@
    8. 分区数据（数据集 chips / 徽章预览）
    ======================================================================== */
 .pp-root .pp-datasets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+/* 期刊订阅候选列表（0.69.0）：整行一条，限高滚动——50 行不能把整张卡撑成一屏半。
+   不用 .pp-datasets 的 flex-wrap（那是给卡片网格用的，行会被并排压缩）。 */
+.pp-root .pp-journal-list {
+  display: block;
+  margin-top: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+  border-top: 1px solid var(--pp-border);
+}
 .pp-root .pp-ds-chip {
   display: inline-flex;
   align-items: center;

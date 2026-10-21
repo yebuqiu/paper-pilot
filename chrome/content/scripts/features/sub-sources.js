@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 Cassiuschen. All rights reserved.
 
-/* Papilot 检索订阅 · 数据源适配层（0.58.0）
+/* Papilot 检索订阅 · 数据源适配层（0.69.0）
  *
  * 为什么单独一层：订阅的「条件」与「去哪查」不是一回事。arXiv 只覆盖预印本，
  * 医学/社科用户的库大半在 PubMed / 期刊库里；把多源塞进 search-subs.js 会让
  * 调度、去重、入库三件事与 HTTP 细节纠缠。这里只做四件事：
  *
- *   1) 把统一的订阅条件（keywords / authors / categories / mode / exclude / maxAgeDays）
- *      翻译成各源自己的查询（build 纯函数，可离线单测）
+ *   1) 把统一的订阅条件（keywords / authors / categories / issns / mode / exclude /
+ *      maxAgeDays）翻译成各源自己的查询（build 纯函数，可离线单测）
  *   2) 发请求（每源自己的节奏与分页；arXiv 复用 ArxivFetch 的 3s 限速）
  *   3) 把各源返回归一成同一个 entry 形状（normalize 纯函数）
  *   4) 合并多源、跨源去重（DOI > arXiv ID > 归一标题）
+ *
+ * 0.69.0 新增「按期刊订阅」：issns 是独立检索轴，**不需要关键词**。
+ *   OpenAlex / Crossref / Europe PMC 都支持 ISSN 过滤（已实测），PubMed 用 [ta] 刊名。
+ *   这是「订阅一种期刊」的开箱路径——用户不必知道 ISSN，更不必找 RSS 地址。
  *
  * 设计纪律（与全仓一致）：
  *   - 绝不抛给调用方：每个源失败只记 `bySource[id].reason`，其余源继续；
@@ -24,12 +28,15 @@
 var SubSources = {
   /** 支持的源（UI 顺序即此顺序）。capabilities 用于表单联动与提示。 */
   LIST: [
-    { id: "arxiv", label: "arXiv", caps: { categories: true, keywords: true, exclude: true, citations: false }, hint: "预印本，覆盖数理/CS/生医等；3 秒/次的官方限速" },
-    { id: "openalex", label: "OpenAlex", caps: { categories: false, keywords: true, authors: true, exclude: true, citations: true }, hint: "跨学科期刊与会议，带被引量/开放获取链接；免费（可选填免费 Key 提高配额）" },
-    { id: "crossref", label: "Crossref", caps: { categories: false, keywords: true, exclude: true, citations: true }, hint: "以 DOI 为中心的元数据，覆盖全学科出版物" },
-    { id: "europepmc", label: "Europe PMC", caps: { categories: false, keywords: true, exclude: true, citations: true }, hint: "生物医学（含 PubMed 记录与预印本）；国内网络通常比 NCBI 稳定" },
-    { id: "pubmed", label: "PubMed", caps: { categories: false, keywords: true, exclude: true, citations: false }, hint: "NCBI 官方检索；部分网络不可达时单独报错，不影响其它源" },
+    { id: "arxiv", label: "arXiv", caps: { categories: true, keywords: true, exclude: true, citations: false, journals: false }, hint: "预印本，覆盖数理/CS/生医等；3 秒/次的官方限速" },
+    { id: "openalex", label: "OpenAlex", caps: { categories: false, keywords: true, authors: true, exclude: true, citations: true, journals: true }, hint: "跨学科期刊与会议，带被引量/开放获取链接；免费（可选填免费 Key 提高配额）" },
+    { id: "crossref", label: "Crossref", caps: { categories: false, keywords: true, exclude: true, citations: true, journals: true }, hint: "以 DOI 为中心的元数据，覆盖全学科出版物" },
+    { id: "europepmc", label: "Europe PMC", caps: { categories: false, keywords: true, exclude: true, citations: true, journals: true }, hint: "生物医学（含 PubMed 记录与预印本）；国内网络通常比 NCBI 稳定" },
+    { id: "pubmed", label: "PubMed", caps: { categories: false, keywords: true, exclude: true, citations: false, journals: true }, hint: "NCBI 官方检索；部分网络不可达时单独报错，不影响其它源" },
   ],
+
+  /** 单条订阅最多记几个 ISSN（一本刊通常 1–2 个，多值用于「同刊改名/分辑」并集） */
+  MAX_ISSNS: 6,
 
   /** 单源最少请求间隔（arXiv 由 ArxivRateLimiter 管，这里只管其它源） */
   MIN_INTERVAL: { openalex: 400, crossref: 400, europepmc: 400, pubmed: 400 },
@@ -74,6 +81,48 @@ var SubSources = {
   /** 作者（0.58.0）：最多 6 个，各源映射到自己的字段语法 */
   authorsOf(sub) { return this.split(sub && sub.authors).slice(0, 6); },
   excludeOf(sub) { return this.split(sub && sub.exclude).slice(0, 12); },
+
+  /**
+   * ISSN 归一（0.69.0）：只认 `NNNN-NNNX` 形态，统一大写 X、补连字符。
+   * 用户从网页复制时常带空格 / 小写 x / 缺连字符，这里一律救回来；
+   * 校验位**不在这里卡**（有的库把预分配号也挂出来），合法性交给测试钉住目录。
+   */
+  normIssn(raw) {
+    const s = String(raw == null ? "" : raw).toUpperCase().replace(/[^0-9X]/g, "");
+    if (s.length !== 8) return "";
+    return s.slice(0, 4) + "-" + s.slice(4);
+  },
+
+  /** 订阅里的 ISSN 列表（数组或逗号串；去重、最多 MAX_ISSNS 个） */
+  issnsOf(sub) {
+    const raw = sub && sub.issns;
+    const list = Array.isArray(raw) ? raw : this.split(raw);
+    const out = [];
+    for (const x of list) {
+      const v = this.normIssn(x);
+      if (v && out.indexOf(v) < 0) out.push(v);
+      if (out.length >= this.MAX_ISSNS) break;
+    }
+    return out;
+  },
+
+  /** 期刊名（PubMed 的 [ta] 检索用；展示也在用） */
+  journalsOf(sub) {
+    const raw = sub && sub.journals;
+    const list = Array.isArray(raw) ? raw : this.split(raw);
+    const out = [];
+    for (const x of list) {
+      const v = String(x == null ? "" : x).replace(/\s+/g, " ").trim();
+      if (v && out.indexOf(v) < 0) out.push(v);
+      if (out.length >= this.MAX_ISSNS) break;
+    }
+    return out;
+  },
+
+  /** 是否「期刊订阅」（有 ISSN 即成立；只有刊名也算，靠各源按刊名过滤） */
+  isJournalSub(sub) {
+    return this.issnsOf(sub).length > 0 || this.journalsOf(sub).length > 0;
+  },
 
   modeOf(sub) {
     const m = String((sub && sub.mode) || "all").toLowerCase();
@@ -129,12 +178,14 @@ var SubSources = {
   },
 
   /**
-   * PubMed 检索式：每词限定 [tiab]（标题/摘要），作者走 [au]。
-   * 只有作者时也能出查询（作者本身就是完整检索轴）；两者都没有返回 ""。
+   * PubMed 检索式：每词限定 [tiab]（标题/摘要），作者走 [au]，期刊走 [ta]。
+   * 只有作者或只有期刊时也能出查询（各自都是完整检索轴）；都没有返回 ""。
+   * ★ PubMed 没有可用的 ISSN 检索字段，期刊订阅靠刊名 [ta]（订阅里会带 journals）。
    */
   pubmedTerm(sub) {
     const kws = this.keywordsOf(sub);
     const authors = this.authorsOf(sub);
+    const journals = this.journalsOf(sub);
     const mode = this.modeOf(sub);
     let kwQ = "";
     if (kws.length) {
@@ -145,9 +196,13 @@ var SubSources = {
     }
     const authParts = authors.map((a) => (/[\s-]/.test(a) ? this._q(a) : a) + "[au]");
     const authQ = authParts.length > 1 ? "(" + authParts.join(" OR ") + ")" : (authParts[0] || "");
+    // 多本刊是「并集」：订阅 Nature + Science 应看到两家各自的新文章
+    const jParts = journals.map((j) => this._q(j) + "[ta]");
+    const jQ = jParts.length > 1 ? "(" + jParts.join(" OR ") + ")" : (jParts[0] || "");
+    const axes = [kwQ, authQ, jQ].filter(Boolean);
     let q = "";
-    if (kwQ && authQ) q = "(" + kwQ + " AND " + authQ + ")";
-    else q = kwQ || authQ;
+    if (axes.length > 1) q = "(" + axes.join(" AND ") + ")";
+    else q = axes[0] || "";
     if (!q) return "";
     const ex = this.excludeOf(sub);
     if (ex.length) q += " NOT (" + ex.map((k) => (/[\s-]/.test(k) ? this._q(k) : k) + "[tiab]").join(" OR ") + ")";
@@ -156,12 +211,13 @@ var SubSources = {
 
   /**
    * Europe PMC 检索式：与 PubMed 不同，它直接支持引号与 AND/OR/NOT。
-   * 作者走 `AUTH:"name"`（多个作者 OR 分组）；有关键词时 `(关键词组) AND (作者组)`。
-   * 两者都没有返回 ""（分类只对 arXiv 有意义）。
+   * 作者走 `AUTH:"name"`（多个作者 OR 分组）；期刊走 `ISSN:"xxxx-xxxx"`（原生支持，比刊名稳）；
+   * 有关键词时与其它轴 AND。三者都没有返回 ""（分类只对 arXiv 有意义）。
    */
   europePmcQuery(sub) {
     const kws = this.keywordsOf(sub);
     const authors = this.authorsOf(sub);
+    const issns = this.issnsOf(sub);
     const mode = this.modeOf(sub);
     let kwQ = "";
     if (kws.length) {
@@ -171,9 +227,18 @@ var SubSources = {
     }
     const authParts = authors.map((a) => "AUTH:" + this._q(a));
     const authQ = authParts.length > 1 ? "(" + authParts.join(" OR ") + ")" : (authParts[0] || "");
-    let q = "";
-    if (kwQ && authQ) q = "(" + kwQ + ") AND " + authQ;
-    else q = kwQ || authQ;
+    const issnParts = issns.map((i) => "ISSN:" + this._q(i));
+    const issnQ = issnParts.length > 1 ? "(" + issnParts.join(" OR ") + ")" : (issnParts[0] || "");
+    const axes = [];
+    if (kwQ) axes.push(kwQ);
+    if (authQ) axes.push(authQ);
+    if (issnQ) axes.push(issnQ);
+    // 单轴保持原样（兼容 0.58 的检索式快照）；多轴各自加括号，避免 AND/NOT 优先级歧义。
+    // 已经整串被括号包住的轴不再套一层（多作者 / 多 ISSN 本来就是 "(...)"）。
+    const wrap = (x) => (x.charAt(0) === "(" && x.charAt(x.length - 1) === ")") ? x : "(" + x + ")";
+    let q = axes.length > 1
+      ? axes.map(wrap).join(" AND ")
+      : (axes[0] || "");
     if (!q) return "";
     const ex = this.excludeOf(sub);
     if (ex.length) q += " NOT (" + ex.map((k) => (/[\s-]/.test(k) ? this._q(k) : k)).join(" OR ") + ")";
@@ -274,6 +339,10 @@ var SubSources = {
       pdfUrl: String(oa.oa_url || loc.pdf_url || ""),
       categories: [],
       venue: String(src.display_name || ""),
+      issn: this.normIssn(src.issn_l || (Array.isArray(src.issn) ? src.issn[0] : src.issn)),
+      // ISSN-L 只是「首选刊号」：同一本刊的印刷版/网络版可能各有一个号，
+      // 订阅按印刷号、OpenAlex 按 ISSN-L 返回时不能误杀 → 保留全量做交集判断
+      issnAll: (Array.isArray(src.issn) ? src.issn : [src.issn]).map((x) => this.normIssn(x)).filter(Boolean),
       citationCount: Number(r.cited_by_count) || 0,
       type: String(r.type || ""),
       volume: String(biblio.volume || ""),
@@ -301,6 +370,8 @@ var SubSources = {
       pdfUrl: "",
       categories: [],
       venue: String((r["container-title"] || [])[0] || ""),
+      issn: this.normIssn((Array.isArray(r.ISSN) ? r.ISSN[0] : r.ISSN)),
+      issnAll: (Array.isArray(r.ISSN) ? r.ISSN : [r.ISSN]).map((x) => this.normIssn(x)).filter(Boolean),
       citationCount: Number(r["is-referenced-by-count"]) || 0,
       type: String(r.type || ""),
       volume: String(r.volume || ""),
@@ -328,6 +399,8 @@ var SubSources = {
       pdfUrl: "",
       categories: [],
       venue: String(r.fulljournalname || r.source || ""),
+      issn: this.normIssn(r.issn),
+      issnAll: [this.normIssn(r.issn)].filter(Boolean),
       citationCount: 0,
       type: "journal-article",
       volume: String(r.volume || ""),
@@ -369,6 +442,9 @@ var SubSources = {
       pdfUrl: String((pdf && (pdf.url || pdf.documentUrl)) || ""),
       categories: [],
       venue: String(journal),
+      issn: this.normIssn((ji.journal && ji.journal.issn) || (ji.journal && ji.journal.essn)),
+      issnAll: [ji.journal && ji.journal.issn, ji.journal && ji.journal.essn]
+        .map((x) => this.normIssn(x)).filter(Boolean),
       citationCount: Number(row.citedByCount) || 0,
       type: src === "PPR" ? "preprint" : "journal-article",
     };
@@ -425,6 +501,7 @@ var SubSources = {
   matches(sub, e) {
     const kws = this.keywordsOf(sub);
     const authors = this.authorsOf(sub);
+    const issns = this.issnsOf(sub);
     if (kws.length) {
       const title = String((e && e.title) || "");
       const summary = String((e && e.summary) || "");
@@ -439,6 +516,14 @@ var SubSources = {
           if (!kws.some(hit)) return false;
         } else if (!kws.every(hit)) return false;
       }
+    }
+    // 期刊复核（0.69.0）：源侧已按 ISSN 过滤，这里只拦「明显串刊」的结果。
+    // 条目没有 ISSN（PubMed 老记录 / 部分会议 DOI）时**不误杀**——宁可多留一条。
+    if (issns.length) {
+      const got = (Array.isArray(e && e.issnAll) ? e.issnAll : [])
+        .map((x) => this.normIssn(x)).filter(Boolean);
+      if (!got.length && e && e.issn) got.push(this.normIssn(e.issn));
+      if (got.length && !got.some((x) => issns.indexOf(x) >= 0)) return false;
     }
     if (!authors.length) return true;
     const names = (e && Array.isArray(e.authors) ? e.authors : []).map((a) => this._personKey(a)).filter(Boolean);
@@ -554,11 +639,14 @@ var SubSources = {
   async _openalex(sub, limit, now) {
     const q = this.openAlexQuery(sub);
     const authors = this.authorsOf(sub);
-    if (!q && !authors.length) throw new Error("OpenAlex 需要关键词或作者（分类仅 arXiv 支持）");
+    const issns = this.issnsOf(sub);
+    if (!q && !authors.length && !issns.length) throw new Error("OpenAlex 需要关键词、作者或期刊（分类仅 arXiv 支持）");
     const filters = [];
     const from = this.dateFrom(sub, now);
     if (from) filters.push("from_publication_date:" + from);
     filters.push("type:article|preprint|review");
+    // 期刊订阅：ISSN 过滤在源侧完成（多值是 OR），比把刊名当关键词搜精确得多
+    if (issns.length) filters.push("primary_location.source.issn:" + issns.join("|"));
     // 作者在源侧过滤（raw_author_name.search 多值 OR 已实测可用）：先缩小集合，
     // 本地 matches() 只做兜底复核，避免整页都是不相关的结果。
     if (authors.length) {
@@ -566,6 +654,7 @@ var SubSources = {
     }
     const params = [];
     if (q) params.push("search=" + encodeURIComponent(q));
+    // ★ 只有期刊时不能带 search=""（会把 filter 的相关度排序打乱），排序统一按日期倒序
     params.push("filter=" + encodeURIComponent(filters.join(",")));
     params.push("sort=publication_date:desc");
     params.push("per-page=" + Math.max(1, Math.min(50, limit)));
@@ -584,10 +673,13 @@ var SubSources = {
   async _crossref(sub, limit, now) {
     const q = this.crossrefQuery(sub);
     const authors = this.authorsOf(sub);
-    if (!q && !authors.length) throw new Error("Crossref 需要关键词或作者（分类仅 arXiv 支持）");
+    const issns = this.issnsOf(sub);
+    if (!q && !authors.length && !issns.length) throw new Error("Crossref 需要关键词、作者或期刊（分类仅 arXiv 支持）");
     const filters = [];
     const from = this.dateFrom(sub, now);
     if (from) filters.push("from-pub-date:" + from);
+    // Crossref 的 issn filter 多值是 OR（实测 0028-4793,0140-6736 返回两家）
+    if (issns.length) filters.push("issn:" + issns.join(","));
     const params = [];
     if (q) params.push("query.bibliographic=" + encodeURIComponent(q));
     // Crossref 的作者查询只接受单个名字：用第一个作者缩小集合，其余靠本地 matches() 复核
@@ -609,7 +701,7 @@ var SubSources = {
 
   async _europepmc(sub, limit, now) {
     const q = this.europePmcQuery(sub);
-    if (!q) throw new Error("Europe PMC 需要关键词或作者（分类仅 arXiv 支持）");
+    if (!q) throw new Error("Europe PMC 需要关键词、作者或期刊（分类仅 arXiv 支持）");
     const params = [
       "query=" + encodeURIComponent(q),
       "format=json",
@@ -629,7 +721,7 @@ var SubSources = {
 
   async _pubmed(sub, limit) {
     const term = this.pubmedTerm(sub);
-    if (!term) throw new Error("PubMed 需要关键词或作者（分类对其不适用）");
+    if (!term) throw new Error("PubMed 需要关键词、作者或期刊名（分类对其不适用）");
     const n = Math.max(1, Math.min(50, limit));
     const esearch = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&retmode=json"
       + "&sort=pub+date&retmax=" + n + "&term=" + encodeURIComponent(term)
@@ -653,6 +745,64 @@ var SubSources = {
       if (doc && doc.title) out.push(this.normalizePubMed(doc, uid));
     }
     return out;
+  },
+
+  /* ================== 期刊目录在线检索（0.69.0） ================== */
+
+  /** OpenAlex Source 对象 → 面板行（与内置目录条目同形状的瘦身版） */
+  _sourceRow(s) {
+    const r = s || {};
+    return {
+      name: String(r.display_name || "").trim(),
+      issn: this.normIssn(r.issn_l || (Array.isArray(r.issn) ? r.issn[0] : r.issn)),
+      issnAll: (Array.isArray(r.issn) ? r.issn : [r.issn]).map((x) => this.normIssn(x)).filter(Boolean),
+      publisher: String(r.host_organization_name || "").trim(),
+      works: Number(r.works_count) || 0,
+    };
+  },
+
+  /**
+   * 按刊名 / ISSN 在线查期刊（OpenAlex Sources，覆盖 3 万+ 刊）。
+   * 「按期刊订阅」的搜索框用它兜住内置目录之外的刊——用户不需要知道 ISSN，也不需要 RSS。
+   * 失败一律返回 {ok:false}（不让 UI 抛），items 为空。
+   * @param {string} q 刊名片段或 ISSN
+   * @param {{limit?:number}} [opts]
+   * @returns {Promise<{ok:boolean, items:Array, exact?:boolean, reason?:string}>}
+   */
+  async lookupJournals(q, opts) {
+    const query = String(q == null ? "" : q).replace(/\s+/g, " ").trim();
+    if (!query) return { ok: false, reason: "empty", items: [] };
+    const limit = Math.max(1, Math.min(25, Number(opts && opts.limit) || 12));
+    const asIssn = this.normIssn(query);
+    const mail = this._mailto();
+    const key = this._oaKey();
+    try {
+      await this._gate("openalex");
+      if (asIssn) {
+        // ISSN 是 OpenAlex 的实体 ID：直查比 search 精确，也省一次模糊匹配
+        const url = "https://api.openalex.org/sources/issn:" + asIssn
+          + (mail ? "?mailto=" + encodeURIComponent(mail) : "");
+        const r = await this._json(url, 15000);
+        if (r.status !== 200 || !r.data || !r.data.display_name) return { ok: false, reason: "not_found", items: [] };
+        return { ok: true, exact: true, items: [this._sourceRow(r.data)] };
+      }
+      const params = [
+        "search=" + encodeURIComponent(query),
+        "filter=" + encodeURIComponent("type:journal"),
+        "per-page=" + limit,
+        "select=" + encodeURIComponent("display_name,issn_l,issn,works_count,host_organization_name"),
+      ];
+      if (mail) params.push("mailto=" + encodeURIComponent(mail));
+      if (key) params.push("api_key=" + encodeURIComponent(key));
+      const url = "https://api.openalex.org/sources?" + params.join("&");
+      const r = await this._json(url, 15000);
+      if (r.status !== 200 || !r.data) return { ok: false, reason: "http_" + (r.status || 0), items: [] };
+      const items = (r.data.results || []).map((x) => this._sourceRow(x)).filter((x) => x.name && x.issn);
+      return { ok: true, items: items };
+    } catch (e) {
+      // 失败原因可能带 URL（含 api_key / mailto）→ 统一脱敏，避免被截图外发
+      return { ok: false, reason: this._scrub(String((e && (e.message || e)) || "失败")), items: [] };
+    }
   },
 
   /**

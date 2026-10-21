@@ -57,6 +57,50 @@
     return maskUrl(u || "—");
   }
 
+  /**
+   * 展示用邮箱：默认脱敏（0.68.3）。
+   *
+   * 为什么：设置面板是最容易被截图/投屏/录屏的界面，账号邮箱属于身份信息，
+   * 不该在默认视图里明文出现（旧实现还把没填昵称的用户名直接显示成邮箱，
+   * 一屏出现两次）。这里保留「首 2 字 + *** + 域名」，既认得出是哪个号，
+   * 又不泄露完整地址；点一下可临时显示完整地址（再点收起）。
+   */
+  let emailShown = false;
+
+  function maskEmail(email) {
+    const s = String(email || "").trim();
+    if (!s) return "";
+    const at = s.lastIndexOf("@");
+    if (at <= 0) {
+      // 不是标准邮箱（老数据可能只存了账号名）：只留首字符
+      return s.length <= 1 ? "***" : s.charAt(0) + "***";
+    }
+    const local = s.slice(0, at);
+    const domain = s.slice(at);
+    const head = local.slice(0, Math.min(2, local.length));
+    return head + "***" + domain;
+  }
+
+  function paintEmail(email) {
+    const node = $("pp-account-email");
+    if (!node) return;
+    const full = String(email || "").trim();
+    // 空邮箱时这个节点是「假可点」的：文本空着仍占一行，还带着虚线可点样式与
+    // 「点击显示完整邮箱」的 title，用户点下去什么都不会发生。整块隐藏最干净。
+    if (!full) {
+      node.textContent = "";
+      node.style.display = "none";
+      try { node.removeAttribute("title"); } catch (e) { /* ignore */ }
+      try { node.removeAttribute("aria-label"); } catch (e) { /* ignore */ }
+      return;
+    }
+    node.style.display = "";
+    node.textContent = emailShown ? full : maskEmail(full);
+    node.setAttribute("title", emailShown ? "点击隐藏邮箱" : "点击显示完整邮箱");
+    // 无障碍：不要把明文塞进 aria-label
+    node.setAttribute("aria-label", emailShown ? full : "已隐藏的账号邮箱");
+  }
+
   /* ==================== 账号区块 ==================== */
 
   function renderAccount() {
@@ -76,10 +120,17 @@
       return;
     }
     const u = A.user() || {};
-    const name = u.name || u.email || "已登录用户";
-    $("pp-account-name").textContent = name;
-    $("pp-account-email").textContent = u.email || "";
-    $("pp-account-badge").textContent = String(name).trim().charAt(0).toUpperCase() || "P";
+    const email = String(u.email || "").trim();
+    // 服务端 userForClient() 会拿 email 回填 name（server/account-server.js: `name: user.nickname || user.email`），
+    // 所以「昵称为空的账号，u.name 本身就是完整邮箱」——直接显示会让加粗标题上出现明文邮箱，
+    // 把下面 paintEmail 的脱敏整个白做。含 @ 的一律不算昵称，统一显示「已登录用户」。
+    const rawName = String(u.name || "").trim();
+    const nick = rawName && rawName.indexOf("@") < 0 ? rawName : "";
+    $("pp-account-name").textContent = nick || "已登录用户";
+    paintEmail(email);
+    // 头像首字母：昵称优先（中文昵称只有取昵称首字才认得出是谁），邮箱兜底。
+    $("pp-account-badge").textContent =
+      String(nick || email).trim().charAt(0).toUpperCase() || "P";
     const bits = [];
     if (u.plan) bits.push("套餐：" + u.plan);
     if (A.expiresAt()) bits.push("会话有效期至 " + fmtDate(A.expiresAt()));
@@ -253,6 +304,13 @@
     const orderBox = $("pp-mb-order");
     if (orderBox) orderBox.style.display = "none";
     result.textContent = "";
+    // 登出即抹掉界面上的账号痕迹：登录框里残留的邮箱属于上一个人的身份信息
+    // （共用机器 / 录屏场景下尤其不该留着），密码框本来就会清。
+    emailShown = false;
+    try {
+      const mail = $("pp-login-email");
+      if (mail) mail.value = "";
+    } catch (e) { /* ignore */ }
     renderAll();
   }
 
@@ -2109,8 +2167,36 @@
     bind("pp-reg-resend", "click", onResendVerify);
     bind("pp-forgot-link", "click", onForgotLink);
     bind("pp-logout-btn", "click", onLogout);
+    // 邮箱默认脱敏：点一下显示完整地址，再点收起（截图/投屏场景下默认不露明文）
+    bind("pp-account-email", "click", () => { emailShown = !emailShown; renderAccount(); });
     bind("pp-account-refresh", "click", onRefreshAccount);
     bind("pp-account-official-model", "change", onOfficialModelChange);
+    // 免费版 vs 专业版对照表默认收起（8 行表常驻会把「当前套餐 / 升级」挤出首屏）：
+    // 点一下展开，再点收起；键盘 Enter/Space 同样可用（HTML span 不会自己派发 click）
+    const cmpToggle = $("pp-mb-compare-toggle");
+    if (cmpToggle) {
+      // 状态用变量持有、由 syncCompare 单向写 DOM：不去反读 inline style
+      // （反读会把「样式被打包/XUL 属性化后读不到」变成功能失效）。初值 false 与 xhtml 的
+      // style="display:none;" 一致。
+      let cmpShown = false;
+      const syncCompare = () => {
+        const box = $("pp-mb-compare");
+        if (box) box.style.display = cmpShown ? "" : "none";
+        cmpToggle.textContent = cmpShown ? "免费版 vs 专业版差异 ▴" : "免费版 vs 专业版差异 ▾";
+        cmpToggle.setAttribute("aria-expanded", cmpShown ? "true" : "false");
+      };
+      syncCompare();   // 进面板先对齐一次（文案/aria 与收起态一致）
+      const toggleCompare = () => { cmpShown = !cmpShown; syncCompare(); };
+      cmpToggle.addEventListener("click", toggleCompare);
+      cmpToggle.addEventListener("keydown", (e) => {
+        if (!e) return;
+        const k = e.key;
+        // Space / Spacebar（老 Gecko 写法）/ Enter
+        if (k !== "Enter" && k !== " " && k !== "Spacebar") return;
+        if (e.preventDefault) e.preventDefault();   // 空格不滚页面
+        toggleCompare();
+      });
+    }
     // 0.66.0 账号与密钥中心（Pro）：独立窗口，单例复用
     bind("pp-vault-open", "click", () => {
       try { Zotero.Papilot.openVault(); } catch (e) { /* 窗口打不开不影响账号卡 */ }

@@ -355,6 +355,13 @@ pref("extensions.zotero.papilot.menuMode", "grouped");
 pref("extensions.zotero.papilot.menuHiddenGroups", "");
 // 右键菜单顶部高频直达项（逗号分隔命令 id，最多 3 个；取值见 menus.js ITEM_REGISTRY）
 pref("extensions.zotero.papilot.menuQuickItems", "ai-summary,bilingual-view");
+// 0.70.0 标签管理：左下角 tag selector 右键追加「Papilot 标签工具 ▸」（关掉不影响管理器窗口）
+pref("extensions.zotero.papilot.tagMenuEnabled", true);
+// 保护名单：每行一条，支持 * ? 通配（如 `#状态/*`）。留空 = 默认保护 #状态/* 与 #治理/*
+// 受保护标签不会被批量删除，只有「预览删除 → 包含受保护标签」才会动到
+pref("extensions.zotero.papilot.tagProtect", "");
+// 快照保留条数（每次删除/改名/改色前存一份，用于撤销；过旧自动丢弃）
+pref("extensions.zotero.papilot.tagSnapshotKeep", 30);
 // 0.31.0 新增：AI 问答悬浮窗几何记忆（zotero-gpt 式可拖动/停靠悬浮窗）
 // chatFloatPos = "x,y"（浮动坐标，px）；chatFloatSize = "w,h"（px）；
 // chatFloatDock = "" | "left" | "right"（贴边停靠模式）
@@ -388,9 +395,16 @@ pref("extensions.zotero.papilot.ocrSkipExistingPages", true);
 // 全文索引为空的 PDF 是否自动用 OCR 侧车文本回答（默认开：纯本地读文件，不触发识别）
 pref("extensions.zotero.papilot.ocrAutoFallback", true);
 // 0.38.0 设置面板折叠分组：已展开的分组键（CSV，取值为 prefs.xhtml 里 data-fold：
-// account/channels/translate/aiparams/popup/columns/tagging/enhance/uitheme/pdftheme/menu）。
-// 留空 = 全部收起（默认）；面板里点标题行 / 全部展开会更新本 pref
-pref("extensions.zotero.papilot.prefsFoldOpen", "");
+// account/channels/aiparams/skills/translate/popup/pdftheme/cnki/thirdsrc/subscriptions/schedule/
+// columns/tagging/enhance/wps/uitheme/menu/hotkeys/cloud —— 共 19 个，见 check-wiring 31.4）。
+// 默认展开「账号与会员」——登录/注册的唯一入口埋在 19 张折叠卡里等于没有入口。
+// 用户点过「全部收起」后 pref 会写进实际值（空串），记忆优先，不会被这个默认值覆盖。
+pref("extensions.zotero.papilot.prefsFoldOpen", "account");
+// 0.68.4 直达滚动的失败现场（仅失败时写入，正常使用一直是空串）：
+// Zotero 设置窗格里滚动容器是有嵌套的（中间层可能是 overflow:hidden 的裁切盒），
+// 点到「直达」却没滚动时，这里会记下祖先链的 scrollHeight/clientHeight/top，
+// 排查时直接读 profile/prefs.js 即可，不用让用户开调试模式。
+pref("extensions.zotero.papilot.diagJump", "");
 // 0.38.0 顶部快捷按钮：条目工具栏一键菜单（高频直达项 + 功能中心 + 设置）。
 // 直达项内容与右键菜单共用 menuQuickItems（单一真源），在「设置 → 菜单定制」里改
 pref("extensions.zotero.papilot.quickBarButtonEnabled", true);

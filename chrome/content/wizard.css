@@ -82,6 +82,16 @@ html, body {
 .wz-field { margin-bottom: 10px; }
 .wz-field > .pp-label { display: block; margin-bottom: 4px; }
 .wz-field > .pp-input, .wz-field > .pp-select { width: 100%; }
+
+/* 注册表单两列（0.68.3）：窗口宽 660，四行堆叠会把「跳过」挤出视野 */
+.wz-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+}
+@media (max-width: 560px) {
+  .wz-grid2 { grid-template-columns: 1fr; }
+}
 .wz-choice {
   display: flex;
   align-items: flex-start;

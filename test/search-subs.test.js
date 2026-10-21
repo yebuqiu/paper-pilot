@@ -228,6 +228,7 @@ function makeEnv(opts) {
   if (opts.ai) sandbox.AIClient = opts.ai;
   if (opts.discovery) sandbox.Discovery = opts.discovery;
   if (opts.subSources) sandbox.SubSources = opts.subSources;
+  if (opts.journalCatalog) sandbox.JournalCatalog = opts.journalCatalog;
   if (opts.arxivCategories) sandbox.ArxivCategories = opts.arxivCategories;
 
   vm.createContext(sandbox);
@@ -1654,6 +1655,126 @@ async function main() {
     }, null);
     const list3 = await env3.S.suggest({ max: 3, now: AT });
     ok(!list3.some((x) => x.kind === 'author'), '⑮ ★ 被忽略过的作者不再推荐');
+  }
+
+  /* ================== ⑯ 期刊订阅（0.69.0） ================== */
+
+  {
+    const CAT = require(path.join(__dirname, '..', 'chrome', 'content', 'scripts', 'data', 'journals.js'));
+    const env = makeEnv({ journalCatalog: CAT });
+    const S = env.S;
+
+    // ISSN 归一
+    eq(JSON.stringify(S._normIssns(['0028-4793', '00284793', 'bad', '0140-6736'])),
+      '["0028-4793","0140-6736"]', '⑯ ISSN 归一 + 去重 + 丢非法');
+    eq(S._normIssns(['0028-4793', '0140-6736', '0028-0836', '0036-8075', '0092-8674', '0098-7484', '0959-8138', '0031-9007']).length,
+      6, '⑯ ISSN 最多 6 个（夹紧）');
+
+    // 只有期刊也能建订阅
+    const a = S.add({
+      name: 'The Lancet', issns: ['0140-6736'], journals: ['The Lancet'],
+      freq: 'daily', dailyTime: '08:00',
+    });
+    ok(!!a, '⑯ ★ 只有期刊也能创建订阅（不需要关键词）');
+    eq(a.sources.join(','), 'openalex,crossref', '⑯ 期刊订阅默认走 OpenAlex + Crossref');
+    eq(a.issns[0], '0140-6736', '⑯ ISSN 落库');
+    eq(a.journals[0], 'The Lancet', '⑯ 刊名落库');
+    eq(a.freq, 'daily', '⑯ 频率保留');
+    eq(S.add({ name: '空订阅' }), null, '⑯ 四个轴全空 → 仍拒绝');
+
+    // 期刊 + 关键词叠加
+    const b = S.add({ name: 'Lancet-MI', keywords: 'myocardial infarction', issns: ['0140-6736'] });
+    ok(!!b, '⑯ 期刊 + 关键词可叠加');
+    eq(b.sources.join(','), 'openalex,crossref', '⑯ 有期刊时默认源仍是期刊库');
+
+    has(S._condLine(a), '期刊：The Lancet', '⑯ 列表条件行显示期刊');
+
+    // 已订阅识别
+    ok(S.journalSubscribed('0140-6736'), '⑯ 已订阅识别（ISSN）');
+    ok(S.journalSubscribed('', 'The Lancet'), '⑯ 无 ISSN 时按刊名识别');
+    ok(!S.journalSubscribed('0028-0836'), '⑯ 未订阅的刊不会误判');
+
+    // 清空期刊但还有其它条件 → 允许；全空 → 拒绝
+    eq(S.update(a.id, { issns: [], journals: [] }), null, '⑯ ★ 清空期刊且无其它条件 → 拒绝（不留空订阅）');
+    const u2 = S.update(a.id, { keywords: 'sepsis', issns: [], journals: [] });
+    ok(!!u2 && u2.issns.length === 0, '⑯ 加关键词后可清空期刊');
+
+    // 本地目录搜索
+    const f1 = S.journalFind('lancet');
+    ok(f1.total >= 3, '⑯ 搜 lancet 命中多本（含子刊）', f1.total);
+    eq(f1.items[0].name, 'The Lancet', '⑯ 精确名排首位');
+    const f2 = S.journalFind('柳叶刀');
+    ok(f2.total >= 1 && f2.items[0].name.indexOf('Lancet') >= 0, '⑯ ★ 中文别名可搜');
+    const f3 = S.journalFind('0140-6736');
+    eq(f3.items[0].name, 'The Lancet', '⑯ ISSN 可搜（带连字符）');
+    eq(S.journalFind('01406736').items[0].name, 'The Lancet', '⑯ ISSN 纯数字可搜');
+    const f4 = S.journalFind('临床医学');
+    ok(f4.total >= 80, '⑯ ★ 学科名可搜（临床医学）', f4.total);
+    ok(S.journalFind('').items[0].hot, '⑯ 空词先给热门期刊');
+    eq(S.journalFind('zzzzzzz').total, 0, '⑯ 无匹配 → 0 条');
+
+    // 批量订阅 + 默认值 + 去重
+    const r = S.subscribeJournals([
+      { name: 'Nature', issn: '0028-0836' },
+      { name: 'Science', issn: '0036-8075' },
+      { name: 'Nature', issn: '0028-0836' },
+    ]);
+    eq(r.created.length, 2, '⑯ 批量订阅 2 种（批内重复只建一条）');
+    eq(r.skipped.length, 1, '⑯ 批内重复计入 skipped');
+    const nat = r.created[0];
+    eq(nat.freq, 'daily', '⑯ 默认每天');
+    eq(nat.dailyTime, '08:00', '⑯ 默认 08:00');
+    eq(nat.maxAgeDays, 30, '⑯ 默认只看近 30 天');
+    eq(nat.max, 10, '⑯ 默认每次 10 条');
+    eq(nat.autoImport, true, '⑯ 默认自动入库');
+    eq(nat.notify, true, '⑯ 默认有新增通知');
+    eq(nat.sources.join(','), 'openalex,crossref', '⑯ 默认两源');
+
+    const r2 = S.subscribeJournals([{ name: 'Nature', issn: '0028-0836' }]);
+    eq(r2.created.length, 0, '⑯ 已订阅再点 → 不重复创建');
+    eq(r2.skipped[0].reason, 'exists', '⑯ 跳过原因 exists');
+    const r3 = S.subscribeJournals([{ name: 'No ISSN' }]);
+    eq(r3.skipped[0].reason, 'no_issn', '⑯ 无 ISSN → 跳过并说明');
+
+    // 导出 / 导入保留期刊条件
+    const txt = S.exportJson();
+    has(txt, '"issns"', '⑯ 导出包含 issns');
+    has(txt, 'The Lancet', '⑯ 导出包含刊名');
+    const env3 = makeEnv();
+    const ir = env3.S.importJson(txt);
+    ok(ir.ok && ir.added >= 1, '⑯ 导入期刊订阅');
+    ok(env3.S.list().some((x) => (x.issns || []).indexOf('0028-0836') >= 0), '⑯ 导入保留 ISSN');
+  }
+
+  /* 在线补搜：本地目录没有时走 OpenAlex Sources，并把结果标成在线来源 */
+  {
+    const CAT = require(path.join(__dirname, '..', 'chrome', 'content', 'scripts', 'data', 'journals.js'));
+    const lookups = [];
+    const env = makeEnv({
+      journalCatalog: CAT,
+      subSources: {
+        search: () => Promise.resolve({ ok: true, entries: [], bySource: {} }),
+        normalizeSources: (x) => (Array.isArray(x) && x.length ? x : ['arxiv']),
+        lookupJournals: (q, o) => {
+          lookups.push({ q: q, o: o });
+          return Promise.resolve({
+            ok: true,
+            items: [{ name: 'Journal of Imaginary Studies', issn: '1234-567X', publisher: 'Imaginary Press', works: 10 }],
+          });
+        },
+      },
+    });
+    const jr = await env.S.journalSearch('imaginary studies', { online: true });
+    ok(jr.online, '⑯ 在线检索成功（online=true）');
+    eq(lookups.length, 1, '⑯ 确实调用了在线检索');
+    eq(jr.items.length, 1, '⑯ 在线结果并入列表');
+    ok(jr.items[0].online, '⑯ 结果标记为在线来源');
+    eq(jr.items[0].issn, '1234-567X', '⑯ 在线结果带 ISSN');
+
+    // 本地有结果时 online:false 不发请求
+    const jr2 = await env.S.journalSearch('lancet');
+    eq(jr2.localCount > 0, true, '⑯ 本地命中');
+    eq(lookups.length, 1, '⑯ 本地有结果时不请求在线（省配额）');
   }
 
 } // main

@@ -92,6 +92,9 @@ class El {
 }
 
 const IDS = [
+  'pp-sub-journal-q', 'pp-sub-journal-search', 'pp-sub-journal-msg',
+  'pp-sub-journal-subjects', 'pp-sub-journal-list', 'pp-sub-journal-subscribe', 'pp-sub-journal-sel',
+  'pp-sub-journals', 'pp-sub-journals-clear',
   'pp-subs-reco', 'pp-subs-reco-refresh', 'pp-subs-reco-msg',
   'pp-sub-nl', 'pp-sub-ai', 'pp-sub-nl-msg',
   'pp-subs-list', 'pp-subs-detail', 'pp-subs-form-title',
@@ -108,7 +111,7 @@ function makeDom() {
   const byId = new Map();
   for (const id of IDS) {
     const tag = id === 'pp-sub-mode' || id === 'pp-sub-freq' ? 'select'
-      : /pp-sub-src-|pp-sub-auto|pp-sub-ai-|pp-sub-seed/.test(id) ? 'input' : 'div';
+      : /pp-sub-src-|pp-sub-auto|pp-sub-ai-|pp-sub-seed|pp-sub-journal-q$|pp-sub-journals$/.test(id) ? 'input' : 'div';
     const n = new El(tag);
     n.id = id;
     if (id === 'pp-subs-list') n.setAttribute('class', 'pp-datasets');
@@ -125,6 +128,16 @@ function makeDom() {
 
 function stubSubs(calls, opts) {
   const o = opts || {};
+  const JOURNALS = [
+    {
+      name: 'The Lancet', issn: '0140-6736', subject: 'med', subjectName: '临床医学',
+      publisher: 'Elsevier', aliases: ['柳叶刀'], hot: true, online: false,
+    },
+    {
+      name: 'Nature', issn: '0028-0836', subject: 'multi', subjectName: '综合',
+      publisher: '', aliases: ['自然'], hot: true, online: false,
+    },
+  ];
   const sub = {
     id: 'sub-1', name: '稀疏注意力', keywords: 'sparse attention', categories: 'cs.LG',
     authors: 'Ada Lovelace', notify: false,
@@ -192,6 +205,38 @@ function stubSubs(calls, opts) {
         note: 'ok',
       };
     },
+    // 期刊订阅（0.69.0）
+    journalCatalog: () => ({
+      subjects: [{ id: 'med', name: '临床医学' }, { id: 'multi', name: '综合' }],
+      list: JOURNALS,
+    }),
+    journalFind: (q, fopts) => {
+      calls.journalFind.push({ q: q, opts: fopts });
+      const key = String(q || '').toLowerCase().trim();
+      const items = key
+        ? JOURNALS.filter((j) => (j.name + ' ' + j.aliases.join(' ') + ' ' + j.issn).toLowerCase().indexOf(key) >= 0)
+        : JOURNALS.slice();
+      // total 与 items 长度刻意不同：真实目录有 525 种，而 journalRows 只取前 200 条，
+      // 提示「共 N 种」必须用 total（0.69.0 真机错报「共 200 种」的回归点）。
+      // 只在空搜索词（默认首屏）时放大，避免影响搜索路径的其它断言。
+      return { total: key ? items.length : (o.totalOverride || items.length), items: items.slice() };
+    },
+    journalSearch: async (q, sopts) => {
+      calls.journalSearch.push({ q: q, opts: sopts });
+      return { ok: true, items: [], localCount: 0, online: false, reason: '' };
+    },
+    journalSubscribed: (issn) => {
+      calls.journalSubscribed.push(issn);
+      return !!(o.subscribedIssn && o.subscribedIssn === issn);
+    },
+    subscribeJournals: (items) => {
+      calls.subscribe.push(items);
+      return {
+        ok: true,
+        created: (items || []).map((x) => ({ id: 'sub-new', name: x.name, issns: [x.issn] })),
+        skipped: [],
+      };
+    },
   };
 }
 
@@ -200,6 +245,7 @@ function run(opts) {
   const calls = {
     add: [], update: [], preview: [], run: [], suggest: [], dismiss: [], ai: [], export: [], import: [],
     accept: [], ignore: [], feedbackClear: [],
+    journalFind: [], journalSearch: [], subscribe: [], journalSubscribed: [],
   };
   const subs = stubSubs(calls, opts);
   const timers = [];
@@ -437,7 +483,7 @@ async function main() {
     ok(/id="pp-sub-openalex-key"[^>]*type="password"|type="password"[^>]*id="pp-sub-openalex-key"/.test(xhtml),
       '⑩ Key 输入框用 password 类型（不明文回显）');
     const src = fs.readFileSync(SRC, 'utf8');
-    ok(src.indexOf('关键词、分类、作者至少填一个') >= 0, '⑩ 表单提示改为「关键词、分类、作者至少填一个」');
+    ok(src.indexOf('关键词、分类、作者、期刊至少要有一个') >= 0, '⑩ 表单提示改为「关键词、分类、作者、期刊至少要有一个」');
     ok(src.indexOf('s.accept(') >= 0 && src.indexOf('s.ignoreEntry(') >= 0,
       '⑩ ★ 预览卡接了 accept / ignoreEntry');
     ok(src.indexOf('feedbackClear') >= 0 && src.indexOf('feedbackStats') >= 0,
@@ -484,8 +530,8 @@ async function main() {
     env.dom.byId.get('pp-subs-add').fire('click');
     await tick();
     eq(env.calls.add.length, 0, '⑪ ★ 关键词/分类/作者全空 → 不调 add');
-    ok(env.dom.byId.get('pp-sub-msg').textContent.indexOf('关键词、分类、作者至少填一个') >= 0,
-      '⑪ 提示文案说明三个条件之一', env.dom.byId.get('pp-sub-msg').textContent);
+    ok(env.dom.byId.get('pp-sub-msg').textContent.indexOf('关键词、分类、作者、期刊至少要有一个') >= 0,
+      '⑪ 提示文案说明四个条件之一（期刊是 0.69.0 新增轴）', env.dom.byId.get('pp-sub-msg').textContent);
     env.off();
   }
 
@@ -553,6 +599,92 @@ async function main() {
     eq(deny.calls.feedbackClear.length, 0, '⑬ 取消确认则不执行清空');
     ok(deny.dom.byId.get('pp-sub-msg').textContent.indexOf('已取消') >= 0, '⑬ 取消有提示');
     deny.off();
+  }
+
+  /* ⑭ 0.69.0：按期刊订阅（目录渲染 / 中文搜索 / 单条与批量订阅 / 已订阅态） */
+  {
+    const env = run({ totalOverride: 525 });
+    for (const t of env.timers.splice(0)) t.fn();
+    await tick();
+
+    const list = env.dom.byId.get('pp-sub-journal-list');
+    ok(list.children.length >= 2, '⑭ 期刊列表渲染出行', list.children.length);
+    ok(list.textContent.indexOf('The Lancet') >= 0, '⑭ 显示刊名');
+    ok(list.textContent.indexOf('ISSN 0140-6736') >= 0, '⑭ 显示 ISSN（用户不用输入，但要能确认选对了）');
+    ok(list.textContent.indexOf('临床医学') >= 0, '⑭ 显示学科');
+    ok(list.textContent.indexOf('Elsevier') >= 0, '⑭ 显示出版社');
+    // 0.69.1 回归（真机首次打开面板错报「共 200 种」）：提示要用真实 total，不能用被截断的行数
+    ok(list.textContent.indexOf('共 525 种期刊') >= 0,
+      '⑭ ★ 默认列表提示真实总数（不是被 limit 截断的条数）', list.textContent.slice(-56));
+
+    const chips = env.dom.byId.get('pp-sub-journal-subjects');
+    ok(chips.textContent.indexOf('全部') >= 0 && chips.textContent.indexOf('临床医学') >= 0, '⑭ 学科 chips 渲染');
+
+    const rows = list.querySelectorAll('.pp-subs-jrow');
+    eq(rows.length, 2, '⑭ 每种期刊一行');
+    const lrow = rows.filter((r) => r.textContent.indexOf('The Lancet') >= 0)[0];
+    const lbtn = lrow ? lrow.querySelectorAll('button')[0] : null;
+    ok(!!lbtn && lbtn.textContent === '订阅', '⑭ 行内有「订阅」按钮');
+    lbtn.fire('click');
+    await tick();
+    eq(env.calls.subscribe.length, 1, '⑭ ★ 点「订阅」直接创建（不需要先去表单填一遍）');
+    eq((env.calls.subscribe[0] || [])[0].issn, '0140-6736', '⑭ 传入正确 ISSN');
+    ok(env.dom.byId.get('pp-sub-journal-msg').textContent.indexOf('已订阅') >= 0,
+      '⑭ 订阅后有反馈（说明默认频率）', env.dom.byId.get('pp-sub-journal-msg').textContent);
+
+    // 批量：勾两个 → 订阅所选
+    const boxes = list.querySelectorAll('input');
+    ok(boxes.length >= 2, '⑭ 每行有勾选框');
+    boxes[0].checked = true; boxes[0].fire('change');
+    boxes[1].checked = true; boxes[1].fire('change');
+    const bulk = env.dom.byId.get('pp-sub-journal-subscribe');
+    eq(bulk.disabled, false, '⑭ 勾选后「订阅所选」可用');
+    ok(env.dom.byId.get('pp-sub-journal-sel').textContent.indexOf('已选 2 种') >= 0,
+      '⑭ 显示已选数量', env.dom.byId.get('pp-sub-journal-sel').textContent);
+    bulk.fire('click');
+    await tick();
+    eq(env.calls.subscribe.length, 2, '⑭ 批量订阅再调一次');
+    eq((env.calls.subscribe[1] || []).length, 2, '⑭ 批量传入 2 种期刊');
+
+    // 中文别名搜索（防抖定时器手动执行）
+    const q = env.dom.byId.get('pp-sub-journal-q');
+    q.value = '柳叶刀';
+    q.fire('input');
+    for (const t of env.timers.splice(0)) t.fn();
+    await tick();
+    ok(env.calls.journalFind.some((x) => x.q === '柳叶刀'), '⑭ ★ 输入中文别名触发本地搜索');
+    ok(list.textContent.indexOf('The Lancet') >= 0 && list.textContent.indexOf('Nature') < 0,
+      '⑭ 中文别名过滤生效（只剩目标刊）');
+    // 0.69.1 回归（真机 G2 实证）：在「我的订阅」删掉一条后，上面的期刊列表必须重渲染，
+    // 否则该刊仍留着「已订阅」灰按钮，用户以为删不掉。
+    // 重渲染的标志就是每行重新查一次 journalSubscribed。
+    const beforeSub = env.calls.journalSubscribed.length;
+    const del = env.dom.byId.get('pp-subs-list').querySelectorAll('.pp-subs-del')[0];
+    ok(!!del, '⑭ 订阅行有删除按钮');
+    if (del) {
+      del.fire('click');
+      await tick();
+      ok(env.calls.journalSubscribed.length > beforeSub,
+        '⑭ ★ 删除订阅后期刊列表重渲染并重查已订阅态',
+        beforeSub + ' -> ' + env.calls.journalSubscribed.length);
+    }
+    eq(env.rejections.length, 0, '⑭ 期刊订阅流程无未捕获异常');
+    env.off();
+  }
+
+  /* ⑭ 已订阅态：按钮置灰 + 勾选框禁用（避免重复创建同名订阅） */
+  {
+    const env = run({ subscribedIssn: '0140-6736' });
+    for (const t of env.timers.splice(0)) t.fn();
+    await tick();
+    const list = env.dom.byId.get('pp-sub-journal-list');
+    const rows = list.querySelectorAll('.pp-subs-jrow');
+    const lrow = rows.filter((r) => r.textContent.indexOf('The Lancet') >= 0)[0];
+    const lbtn = lrow ? lrow.querySelectorAll('button')[0] : null;
+    ok(!!lbtn && lbtn.textContent === '已订阅', '⑭ 已订阅的刊显示「已订阅」');
+    eq(lbtn.disabled, true, '⑭ 已订阅按钮不可再点');
+    eq(lrow.querySelectorAll('input')[0].disabled, true, '⑭ 已订阅的勾选框禁用');
+    env.off();
   }
 }
 
