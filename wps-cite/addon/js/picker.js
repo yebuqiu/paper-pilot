@@ -118,7 +118,8 @@
         setMsg("插入失败：" + ((r && r.error) || "未知原因"), true);
       }
     } catch (e) {
-      setMsg("插入失败：" + (e.message || e), true);
+      // HTTP 错误（如 403）走人话提示；书签写入等逻辑错误保留原始信息
+      setMsg("插入失败：" + ((e && e.status) ? App.connError(e) : (e.message || e)), true);
     }
   }
 

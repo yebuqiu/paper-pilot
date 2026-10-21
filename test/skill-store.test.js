@@ -10,7 +10,7 @@
  * 本测试真加载 skill-store.js + skill-packs.js 两个文件，迷你 DOM 走完整链：
  *   boot 时序守卫（readyState=loading → DOMContentLoaded）
  *   目录加载（HTTP 桩返回真实 server/public/skill-catalog.json）
- *   列表渲染（45 卡 / 分类 chips / 状态条 / 空态隐藏）
+ *   列表渲染（56 卡 / 分类 chips / 状态条 / 空态隐藏）
  *   交互（搜索过滤 / 分类 chip / 仅看已装 / 详情 / 制作器 / 安装记账）
  *   防御式断言（全程无 skillstore error 诊断日志）
  *
@@ -245,10 +245,10 @@ async function main() {
     'boot 全程无 skillstore error 诊断（实际：' + JSON.stringify(diagMsgs) + '）');
 
   const cards = grid.children.filter((c) => c.className.indexOf('pp-ss-card') >= 0);
-  eq(cards.length, 45, '列表渲染 45 张技能包卡片');
+  eq(cards.length, 56, '列表渲染 56 张技能包卡片');
 
-  ok(status.textContent.indexOf('目录已加载：45') === 0,
-    '状态条显示目录已加载 45（实际：' + status.textContent + '）');
+  ok(status.textContent.indexOf('目录已加载：56') === 0,
+    '状态条显示目录已加载 56（实际：' + status.textContent + '）');
   ok(status.textContent.indexOf('远程') >= 0, '状态条标注远程来源');
 
   ok(meta.textContent.indexOf('远程') >= 0, '目录来源标注为远程');
@@ -279,7 +279,7 @@ async function main() {
   search.value = '综述';
   search.fire('input');
   let nowCards = grid.children.filter((c) => c.className.indexOf('pp-ss-card') >= 0);
-  ok(nowCards.length >= 1 && nowCards.length < 45, '搜索「综述」过滤后卡片数 1~44（实际 ' + nowCards.length + '）');
+  ok(nowCards.length >= 1 && nowCards.length < 56, '搜索「综述」过滤后卡片数 1~55（实际 ' + nowCards.length + '）');
   ok(nowCards.every((c) => c.textContent.indexOf('综述') >= 0), '搜索结果全部命中关键词');
   search.value = '';
   search.fire('input');
@@ -288,11 +288,11 @@ async function main() {
   const catChip = cats.children.filter((c) => c.textContent === '写作')[0];
   catChip.click();
   nowCards = grid.children.filter((c) => c.className.indexOf('pp-ss-card') >= 0);
-  ok(nowCards.length >= 1 && nowCards.length < 45, '点「写作」分类后卡片收窄（实际 ' + nowCards.length + '）');
+  ok(nowCards.length >= 1 && nowCards.length < 56, '点「写作」分类后卡片收窄（实际 ' + nowCards.length + '）');
   const allChip = cats.children.filter((c) => c.textContent === '全部')[0];
   allChip.click();
   nowCards = grid.children.filter((c) => c.className.indexOf('pp-ss-card') >= 0);
-  eq(nowCards.length, 45, '点「全部」恢复 45 张');
+  eq(nowCards.length, 56, '点「全部」恢复 56 张');
 
   /* ================ ④ 详情视图 ================ */
   const detailBtn = c0.children.filter((n) => String(n.className).indexOf('pp-ss-card-btns') >= 0)[0]
@@ -326,14 +326,14 @@ async function main() {
 
   // 重渲染后按钮应变「已装」
   nowCards = grid.children.filter((c) => c.className.indexOf('pp-ss-card') >= 0);
-  ok(nowCards.length === 45, '安装后列表仍 45 张（重渲染不丢）');
+  ok(nowCards.length === 56, '安装后列表仍 56 张（重渲染不丢）');
 
   /* ================ ⑥ 仅看已安装 ================ */
   const onlyEl = document.getElementById('pp-ss-installed-only');
   onlyEl.checked = true;
   onlyEl.fire('change');
   nowCards = grid.children.filter((c) => c.className.indexOf('pp-ss-card') >= 0);
-  ok(nowCards.length >= 1 && nowCards.length < 45, '仅看已安装过滤（实际 ' + nowCards.length + '）');
+  ok(nowCards.length >= 1 && nowCards.length < 56, '仅看已安装过滤（实际 ' + nowCards.length + '）');
   onlyEl.checked = false;
   onlyEl.fire('change');
 

@@ -203,18 +203,48 @@ async function main() {
   /* ================ ② builtinCatalog ================ */
 
   const cat = SP.builtinCatalog();
-  eq(cat.length, 45, 'builtinCatalog: 45 个内置包（8 类 5-6 个，0.48.1 后续扩容）');
+  eq(cat.length, 56, 'builtinCatalog: 56 个内置包（8 类，0.71.x 审查批次 45 修订 + 11 新增）');
   ok(cat.every(function (p) { return SP.validate(p).ok; }), 'builtinCatalog: 每包 validate ok');
   const ids = cat.map(function (p) { return p.id; });
-  eq(new Set(ids).size, 45, 'builtinCatalog: id 全局唯一');
+  eq(new Set(ids).size, 56, 'builtinCatalog: id 全局唯一');
   ok(cat.every(function (p) { return SP.CATEGORIES.indexOf(p.category) >= 0; }),
     'builtinCatalog: category 均在枚举内');
-  // 0.48.1：全分类覆盖（每类 3-5 个，在线/内置双源一致的底线）
+  // 0.48.1：全分类覆盖（在线/内置双源一致的底线）；0.71.x：每类上限放宽到 8
   const byCat = {};
   for (const p of cat) byCat[p.category] = (byCat[p.category] || 0) + 1;
   eq(Object.keys(byCat).length, 8, 'builtinCatalog: 8 个分类全覆盖');
-  ok(SP.CATEGORIES.every(function (c) { return byCat[c] >= 4 && byCat[c] <= 6; }),
-    'builtinCatalog: 每类 4-6 个 → 实际 ' + JSON.stringify(byCat));
+  ok(SP.CATEGORIES.every(function (c) { return byCat[c] >= 4 && byCat[c] <= 8; }),
+    'builtinCatalog: 每类 4-8 个 → 实际 ' + JSON.stringify(byCat));
+  // 0.71.x 审查批次守卫（防回归）：
+  // ① 同一包内非空 trigger 不得重复（math-reader 曾两 prompt 共用「^拆定理」）
+  // ② prompt 不得含「【在此」失效占位符（response-letter/meeting-minutes/reading-priority-tags 曾因此丢输入）
+  // ③ 每包 longDesc 必须含「▸ 适用场景」三段式结构（深度底线）
+  // ④ 11 个新包锚定（覆盖七个曾闲置的 Agent 工具）
+  for (const p of cat) {
+    const prs = (p.contents && p.contents.prompts) || [];
+    const trigs = prs.map(function (x) { return String(x.trigger || ''); }).filter(Boolean);
+    eq(new Set(trigs).size, trigs.length, p.id + ': 包内 trigger 不重复');
+    ok(prs.every(function (x) { return String(x.prompt || '').indexOf('【在此') < 0; }),
+      p.id + ': prompt 不含失效占位符');
+    ok(String(p.longDesc || '').indexOf('▸ 适用场景') >= 0, p.id + ': longDesc 三段式');
+  }
+  ['arxiv-tracker', 'reading-list-builder', 'research-memory', 'citation-radar',
+    'ethics-selfcheck', 'english-polish', 'figure-reading', 'slide-outline',
+    'data-extraction', 'study-design-review', 'topic-tags'].forEach(function (nid) {
+    ok(ids.indexOf(nid) >= 0, 'builtinCatalog: 含新包 ' + nid);
+  });
+  // 七个曾闲置 Agent 工具至少被一个包的预设启用
+  const usedTools = {};
+  for (const p of cat) {
+    const ap = p.contents && p.contents.agentPreset;
+    if (ap && ap.aiAgentTools) String(ap.aiAgentTools).split(',').forEach(function (t) {
+      usedTools[String(t).trim()] = true;
+    });
+  }
+  ['search_arxiv', 'get_citation_count', 'search_notes', 'move_to_collection',
+    'export_bibliography', 'memory_read', 'memory_write'].forEach(function (t) {
+    ok(usedTools[t], 'builtinCatalog: 工具 ' + t + ' 已被技能包预设启用');
+  });
   // 0.48.1：在线目录文件与内置目录同构（唯一生成通道 = build-skill-catalog.js）
   const catPath = path.join(ROOT, 'server', 'public', 'skill-catalog.json');
   ok(fs.existsSync(catPath), 'online catalog: server/public/skill-catalog.json 在库');
@@ -262,7 +292,7 @@ async function main() {
     { id: 'b', name: '乙', desc: 'x', author: '李四', category: '审稿', tags: [] },
   ];
   eq(SP.searchPacks(custom, { query: '张三' }).length, 1, 'searchPacks: query 命中 author');
-  eq(SP.searchPacks(cat, { category: '翻译' }).length, 6, 'searchPacks: category 精确过滤（翻译 6 包）');
+  eq(SP.searchPacks(cat, { category: '翻译' }).length, 7, 'searchPacks: category 精确过滤（翻译 7 包，0.71.x +english-polish）');
   eq(SP.searchPacks(cat, { tag: '精读' })[0].id, 'deep-reading', 'searchPacks: tag 精确过滤');
   eq(SP.searchPacks(cat, { installedIds: new Set(['weekly-report']) }).length, 1,
     'searchPacks: installedIds 只留已装');
@@ -560,7 +590,7 @@ async function main() {
   PrefStore.delete(PP + 'skillStoreSource');
   const f1 = await SP.fetchCatalog();
   eq(f1.source, 'builtin', 'fetchCatalog: 源为空回退 builtin');
-  eq(f1.packs.length, 45, 'fetchCatalog: builtin 45 包');
+  eq(f1.packs.length, 56, 'fetchCatalog: builtin 56 包');
   eq(f1.updatedAt, '', 'fetchCatalog: builtin updatedAt 为空');
 
   // 坏 JSON → builtin

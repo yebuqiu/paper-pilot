@@ -3,6 +3,17 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.72.0",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.72.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "WPS 集成修复：其他电脑上检索/插入/导出诊断包全部 403 —— 部分 WPS 会把本地页面来源序列化成 file://，代理白名单已放行；升级后在设置面板点「安装或更新加载项」即可（加载项 0.2.1 + 代理 0.1.2，报错也会指明是 Zotero 未授权还是来源被拒）。同版本还带来技能包商店全面审查：45 个技能包逐条修订、新增 11 个共 56 个，修复 9 处承诺与交付不一致、{input} 丢失用户输入等真实缺陷"
+        },
+        {
           "version": "0.71.1",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.71.1.xpi",
           "applications": {

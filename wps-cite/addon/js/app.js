@@ -55,6 +55,15 @@
 
   function connError(e) {
     if (e && e.status === 403) {
+      // 403 有两个来源，文案必须分开：
+      // ① 代理 Origin 白名单拦截（body 带 "origin not allowed"）——是代理说的，开 Zotero 没用；
+      // ② Zotero 本地 API 未开启——Zotero 说的，去设置里勾选项。
+      if (e.body && /origin not allowed/i.test(String(e.body))) {
+        let o = "";
+        try { o = JSON.parse(e.body).origin || ""; } catch (_) { /* 老代理没有这个字段 */ }
+        return "本地代理拒绝了页面来源" + (o ? "（Origin: " + o + "）" : "") +
+          "。请把 %APPDATA%\\PapilotCite\\proxy.log 里 reject origin 一行发给开发者。";
+      }
       return "Zotero 拒绝访问：请到 Zotero 设置 → 高级，勾选「允许此计算机上的其他应用程序与 Zotero 通信」。";
     }
     return "连接不上本地服务。请先双击运行：\n" + proxyBat() +
@@ -426,7 +435,7 @@
           err: String((e && e.message) || e),
           stack: String((e && e.stack) || "").slice(0, 500),
         });
-        msg("插入失败：" + String((e && e.message) || e));
+        msg("插入失败：" + ((e && e.status) ? connError(e) : String((e && e.message) || e)));
       }
     }, 1200);
   }

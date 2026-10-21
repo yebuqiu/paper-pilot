@@ -119,7 +119,7 @@ node wps-cite/test/core.test.js      # 64 断言：书签编码 / 聚簇编号 /
 | **点按钮弹「连接不上本地服务」** | 90% 是本地代理没在跑（WPS 12 里加载项无法自己拉起进程） | 双击 `%APPDATA%\PapilotCite\start-proxy.bat`；或 `python wps-cite/tools/install.py --repair`。然后看 `%APPDATA%\PapilotCite\proxy.log`：**有 `health probe` 行** = 加载项与代理已通，问题在别处；**没有** = 加载项 JS 没跑（检查是否点过信任、`install.py --check`） |
 | 功能区没有「Papilot 引用」 | ① 信任没点 ② WPS 没真退出 ③ 注册被别的版本覆盖 | 完全退出 WPS 重开并点【确定】；`install.py --check` 看注册项；确认 `publish.xml` 里 `url` 是目录名而不是 `http://…` |
 | 点「插入引文」窗格不出现 | 该 WPS 版本不支持 `wps.CreateTaskPane` | 见 DESIGN §6 限制 3；其余命令仍可用 |
-| 检索报 403 | Zotero 本地 API 没开 | Zotero 设置 → 高级 → 允许其他应用通信 |
+| 检索/插入报 403 | ① Zotero 本地 API 没开（最常见）② 代理 Origin 白名单拦了加载项页面 | ① Zotero 设置 → 高级 → 允许其他应用通信；② 看 proxy.log 的 `reject origin:` 行，把 Origin 值反馈给开发者 |
 | 检索报「代理未运行」 | 代理没起 | `pythonw %APPDATA%\PapilotCite\proxy.py`，或重跑 install.py |
 | 「回到原文」没反应 | Zotero 未注册 `zotero://` 协议 / 条目没有 PDF | 先在 Zotero 里双击该条目确认能打开 PDF；无 PDF 时退化为"在 Zotero 选中条目" |
 | 刷新后编号乱 | 文档里有手工编辑过的书签名 | 别手工改 `PPC…` 书签；坏了就删掉那条引文重新插入 |
@@ -198,6 +198,7 @@ python wps-cite/tools/install.py --with-dotm   # 装 Papilot Cite 时顺带做�
 | 4 | 任务窗格里点「插入选中」没反应 | 窗格是独立页面，未必注入 `wps` 对象，拿不到文档 | 窗格检测不到 `wps` 就走代理队列 `/queue`，主页面每 1.2 s 取走并真正写入 |
 | 5 | 从窗格/后台调用时 `ActiveDocument` 为 null | 页面没焦点 | `doc()` 退化为 `Documents.Item(1)`；`insertAtCursor` 无选区时退化为文末插入 |
 | 6 | 排查全靠猜 | WPS 界面不能自动化点，日志又在页面里看不到 | 加载项把 `addin loaded`（含 API 能力探测）/`action`/`queue`/异常栈 POST 到代理 `/log`，全部落进 `proxy.log` |
+| 7 | 某台电脑**全功能** 403（检索/插入/导出诊断包全挂），Zotero 本地 API 正常 | 该机 WPS 内嵌旧 Chromium 把 file 源序列化成 `file://` 而非 `null`，撞代理 Origin 白名单；proxy.log 全是 `reject origin: 'file://'` | 白名单补 `file://`（proxy 0.1.2）；403 响应体带被拒 Origin 值；冒烟测试钉住 |
 
 > 第 6 条是这轮最值钱的一步：`log("addin loaded", apiProbe())` 一次就证明了
 > `wps.CreateTaskPane` / `ShowDialog` 都是 function，也让第 1 条的真凶（404）无处可藏。

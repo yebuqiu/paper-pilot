@@ -128,9 +128,19 @@ try:
 
     # ---------- ② 本机 Origin 放行 ----------
     for org in ("http://127.0.0.1:8080", "http://127.0.0.1", "http://localhost:3000",
-                "http://localhost", "null"):
+                "http://localhost", "null", "file://"):
         code, _ = do_request(req("GET", "/links?itemKey=K1", origin=org))
         eq(code, 200, "② Origin %r 放行" % org)
+
+    # 2026-10-21 外机实测：部分 WPS 内嵌旧 Chromium 把 file 源序列化成 "file://" 而非 null，
+    # 曾让该机全部请求 403（检索/插入/导出诊断包全挂）。钉住防回归。
+    code, _ = do_request(req("POST", "/log", origin="file://", body={"msg": "x"}))
+    eq(code, 200, "② file:// Origin 的 POST 也放行")
+
+    # ---------- ②b 403 自描述：被拒 Origin 值进响应体（现场不用翻日志） ----------
+    code, body = do_request(req("GET", "/links?itemKey=K1", origin="https://evil.example.com"))
+    eq(code, 403, "②b 外站仍 403")
+    ok('"origin": "https://evil.example.com"' in body, "②b 403 响应体带被拒 Origin 值", body[:160])
 
     # ---------- ③ 不带 Origin 放行 ----------
     code, _ = do_request(req("GET", "/links?itemKey=K1"))

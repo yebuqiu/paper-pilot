@@ -30,6 +30,7 @@ import urllib.error
 import urllib.request
 import zipfile
 
+PROXY_VERSION = "0.1.2"   # 部署在多机上，排障先对版本：__health 与启动日志都带它
 ZOTERO = "127.0.0.1"
 ZOTERO_PORT = 23119
 LISTEN_PORT = 21932
@@ -48,12 +49,13 @@ CORS = (
 # ---------- 跨源/命令白名单 ----------
 # 代理监听 127.0.0.1，但浏览器有一个坑：任意外站网页里 fetch("http://127.0.0.1:21932/...")
 # 也会把请求发到这里（Private Network Access 之前，这就是 CSRF 的温床）。所以：
-#   - 带 Origin 头的（一律是浏览器发的）只允许 127.0.0.1 / localhost / null
-#     （CEF file:// 加载项发的是 null）；
+#   - 带 Origin 头的（一律是浏览器发的）只允许 127.0.0.1 / localhost / null / file://
+#     （CEF file:// 加载项多数发 null；部分 WPS 内嵌的旧 Chromium 把 file 源序列化成
+#     "file://"——2026-10-21 外机实测，两者同为本地文件页，信任等级一致）；
 #   - 不带 Origin 的（curl / python / 本机工具）不是浏览器场景，放行。
 # 这样即使别人诱导用户访问一个恶意站点，它也无法驱使代理去翻 Zotero 库或开文件。
 _ALLOW_ORIGIN = re.compile(
-    r"^(?:https?://(?:127\.0\.0\.1|localhost)(?::\d+)?|null)$", re.IGNORECASE)
+    r"^(?:https?://(?:127\.0\.0\.1|localhost)(?::\d+)?|null|file://)$", re.IGNORECASE)
 
 
 def origin_ok(headers):
@@ -557,8 +559,11 @@ def handle(client):
         #   不挡就是 CSRF。带 Origin 必须是本机/localhost/null（CEF file:// 页发 null），
         #   否则 403；不带 Origin 的是 curl/python/同机工具，不是浏览器场景，放行。
         if not origin_ok(headers):
-            logging.warning("reject origin: %r", headers.get("Origin") or headers.get("origin"))
-            return send(client, 403, {"error": "origin not allowed"})
+            rejected = headers.get("Origin") or headers.get("origin") or ""
+            logging.warning("reject origin: %r", rejected)
+            # 把被拒的 Origin 放进响应体：加载项的报错文案能直接显示它，
+            # 用户不用翻 proxy.log 也能把关键信息报回来。
+            return send(client, 403, {"error": "origin not allowed", "origin": rejected})
 
         if path == "/__beacon":
             # 1x1 透明 GIF：图片请求不受 CORS 约束，用来确认"加载项页面能不能碰到代理"。
@@ -571,7 +576,8 @@ def handle(client):
             # 记一行：加载项启动时会自动探一次，这行就是"JS 跑了且网通了"的硬证据
             logging.info("health probe ok-zotero=%s", zotero_alive())
             return send(client, 200, {"ok": True, "zotero": zotero_alive(),
-                                      "localApi": local_api_ok() if zotero_alive() else False})
+                                      "localApi": local_api_ok() if zotero_alive() else False,
+                                      "proxyVersion": PROXY_VERSION})
 
         if path == "/log" and method == "POST":
             # 加载项把"点了什么、WPS 有哪些 API、报什么错"写到这里。
@@ -607,11 +613,17 @@ def handle(client):
             #   现在给 30 分钟，正常操作不可能超过。
             sub = path[len("/zit"):] + (("?" + u.query) if u.query else "")
             code, data, ctype = forward(method, sub, headers, body, timeout=1800)
+            if code >= 400:
+                logging.warning("fwd %s %s -> %d", method, sub.split("?")[0], code)
             return send(client, code, data, ctype)
 
         if path.startswith("/zotero/"):
             sub = path[len("/zotero"):] + (("?" + u.query) if u.query else "")
             code, data, ctype = forward(method, sub, headers, body)
+            if code >= 400:
+                # 403 几乎总是「Zotero 本地 API 未开启」——落日志后 proxy.log 就是第一现场，
+                # 不用再看加载项里的裸 "HTTP 403" 猜来源。
+                logging.warning("fwd %s %s -> %d (403 = zotero local api off?)", method, sub.split("?")[0], code)
             return send(client, code, data, ctype)
 
         if path == "/jsonp":
@@ -733,7 +745,7 @@ def serve(port=LISTEN_PORT):
         return 0
     srv.listen(64)
     srv.settimeout(1.0)
-    logging.info("proxy on %d → zotero %d", port, ZOTERO_PORT)
+    logging.info("proxy v%s on %d → zotero %d", PROXY_VERSION, port, ZOTERO_PORT)
     while not STOP.is_set():
         try:
             c, _ = srv.accept()
