@@ -33,6 +33,7 @@ GH_OWNER, GH_REPO = "yebuqiu", "zotero-papilot"
 GE_OWNER, GE_REPO = "cassiuschen9261", "zotero-papilot"
 GE_API = "https://gitee.com/api/v5"
 GH_API = "https://api.github.com"
+GH_UPLOAD_API = "https://uploads.github.com"   # Release 附件上传走专用域名
 
 
 def die(msg):
@@ -72,7 +73,10 @@ def ge_token():
     die("取不到 Gitee token（可设 PP_GITEE_TOKEN）")
 
 
-def http(url, token, method="GET", data=None, ctype="application/json"):
+def http(url, token, method="GET", data=None, ctype="application/json", _retry=3):
+    """带重试的 REST 调用：沙箱代理对大响应体偶发截断（IncompleteRead），
+    重试比让用户重跑便宜。响应体越大越容易踩，调用方请用小 page。"""
+    import http.client
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Authorization", "token " + token)
     req.add_header("User-Agent", "papilot-release")
@@ -85,6 +89,12 @@ def http(url, token, method="GET", data=None, ctype="application/json"):
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:400]
         raise RuntimeError("HTTP %d %s %s" % (e.code, url, detail))
+    except http.client.IncompleteRead as e:
+        if _retry > 0:
+            import time
+            time.sleep(2)
+            return http(url, token, method, data, ctype, _retry - 1)
+        raise RuntimeError("响应体被截断且重试失败：%s（%s）" % (url, e))
 
 
 def module_zips(version):
@@ -97,7 +107,8 @@ def module_zips(version):
 def gh_upload(version, dry):
     token = gh_token()
     tag = "v" + version
-    rels = http("%s/repos/%s/%s/releases?per_page=100" % (GH_API, GH_OWNER, GH_REPO), token)
+    # 最新 Release 在前，10 条足够；大 page 的响应体在代理下会被截断
+    rels = http("%s/repos/%s/%s/releases?per_page=10" % (GH_API, GH_OWNER, GH_REPO), token)
     rel = next((r for r in rels if r.get("tag_name") == tag), None)
     if not rel:
         die("GitHub 上没有 %s 的 Release（先跑 github-release.py --version %s）" % (tag, version))
@@ -111,7 +122,7 @@ def gh_upload(version, dry):
             continue
         data = p.read_bytes()
         up = http("%s/repos/%s/%s/releases/%d/assets?name=%s"
-                  % (GH_API, GH_OWNER, GH_REPO, rel["id"], urllib.parse.quote(p.name)),
+                  % (GH_UPLOAD_API, GH_OWNER, GH_REPO, rel["id"], urllib.parse.quote(p.name)),
                   token, "POST", data, "application/octet-stream")
         print("  ✓ GitHub %s（%d bytes）" % (up.get("name"), up.get("size", 0)))
 
@@ -119,7 +130,7 @@ def gh_upload(version, dry):
 def ge_upload(version, dry):
     token = ge_token()
     tag = "v" + version
-    q = urllib.parse.urlencode({"access_token": token, "page": 1, "per_page": 100})
+    q = urllib.parse.urlencode({"access_token": token, "page": 1, "per_page": 10})
     rels = http("%s/repos/%s/%s/releases?%s" % (GE_API, GE_OWNER, GE_REPO, q), token)
     rel = next((r for r in rels if r.get("tag_name") == tag), None)
     if not rel:
