@@ -7,10 +7,11 @@
  *   ② 已安装技能包 chips（SkillPacks.listInstalled，防御式：核心域未就绪时提示）；
  *   ③ 从剪贴板导入技能包 JSON（读剪贴板 → SkillPacks.install，装完刷新列表）。
  *
- * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测关键节点，
+ * ⚠ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测关键节点，
  *    不存在就延迟重试（同 prefs-pane.js / prefs-agent.js 纪律）。
- * ⚠️ 动态创建的节点一律经变量持有，不要用 $(…) 取动态节点（check-wiring 守卫）。
- * ⚠️ SkillPacks 核心域由并行模块提供，任何调用都包 try-catch，未就绪给提示不抛错。
+ * ⚠ 动态创建的节点一律经变量持有，不要用 $(…) 取动态节点（check-wiring 守卫）。
+ * ⚠ SkillPacks 核心域由并行模块提供，任何调用都包 try-catch，未就绪给提示不抛错。
+ * 0.72.2 设计修复：emoji 清除（chips 删图标留文字）。
  */
 /* global Zotero, Components, window, document */
 
@@ -86,11 +87,11 @@
       let title = "";
       try { title = String((p && (p.description || p.desc)) || "").slice(0, 200); }
       catch (e) { title = ""; }
+      // 0.72.3：这里原本挂了个**什么都不做**的 click 监听——纯展示的 tag 不该有
+      // 点击目标（也不该为它补 tabindex：让键盘停在无动作元素上更糟）。直接删掉监听。
+      // 安装 / 卸载 / 更新在商店窗口里管理。
       const chip = el("span", { class: "pp-ds-chip", title: title || packLabel(p) },
-        "🧩 " + packLabel(p));
-      chip.addEventListener("click", () => {
-        // 点击无操作（仅展示；安装 / 卸载 / 更新在商店窗口里管理）
-      });
+        packLabel(p));
       host.appendChild(chip);
     }
   }
@@ -102,7 +103,7 @@
    * 三道刷新通道：
    *   ① 记账 pref 观察者（Zotero.Prefs.registerObserver，main.js 同款 API；
    *      商店窗口任何 install/uninstall 落 pref 即触发本面板重绘）；
-   *   ② 「↻ 刷新」手动按钮（observer 不可用时的兜底）；
+   *   ② 「刷新」手动按钮（observer 不可用时的兜底）；
    *   ③ 面板窗口 unload 时注销观察者（防泄漏）。
    */
   let _prefObserverSym = null;

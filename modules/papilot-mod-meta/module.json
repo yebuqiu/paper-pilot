@@ -1,0 +1,86 @@
+{
+  "id": "papilot-mod-meta",
+  "name": "元数据与文库健康",
+  "version": "0.73.0",
+  "minHost": "0.73.0",
+  "apiVersion": 1,
+  "description": "元数据规则/清洗/检查、附件管理、查重与文库图谱/统计。",
+  "entry": "",
+  "mode": "scope",
+  "order": 70,
+  "provides": [
+    "meta-rules",
+    "meta-enrich",
+    "meta-lint",
+    "meta-doctor",
+    "attach-manager",
+    "attach-doctor",
+    "fake-check",
+    "lib-graph",
+    "collection-stats"
+  ],
+  "depends": [],
+  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "repo": {
+    "github": "https://github.com/yebuqiu/zotero-papilot",
+    "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+  },
+  "globals": [
+    "AttachDoctor",
+    "AttachManager",
+    "CollectionStats",
+    "FakeCheck",
+    "LibGraph",
+    "MetaDoctor",
+    "MetaEnrich",
+    "MetaLint",
+    "MetaRules"
+  ],
+  "files": [
+    {
+      "path": "scripts/features/attach-doctor.js",
+      "sha256": "1af393932135fc068a6b7d551b3116d2aa6a1095c61882dce3c74a94a47fa2f4",
+      "size": 14748
+    },
+    {
+      "path": "scripts/features/attach-manager.js",
+      "sha256": "67e2400081eda57057d15c79f6fb1a84cd80395771d82d3795edaaf1ee77bacc",
+      "size": 4518
+    },
+    {
+      "path": "scripts/features/collection-stats.js",
+      "sha256": "359fbc3f01ceb28a7375cb0e3eed69c664dba6c79b396d2c903372e722a52fc1",
+      "size": 3796
+    },
+    {
+      "path": "scripts/features/fake-check.js",
+      "sha256": "6e07796b2dc8086eec29500596a3024cf762b010c990b772ca338bd125f93f37",
+      "size": 9950
+    },
+    {
+      "path": "scripts/features/lib-graph.js",
+      "sha256": "18c458a18556c0cff9f321c15af6c95d18901814d8b31b8602c7431c73aab127",
+      "size": 7973
+    },
+    {
+      "path": "scripts/features/meta-doctor.js",
+      "sha256": "b430828105295ec925787fd2292a37e97c274fe849b29382f62ee7428d267c03",
+      "size": 26038
+    },
+    {
+      "path": "scripts/features/meta-enrich.js",
+      "sha256": "fb83337c292f2c251b14b705ab7a708fe0275feb758bfb43218cf5dfad674240",
+      "size": 6131
+    },
+    {
+      "path": "scripts/features/meta-lint.js",
+      "sha256": "ef4bea3e4d6e29af78e53bcbbc1073e1055d342ab376a8ea37521dc1fdf59f6b",
+      "size": 4845
+    },
+    {
+      "path": "scripts/features/meta-rules.js",
+      "sha256": "bb58f7c797de9f7e0c1750e636c897503d9916dba268a92c8555335afd7d6b2f",
+      "size": 25743
+    }
+  ]
+}

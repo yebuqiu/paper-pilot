@@ -1,0 +1,75 @@
+{
+  "id": "papilot-mod-cite",
+  "name": "引用与写作",
+  "version": "0.73.0",
+  "minHost": "0.73.0",
+  "apiVersion": 1,
+  "description": "参考文献格式化、引用上下文与溯源、WPS 引用加载项载荷。",
+  "entry": "",
+  "mode": "scope",
+  "order": 80,
+  "provides": [
+    "cite-export",
+    "citation-context",
+    "citation-trace",
+    "ref-format",
+    "ref-sources",
+    "ref-import",
+    "wps-cite"
+  ],
+  "depends": [],
+  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "repo": {
+    "github": "https://github.com/yebuqiu/zotero-papilot",
+    "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+  },
+  "globals": [
+    "CC_TERMS",
+    "CC_EXACT",
+    "CC_GROUPS",
+    "CC_RANK",
+    "CitationContext",
+    "CitationTrace",
+    "CiteExport",
+    "RefFormat",
+    "RefImport",
+    "RefSources"
+  ],
+  "files": [
+    {
+      "path": "scripts/features/citation-context.js",
+      "sha256": "f3c74b93736ba4ecc3a9f7459832fbb73cf85c87cc4dcc385355e18427f8f630",
+      "size": 22455
+    },
+    {
+      "path": "scripts/features/citation-trace.js",
+      "sha256": "ebf55c9c35b3e952fc7b7ef13af76a3503c4b02f7a463f0fce51e1f7178be854",
+      "size": 7561
+    },
+    {
+      "path": "scripts/features/cite-export.js",
+      "sha256": "f2217b7405c579675d1676daab0d8abfb8a25075e8d0ff6559911676cde35d46",
+      "size": 8206
+    },
+    {
+      "path": "scripts/features/ref-format.js",
+      "sha256": "471d4c9a57b0784a30dcbd30b6381aea7aa237cd5227df9700680ce9fd71d844",
+      "size": 65758
+    },
+    {
+      "path": "scripts/features/ref-import.js",
+      "sha256": "39cccbb5ca045e9df8387d82e1e5a415b9ca131cb23814d1f520ddc416165ea5",
+      "size": 39745
+    },
+    {
+      "path": "scripts/features/ref-sources.js",
+      "sha256": "b34ed28660ed0e047e1271596c709333f64a6ff97de932567a9bfe8f13a70648",
+      "size": 49404
+    },
+    {
+      "path": "tools/wps-cite.bundle.json",
+      "sha256": "37faaaf082ebe4922a088fabda1aa123584e36626b628a42152085c00c2e58b3",
+      "size": 219499
+    }
+  ]
+}

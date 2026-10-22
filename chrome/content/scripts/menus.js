@@ -25,6 +25,8 @@ var Menus = {
     // 顶层直达（不进分组、不受隐藏分组影响）
     { id: "pdf-compare", group: null, labelKey: "menuPdfCompare", run: () => PdfCompare.runForSelected() },
     { id: "hub", group: null, labelKey: "menuHub", run: () => Zotero.Papilot.openHub() },
+    // 0.73.0 组件商店：主包瘦身后的唯一「装功能」入口
+    { id: "module-store", group: null, labelKey: "menuModuleStore", run: () => Zotero.Papilot.openModuleStore() },
     // 0.31.0 AI 问答悬浮窗：锁定为右键选中的条目并唤起（Ctrl+Shift+K）
     { id: "ai-chat", group: null, labelKey: "menuAiChat", run: () => Menus.openChatFloat() },
     // AI 阅读助手
@@ -136,7 +138,31 @@ var Menus = {
     const mi = this._xul(doc, "menuitem");
     mi.id = id;
     mi.setAttribute("label", I18n.t(labelKey));
-    mi.addEventListener("command", onCommand);
+    // 0.73.0 模块化：瘦身包里功能组件可能尚未安装，菜单闭包会裸调不存在的全局。
+    // 这里统一兜住：ReferenceError → 提示并打开组件商店，其余错误照旧记日志。
+    mi.addEventListener("command", (ev) => {
+      try {
+        onCommand(ev);
+      } catch (e) {
+        const msg = String((e && (e.message || e)) || "");
+        const isRef = (e && e.name === "ReferenceError") || /is not defined/.test(msg);
+        if (isRef) {
+          try { Zotero.Papilot._diag("menu item needs module: " + id + " (" + msg + ")"); } catch (e2) { /* ignore */ }
+          try {
+            const win = Zotero.getMainWindow();
+            const ps = Services.prompt;
+            const flags = ps.BUTTON_POS_0 * ps.BUTTON_TITLE_IS_STRING
+              + ps.BUTTON_POS_1 * ps.BUTTON_TITLE_CANCEL;
+            const rv = ps.confirmEx(win, "Papilot 组件",
+              "这个功能需要额外组件（尚未安装）。\n\n是否打开组件商店安装？",
+              flags, "打开组件商店", null, null, null, {});
+            if (rv === 0) Zotero.Papilot.openModuleStore();
+          } catch (e3) { /* 提示失败就静默，绝不再抛 */ }
+          return;
+        }
+        try { Zotero.logError(e); } catch (e2) { /* ignore */ }
+      }
+    });
     parent.appendChild(mi);
     return mi;
   },
@@ -398,6 +424,9 @@ var Menus = {
     // 0.43.1：知网账号登录/验证/转换器更新 → 设置面板「知网账号」卡片（登录类入口不在菜单）
     this._menuItem(doc, govPop, "papilot-menu-mcp", "menuMcp", () => MCP.openDialog());
     this._menuItem(doc, govPop, "papilot-menu-conn-test", "menuConnTest", () => this.testConnection());
+    // 0.73.0 组件商店（治理组的「装/卸功能」入口）
+    this._menuItem(doc, govPop, "papilot-menu-module-store", "menuModuleStore",
+      () => Zotero.Papilot.openModuleStore());
     // AI 模型通道快速切换（popupshowing 时动态填充；0.14.0 取代配置快照菜单）
     const pmenu = this._xul(doc, "menu");
     pmenu.id = "papilot-menu-channels";
@@ -417,6 +446,10 @@ var Menus = {
   _buildClassicTools(doc, toolsPopup) {
     const t0 = this._menuItem(doc, toolsPopup, "papilot-menu-hub", "menuHub",
       () => Zotero.Papilot.openHub());
+    // 0.73.0 组件商店（classic 平铺模式同样保留入口）
+    const t0m = this._menuItem(doc, toolsPopup, "papilot-menu-module-store", "menuModuleStore",
+      () => Zotero.Papilot.openModuleStore());
+    void t0m;
     // 0.66.0 classic 模式同样保留「账号与密钥」入口（与分组模式同一动作）
     const t0v = this._menuItem(doc, toolsPopup, "papilot-menu-vault", "menuVault",
       () => Zotero.Papilot.openVault());

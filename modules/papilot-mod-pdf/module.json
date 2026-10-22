@@ -1,0 +1,85 @@
+{
+  "id": "papilot-mod-pdf",
+  "name": "PDF 对照与 OCR",
+  "version": "0.73.0",
+  "minHost": "0.73.0",
+  "apiVersion": 1,
+  "description": "PDF 内嵌阅读、左右对照翻译、PDF 导出/比对/主题与 OCR 能力。",
+  "entry": "",
+  "mode": "scope",
+  "order": 20,
+  "provides": [
+    "pdf-inline",
+    "pdf-dual",
+    "pdf-compare",
+    "pdf-export",
+    "pdf-theme",
+    "ocr"
+  ],
+  "depends": [],
+  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "repo": {
+    "github": "https://github.com/yebuqiu/zotero-papilot",
+    "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+  },
+  "globals": [
+    "OcrService",
+    "PdfCompare",
+    "PdfDual",
+    "PdfExport",
+    "PdfInline",
+    "PdfTheme"
+  ],
+  "files": [
+    {
+      "path": "scripts/features/ocr.js",
+      "sha256": "4e9b2e4592e30d2390c509cf83603c4dd8191832e05005ceff732c6fb522da51",
+      "size": 31416
+    },
+    {
+      "path": "scripts/features/pdf-compare.js",
+      "sha256": "85f82e74c5afbec9c4b8de180e49d42ebd58287dd652e10856e181f126fdea06",
+      "size": 11116
+    },
+    {
+      "path": "scripts/features/pdf-dual.js",
+      "sha256": "af25f99dc96f4e54c6135194cefba48488c0f5cb85b3307de455a84084ac14f1",
+      "size": 34338
+    },
+    {
+      "path": "scripts/features/pdf-export.js",
+      "sha256": "15c26cbac229aebf4fa1eeb22278e972cf42e8cce6e3d766bd177faf3e95a15e",
+      "size": 25276
+    },
+    {
+      "path": "scripts/features/pdf-inline.js",
+      "sha256": "9809e81f44744a4089e8d85552985f90fedbd7b45b3aecdfe32d53dd8beca818",
+      "size": 78082
+    },
+    {
+      "path": "scripts/features/pdf-theme.js",
+      "sha256": "45b01ef629e2003a36e2fb4832f6eb8202bf74aad4dd30b3e7bdd19488487ab0",
+      "size": 11304
+    },
+    {
+      "path": "scripts/pdf-render-worker.js",
+      "sha256": "84b847ec2f14538604d432a70d428dd9a2362354e36c4b6f28ff4762b96dad79",
+      "size": 1855
+    },
+    {
+      "path": "vendor/pdfjs/LICENSE",
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "size": 10174
+    },
+    {
+      "path": "vendor/pdfjs/pdf.min.js",
+      "sha256": "5b5799e6f8c680663207ac5b42ee14eed2a406fa7af48f50c154f0c0b1566946",
+      "size": 320004
+    },
+    {
+      "path": "vendor/pdfjs/pdf.worker.min.js",
+      "sha256": "feabdf309770ed24bba31a5467836cdc8cf639c705af27d52b585b041bb8527b",
+      "size": 1087212
+    }
+  ]
+}

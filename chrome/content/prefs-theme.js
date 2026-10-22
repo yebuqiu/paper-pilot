@@ -6,6 +6,7 @@
  * 主题库/壁纸引擎经 Zotero.Papilot.uiTheme / pdfTheme 访问（主模块挂载）。
  * 交互：分类卡片网格（壁纸缩略预览）→ 点击即应用（一键切换，pref 持久化，
  * 重启自动恢复）；自定义主题 = 自定义配色 + 自定义壁纸文件（图片/视频）。
+ * 0.72.2 设计修复：主题徽章文字化（浅/深/动态/在线）+ emoji 清除。
  */
 /* global Zotero, Components, Services, window, document */
 
@@ -61,10 +62,17 @@
     }
     const label = h("div");
     label.setAttribute("class", "pp-theme-name");
-    const icon = t.anim ? "⚡ " : (t.dark ? "🌙 " : "☀️ ");
-    label.textContent = icon + t.name;
+    label.textContent = t.name;
     card.appendChild(sw);
     card.appendChild(label);
+    // 0.72.2：类别徽章文字化（与 xhtml 图例「浅/深/动态」一致），不再用 emoji 前缀；
+    // 只有主题库卡（带 cat）加类别徽章，特殊卡（跟随原生/自定义）不加
+    if (t.cat) {
+      const kind = h("div");
+      kind.setAttribute("class", "pp-theme-tag");
+      kind.textContent = t.anim ? (zh ? "动态" : "Live") : (t.dark ? (zh ? "深" : "Dark") : (zh ? "浅" : "Light"));
+      card.appendChild(kind);
+    }
     if (t.badge) {
       const tag = h("div");
       tag.setAttribute("class", "pp-theme-tag");
@@ -153,9 +161,14 @@
       sw.style.backgroundPosition = "center";
       const label = h("div");
       label.setAttribute("class", "pp-theme-name");
-      label.textContent = "🖼 " + p.name;
+      label.textContent = p.name;
+      // 0.72.2：在线美图徽章文字化（替换原来的图片图标前缀）
+      const tag = h("div");
+      tag.setAttribute("class", "pp-theme-tag");
+      tag.textContent = zh ? "在线" : "Online";
       card.appendChild(sw);
       card.appendChild(label);
+      card.appendChild(tag);
       card.addEventListener("click", () => {
         setPref("uiWallpaperUrl", mod.photoURL(p.pid, 1920));
         setPref("uiWallpaper", "custom");
@@ -194,7 +207,7 @@
           const warn = h("div");
           warn.setAttribute("class", "pp-hint");
           warn.style.color = "var(--pp-danger)";
-          warn.textContent = zh ? "⚠ 文件不存在或不可读" : "⚠ File not found";
+          warn.textContent = zh ? "文件不存在或不可读" : "File not found";
           box.appendChild(warn);
           return;
         }
@@ -401,7 +414,7 @@
       radio.setAttribute("name", "pp-pdf-theme");
       radio.checked = t.id === cur;
       const name = h("span");
-      name.textContent = (t.dark ? "🌙 " : "📄 ") + t.name;
+      name.textContent = t.name;
       const badge = h("span");
       badge.setAttribute("class", "pp-pdf-badge");
       badge.textContent = t.dark

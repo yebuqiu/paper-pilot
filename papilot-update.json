@@ -3,6 +3,50 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.73.0",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.73.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "模块化运行时与组件商店：功能组件可按需安装，主包保持轻量"
+        },
+        {
+          "version": "0.72.4",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.72.4.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "设置面板「翻译引擎与术语表」一拆为三：翻译引擎 / 术语表与全文翻译优化 / PDF 对照翻译，各自独立折叠，引擎参数不再和术语表挤在一张长卡里；账号卡里的邮箱改为链接色显示，一眼可知点击可切换明文。"
+        },
+        {
+          "version": "0.72.3",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.72.3.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "设置面板可访问性与深色主题修复：输入框、选择框、按钮、可点选项的描边加深到可辨识（WCAG 1.4.11 达标）；用户手动选择深色主题时不再出现「半深半浅」混搭，深色下原生复选框也不再渲染成白块；键盘 Tab 可到达全部可点元素并显示清晰焦点环；术语表编辑框恢复多行高度；窄窗口下卡片折叠箭头靠右对齐。"
+        },
+        {
+          "version": "0.72.2",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.72.2.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "设置面板设计修复：深色主按钮/状态色对比度补齐 AA、焦点环实色化、19 卡图标 emoji 换内联 SVG、label 关联与假按钮键盘可达、付款弹窗 Esc 与焦点回收、术语表编辑框恢复多行、订阅与云同步高级参数折叠收纳、动词与反馈位统一。翻译模块重构：单一 translate.js 拆为 5 子模块+门面，接口不变。"
+        },
+        {
           "version": "0.72.1",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.72.1.xpi",
           "applications": {

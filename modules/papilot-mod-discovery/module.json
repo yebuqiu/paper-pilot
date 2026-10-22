@@ -1,0 +1,114 @@
+{
+  "id": "papilot-mod-discovery",
+  "name": "检索订阅与发现",
+  "version": "0.73.0",
+  "minHost": "0.73.0",
+  "apiVersion": 1,
+  "description": "期刊检索订阅、文献发现与 arXiv/期刊数据支持。",
+  "entry": "",
+  "mode": "scope",
+  "order": 50,
+  "provides": [
+    "discovery",
+    "search-subs",
+    "lib-search",
+    "arxiv"
+  ],
+  "depends": [],
+  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "repo": {
+    "github": "https://github.com/yebuqiu/zotero-papilot",
+    "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+  },
+  "globals": [
+    "ArxivAnalyze",
+    "STOPWORDS",
+    "SECTION_LABELS",
+    "LABEL_LOOKUP",
+    "LABEL_ALT",
+    "ArxivAtom",
+    "ArxivCategories",
+    "RAW",
+    "ALL",
+    "BY_CODE",
+    "ArxivDates",
+    "ArxivErrors",
+    "EXIT",
+    "ArxivFetch",
+    "ArxivQuery",
+    "FIELDS",
+    "FIELD_LABELS",
+    "ArxivRateLimiter",
+    "JournalCatalog",
+    "Discovery",
+    "LibSearch",
+    "SearchSubs"
+  ],
+  "files": [
+    {
+      "path": "discovery-ui.js",
+      "sha256": "ae825969de47203be4aa92bae0dcca4e00f187fd2a63f9754f28a6c7796c08bc",
+      "size": 11184
+    },
+    {
+      "path": "scripts/arxiv/arxiv-analyze.js",
+      "sha256": "e5c0485c8e2517e4a1b27e7fdcaa31cc99111e7f55966dc396641e9b94d63c22",
+      "size": 22869
+    },
+    {
+      "path": "scripts/arxiv/arxiv-atom.js",
+      "sha256": "b140ee2daeb9f787e1f6af7fbcc73ab1e9bd8cb0bce750aaa4a6f680738a1ca9",
+      "size": 14256
+    },
+    {
+      "path": "scripts/arxiv/arxiv-categories.js",
+      "sha256": "3abda4111b16f3d996354fcbfc1a2304631a3195d733d1544bc3eb279d23cae1",
+      "size": 10302
+    },
+    {
+      "path": "scripts/arxiv/arxiv-dates.js",
+      "sha256": "58b0207d28f3f0ef2e41e47194ea62b53c00ba6888054a53ef4baab7c6817edf",
+      "size": 5144
+    },
+    {
+      "path": "scripts/arxiv/arxiv-errors.js",
+      "sha256": "9ebe22b56024171eb6f267f8c5a5208cfca8e6529c6c18659af8dcd5df7ee8a3",
+      "size": 4663
+    },
+    {
+      "path": "scripts/arxiv/arxiv-fetch.js",
+      "sha256": "e9d30123e1909b4b28d7c01d1c239df9a7e2637162d8cee941675b0ba4440ff8",
+      "size": 12051
+    },
+    {
+      "path": "scripts/arxiv/arxiv-query.js",
+      "sha256": "dca1e169ee3d6603b441dfa5313c023b7ef2eb51d316e61cd74ef7e7ea8bb1d1",
+      "size": 13583
+    },
+    {
+      "path": "scripts/arxiv/arxiv-rate-limiter.js",
+      "sha256": "acfc82a3d42fe2857e166a29e17b70aef8f98de62eedbdb183e12bdb24e9b01e",
+      "size": 4783
+    },
+    {
+      "path": "scripts/data/journals.js",
+      "sha256": "2504627493009d1ae0485ee5cbe577b00adc86f27cb3a3316027fe85db8f295d",
+      "size": 49247
+    },
+    {
+      "path": "scripts/features/discovery.js",
+      "sha256": "b6e28d3775b9936ba0aa67a5ed109318eacc6ebf12fd3a2cd18b8da68b21359f",
+      "size": 29180
+    },
+    {
+      "path": "scripts/features/lib-search.js",
+      "sha256": "b57628177c9901cfe8c2f9c5a56a43a576d4fd511ea4d7965c797def575afb6c",
+      "size": 13432
+    },
+    {
+      "path": "scripts/features/search-subs.js",
+      "sha256": "37fa77aed05c05479c4636c5ffe0509b691ef9c44f32af9c074efcb4062ec2d4",
+      "size": 115037
+    }
+  ]
+}

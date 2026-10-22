@@ -7,7 +7,7 @@
  * 访问主模块暴露的 rankColumn / citationColumn。
  * 账号与 AI 模型通道的 UI 逻辑在 prefs-account.js（同一窗格的第二个脚本）。
  *
- * ⚠️ Zotero 先加载本脚本、后插入 fragment DOM（_loadPane 顺序）——init 必须
+ * ⚠ Zotero 先加载本脚本、后插入 fragment DOM（_loadPane 顺序）——init 必须
  * 探测关键节点、不存在就延迟重试，否则 null 崩溃导致面板永远不 loaded。
  */
 /* global Zotero, Components, window, document */
@@ -186,7 +186,7 @@
     });
   }
 
-  /* ---------- 敏感信息掩码：👁 切换明文/隐藏 ---------- */
+  /* ---------- 敏感信息掩码：眼睛图标切换明文/隐藏 ---------- */
 
   function bindEye(inputId, btnId) {
     const input = $(inputId), btn = $(btnId);
@@ -211,8 +211,13 @@
     const enabled = rc.enabledKinds();
     for (const ds of rc.DATASETS) {
       const on = enabled.has(ds.kind);
-      const chip = document.createElementNS("http://www.w3.org/1999/xhtml", "span");
+      // 0.72.3 无障碍：勾选 chip 是真按钮（原先只挂了 click 的 span，键盘完全不可达）。
+      // pp-ds-chip 只设 font-size 不设 family，按钮补 font-family:inherit 免掉到 system-ui。
+      const chip = document.createElementNS("http://www.w3.org/1999/xhtml", "button");
+      chip.setAttribute("type", "button");
       chip.setAttribute("class", "pp-ds-chip" + (on ? " pp-ds-on" : ""));
+      chip.setAttribute("aria-pressed", on ? "true" : "false");
+      chip.setAttribute("style", "font-family:inherit;");
       chip.textContent = (on ? "✓ " : "") + ds.label;
       chip.addEventListener("click", () => {
         const cur = rc.enabledKinds();

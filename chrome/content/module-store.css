@@ -1,0 +1,744 @@
+/* Papilot · 组件商店（Module Store）窗口样式
+ * SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen
+ *
+ * 纪律：
+ *   ① 基底优先用系统色 -moz-Dialog / -moz-DialogText —— Zotero 换暗色皮肤时窗口自动跟随，
+ *      卡片/输入框只用「白 alpha 或灰 alpha 叠加」做层次，不写死 #fff 底，避免暗色下白底黑字瞎眼。
+ *   ② 所有控件 appearance:none + 显式 background/color/border（win 平台皮肤会劫持未定型控件：
+ *      透明底 + 蓝渐变 + max-height:25px），因此这里显式 max-height:none。
+ *   ③ 明暗三态：默认亮色；@media prefers-color-scheme + 无 data-theme="light"；
+ *      [data-theme="dark"] 显式深色（module-store-window.js 按 Papilot 主题写属性）。
+ *   ④ 强调色 #2563eb；状态色 绿 #16a34a / 橙 #d97706 / 红 #dc2626（暗色下换亮一档保证可读）。
+ */
+
+/* ========================================================================
+   1. 令牌
+   ======================================================================== */
+#pp-ms-root {
+  --ms-accent: #2563eb;
+  --ms-accent-strong: #1d4ed8;
+  --ms-accent-fg: #2563eb;
+  --ms-accent-weak: rgba(37, 99, 235, .10);
+  --ms-accent-line: rgba(37, 99, 235, .32);
+  --ms-ok: #16a34a;
+  --ms-ok-bg: rgba(22, 163, 74, .13);
+  --ms-warn: #d97706;
+  --ms-warn-bg: rgba(217, 119, 6, .15);
+  --ms-danger: #dc2626;
+  --ms-danger-bg: rgba(220, 38, 38, .10);
+  --ms-border: rgba(127, 127, 127, .28);
+  --ms-border-strong: rgba(127, 127, 127, .46);
+  --ms-soft: rgba(127, 127, 127, .09);
+  --ms-soft-2: rgba(127, 127, 127, .16);
+  --ms-hover: rgba(127, 127, 127, .12);
+  --ms-card: rgba(255, 255, 255, .62);
+  --ms-field: rgba(255, 255, 255, .86);
+  --ms-on-accent: #ffffff;
+
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background-color: -moz-Dialog;
+  color: -moz-DialogText;
+  color-scheme: light dark;
+  font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+#pp-ms-root * {
+  box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  #pp-ms-root:not([data-theme="light"]) {
+    --ms-accent: #3b82f6;
+    --ms-accent-strong: #2563eb;
+    --ms-accent-fg: #7aa7ff;
+    --ms-accent-weak: rgba(59, 130, 246, .16);
+    --ms-accent-line: rgba(59, 130, 246, .42);
+    --ms-ok: #4ade80;
+    --ms-ok-bg: rgba(74, 222, 128, .14);
+    --ms-warn: #fbbf24;
+    --ms-warn-bg: rgba(251, 191, 36, .16);
+    --ms-danger: #f87171;
+    --ms-danger-bg: rgba(248, 113, 113, .14);
+    --ms-border: rgba(255, 255, 255, .20);
+    --ms-border-strong: rgba(255, 255, 255, .36);
+    --ms-soft: rgba(255, 255, 255, .07);
+    --ms-soft-2: rgba(255, 255, 255, .12);
+    --ms-hover: rgba(255, 255, 255, .12);
+    --ms-card: rgba(255, 255, 255, .055);
+    --ms-field: rgba(255, 255, 255, .08);
+  }
+}
+
+#pp-ms-root[data-theme="dark"] {
+  --ms-accent: #3b82f6;
+  --ms-accent-strong: #2563eb;
+  --ms-accent-fg: #7aa7ff;
+  --ms-accent-weak: rgba(59, 130, 246, .16);
+  --ms-accent-line: rgba(59, 130, 246, .42);
+  --ms-ok: #4ade80;
+  --ms-ok-bg: rgba(74, 222, 128, .14);
+  --ms-warn: #fbbf24;
+  --ms-warn-bg: rgba(251, 191, 36, .16);
+  --ms-danger: #f87171;
+  --ms-danger-bg: rgba(248, 113, 113, .14);
+  --ms-border: rgba(255, 255, 255, .20);
+  --ms-border-strong: rgba(255, 255, 255, .36);
+  --ms-soft: rgba(255, 255, 255, .07);
+  --ms-soft-2: rgba(255, 255, 255, .12);
+  --ms-hover: rgba(255, 255, 255, .12);
+  --ms-card: rgba(255, 255, 255, .055);
+  --ms-field: rgba(255, 255, 255, .08);
+}
+
+window {
+  min-width: 640px;
+  min-height: 440px;
+}
+
+/* ========================================================================
+   2. 顶栏
+   ======================================================================== */
+.pp-ms-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid var(--ms-border);
+}
+
+.pp-ms-headtext {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pp-ms-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  line-height: 1.3;
+}
+
+.pp-ms-subtitle {
+  margin-top: 1px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  opacity: .66;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-ms-search {
+  flex: 0 1 250px;
+  min-width: 132px;
+  height: 28px;
+  max-height: none;
+  padding: 0 10px;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.pp-ms-search::placeholder {
+  color: inherit;
+  opacity: .45;
+}
+
+/* ========================================================================
+   3. 控件（③ 显式定型，压过平台皮肤）
+   ======================================================================== */
+#pp-ms-root button,
+#pp-ms-root input {
+  appearance: none;
+  -moz-appearance: none;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--ms-border-strong);
+  border-radius: 6px;
+  max-height: none;
+  font: inherit;
+  box-shadow: none;
+}
+
+#pp-ms-root input {
+  background: var(--ms-field);
+}
+
+#pp-ms-root input:disabled {
+  opacity: .5;
+}
+
+#pp-ms-root button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color .12s ease, border-color .12s ease, color .12s ease;
+}
+
+#pp-ms-root button:hover:not(:disabled) { background: var(--ms-hover); }
+#pp-ms-root button:active:not(:disabled) { background: var(--ms-soft-2); }
+#pp-ms-root button:disabled { opacity: .45; cursor: default; }
+
+#pp-ms-root button:focus-visible,
+#pp-ms-root input:focus-visible {
+  outline: 2px solid var(--ms-accent);
+  outline-offset: 1px;
+}
+
+#pp-ms-root .pp-ms-btn-primary {
+  background: var(--ms-accent);
+  border-color: var(--ms-accent);
+  color: var(--ms-on-accent);
+  font-weight: 600;
+}
+
+#pp-ms-root .pp-ms-btn-primary:hover:not(:disabled),
+#pp-ms-root .pp-ms-btn-primary:active:not(:disabled) {
+  background: var(--ms-accent-strong);
+  border-color: var(--ms-accent-strong);
+}
+
+#pp-ms-root .pp-ms-btn-danger {
+  color: var(--ms-danger);
+  border-color: var(--ms-border-strong);
+}
+
+#pp-ms-root .pp-ms-btn-danger:hover:not(:disabled) {
+  background: var(--ms-danger-bg);
+  border-color: var(--ms-danger);
+}
+
+#pp-ms-root .pp-ms-btn-sm {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  border-radius: 5px;
+}
+
+#pp-ms-root .pp-ms-linkbtn {
+  height: auto;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ms-accent-fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+#pp-ms-root .pp-ms-linkbtn:hover:not(:disabled) {
+  background: transparent;
+  text-decoration: underline;
+}
+
+/* ========================================================================
+   4. 筛选 chip 行
+   ======================================================================== */
+.pp-ms-chipbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--ms-border);
+}
+
+.pp-ms-chips {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+#pp-ms-root .pp-ms-chip {
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border-color: var(--ms-border);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+#pp-ms-root .pp-ms-chip:hover:not(:disabled) {
+  background: var(--ms-accent-weak);
+  border-color: var(--ms-accent);
+  color: var(--ms-accent-fg);
+}
+
+#pp-ms-root .pp-ms-chip-on {
+  background: var(--ms-accent-weak);
+  border-color: var(--ms-accent);
+  color: var(--ms-accent-fg);
+  font-weight: 600;
+}
+
+.pp-ms-chip-n {
+  margin-left: 5px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: .7;
+}
+
+/* ========================================================================
+   5. 主滚动区与视图
+   ======================================================================== */
+.pp-ms-main {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  padding: 12px 16px 14px;
+}
+
+.pp-ms-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pp-ms-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  gap: 10px;
+}
+
+/* ========================================================================
+   6. 卡片
+   ======================================================================== */
+.pp-ms-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 11px 12px 10px;
+  background: var(--ms-card);
+  border: 1px solid var(--ms-border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+
+.pp-ms-card:hover {
+  border-color: var(--ms-accent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .10);
+}
+
+.pp-ms-card:focus-within { border-color: var(--ms-accent); }
+
+.pp-ms-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pp-ms-card-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-ms-ver {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--ms-soft-2);
+  font-size: 10.5px;
+  line-height: 17px;
+  font-variant-numeric: tabular-nums;
+  opacity: .82;
+}
+
+.pp-ms-card-desc {
+  min-height: 35px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  opacity: .72;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pp-ms-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.pp-ms-tags {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10.5px;
+  opacity: .6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-ms-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 2px;
+}
+
+.pp-ms-size {
+  flex: none;
+  font-size: 10.5px;
+  opacity: .6;
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-ms-spacer {
+  flex: 1 1 auto;
+  min-width: 4px;
+}
+
+.pp-ms-acts {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* ========================================================================
+   7. 状态徽标
+   ======================================================================== */
+.pp-ms-badge {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  height: 17px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pp-ms-badge-ok {
+  color: var(--ms-ok);
+  background: var(--ms-ok-bg);
+  border-color: var(--ms-ok-bg);
+}
+
+.pp-ms-badge-warn {
+  color: var(--ms-warn);
+  background: var(--ms-warn-bg);
+  border-color: var(--ms-warn-bg);
+}
+
+.pp-ms-badge-muted {
+  color: inherit;
+  opacity: .62;
+  background: var(--ms-soft);
+  border-color: var(--ms-border);
+}
+
+.pp-ms-badge-danger {
+  color: var(--ms-danger);
+  background: var(--ms-danger-bg);
+  border-color: var(--ms-danger-bg);
+}
+
+.pp-ms-badge-pro {
+  color: var(--ms-on-accent);
+  background: var(--ms-accent);
+  border-color: var(--ms-accent);
+  letter-spacing: .03em;
+}
+
+.pp-ms-badge-rec {
+  color: var(--ms-accent-fg);
+  background: var(--ms-accent-weak);
+  border-color: var(--ms-accent-line);
+}
+
+/* ========================================================================
+   8. 空态
+   ======================================================================== */
+.pp-ms-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 46px 24px;
+  text-align: center;
+}
+
+.pp-ms-empty-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.pp-ms-empty-sub {
+  max-width: 430px;
+  font-size: 12px;
+  line-height: 1.7;
+  opacity: .66;
+}
+
+/* ========================================================================
+   9. 详情视图
+   ======================================================================== */
+.pp-ms-backrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-ms-d-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pp-ms-d-name {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.pp-ms-d-tags {
+  font-size: 11.5px;
+  opacity: .6;
+  word-break: break-word;
+}
+
+.pp-ms-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--ms-border);
+  border-radius: 8px;
+  background: var(--ms-soft);
+}
+
+.pp-ms-kv-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pp-ms-kv-k {
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  opacity: .6;
+}
+
+.pp-ms-kv-v {
+  font-size: 12.5px;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+.pp-ms-sec {
+  margin-top: 2px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.pp-ms-desc {
+  font-size: 12.5px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  opacity: .9;
+}
+
+.pp-ms-note {
+  padding: 9px 11px;
+  border: 1px solid var(--ms-border);
+  border-radius: 8px;
+  background: var(--ms-soft);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pp-ms-warnbox {
+  padding: 8px 11px;
+  border: 1px solid var(--ms-danger);
+  border-radius: 8px;
+  background: var(--ms-danger-bg);
+  color: var(--ms-danger);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.pp-ms-actrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+
+/* ========================================================================
+   10. 批量更新视图
+   ======================================================================== */
+.pp-ms-upd-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-bottom: 2px;
+}
+
+.pp-ms-upd-headtext {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pp-ms-upd-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.pp-ms-upd-sub {
+  margin-top: 1px;
+  font-size: 11.5px;
+  opacity: .66;
+}
+
+.pp-ms-upd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pp-ms-upd-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--ms-border);
+  border-radius: 8px;
+  background: var(--ms-card);
+}
+
+.pp-ms-upd-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pp-ms-upd-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-ms-upd-meta {
+  margin-top: 1px;
+  font-size: 11px;
+  opacity: .62;
+  font-variant-numeric: tabular-nums;
+}
+
+.pp-ms-upd-state {
+  flex: none;
+  max-width: 240px;
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-ms-upd-state-ok { color: var(--ms-ok); }
+.pp-ms-upd-state-err { color: var(--ms-danger); }
+.pp-ms-upd-state-busy { opacity: .7; }
+
+/* ========================================================================
+   11. 底部固定状态条
+   ======================================================================== */
+.pp-ms-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 4px 16px;
+  border-top: 1px solid var(--ms-border);
+  background: var(--ms-soft);
+  font-size: 11.5px;
+}
+
+.pp-ms-status-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .78;
+}
+
+.pp-ms-st-ok .pp-ms-status-text { color: var(--ms-ok); opacity: 1; }
+.pp-ms-st-err .pp-ms-status-text { color: var(--ms-danger); opacity: 1; }
+.pp-ms-st-busy .pp-ms-status-text { opacity: .9; }
+
+.pp-ms-spinner {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--ms-border-strong);
+  border-top-color: var(--ms-accent);
+  border-radius: 50%;
+  animation: pp-ms-spin .8s linear infinite;
+}
+
+@keyframes pp-ms-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ========================================================================
+   12. 窄窗降级（820 为默认，拖窄后仍可用）
+   ======================================================================== */
+@media (max-width: 700px) {
+  .pp-ms-search { flex-basis: 160px; }
+  .pp-ms-grid { grid-template-columns: 1fr; }
+  .pp-ms-upd-state { max-width: 120px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #pp-ms-root button,
+  .pp-ms-card { transition: none; }
+}

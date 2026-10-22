@@ -11,7 +11,9 @@
  *   ② 明暗两套值只改变量（@media prefers-color-scheme），组件规则只写一次；
  *   ③ 只做「表现层」覆盖——不改任何 id、不改 display 语义（折叠靠 .pp-fold-closed），
  *      所以既有的十五条面板脚本、preference= 声明式绑定都不受影响；
- *   ④ 响应式只在 720px / 560px 两个断点做栅格降列与工具条换行，不隐藏任何功能。
+ *   ④ 响应式只在 760px / 560px 两个断点做栅格降列与工具条换行，不隐藏任何功能。
+ *
+ * 0.72.2 令牌修订：状态色 AA 补齐/焦点环实色化/字号间距半步档收编/新增 pp-link-btn·pp-disclose·pp-notes 契约类
  */
 
 /* ========================================================================
@@ -25,6 +27,11 @@
   --pp-field: #ffffff;
   --pp-border: #d8dee4;
   --pp-border-strong: #c3cdd6;
+  /* 0.72.3 控件描边（WCAG 1.4.11 ≥3:1）：只给输入框/选择框/文本域/按钮这类「可交互控件边界」用。
+     --pp-border 继续服务卡片轮廓与 1px 分区线（装饰性，不属 1.4.11 强制范围），两者不要互换。
+     实测：亮色 #828b95 对白 3.46、对 surface-2 3.25、对 btn-hover 3.05；hover #6e7781 对白 4.55、对 btn-hover 4.01。 */
+  --pp-border-control: #828b95;
+  --pp-border-control-hover: #6e7781;
   /* 文字 */
   --pp-text: #1f2328;
   --pp-text-strong: #0f141a;
@@ -37,12 +44,20 @@
   --pp-accent-weak: #ddf4ff;
   --pp-accent-soft: rgba(9, 105, 218, .08);
   --pp-accent-line: rgba(9, 105, 218, .24);
-  --pp-success: #1a7f37;
+  --pp-success: #116329;
   --pp-ok-bg: rgba(31, 134, 61, .12);
   --pp-danger: #cf222e;
   --pp-danger-bg: rgba(207, 34, 46, .10);
-  --pp-warn: #9a6700;
+  --pp-warn: #7a4d00;
   --pp-warn-bg: rgba(154, 103, 0, .12);
+  /* 文字态 fg 令牌：浅色下 fg=原色（零视觉变化），深色媒体查询里覆盖为更亮的文字色 */
+  --pp-accent-fg: var(--pp-accent);
+  --pp-danger-fg: #b31d28;               /* 0.72.3：原 var(--pp-danger) 压 danger-bg 只有 4.30，硬值后 5.73 */
+  /* 主按钮组件层令牌（浅色=现状值，深色覆盖） */
+  --pp-btn-primary-bg: var(--pp-accent);
+  --pp-btn-primary-bg-hover: var(--pp-accent-emphasis);
+  --pp-on-accent: #ffffff;
+  --pp-overlay: rgba(0, 0, 0, .42);
   --pp-btn-hover: #eef1f4;
   --pp-soft: rgba(127, 127, 127, .10);   /* 兼容旧内联样式别名 */
   --pp-border2: #c3cdd6;                 /* 兼容旧内联样式别名 */
@@ -55,30 +70,46 @@
   --pp-shadow-1: 0 1px 2px rgba(15, 20, 26, .06);
   --pp-shadow-2: 0 6px 20px rgba(15, 20, 26, .10);
   --pp-shadow-3: 0 12px 40px rgba(15, 20, 26, .22);
-  /* 间距（4pt 基线） */
+  /* 间距（4pt 基线 + 两个半步档：6px/10px 为实测高频散值正式收编） */
   --pp-sp-1: 4px;
+  --pp-sp-1h: 6px;
   --pp-sp-2: 8px;
+  --pp-sp-2h: 10px;
   --pp-sp-3: 12px;
   --pp-sp-4: 16px;
   --pp-sp-5: 22px;
   /* 字号 */
   --pp-fs-xs: 10.5px;
-  --pp-fs-sm: 11.5px;
+  --pp-fs-sm: 12px;
   --pp-fs-md: 12.5px;
   --pp-fs-lg: 13.5px;
   --pp-fs-xl: 15px;
-  font-size: 13px;
+  --pp-fs-2xl: 24px;
+  /* 动效时长 */
+  --pp-dur-fast: .12s;
+  --pp-dur-med: .16s;
+  --pp-dur-slow: .2s;
+  /* 0.72.3：让原生控件（checkbox / select 弹层 / 滚动条）跟随面板明暗。
+     只写在 .pp-root 上，不写 :root —— 否则会污染宿主 Zotero 的其它窗口。 */
+  color-scheme: light;
+  font-size: var(--pp-fs-md);
   color: var(--pp-text);
 }
 
 @media (prefers-color-scheme: dark) {
-  .pp-root {
+  /* ⚠ 块内声明与下方 :root[data-theme="dark"] .pp-root **必须逐条同值**（同一批令牌、同一批取值）。
+     check-wiring 有守卫：两处不一致会当场报错，改一处必须同步另一处。
+     guard `:not([data-theme="light"])` 不能删：否则系统深色时用户显式选的浅色主题会被顶掉。 */
+  :root:not([data-theme="light"]) .pp-root {
     --pp-surface: #21252b;
     --pp-surface-2: #1a1e23;
     --pp-surface-3: #2a3038;
     --pp-field: #1b1f24;
     --pp-border: #3d444d;
     --pp-border-strong: #4d565f;
+    /* 实测：#6e7a86 对 field 3.78、对 surface 3.51、对 btn-hover 3.04；hover #8d99a6 对 field 5.71、对 btn-hover 4.59 */
+    --pp-border-control: #6e7a86;
+    --pp-border-control-hover: #8d99a6;
     --pp-text: #e6edf3;
     --pp-text-strong: #f2f6fa;
     --pp-text2: #c9d1d9;
@@ -95,6 +126,11 @@
     --pp-danger-bg: rgba(248, 81, 73, .14);
     --pp-warn: #d29922;
     --pp-warn-bg: rgba(210, 153, 34, .16);
+    /* 深色下文字态：accent/danger 原色保留给填充与描边，文字用更亮的 fg（AA 补齐） */
+    --pp-accent-fg: #79b8ff;
+    --pp-danger-fg: #ff7b72;
+    --pp-btn-primary-bg: #1f6feb;
+    --pp-btn-primary-bg-hover: #1158c7;
     --pp-btn-hover: #2a3038;
     --pp-soft: rgba(255, 255, 255, .06);
     --pp-border2: #4d565f;
@@ -103,7 +139,54 @@
     --pp-shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
     --pp-shadow-2: 0 6px 20px rgba(0, 0, 0, .44);
     --pp-shadow-3: 0 12px 40px rgba(0, 0, 0, .55);
+    color-scheme: dark;   /* 0.72.3：原生 checkbox / 下拉弹层 / 滚动条跟随深色（否则 appearance:auto 的复选框渲染成纯白方块） */
   }
+}
+
+/* ---------- 深色（用户/主题系统显式指定 data-theme="dark"） ----------
+   0.72.3 补齐：此前只剩上面的 @media 块，于是「系统浅色 + 用户显式选深色」时
+   ui-tokens.css 的 8 个令牌翻成深色、prefs.css 这 30 多个仍是浅色，两套调色板混搭。
+   ⚠ 与上方 @media 块**必须逐条同值**（check-wiring 有守卫）。 */
+:root[data-theme="dark"] .pp-root {
+  --pp-surface: #21252b;
+  --pp-surface-2: #1a1e23;
+  --pp-surface-3: #2a3038;
+  --pp-field: #1b1f24;
+  --pp-border: #3d444d;
+  --pp-border-strong: #4d565f;
+  /* 实测：#6e7a86 对 field 3.78、对 surface 3.51、对 btn-hover 3.04；hover #8d99a6 对 field 5.71、对 btn-hover 4.59 */
+  --pp-border-control: #6e7a86;
+  --pp-border-control-hover: #8d99a6;
+  --pp-text: #e6edf3;
+  --pp-text-strong: #f2f6fa;
+  --pp-text2: #c9d1d9;
+  --pp-muted: #9198a1;
+  --pp-faint: #8b949e;   /* 3.35→5.0 对比度（暗色下同上） */
+  --pp-accent: #4493f8;
+  --pp-accent-emphasis: #2f81f7;
+  --pp-accent-weak: #17233a;
+  --pp-accent-soft: rgba(68, 147, 248, .12);
+  --pp-accent-line: rgba(68, 147, 248, .30);
+  --pp-success: #3fb950;
+  --pp-ok-bg: rgba(63, 185, 80, .16);
+  --pp-danger: #f85149;
+  --pp-danger-bg: rgba(248, 81, 73, .14);
+  --pp-warn: #d29922;
+  --pp-warn-bg: rgba(210, 153, 34, .16);
+  /* 深色下文字态：accent/danger 原色保留给填充与描边，文字用更亮的 fg（AA 补齐） */
+  --pp-accent-fg: #79b8ff;
+  --pp-danger-fg: #ff7b72;
+  --pp-btn-primary-bg: #1f6feb;
+  --pp-btn-primary-bg-hover: #1158c7;
+  --pp-btn-hover: #2a3038;
+  --pp-soft: rgba(255, 255, 255, .06);
+  --pp-border2: #4d565f;
+  --pp-bg: #21252b;
+  --pp-focus-ring: rgba(68, 147, 248, .28);
+  --pp-shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
+  --pp-shadow-2: 0 6px 20px rgba(0, 0, 0, .44);
+  --pp-shadow-3: 0 12px 40px rgba(0, 0, 0, .55);
+  color-scheme: dark;   /* 0.72.3：同 media 块，显式深色下原生控件也要跟着翻 */
 }
 
 /* ========================================================================
@@ -120,7 +203,7 @@
   gap: var(--pp-sp-2);
   flex-wrap: wrap;
   margin: 0 0 var(--pp-sp-2);
-  padding: 7px 9px;
+  padding: var(--pp-sp-2) var(--pp-sp-3);
   background: var(--pp-surface);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-lg);
@@ -136,11 +219,12 @@
 .pp-root .pp-search-icon {
   position: absolute;
   left: 8px;
-  font-size: 13px;
+  font-size: var(--pp-fs-md);
   line-height: 1;
   color: var(--pp-faint);
   pointer-events: none;
 }
+.pp-root .pp-search-icon svg { width: 13px; height: 13px; display: block; }
 .pp-root .pp-search .pp-input {
   width: 100%;
   height: 28px;
@@ -157,15 +241,19 @@
   border-radius: 50%;
   background: transparent;
   color: var(--pp-muted);
-  font-size: 14px;
+  font-size: var(--pp-fs-lg);
   line-height: 18px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+.pp-root .pp-search-clear svg { width: 13px; height: 13px; display: block; }
 .pp-root .pp-search-clear:hover { background: var(--pp-btn-hover); color: var(--pp-text); }
 .pp-root .pp-toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--pp-sp-1h);
   flex-wrap: wrap;
 }
 .pp-root .pp-count {
@@ -175,10 +263,10 @@
   background: var(--pp-surface-2);
   border: 1px solid var(--pp-border);
   border-radius: 999px;
-  padding: 1px 8px;
+  padding: 1px var(--pp-sp-2);
   white-space: nowrap;
 }
-.pp-root .pp-count-hit { color: var(--pp-accent); border-color: var(--pp-accent-line); background: var(--pp-accent-soft); }
+.pp-root .pp-count-hit { color: var(--pp-accent-fg); border-color: var(--pp-accent-line); background: var(--pp-accent-soft); }
 
 /* 兼容旧类名：0.65.0 前工具条叫 .pp-fold-bar（旧脚本/旧文档引用时不至于裸奔） */
 .pp-root .pp-fold-bar {
@@ -193,7 +281,7 @@
 .pp-root .pp-anchor-nav {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--pp-sp-1h);
   flex-wrap: wrap;
   margin: 0 0 2px;
 }
@@ -204,7 +292,7 @@
 }
 .pp-root .pp-anchor-nav .pp-btn {
   height: 24px;
-  padding: 0 9px;
+  padding: 0 var(--pp-sp-2);
   font-size: var(--pp-fs-sm);
   color: var(--pp-muted);
   background: var(--pp-surface-2);
@@ -212,9 +300,9 @@
   border-radius: 999px;
 }
 .pp-root .pp-anchor-nav .pp-btn:hover:not(:disabled) {
-  color: var(--pp-accent);
+  color: var(--pp-accent-fg);
   background: var(--pp-accent-soft);
-  border-color: var(--pp-accent-line);
+  border-color: var(--pp-accent);
 }
 /* 直达跳转后的落点反馈（0.68.4）：滚动若被 Zotero 的容器吃掉，至少能看见「跳到了哪一类」 */
 .pp-root .pp-jump-flash { animation: pp-jump-flash 0.9s ease-out; border-radius: 6px; }
@@ -226,9 +314,9 @@
 /* 当前所在分类的 chip（0.68.4）：滚动同步 / 点击后高亮，给「我在哪一类」一个视觉落点。
    注意 #pp-anchor-nav 本身**不做 sticky**——双吸顶会盖住分类标签。 */
 .pp-root .pp-anchor-nav .pp-btn.pp-anchor-active {
-  color: var(--pp-accent);
+  color: var(--pp-accent-fg);
   background: var(--pp-accent-soft);
-  border-color: var(--pp-accent-line);
+  border-color: var(--pp-accent);
   font-weight: 600;
 }
 
@@ -237,10 +325,10 @@
   display: flex;
   align-items: center;
   gap: var(--pp-sp-2);
-  margin: var(--pp-sp-5) 0 8px 2px;
-  padding-bottom: 6px;
+  margin: var(--pp-sp-5) 0 var(--pp-sp-2) 2px;
+  padding-bottom: var(--pp-sp-1h);
   border-bottom: 1px solid var(--pp-border);
-  font-size: 11px;
+  font-size: var(--pp-fs-xs);
   font-weight: 700;
   letter-spacing: .12em;
   color: var(--pp-muted);
@@ -265,20 +353,20 @@
   background: var(--pp-surface-2);
   border: 1px solid var(--pp-border);
   border-radius: 999px;
-  padding: 0 7px;
+  padding: 0 var(--pp-sp-2);
   line-height: 16px;
 }
 /* 首个大类紧贴直达条，不必再吃 22px 上边距 */
-.pp-root #pp-anchor-nav + .pp-cat-label { margin-top: 4px; }
+.pp-root #pp-anchor-nav + .pp-cat-label { margin-top: var(--pp-sp-1); }
 /* 0.68.4 直达条与首个大类之间插了搜索空态节点，相邻选择器不再命中——同样补一条 */
-.pp-root #pp-prefs-empty + .pp-cat-label { margin-top: 4px; }
+.pp-root #pp-prefs-empty + .pp-cat-label { margin-top: var(--pp-sp-1); }
 
 /* 搜索 0 命中空态（0.68.4）：语气与 .pp-hint 一致，上下留白避免「整屏空白像是坏了」 */
 .pp-root .pp-empty {
   font-size: var(--pp-fs-sm);
   color: var(--pp-muted);
   line-height: 1.6;
-  padding: 10px 2px 4px;
+  padding: var(--pp-sp-2h) 2px var(--pp-sp-1);
   text-align: center;
 }
 /* 搜索态：命中的卡即使处于折叠状态也展开内容，便于直接看到命中的设置项 */
@@ -293,30 +381,31 @@
   background: var(--pp-surface);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-lg);
-  padding: 11px 14px 14px;
+  padding: var(--pp-sp-3) var(--pp-sp-4) var(--pp-sp-4);
   margin: 0 0 var(--pp-sp-2);
   box-shadow: var(--pp-shadow-1);
-  transition: box-shadow .15s ease, border-color .15s ease;
+  transition: box-shadow var(--pp-dur-med) ease, border-color var(--pp-dur-med) ease;
   scroll-margin-top: 56px;
 }
 .pp-root .pp-card:hover { box-shadow: var(--pp-shadow-2); }
 .pp-root .pp-fold-head {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: var(--pp-sp-2);
   min-width: 0;
   margin: -2px -8px 0;
-  padding: 4px 8px 5px;
+  padding: var(--pp-sp-1) var(--pp-sp-2) var(--pp-sp-1);
   border-radius: var(--pp-radius-md);
   cursor: pointer;
   user-select: none;
-  transition: background .12s ease;
+  transition: background var(--pp-dur-fast) ease;
 }
 .pp-root .pp-fold-head:hover { background: var(--pp-surface-2); }
-/* 键盘焦点：标题行是 role=button 的可聚焦元素，必须有可见焦点环（鼠标点击不显示） */
+/* 键盘焦点：标题行是 role=button 的可聚焦元素，必须有可见焦点环（鼠标点击不显示）。
+   0.72.2 起统一为「2px 实色 accent 主环 + 4px alpha 光晕」双层——单层 alpha 提到 .65 也不达 3:1 */
 .pp-root .pp-fold-head:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--pp-focus-ring);
+  box-shadow: 0 0 0 2px var(--pp-accent), 0 0 0 4px var(--pp-focus-ring);
 }
 .pp-root .pp-fold-head:focus:not(:focus-visible) { outline: none; }
 .pp-root .pp-fold-head:hover .pp-card-title { color: var(--pp-accent); }
@@ -332,8 +421,8 @@
 /* 展开态：标题行与内容之间加一条细分隔线，读起来像「分区」而不是「一段文字」 */
 .pp-root .pp-card:not(.pp-fold-closed) .pp-fold-head {
   /* 上 4 / 下 4 对称（旧值上 4 下 8 会把图标与箭头顶高 2.5px）；间隔交给 margin */
-  padding-bottom: 4px;
-  margin-bottom: 8px;
+  padding-bottom: var(--pp-sp-1);
+  margin-bottom: var(--pp-sp-2);
   border-bottom: 1px solid var(--pp-border);
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
@@ -349,16 +438,18 @@
   background: var(--pp-accent-soft);
   border: 1px solid var(--pp-accent-line);
   color: var(--pp-accent);
-  font-size: 13px;
+  font-size: var(--pp-fs-md);
   line-height: 1;
 }
+/* 卡图标内容物（0.72.2 契约类，P0-①）：emoji 换成 16×16 内联 SVG，stroke=currentColor */
+.pp-root .pp-card-icon svg { width: 16px; height: 16px; display: block; }
 .pp-root .pp-card-title {
   font-size: var(--pp-fs-lg);
   font-weight: 600;
   letter-spacing: .01em;
   color: var(--pp-text-strong);
   white-space: nowrap;
-  transition: color .12s ease;
+  transition: color var(--pp-dur-fast) ease;
 }
 .pp-root .pp-card-desc {
   font-size: var(--pp-fs-sm);
@@ -368,6 +459,9 @@
 }
 .pp-root .pp-fold-arrow {
   flex: none;
+  /* 0.72.3：行尾对齐不能靠 .pp-card-desc 占位——≤560 隐藏 desc 后箭头会停在标题右侧 8px；
+     margin-left:auto 让它在有无 desc 时都贴右。字号从 fs-xs(10.5) 提到 fs-sm(12)，1× 下 ▾ 不再是小数点。 */
+  margin-left: auto;
   width: 18px;
   height: 18px;
   display: inline-flex;
@@ -375,14 +469,15 @@
   justify-content: center;
   border-radius: 50%;
   color: var(--pp-faint);
-  font-size: 10px;
-  transition: transform .16s ease, background .12s ease;
+  font-size: var(--pp-fs-sm);
+  line-height: 1;
+  transition: transform var(--pp-dur-med) ease, background var(--pp-dur-fast) ease;
 }
 .pp-root .pp-fold-head:hover .pp-fold-arrow { background: var(--pp-btn-hover); color: var(--pp-muted); }
 .pp-root .pp-fold-closed .pp-fold-arrow { transform: rotate(-90deg); }
 .pp-root .pp-fold-closed .pp-card-body { display: none; }
-.pp-root .pp-fold-closed { padding-bottom: 10px; }
-.pp-root .pp-card-body { animation: pp-card-in .16s ease both; }
+.pp-root .pp-fold-closed { padding-bottom: var(--pp-sp-2h); }
+.pp-root .pp-card-body { animation: pp-card-in var(--pp-dur-med) ease both; }
 @keyframes pp-card-in {
   from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: none; }
@@ -392,7 +487,7 @@
 .pp-root .pp-sub {
   border-top: 1px solid var(--pp-border);
   margin-top: var(--pp-sp-3);
-  padding-top: 11px;
+  padding-top: var(--pp-sp-3);
 }
 .pp-root .pp-sub-title {
   font-size: var(--pp-fs-md);
@@ -404,19 +499,48 @@
   font-size: var(--pp-fs-sm);
   color: var(--pp-muted);
   margin-top: 2px;
-  margin-bottom: 4px;
+  margin-bottom: var(--pp-sp-1);
   line-height: 1.55;
 }
 .pp-root .pp-subblock {
   border-top: 1px dashed var(--pp-border);
-  padding-top: 10px;
-  margin-top: 10px;
+  padding-top: var(--pp-sp-2h);
+  margin-top: var(--pp-sp-2h);
 }
 .pp-root .pp-subtitle {
   font-size: var(--pp-fs-md);
   font-weight: 600;
   color: var(--pp-text-strong);
 }
+
+/* 渐进披露（0.72.2 契约类，P1-⑦）：原生 html:details，白得键盘与 aria；
+   summary 前的 chevron 用 data-uri SVG + mask 继承 currentColor，[open] 态旋转 90° */
+.pp-root .pp-disclose {
+  margin-top: var(--pp-sp-2);
+  border-top: 1px dashed var(--pp-border);
+  padding-top: var(--pp-sp-2h);
+}
+.pp-root .pp-disclose > summary {
+  cursor: pointer;
+  font-size: var(--pp-fs-md);
+  font-weight: 600;
+  color: var(--pp-accent);
+  list-style: none;
+}
+.pp-root .pp-disclose > summary::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: var(--pp-sp-1h);
+  vertical-align: -1px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3.5 10.5 8 6 12.5' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3.5 10.5 8 6 12.5' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain;
+  transition: transform var(--pp-dur-med) ease;
+}
+.pp-root .pp-disclose[open] > summary::before { transform: rotate(90deg); }
+.pp-root .pp-disclose > summary:focus-visible { outline: 2px solid var(--pp-accent); outline-offset: 2px; border-radius: var(--pp-radius-sm); }
 
 /* ========================================================================
    4. 布局原语
@@ -425,13 +549,13 @@
   display: flex;
   align-items: center;
   gap: var(--pp-sp-2);
-  margin-top: 10px;
+  margin-top: var(--pp-sp-2h);
   flex-wrap: wrap;
 }
-.pp-root .pp-row-tight { margin-top: 6px; }
-.pp-root .pp-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
-.pp-root .pp-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 10px; }
-.pp-root .pp-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.pp-root .pp-row-tight { margin-top: var(--pp-sp-1h); }
+.pp-root .pp-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pp-sp-2h); margin-top: var(--pp-sp-2h); }
+.pp-root .pp-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--pp-sp-2h); margin-top: var(--pp-sp-2h); }
+.pp-root .pp-field { display: flex; flex-direction: column; gap: var(--pp-sp-1); min-width: 0; }
 .pp-root .pp-label {
   font-size: var(--pp-fs-md);
   color: var(--pp-text);
@@ -442,17 +566,31 @@
   color: var(--pp-muted);
   line-height: 1.6;
 }
+/* 说明列表（0.72.2 契约类，P1-⑫）：字墙段落的条列化容器 */
+.pp-root .pp-notes {
+  margin: var(--pp-sp-1) 0;
+  padding-left: var(--pp-sp-4);
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  line-height: 1.6;
+}
+.pp-root .pp-notes > li { margin-top: 2px; }
+.pp-root .pp-notes > li:first-child { margin-top: 0; }
 .pp-root .pp-check {
   display: flex;
   align-items: flex-start;
-  gap: 7px;
+  gap: var(--pp-sp-2);
   font-size: var(--pp-fs-md);
   color: var(--pp-text);
   line-height: 1.5;
-  margin-top: 8px;
+  margin-top: var(--pp-sp-2);
 }
 .pp-root .pp-check input { margin: 2px 0 0; flex: none; }
 .pp-root .pp-grow { flex: 1; }
+/* 0.72.3：.pp-field 是 column flex，.pp-grow 的 flex:1 把 flex-basis 归 0（主轴=高度），
+   控件 height:28px 被压成 24px（#pp-sk-source 实测）。这里只在 field 内把 basis 改回 auto，
+   宽度依旧靠 align-items:stretch 撑满；行内布局（.pp-row 等）的 .pp-grow 行为不变。 */
+.pp-root .pp-field .pp-grow { flex: 1 1 auto; }
 
 /* ========================================================================
    5. 控件
@@ -460,31 +598,31 @@
 .pp-root .pp-input,
 .pp-root .pp-select {
   height: 28px;
-  padding: 3px 8px;
+  padding: 3px var(--pp-sp-2);
   font-size: var(--pp-fs-md);
   font-family: inherit;
   color: var(--pp-text);
   background: var(--pp-field);
-  border: 1px solid var(--pp-border);
+  border: 1px solid var(--pp-border-control);
   border-radius: var(--pp-radius-sm);
   min-width: 0;
   box-sizing: border-box;
-  transition: border-color .12s ease, box-shadow .12s ease, background .12s ease;
+  transition: border-color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
 }
-.pp-root .pp-select { padding-right: 6px; }
+.pp-root .pp-select { padding-right: var(--pp-sp-1h); }
 .pp-root .pp-input:hover:not(:focus),
-.pp-root .pp-select:hover:not(:focus) { border-color: var(--pp-border-strong); }
+.pp-root .pp-select:hover:not(:focus) { border-color: var(--pp-border-control-hover); }
 .pp-root .pp-input:focus,
 .pp-root .pp-select:focus,
 .pp-root .pp-textarea:focus {
   outline: none;
   border-color: var(--pp-accent);
-  box-shadow: 0 0 0 3px var(--pp-focus-ring);
+  box-shadow: 0 0 0 2px var(--pp-accent), 0 0 0 4px var(--pp-focus-ring);
 }
 .pp-root .pp-input::placeholder,
 .pp-root .pp-textarea::placeholder { color: var(--pp-faint); }
 .pp-root .pp-textarea {
-  padding: 7px 9px;
+  padding: var(--pp-sp-2);
   font-size: var(--pp-fs-md);
   font-family: inherit;
   line-height: 1.65;
@@ -493,9 +631,9 @@
   resize: vertical;
   color: var(--pp-text);
   background: var(--pp-field);
-  border: 1px solid var(--pp-border);
+  border: 1px solid var(--pp-border-control);
   border-radius: var(--pp-radius-md);
-  transition: border-color .12s ease, box-shadow .12s ease;
+  transition: border-color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease;
 }
 .pp-root .pp-input[type="checkbox"],
 .pp-root .pp-check input[type="checkbox"] {
@@ -504,52 +642,70 @@
   accent-color: var(--pp-accent);
 }
 .pp-root .pp-color {
-  border: 1px solid var(--pp-border);
+  width: 34px;
+  height: 26px;
+  border: 1px solid var(--pp-border-control);
   border-radius: var(--pp-radius-sm);
   background: var(--pp-field);
   cursor: pointer;
   flex: none;
   padding: 1px;
 }
-.pp-root .pp-color:hover { border-color: var(--pp-border-strong); }
+.pp-root .pp-color:hover { border-color: var(--pp-border-control-hover); }
 .pp-root .pp-btn {
   height: 28px;
-  padding: 0 12px;
+  padding: 0 var(--pp-sp-3);
   font-size: var(--pp-fs-md);
   font-family: inherit;
   color: var(--pp-text);
   background: var(--pp-surface);
-  border: 1px solid var(--pp-border);
+  border: 1px solid var(--pp-border-control);
   border-radius: var(--pp-radius-sm);
   cursor: pointer;
   white-space: nowrap;
-  transition: background .12s ease, border-color .12s ease, color .12s ease, box-shadow .12s ease;
+  transition: background var(--pp-dur-fast) ease, border-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease;
 }
 .pp-root .pp-btn:hover:not(:disabled) {
   background: var(--pp-btn-hover);
-  border-color: var(--pp-border-strong);
+  border-color: var(--pp-border-control-hover);
 }
 .pp-root .pp-btn:active:not(:disabled) { background: var(--pp-surface-3); }
 .pp-root .pp-btn:focus-visible {
   outline: none;
   border-color: var(--pp-accent);
-  box-shadow: 0 0 0 3px var(--pp-focus-ring);
+  box-shadow: 0 0 0 2px var(--pp-accent), 0 0 0 4px var(--pp-focus-ring);
+}
+/* 0.72.3：运行时 span → button 化的四个类，0.72.2 的 .pp-link-btn 契约没覆盖它们，
+   缺 focus-visible 时只剩 Gecko 的 UA 默认环（可见但不是本项目的双层环）。
+   环的写法与 .pp-btn / .pp-ts-chip 一致；`.pp-chip-x` 在 pill 内部，用单层 outline+offset 免得 box-shadow 压到 pill 边框。 */
+.pp-root .pp-mb-opt:focus-visible,
+.pp-root .pp-ds-chip:focus-visible,
+.pp-root .pp-chip-pick:focus-visible {
+  outline: none;
+  border-color: var(--pp-accent);
+  box-shadow: 0 0 0 2px var(--pp-accent), 0 0 0 4px var(--pp-focus-ring);
+}
+.pp-root .pp-chip-x:focus-visible {
+  outline: 2px solid var(--pp-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 .pp-root .pp-btn-primary {
-  color: #ffffff;
-  background: var(--pp-accent);
-  border-color: var(--pp-accent);
+  color: var(--pp-on-accent);
+  background: var(--pp-btn-primary-bg);
+  border-color: var(--pp-btn-primary-bg);
   box-shadow: var(--pp-shadow-1);
 }
 .pp-root .pp-btn-primary:hover:not(:disabled) {
-  color: #ffffff;
-  background: var(--pp-accent-emphasis);
-  border-color: var(--pp-accent-emphasis);
+  color: var(--pp-on-accent);
+  background: var(--pp-btn-primary-bg-hover);
+  border-color: var(--pp-btn-primary-bg-hover);
 }
-.pp-root .pp-btn-primary:active:not(:disabled) { background: var(--pp-accent-emphasis); }
-.pp-root .pp-btn-sm { height: 24px; padding: 0 9px; font-size: var(--pp-fs-sm); }
+.pp-root .pp-btn-primary:active:not(:disabled) { background: var(--pp-btn-primary-bg-hover); }
+.pp-root .pp-btn-sm { height: 24px; padding: 0 var(--pp-sp-2); font-size: var(--pp-fs-sm); }
 .pp-root .pp-btn:disabled { opacity: .5; cursor: default; }
-.pp-root .pp-btn-eye { padding: 0 8px; }
+.pp-root .pp-btn-eye { padding: 0 var(--pp-sp-2); display: inline-flex; align-items: center; justify-content: center; }
+.pp-root .pp-btn-eye svg { width: 14px; height: 14px; display: block; }
 .pp-root .pp-link {
   color: var(--pp-accent);
   cursor: pointer;
@@ -557,19 +713,32 @@
   text-decoration: none;
 }
 .pp-root .pp-link:hover { text-decoration: underline; }
-.pp-root .pp-link-danger { color: var(--pp-danger); }
+/* 链接外观的真按钮（0.72.2 契约类，P0-③）：span.pp-link 假按钮的替代，白得 Enter/Space 键盘触发 */
+.pp-root .pp-link-btn {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: var(--pp-fs-md);
+  color: var(--pp-accent);
+  cursor: pointer;
+}
+.pp-root .pp-link-btn:hover { text-decoration: underline; }
+.pp-root .pp-link-btn:focus-visible { outline: 2px solid var(--pp-accent); outline-offset: 2px; border-radius: 2px; }
+.pp-root .pp-link-danger { color: var(--pp-danger-fg); }
 .pp-root .pp-msg {
-  font-size: 12px;
+  font-size: var(--pp-fs-sm);
   color: var(--pp-muted);
   line-height: 1.5;
   min-height: 16px;
-  transition: color .12s ease;
+  transition: color var(--pp-dur-fast) ease;
 }
 
 /* 徽标 / 头像 */
 .pp-root .pp-pill {
-  font-size: 11px;
-  padding: 1px 8px;
+  font-size: var(--pp-fs-xs);
+  padding: 1px var(--pp-sp-2);
   border-radius: 999px;
   white-space: nowrap;
   border: 1px solid transparent;
@@ -584,29 +753,31 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  background: linear-gradient(135deg, var(--pp-accent), var(--pp-accent-emphasis));
-  font-size: 16px;
+  color: var(--pp-on-accent);
+  background: linear-gradient(135deg, var(--pp-btn-primary-bg), var(--pp-btn-primary-bg-hover));
+  font-size: var(--pp-fs-xl);
   font-weight: 700;
   box-shadow: var(--pp-shadow-1);
 }
-.pp-root .pp-account-name { font-size: 14px; color: var(--pp-text-strong); }
+.pp-root .pp-account-name { font-size: var(--pp-fs-lg); color: var(--pp-text-strong); }
 .pp-root .pp-account-email {
-  font-size: 12px;
-  color: var(--pp-muted);
-  /* 0.68.3 默认脱敏：点一下可显示完整地址，所以给一个可点的视觉提示 */
+  font-size: var(--pp-fs-sm);
+  /* 0.72.3：这是真按钮（点击切换邮箱明文），文字必须带链接色——
+     muted 灰与旁边不可点的 meta 文字同色，会让它看起来不是控件。
+     虚线下划线只作附加提示，不承担可点识别（因此允许低于 3:1）。 */
+  color: var(--pp-accent);
   cursor: pointer;
-  border-bottom: 1px dashed var(--pp-border-strong, #c3cdd6);
+  border-bottom: 1px dashed var(--pp-border-strong);
 }
-.pp-root .pp-account-email:hover { color: var(--pp-accent, #0969da); }
-.pp-root .pp-account-meta { font-size: 12px; color: var(--pp-muted); margin-top: 8px; line-height: 1.75; }
+.pp-root .pp-account-email:hover { color: var(--pp-accent-fg); }
+.pp-root .pp-account-meta { font-size: var(--pp-fs-sm); color: var(--pp-muted); margin-top: var(--pp-sp-2); line-height: 1.75; }
 
 /* ========================================================================
    6. 会员 / 额度 / 订单（账号卡）
    ======================================================================== */
 .pp-root .pp-mb {
-  margin-top: 10px;
-  padding: 11px 12px;
+  margin-top: var(--pp-sp-2h);
+  padding: var(--pp-sp-3);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-lg);
   background: var(--pp-surface-2);
@@ -616,27 +787,27 @@
   font-size: var(--pp-fs-xs);
   font-weight: 700;
   letter-spacing: .06em;
-  padding: 2px 8px;
+  padding: 2px var(--pp-sp-2);
   border-radius: 999px;
   color: var(--pp-accent);
   background: var(--pp-accent-weak);
   border: 1px solid var(--pp-accent-line);
 }
 .pp-root .pp-mb-badge-pro {
-  color: #ffffff;
-  background: linear-gradient(135deg, var(--pp-accent), var(--pp-accent-emphasis));
-  border-color: var(--pp-accent);
+  color: var(--pp-on-accent);
+  background: linear-gradient(135deg, var(--pp-btn-primary-bg), var(--pp-btn-primary-bg-hover));
+  border-color: var(--pp-btn-primary-bg);
 }
 .pp-root .pp-mb-title { font-size: var(--pp-fs-lg); font-weight: 600; color: var(--pp-text-strong); }
 .pp-root .pp-mb-expiry { font-size: var(--pp-fs-sm); color: var(--pp-muted); }
 .pp-root .pp-mb-expiry-warn { color: var(--pp-warn); font-weight: 600; }
-.pp-root .pp-mb-expiry-expired { color: var(--pp-danger); font-weight: 600; }
-.pp-root .pp-mb-features { margin-top: 7px; display: flex; flex-direction: column; gap: 3px; }
+.pp-root .pp-mb-expiry-expired { color: var(--pp-danger-fg); font-weight: 600; }
+.pp-root .pp-mb-features { margin-top: var(--pp-sp-2); display: flex; flex-direction: column; gap: 3px; }
 .pp-root .pp-mb-feat {
   font-size: var(--pp-fs-sm);
   color: var(--pp-muted);
   line-height: 1.55;
-  padding-left: 11px;
+  padding-left: var(--pp-sp-3);
   position: relative;
 }
 .pp-root .pp-mb-feat::before {
@@ -652,14 +823,14 @@
 }
 /* 免费版 vs 专业版对照表 */
 .pp-root .pp-mb-compare {
-  margin-top: 9px;
+  margin-top: var(--pp-sp-2);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-md);
   overflow: hidden;
   background: var(--pp-surface);
 }
 .pp-root .pp-mb-compare-head {
-  padding: 7px 10px;
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
   font-size: var(--pp-fs-sm);
   font-weight: 600;
   letter-spacing: .04em;
@@ -675,7 +846,7 @@
 }
 .pp-root .pp-mb-compare th,
 .pp-root .pp-mb-compare td {
-  padding: 6px 9px;
+  padding: var(--pp-sp-1h) var(--pp-sp-2);
   text-align: left;
   vertical-align: top;
   line-height: 1.5;
@@ -683,7 +854,7 @@
   color: var(--pp-text);
 }
 .pp-root .pp-mb-compare thead th {
-  font-size: 11px;
+  font-size: var(--pp-fs-xs);
   font-weight: 600;
   color: var(--pp-muted);
   background: var(--pp-surface-2);
@@ -696,7 +867,7 @@
 .pp-root .pp-mb-compare td:nth-child(3) { width: 34%; }
 .pp-root .pp-mb-compare th.pp-cmp-pro,
 .pp-root .pp-mb-compare td.pp-cmp-pro { background: var(--pp-accent-soft); }
-.pp-root .pp-mb-compare thead th.pp-cmp-pro { color: var(--pp-accent); }
+.pp-root .pp-mb-compare thead th.pp-cmp-pro { color: var(--pp-accent-fg); }
 .pp-root .pp-mb-compare tbody tr:last-child td { border-bottom: 0; }
 .pp-root .pp-mb-compare tbody tr:hover td { background: var(--pp-surface-2); }
 .pp-root .pp-mb-compare tbody tr:hover td.pp-cmp-pro { background: var(--pp-accent-soft); }
@@ -711,7 +882,7 @@
 .pp-root .pp-mb-compare .pp-cmp-yes { color: var(--pp-success); font-weight: 700; }
 .pp-root .pp-mb-compare .pp-cmp-no { color: var(--pp-faint); }
 .pp-root .pp-mb-compare-note {
-  padding: 7px 10px;
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
   font-size: var(--pp-fs-xs);
   line-height: 1.6;
   color: var(--pp-muted);
@@ -719,25 +890,25 @@
   border-top: 1px solid var(--pp-border);
 }
 .pp-root .pp-mb-order {
-  margin-top: 10px;
-  padding-top: 10px;
+  margin-top: var(--pp-sp-2h);
+  padding-top: var(--pp-sp-2h);
   border-top: 1px dashed var(--pp-border);
 }
 .pp-root .pp-mb-order-head { display: flex; align-items: baseline; gap: var(--pp-sp-2); flex-wrap: wrap; }
 .pp-root .pp-mb-price-note { font-size: var(--pp-fs-sm); color: var(--pp-muted); }
 .pp-root .pp-mb-opt {
   cursor: pointer;
-  font-size: 12px;
-  padding: 4px 10px;
+  font-size: var(--pp-fs-sm);
+  padding: var(--pp-sp-1) var(--pp-sp-2h);
   border-radius: var(--pp-radius-sm);
   color: var(--pp-text);
   background: var(--pp-surface);
-  border: 1px solid var(--pp-border);
-  transition: border-color .12s ease, background .12s ease, color .12s ease;
+  border: 1px solid var(--pp-border-control);
+  transition: border-color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease;
 }
 .pp-root .pp-mb-opt:hover { border-color: var(--pp-accent); color: var(--pp-accent); }
 .pp-root .pp-mb-opt-on {
-  color: var(--pp-accent);
+  color: var(--pp-accent-fg);
   background: var(--pp-accent-weak);
   border-color: var(--pp-accent);
   font-weight: 600;
@@ -746,38 +917,38 @@
   opacity: .7;
   cursor: default;
   font-size: var(--pp-fs-sm);
-  padding: 4px 10px;
+  padding: var(--pp-sp-1) var(--pp-sp-2h);
   border-radius: var(--pp-radius-sm);
   color: var(--pp-muted);
   background: var(--pp-surface-2);
   border: 1px dashed var(--pp-border);
 }
-.pp-root .pp-mb-pay { margin-top: 10px; }
+.pp-root .pp-mb-pay { margin-top: var(--pp-sp-2h); }
 .pp-root .pp-mb-pay-info {
-  font-size: 12px;
+  font-size: var(--pp-fs-sm);
   line-height: 1.7;
   color: var(--pp-text);
   background: var(--pp-surface);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-md);
-  padding: 8px 10px;
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
   white-space: pre-wrap;
   word-break: break-all;
 }
 .pp-root .pp-mb-qr {
   max-width: 180px;
-  margin-top: 8px;
+  margin-top: var(--pp-sp-2);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-md);
-  background: #ffffff;
-  padding: 4px;
+  background: var(--pp-on-accent);  /* QR 码底必须恒白保证可扫，on-accent 双主题同为 #fff */
+  padding: var(--pp-sp-1);
 }
-.pp-root .pp-mb-warn { font-size: var(--pp-fs-sm); color: var(--pp-warn); margin-top: 8px; line-height: 1.6; }
+.pp-root .pp-mb-warn { font-size: var(--pp-fs-sm); color: var(--pp-warn); margin-top: var(--pp-sp-2); line-height: 1.6; }
 .pp-root .pp-mb-quote {
-  margin-top: 8px;
-  padding: 7px 10px;
+  margin-top: var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
   border-radius: var(--pp-radius-md);
-  font-size: 12px;
+  font-size: var(--pp-fs-sm);
   line-height: 1.6;
   color: var(--pp-text);
   background: var(--pp-accent-soft);
@@ -786,12 +957,25 @@
   word-break: break-all;
 }
 /* 到期提醒 */
-.pp-root .pp-mb-renew {
-  margin-top: 8px;
-  padding: 7px 10px;
+/* 真按钮化（0.72.2 契约类，P0-③）：整张横幅是 <button>，先清零 UA 按钮样式；
+   视觉规则仍由下方 .pp-mb-renew 提供（该规则选择器已并入 button.pp-mb-renew 以盖过本重置） */
+.pp-root button.pp-mb-renew {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.pp-root .pp-mb-renew,
+.pp-root button.pp-mb-renew {
+  margin-top: var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
   border-radius: var(--pp-radius-md);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--pp-fs-sm);
   line-height: 1.55;
   color: var(--pp-warn);
   background: var(--pp-warn-bg);
@@ -799,23 +983,23 @@
 }
 .pp-root .pp-mb-renew:hover { border-color: var(--pp-accent); }
 .pp-root .pp-mb-renew-expired {
-  color: var(--pp-danger);
+  color: var(--pp-danger-fg);
   background: var(--pp-danger-bg);
   border-color: var(--pp-danger);
   font-weight: 600;
 }
 /* 用量趋势 */
 .pp-root .pp-mb-usage {
-  margin-top: 9px;
-  padding-top: 9px;
+  margin-top: var(--pp-sp-2);
+  padding-top: var(--pp-sp-2);
   border-top: 1px dashed var(--pp-border);
 }
 .pp-root .pp-mb-usage-head { font-size: var(--pp-fs-sm); color: var(--pp-muted); }
 .pp-root .pp-mb-bars {
-  margin-top: 6px;
+  margin-top: var(--pp-sp-1h);
   display: flex;
   align-items: flex-end;
-  gap: 6px;
+  gap: var(--pp-sp-1h);
   height: 44px;
 }
 .pp-root .pp-mb-bar-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
@@ -825,9 +1009,9 @@
   background: linear-gradient(180deg, var(--pp-accent), var(--pp-accent-emphasis));
 }
 .pp-root .pp-mb-bar-zero { background: var(--pp-border); }
-.pp-root .pp-mb-bar-day { font-size: 9.5px; color: var(--pp-muted); margin-top: 3px; }
+.pp-root .pp-mb-bar-day { font-size: var(--pp-fs-xs); color: var(--pp-muted); margin-top: 3px; }
 /* AI 额度 */
-.pp-root .pp-bal { margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--pp-border); }
+.pp-root .pp-bal { margin-top: var(--pp-sp-2); padding-top: var(--pp-sp-2); border-top: 1px dashed var(--pp-border); }
 .pp-root .pp-bal-head { display: flex; align-items: baseline; gap: var(--pp-sp-2); }
 .pp-root .pp-bal-total {
   font-size: var(--pp-fs-xl);
@@ -836,41 +1020,41 @@
   font-variant-numeric: tabular-nums;
 }
 .pp-root .pp-bal-detail { margin-top: 3px; font-size: var(--pp-fs-sm); color: var(--pp-muted); line-height: 1.6; }
-.pp-root .pp-bal .pp-hint { display: block; margin-top: 4px; }
-.pp-root .pp-bal-recharge { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--pp-border); }
+.pp-root .pp-bal .pp-hint { display: block; margin-top: var(--pp-sp-1); }
+.pp-root .pp-bal-recharge { margin-top: var(--pp-sp-2h); padding-top: var(--pp-sp-2h); border-top: 1px dashed var(--pp-border); }
 /* 登录设备 */
 .pp-root .pp-dev-block {
-  margin-top: 10px;
-  padding: 10px 12px;
+  margin-top: var(--pp-sp-2h);
+  padding: var(--pp-sp-2h) var(--pp-sp-3);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-lg);
   background: var(--pp-surface-2);
 }
 .pp-root .pp-dev-head { display: flex; align-items: center; gap: var(--pp-sp-2); flex-wrap: wrap; }
 .pp-root .pp-dev-head .pp-row-tight { flex: 1 1 auto; }
-.pp-root .pp-dev-list { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.pp-root .pp-dev-list { margin-top: var(--pp-sp-2); display: flex; flex-direction: column; gap: var(--pp-sp-1h); }
 .pp-root .pp-dev-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 7px 9px;
+  gap: var(--pp-sp-2h);
+  padding: var(--pp-sp-2);
   border-radius: var(--pp-radius-md);
   border: 1px solid var(--pp-border);
   background: var(--pp-surface);
-  transition: border-color .12s ease;
+  transition: border-color var(--pp-dur-fast) ease;
 }
 .pp-root .pp-dev-row:hover { border-color: var(--pp-border-strong); }
 .pp-root .pp-dev-row-cur { border-color: var(--pp-accent); background: var(--pp-accent-soft); }
 .pp-root .pp-dev-info { flex: 1 1 auto; min-width: 0; }
 .pp-root .pp-dev-name { font-size: var(--pp-fs-md); font-weight: 600; color: var(--pp-text-strong); }
-.pp-root .pp-dev-meta { font-size: 11px; color: var(--pp-muted); line-height: 1.5; }
-.pp-root .pp-dev-act { display: flex; gap: 10px; flex: 0 0 auto; }
+.pp-root .pp-dev-meta { font-size: var(--pp-fs-xs); color: var(--pp-muted); line-height: 1.5; }
+.pp-root .pp-dev-act { display: flex; gap: var(--pp-sp-2h); flex: 0 0 auto; }
 /* 套餐 AI 能力说明 */
 .pp-root .pp-ai-tier {
-  margin-top: 8px;
-  padding: 8px 10px;
+  margin-top: var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
   border-radius: var(--pp-radius-md);
-  font-size: 12px;
+  font-size: var(--pp-fs-sm);
   line-height: 1.65;
   color: var(--pp-text);
   background: var(--pp-surface-2);
@@ -888,19 +1072,19 @@
    7. 模型通道 / 翻译引擎列表
    ======================================================================== */
 .pp-root .pp-ch-status { font-size: var(--pp-fs-md); color: var(--pp-muted); min-height: 16px; line-height: 1.6; }
-.pp-root .pp-ch-list { margin-top: 8px; }
+.pp-root .pp-ch-list { margin-top: var(--pp-sp-2); }
 .pp-root .pp-ch-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
+  gap: var(--pp-sp-2h);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-md);
   background: var(--pp-surface-2);
-  transition: border-color .12s ease, background .12s ease;
+  transition: border-color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
 }
 .pp-root .pp-ch-row:hover { border-color: var(--pp-accent-line); background: var(--pp-surface); }
-.pp-root .pp-ch-head { display: flex; align-items: center; gap: 6px; }
+.pp-root .pp-ch-head { display: flex; align-items: center; gap: var(--pp-sp-1h); }
 .pp-root .pp-ch-name { font-weight: 600; font-size: var(--pp-fs-lg); color: var(--pp-text-strong); }
 .pp-root .pp-ch-sub {
   font-size: var(--pp-fs-sm);
@@ -911,35 +1095,34 @@
   white-space: nowrap;
 }
 .pp-root .pp-ch-modelcap { font-size: var(--pp-fs-xs); color: var(--pp-muted); text-align: center; margin-top: 1px; }
-.pp-root .pp-form { border-top: 1px dashed var(--pp-border); margin-top: 12px; padding-top: 12px; }
+.pp-root .pp-form { border-top: 1px dashed var(--pp-border); margin-top: var(--pp-sp-3); padding-top: var(--pp-sp-3); }
 .pp-root .pp-chip {
-  font-size: 12px;
-  padding: 2px 9px;
+  font-size: var(--pp-fs-sm);
+  padding: 2px var(--pp-sp-2);
   border-radius: 999px;
-  cursor: pointer;
   color: var(--pp-text);
   background: var(--pp-surface-2);
-  border: 1px solid var(--pp-border);
-  transition: border-color .12s ease, color .12s ease, background .12s ease;
+  border: 1px solid var(--pp-border-control);
+  transition: border-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
 }
 .pp-root .pp-chip:hover { border-color: var(--pp-accent); color: var(--pp-accent); }
 .pp-root .pp-chip-on {
-  color: var(--pp-accent);
+  color: var(--pp-accent-fg);
   background: var(--pp-accent-weak);
   border-color: var(--pp-accent);
   font-weight: 600;
 }
-.pp-root .pp-chip-x { cursor: pointer; color: var(--pp-danger); font-weight: 700; margin-left: 4px; }
+.pp-root .pp-chip-x { cursor: pointer; color: var(--pp-danger-fg); font-weight: 700; margin-left: var(--pp-sp-1); }
 
 /* ========================================================================
    8. 分区数据（数据集 chips / 徽章预览）
    ======================================================================== */
-.pp-root .pp-datasets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.pp-root .pp-datasets { display: flex; flex-wrap: wrap; gap: var(--pp-sp-1h); margin-top: var(--pp-sp-1); }
 /* 期刊订阅候选列表（0.69.0）：整行一条，限高滚动——50 行不能把整张卡撑成一屏半。
    不用 .pp-datasets 的 flex-wrap（那是给卡片网格用的，行会被并排压缩）。 */
 .pp-root .pp-journal-list {
   display: block;
-  margin-top: 8px;
+  margin-top: var(--pp-sp-2);
   max-height: 360px;
   overflow-y: auto;
   border-top: 1px solid var(--pp-border);
@@ -947,42 +1130,42 @@
 .pp-root .pp-ds-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  padding: 2px 10px;
+  gap: var(--pp-sp-1);
+  font-size: var(--pp-fs-sm);
+  padding: 2px var(--pp-sp-2h);
   border-radius: 999px;
   cursor: pointer;
   user-select: none;
   color: var(--pp-text);
   background: var(--pp-surface-2);
-  border: 1px solid var(--pp-border);
-  transition: border-color .12s ease, background .12s ease, color .12s ease;
+  border: 1px solid var(--pp-border-control);
+  transition: border-color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease;
 }
 .pp-root .pp-ds-chip:hover { border-color: var(--pp-accent); color: var(--pp-accent); }
 .pp-root .pp-ds-on {
-  color: var(--pp-accent);
+  color: var(--pp-accent-fg);
   background: var(--pp-accent-weak);
   border-color: var(--pp-accent);
   font-weight: 600;
 }
 .pp-root .pp-rank-preview {
-  margin-top: 8px;
-  padding: 9px 10px;
+  margin-top: var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
   min-height: 24px;
   border: 1px dashed var(--pp-border);
   border-radius: var(--pp-radius-md);
   background: var(--pp-surface-2);
-  font-size: 11px;
+  font-size: var(--pp-fs-xs);
   line-height: 20px;
 }
 .pp-root .pp-rank-preview .pp-badge-demo {
   display: inline-block;
-  color: #ffffff;
+  color: var(--pp-on-accent);
   border-radius: 4px;
-  padding: 0 5px;
-  font-size: 11px;
+  padding: 0 var(--pp-sp-1);
+  font-size: var(--pp-fs-xs);
   line-height: 16px;
-  margin-inline-end: 4px;
+  margin-inline-end: var(--pp-sp-1);
   white-space: nowrap;
 }
 
@@ -992,17 +1175,17 @@
 .pp-root .pp-theme-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
-  gap: 8px;
-  margin-top: 10px;
+  gap: var(--pp-sp-2);
+  margin-top: var(--pp-sp-2h);
 }
 .pp-root .pp-theme-card {
-  padding: 7px;
-  border: 1px solid var(--pp-border);
+  padding: var(--pp-sp-2);
+  border: 1px solid var(--pp-border-control);
   border-radius: var(--pp-radius-md);
   background: var(--pp-surface-2);
   text-align: center;
   cursor: pointer;
-  transition: border-color .12s ease, box-shadow .12s ease, transform .12s ease;
+  transition: border-color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease, transform var(--pp-dur-fast) ease;
 }
 .pp-root .pp-theme-card:hover {
   border-color: var(--pp-accent);
@@ -1025,8 +1208,8 @@
 .pp-root #pp-photo-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .pp-root #pp-photo-grid .pp-wp-preview { height: 68px; }
 .pp-root .pp-theme-cat {
-  margin: 14px 0 6px;
-  padding-left: 8px;
+  margin: var(--pp-sp-4) 0 var(--pp-sp-1h);
+  padding-left: var(--pp-sp-2);
   border-left: 3px solid var(--pp-accent);
   font-size: var(--pp-fs-md);
   font-weight: 600;
@@ -1034,8 +1217,8 @@
 }
 .pp-root .pp-theme-chip { flex: 1; }
 .pp-root .pp-theme-name {
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: var(--pp-sp-1h);
+  font-size: var(--pp-fs-sm);
   font-weight: 600;
   color: var(--pp-text);
   white-space: nowrap;
@@ -1043,19 +1226,19 @@
   text-overflow: ellipsis;
 }
 .pp-root .pp-theme-tag { font-size: var(--pp-fs-xs); color: var(--pp-muted); margin-top: 2px; }
-.pp-root .pp-pdf-list { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+.pp-root .pp-pdf-list { display: flex; flex-direction: column; gap: var(--pp-sp-1h); margin-top: var(--pp-sp-2h); }
 .pp-root .pp-pdf-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border: 1px solid var(--pp-border);
+  gap: var(--pp-sp-2);
+  padding: var(--pp-sp-1h) var(--pp-sp-2h);
+  border: 1px solid var(--pp-border-control);
   border-radius: var(--pp-radius-md);
   background: var(--pp-surface-2);
   font-size: var(--pp-fs-md);
   color: var(--pp-text);
   cursor: pointer;
-  transition: border-color .12s ease, background .12s ease;
+  transition: border-color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
 }
 .pp-root .pp-pdf-item:hover { border-color: var(--pp-accent); background: var(--pp-surface); }
 .pp-root .pp-pdf-on { border-color: var(--pp-accent); background: var(--pp-accent-weak); }
@@ -1064,39 +1247,43 @@
 /* ========================================================================
    10. 第三方文献源（试验）：分组入口芯片
    ======================================================================== */
-.pp-root .pp-ts-list { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.pp-root .pp-ts-list { display: flex; flex-direction: column; gap: 2px; margin-top: var(--pp-sp-2); }
 .pp-root .pp-ts-group {
-  font-size: 11px;
+  font-size: var(--pp-fs-xs);
   font-weight: 700;
   letter-spacing: .06em;
   color: var(--pp-muted);
-  margin: 9px 0 5px 2px;
+  margin: var(--pp-sp-2) 0 var(--pp-sp-1h) 2px;
 }
 .pp-root .pp-ts-list > .pp-ts-group:first-child { margin-top: 0; }
-.pp-root .pp-ts-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pp-root .pp-ts-chips { display: flex; flex-wrap: wrap; gap: var(--pp-sp-1h); }
 .pp-root .pp-ts-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--pp-sp-1h);
   max-width: 100%;
-  padding: 3px 10px;
+  padding: 3px var(--pp-sp-2h);
   border-radius: var(--pp-radius-md);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--pp-fs-sm);
   font-family: inherit;
   line-height: 1.5;
   color: var(--pp-text);
   background: var(--pp-surface-2);
-  border: 1px solid var(--pp-border);
-  transition: border-color .12s ease, color .12s ease, background .12s ease;
+  border: 1px solid var(--pp-border-control);
+  transition: border-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
 }
 .pp-root .pp-ts-chip:hover:not(:disabled) {
   border-color: var(--pp-accent);
   color: var(--pp-accent);
   background: var(--pp-surface);
 }
-.pp-root .pp-ts-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--pp-focus-ring); }
-.pp-root .pp-ts-dot { font-size: 9px; line-height: 1; flex: none; }
+.pp-root .pp-ts-chip:focus-visible {
+  outline: none;
+  border-color: var(--pp-accent);
+  box-shadow: 0 0 0 2px var(--pp-accent), 0 0 0 4px var(--pp-focus-ring);
+}
+.pp-root .pp-ts-dot { font-size: var(--pp-fs-xs); line-height: 1; flex: none; }
 .pp-root .pp-ts-chip-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ========================================================================
@@ -1107,12 +1294,12 @@
 .pp-root .pp-subs-row,
 .pp-root .pp-sch-row,
 .pp-root .pp-mem-row {
-  margin-top: 6px;
-  padding: 8px 10px;
+  margin-top: var(--pp-sp-1h);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-md);
   background: var(--pp-surface-2);
-  transition: border-color .12s ease, background .12s ease;
+  transition: border-color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
 }
 .pp-root .pp-subs-row:hover,
 .pp-root .pp-sch-row:hover,
@@ -1127,9 +1314,9 @@
   flex: none;
   font-size: var(--pp-fs-xs);
   font-weight: 600;
-  padding: 1px 7px;
+  padding: 1px var(--pp-sp-2);
   border-radius: 999px;
-  color: var(--pp-accent);
+  color: var(--pp-accent-fg);
   background: var(--pp-accent-weak);
   border: 1px solid var(--pp-accent-line);
 }
@@ -1137,8 +1324,8 @@
 .pp-root .pp-mem-time { flex: none; font-size: var(--pp-fs-xs); color: var(--pp-faint); }
 /* 快捷键行：等宽显示组合键，行内分隔更清楚 */
 .pp-root .pp-hk-row {
-  margin-top: 6px;
-  padding: 6px 10px;
+  margin-top: var(--pp-sp-1h);
+  padding: var(--pp-sp-1h) var(--pp-sp-2h);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-md);
   background: var(--pp-surface-2);
@@ -1146,18 +1333,18 @@
 .pp-root .pp-hk-row:hover { border-color: var(--pp-accent-line); background: var(--pp-surface); }
 .pp-root .pp-hk-combo {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  font-size: 11.5px;
+  font-size: var(--pp-fs-sm);
   color: var(--pp-text-strong);
   background: var(--pp-surface);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-sm);
-  padding: 1px 7px;
+  padding: 1px var(--pp-sp-2);
   text-align: center;
   white-space: nowrap;
 }
 /* 翻译引擎列表行 */
 .pp-root .pp-tr-rowmsg { flex: 1 1 100%; }
-.pp-root .pp-tr-listhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pp-root .pp-tr-listhead { display: flex; align-items: center; gap: var(--pp-sp-2); flex-wrap: wrap; }
 .pp-root .pp-tr-toggle { margin-left: auto; }
 
 /* ========================================================================
@@ -1175,11 +1362,11 @@
   max-height: 150px;
   overflow: auto;
   white-space: pre-wrap;
-  padding: 7px 9px;
+  padding: var(--pp-sp-2);
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-md);
   background: var(--pp-surface-2);
-  font-size: 11px;
+  font-size: var(--pp-fs-xs);
   line-height: 1.6;
 }
 
@@ -1194,15 +1381,15 @@
   align-items: center;
   justify-content: center;
   padding: 18px;
-  background: rgba(0, 0, 0, .42);
+  background: var(--pp-overlay);
 }
 .pp-root .pp-order-dlg {
   width: 424px;
   max-width: 92vw;
   max-height: 86vh;
   overflow-y: auto;
-  padding: 14px 16px 12px;
-  font-size: 13px;
+  padding: var(--pp-sp-4) var(--pp-sp-4) var(--pp-sp-3);
+  font-size: var(--pp-fs-md);
   color: var(--pp-text);
   background: var(--pp-surface);
   border: 1px solid var(--pp-border);
@@ -1210,11 +1397,11 @@
   box-shadow: var(--pp-shadow-3);
 }
 .pp-root .pp-dlg-head { display: flex; align-items: center; gap: var(--pp-sp-2); }
-.pp-root .pp-dlg-title { font-size: 14px; font-weight: 700; color: var(--pp-text-strong); }
+.pp-root .pp-dlg-title { font-size: var(--pp-fs-lg); font-weight: 700; color: var(--pp-text-strong); }
 .pp-root .pp-dlg-badge {
-  font-size: 11px;
+  font-size: var(--pp-fs-xs);
   line-height: 1.6;
-  padding: 1px 8px;
+  padding: 1px var(--pp-sp-2);
   border-radius: 999px;
   color: var(--pp-muted);
   background: var(--pp-surface-2);
@@ -1226,57 +1413,58 @@
 .pp-root .pp-dlg-badge-muted { color: var(--pp-muted); background: var(--pp-surface-2); border-color: var(--pp-border); }
 .pp-root .pp-dlg-close {
   margin-left: auto;
-  padding: 2px 4px;
+  padding: 2px var(--pp-sp-1);
   border-radius: var(--pp-radius-sm);
   color: var(--pp-muted);
-  font-size: 17px;
+  font-size: var(--pp-fs-xl);
   line-height: 1;
   cursor: pointer;
 }
 .pp-root .pp-dlg-close:hover { color: var(--pp-text); background: var(--pp-btn-hover); }
-.pp-root .pp-dlg-body { margin-top: 8px; }
+.pp-root .pp-dlg-close:focus-visible { outline: 2px solid var(--pp-accent); outline-offset: 2px; }
+.pp-root .pp-dlg-body { margin-top: var(--pp-sp-2); }
 .pp-root .pp-dlg-content { font-size: var(--pp-fs-md); color: var(--pp-muted); }
 .pp-root .pp-dlg-amount {
-  margin-top: 4px;
-  font-size: 24px;
+  margin-top: var(--pp-sp-1);
+  font-size: var(--pp-fs-2xl);
   font-weight: 700;
   letter-spacing: .01em;
   color: var(--pp-text-strong);
   font-variant-numeric: tabular-nums;
 }
 .pp-root .pp-dlg-tail {
-  margin-top: 6px;
-  padding: 6px 9px;
+  margin-top: var(--pp-sp-1h);
+  padding: var(--pp-sp-1h) var(--pp-sp-2);
   border-radius: var(--pp-radius-md);
-  font-size: 12px;
+  font-size: var(--pp-fs-sm);
   line-height: 1.55;
   color: var(--pp-warn);
   background: var(--pp-warn-bg);
   border: 1px solid var(--pp-warn);
 }
-.pp-root .pp-dlg-rows { margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--pp-border); }
-.pp-root .pp-dlg-row { display: flex; gap: 10px; padding: 2px 0; align-items: baseline; }
-.pp-root .pp-dlg-k { flex: none; width: 64px; font-size: 12px; color: var(--pp-muted); }
+.pp-root .pp-dlg-rows { margin-top: var(--pp-sp-2); padding-top: var(--pp-sp-1h); border-top: 1px dashed var(--pp-border); }
+.pp-root .pp-dlg-row { display: flex; gap: var(--pp-sp-2h); padding: 2px 0; align-items: baseline; }
+.pp-root .pp-dlg-k { flex: none; width: 64px; font-size: var(--pp-fs-sm); color: var(--pp-muted); }
 .pp-root .pp-dlg-v { flex: 1; font-size: var(--pp-fs-md); word-break: break-all; }
 .pp-root .pp-dlg-qr {
   display: block;
-  margin: 10px auto 4px;
+  margin: var(--pp-sp-2h) auto var(--pp-sp-1);
   width: 148px;
   height: 148px;
   object-fit: contain;
-  background: #ffffff;
+  background: var(--pp-on-accent);  /* QR 码底恒白，同上 */
   border: 1px solid var(--pp-border);
   border-radius: var(--pp-radius-md);
-  padding: 4px;
+  padding: var(--pp-sp-1);
 }
-.pp-root .pp-dlg-note { margin-top: 6px; font-size: 12px; color: var(--pp-muted); line-height: 1.55; }
-.pp-root .pp-dlg-legal { margin-top: 8px; font-size: var(--pp-fs-xs); color: var(--pp-faint); line-height: 1.55; }
-.pp-root .pp-dlg-msg { margin-top: 4px; min-height: 16px; }
-.pp-root .pp-dlg-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.pp-root .pp-order-view { font-size: 12px; }
+.pp-root .pp-dlg-note { margin-top: var(--pp-sp-1h); font-size: var(--pp-fs-sm); color: var(--pp-muted); line-height: 1.55; }
+.pp-root .pp-dlg-legal { margin-top: var(--pp-sp-2); font-size: var(--pp-fs-xs); color: var(--pp-faint); line-height: 1.55; }
+.pp-root .pp-dlg-msg { margin-top: var(--pp-sp-1); min-height: 16px; }
+.pp-root .pp-dlg-actions { display: flex; flex-wrap: wrap; gap: var(--pp-sp-1h); margin-top: var(--pp-sp-2); }
+.pp-root .pp-order-view { font-size: var(--pp-fs-sm); }
 
 /* ========================================================================
-   14. 响应式：720px 收窄栅格，560px 全部单列
+   14. 响应式：760px 收窄栅格，560px 全部单列
    ======================================================================== */
 @media (max-width: 760px) {
   .pp-root .pp-grid3 { grid-template-columns: 1fr 1fr; }
@@ -1289,7 +1477,7 @@
   .pp-root .pp-toolbar-actions { width: 100%; }
   .pp-root .pp-count { order: 2; }
   .pp-root .pp-fold-head .pp-card-desc { display: none; }
-  .pp-root .pp-mb-compare table { font-size: 11px; }
+  .pp-root .pp-mb-compare table { font-size: var(--pp-fs-xs); }
   .pp-root .pp-mb-compare th:nth-child(1),
   .pp-root .pp-mb-compare td:nth-child(1) { width: 40%; }
   .pp-root .pp-order-dlg { width: 100%; }
@@ -1311,11 +1499,11 @@
    （设置面板中不渲染任何密钥值，避免截图/录屏泄露）
    ======================================================================== */
 .pp-root .pp-vault-entry {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  margin-top: 12px; padding: 10px 12px;
+  display: flex; align-items: center; gap: var(--pp-sp-3); flex-wrap: wrap;
+  margin-top: var(--pp-sp-3); padding: var(--pp-sp-2h) var(--pp-sp-3);
   border: 1px solid var(--pp-border); border-radius: var(--pp-radius-md);
   background: var(--pp-surface-2);
 }
 .pp-root .pp-vault-entry-main { flex: 1; min-width: 180px; }
-.pp-root .pp-vault-entry-title { font-size: 12.5px; color: var(--pp-text); }
+.pp-root .pp-vault-entry-title { font-size: var(--pp-fs-md); color: var(--pp-text); }
 .pp-root .pp-vault-entry .pp-hint { margin-top: 2px; line-height: 1.55; }

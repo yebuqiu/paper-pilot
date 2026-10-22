@@ -548,9 +548,9 @@ const flush = () => new Promise((r) => setImmediate(r));
     has(nTrial.textContent, '回到基础模型', 'I5 说明到期后果（不是只报喜）');
     has(nTrial.className, 'pp-ai-tier-trial', 'I6 试用条用醒目样式');
 
-    // 试用中不应出现 🔒 项
+    // 试用中不应出现锁定项（0.72.3：标记由 🔒 改为文字「（需专业版）」）
     const optsTrial = selOf(registry).children.filter((c) => c.tag === 'option');
-    eq(optsTrial.filter((o) => /🔒/.test(o.textContent)).length, 0, 'I7 试用中不出现锁定项');
+    eq(optsTrial.filter((o) => /需专业版/.test(o.textContent)).length, 0, 'I7 试用中不出现锁定项');
 
     // ---- I8. Free 试用已结束：列出需升级的模型 + 当前可用 ----
     const endedAt = new Date(Date.now() - 2 * DAY).toISOString();
@@ -567,10 +567,10 @@ const flush = () => new Promise((r) => setImmediate(r));
     has(nLock.textContent, '试用已于', 'I12 说明为什么现在不能用了（试用结束）');
     ok(!/pp-ai-tier-trial/.test(nLock.className), 'I13 非试用态不用试用样式');
 
-    // ---- I14. 下拉里锁定模型以 🔒 灰显列出（可见差距才有转化力） ----
+    // ---- I14. 下拉里锁定模型以「（需专业版）」灰显列出（可见差距才有转化力） ----
     const optsLock = selOf(registry).children.filter((c) => c.tag === 'option');
-    const locked = optsLock.filter((o) => /^🔒 /.test(o.textContent));
-    ok(locked.length === 2, 'I14 两个锁定模型以 🔒 列出', optsLock.map((o) => o.textContent));
+    const locked = optsLock.filter((o) => /（需专业版）$/.test(o.textContent));
+    ok(locked.length === 2, 'I14 两个锁定模型以「（需专业版）」列出', optsLock.map((o) => o.textContent));
     has(locked[0] ? locked[0].textContent : '', 'deepseek-v4-pro', 'I15 锁定项写明模型名');
     ok(!!(locked[0] && locked[0].style.color), 'I16 锁定项灰显（有独立颜色）',
       locked[0] && locked[0].style);

@@ -6,10 +6,11 @@
  * 运行上下文是设置窗口作用域：拿不到 bootstrap 作用域，全部经 Zotero.Papilot.cloudSync。
  *
  * 面板职责（刻意收窄）：
- *   ① 账号/应用密码 → 保存并测试（走 CloudSync.login，凭据校验失败会回滚）；
+ *   ① 账号/应用密码 → 保存并测试连接（走 CloudSync.login，凭据校验失败会回滚）；
  *   ② 同步范围 / 冲突策略 / 方向 / 自动同步间隔 / 大小阈值；
  *   ③ 手动同步 + 取消 + 收集技能包 + 打开本地目录 + 退出登录；
  *   ④ 订阅 CloudSync 的 state/progress/log 事件渲染进度与日志。
+ * 0.72.2 设计修复：动词统一（保存并测试 → 保存并测试连接）。
  *
  * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测 #pp-cloud-email，
  *    不存在就延迟重试（同 prefs-subs.js / prefs-schedule.js 纪律）。
@@ -272,7 +273,7 @@
         setMsg("设置已保存：" + info.message, "ok");
         cs.startAutoSync();
       } else {
-        throw Object.assign(new Error("还没有应用密码：请在下面填入后点「保存并测试」"), { code: "AUTH_REQUIRED" });
+        throw Object.assign(new Error("还没有应用密码：请在下面填入后点「保存并测试连接」"), { code: "AUTH_REQUIRED" });
       }
       const t = $("pp-cloud-token");
       if (t) { t.value = ""; t.placeholder = "已保存（留空则沿用；重新填写可覆盖）"; }

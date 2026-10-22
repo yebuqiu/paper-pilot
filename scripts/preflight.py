@@ -179,6 +179,8 @@ NODE_SUITES = [
     ("Agent工具层", "test/agent-tools.test.js"),
     ("技能包核心域", "test/skill-packs.test.js"),
     ("技能包商店窗口", "test/skill-store.test.js"),
+    ("模块运行时(安装/回滚)", "test/module-loader.test.js"),
+    ("组件商店编排", "test/module-store.test.js"),
     ("快捷键注册表", "test/hotkeys.test.js"),
     ("设置直达导航", "test/prefs-anchors.test.js"),
     ("设置面板交互", "test/prefs-panel-ux.test.js"),
@@ -211,6 +213,9 @@ NODE_SUITES = [
     ("标签管理(窗口渲染)", "test/tag-manager-ui.test.js"),
     # 0.70.0 标签管理：左下角 #tag-menu 注入（幂等 / 重建不堆叠 / 只读库禁用 / 保护翻转）
     ("标签管理(右键入口)", "test/tag-menu.test.js"),
+    # 0.72.3 设置面板设计门禁：运行时 emoji / span 假按钮 / label 关联。
+    # 静态扫描只看得见 markup，JS 里拼串生成的按钮与图标一直是盲区（0.72.2 就是这样漏掉 7 个 emoji、9 个 span 点击目标）。
+    ("设置面板运行时审计", "scripts/audit/prefs-runtime-audit.js"),
 ]
 
 

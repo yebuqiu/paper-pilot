@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Papilot 引文快取 · 隐私政策</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --line:#e3e6ea; --text:#1f2329; --muted:#6b7280; --brand:#0f6e56; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.8 "Microsoft YaHei","PingFang SC",system-ui,sans-serif; }
+  header { background:#0d1526; color:#fff; padding:16px 24px; }
+  header .inner { max-width:820px; margin:0 auto; display:flex; align-items:center; gap:12px; }
+  header .logo { width:32px; height:32px; border-radius:8px; background:var(--brand); display:flex; align-items:center; justify-content:center; font-weight:700; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  main { max-width:820px; margin:0 auto; padding:26px 24px 80px; }
+  article { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:28px 30px; }
+  h2 { font-size:15px; margin:26px 0 8px; }
+  h2:first-of-type { margin-top:0; }
+  p, li { color:#33383f; }
+  table { width:100%; border-collapse:collapse; margin:10px 0 4px; font-size:13px; }
+  th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:#fafbfc; font-weight:600; }
+  .meta { color:var(--muted); font-size:12.5px; }
+  .note { background:#f7f9f8; border-left:3px solid var(--brand); padding:10px 14px; margin:12px 0; }
+  a { color:var(--brand); }
+</style>
+</head>
+<body>
+<header><div class="inner"><div class="logo">P</div><h1>Papilot 引文快取 · 隐私政策</h1></div></header>
+<main><article>
+<p class="meta">生效日期：2026-10-19　｜　版本：v1.0　｜　适用扩展：Papilot 引文快取（Edge Add-ons）</p>
+
+<p class="note"><b>一句话概括</b>：扩展只在你点击图标时读取当前页的书目元数据，在本地生成引文；不上传页面内容、不登录、不记录浏览历史。</p>
+
+<h2>一、适用范围</h2>
+<p>本政策适用于 Microsoft Edge 扩展「Papilot 引文快取」。本扩展不提供账号体系，也不连接 Papilot 账号服务。</p>
+
+<h2>二、处理哪些信息</h2>
+<table>
+<tr><th>信息</th><th>何时处理</th><th>用途</th></tr>
+<tr><td>当前页的书目元数据：标题、作者、刊名、卷期、页码、年份、DOI、ISBN/ISSN、摘要等（来自 <code>citation_*</code> 元标签与 JSON-LD）</td><td>你点击扩展图标时</td><td>生成引文</td></tr>
+<tr><td>当前页可见文本中的 DOI（仅在页面元数据缺少 DOI 时扫描，最多 4 万字符）</td><td>你点击扩展图标时，在本地内存中</td><td>识别 DOI，不发送正文</td></tr>
+<tr><td>默认格式与“复制后关闭”偏好</td><td>你在设置页保存时</td><td>记住你的选择</td></tr>
+</table>
+
+<p>我们<b>不</b>处理：浏览历史、Cookie、账号密码、Zotero 文献库、其他标签页内容、剪贴板内容。</p>
+
+<h2>三、数据发送到哪里</h2>
+<ul>
+  <li>默认<b>不发送任何数据</b>：所有格式在本地计算。</li>
+  <li>仅当你打开的页面缺少刊名/年份/作者/页码且存在 DOI 时，扩展会向 <code>https://api.crossref.org</code> 查询该 DOI 的公开元数据，用于补全引文。</li>
+  <li>发送内容仅为 DOI 本身；不发送页面正文、选中文本或任何账号信息。</li>
+</ul>
+
+<h2>四、本地存储与保留</h2>
+<p>仅保存两项偏好（默认格式、复制后关闭）于 <code>chrome.storage.local</code>；不保存页面内容、不保存生成的引文历史。卸载扩展即删除。</p>
+
+<h2>五、权限说明</h2>
+<table>
+<tr><th>权限</th><th>用途</th></tr>
+<tr><td>activeTab</td><td>仅在你点击图标时访问当前标签页</td></tr>
+<tr><td>scripting</td><td>一次性读取页面元数据</td></tr>
+<tr><td>storage</td><td>保存格式偏好</td></tr>
+<tr><td>api.crossref.org</td><td>按 DOI 补全公开元数据（可选）</td></tr>
+</table>
+
+<h2>六、共享、出售与广告</h2>
+<p>我们不出售、不出租、不向广告商共享任何数据；不使用遥测或行为分析。</p>
+
+<h2>七、你的选择</h2>
+<ul>
+  <li>不点击图标，扩展不会读取任何页面。</li>
+  <li>在设置中改回默认格式，或直接卸载扩展以清除偏好。</li>
+  <li>若你所在网络无法访问 Crossref，扩展仍会使用页面自带元数据生成引文。</li>
+</ul>
+
+<h2>八、安全</h2>
+<p>扩展不收集凭据，也不加载远程代码；所有可执行代码包含在安装包内。访问 Crossref 使用 HTTPS。</p>
+
+<h2>九、儿童</h2>
+<p>本扩展面向科研与学习场景，不面向 14 周岁以下儿童。</p>
+
+<h2>十、政策变更</h2>
+<p>数据流程发生实质变化时，我们会更新本页并修改生效日期。</p>
+
+<h2>十一、联系我们</h2>
+<p>数据控制者：Papilot 文献副驾运营方　｜　联系邮箱：<a href="mailto:947250030@qq.com">947250030@qq.com</a></p>
+</article></main>
+</body>
+</html>

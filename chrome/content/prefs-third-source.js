@@ -6,6 +6,7 @@
  * 文案纪律：不写任何来源/出处说明，只保留「实验功能」提示与门控状态。
  * 与 prefs-cnki.js 同构：Zotero 先跑脚本后插 DOM → init 探测节点、延迟重试；
  * 经 Zotero.Papilot.thirdSource 访问主模块（bootstrap 作用域）。
+ * 0.72.2 设计修复：动词统一（连通性测试一律「测试连接」）。
  */
 /* global Zotero, window, document */
 
@@ -56,7 +57,7 @@
       const cache = TS().readEndpointCheck();
       const total = TS().ENDPOINTS.filter((e) => e.probe !== false).length;
       if (!cache) {
-        setText("pp-ts-status", zh ? "未检测（点「检测入口」）" : "Not checked");
+        setText("pp-ts-status", zh ? "未检测（点「测试连接」）" : "Not checked");
         return;
       }
       let okN = 0;
@@ -149,15 +150,15 @@
     if (!gate.ok) { setResult(t.gateMessage(gate), ERR); return; }
     const btn = $("pp-ts-ping-btn");
     if (btn) { btn.disabled = true; }
-    setResult(zh ? "检测中…" : "Checking…");
+    setResult(zh ? "测试中…" : "Checking…");
     try {
       const list = await t.checkEndpoints((done, total) => {
-        setResult((zh ? "检测中 " : "Checking ") + done + "/" + total + "…");
+        setResult((zh ? "测试中 " : "Checking ") + done + "/" + total + "…");
       });
       const okN = list.filter((r) => r && r.ok).length;
-      setResult((zh ? "检测完成：可用 " : "Done: up ") + okN + "/" + list.length, okN ? OK : ERR);
+      setResult((zh ? "测试完成：可用 " : "Done: up ") + okN + "/" + list.length, okN ? OK : ERR);
     } catch (e) {
-      setResult((zh ? "检测失败：" : "Failed: ") + (e && (e.message || e)), ERR);
+      setResult((zh ? "测试失败：" : "Failed: ") + (e && (e.message || e)), ERR);
     } finally {
       if (btn) { btn.disabled = false; }
     }

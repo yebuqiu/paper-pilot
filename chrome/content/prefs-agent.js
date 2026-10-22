@@ -8,9 +8,9 @@
  *   ③ 快捷指令（命令标签）列表：查看 / 删除 / 导入导出（CommandTags 经
  *      Zotero.Papilot.commandTags 访问 bootstrap 作用域，删除自动打墓碑）。
  *
- * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测关键节点，
+ * ⚠ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测关键节点，
  *    不存在就延迟重试（同 prefs-pane.js 纪律）。
- * ⚠️ 动态创建的节点一律经变量持有，不要用 $(…) 取动态节点（check-wiring 守卫）。
+ * ⚠ 动态创建的节点一律经变量持有，不要用 $(…) 取动态节点（check-wiring 守卫）。
  */
 /* global Zotero, Components, window, document */
 
@@ -70,8 +70,12 @@
     while (host.firstChild) host.removeChild(host.firstChild);
     const on = enabledToolSet();
     for (const t of TOOL_LIST) {
-      const chip = el("span", {
+      // 0.72.3 无障碍：开关 chip 是真按钮（span 假按钮键盘不可达），aria-pressed 报开/关态
+      const chip = el("button", {
+        type: "button",
         class: "pp-ds-chip" + (on.has(t.id) ? " pp-ds-on" : ""),
+        "aria-pressed": on.has(t.id) ? "true" : "false",
+        style: "font-family:inherit;",
         title: t.id + (t.ro ? "（读，无副作用）" : "（写，默认逐次确认）"),
       }, (on.has(t.id) ? "✓ " : "") + t.label);
       chip.addEventListener("click", () => {
@@ -142,11 +146,16 @@
       return;
     }
     for (const t of tags) {
+      // 0.72.3：chip 本身不可点（只展示），去掉了行首装饰符号；删除钮是真按钮
       const chip = el("span", {
         class: "pp-ds-chip",
         title: String(t.prompt || "").slice(0, 200),
-      }, "🔷 " + (t.label || t.id));
-      const x = el("span", { class: "pp-chip-x", title: zh ? "删除该标签" : "Delete tag" }, "✕");
+      }, t.label || t.id);
+      const x = el("button", { type: "button", class: "pp-chip-x",
+        title: zh ? "删除该标签" : "Delete tag",
+        "aria-label": (zh ? "删除标签「" : "Delete tag ") + (t.label || t.id) + (zh ? "」" : ""),
+        style: "appearance:none;background:none;border:0;padding:0;font-family:inherit;font-size:inherit;cursor:pointer",
+      }, "✕");
       x.addEventListener("click", () => {
         try {
           ct.remove(t.id);

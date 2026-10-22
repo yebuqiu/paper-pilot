@@ -36,6 +36,9 @@
   --pp-field: #ffffff;
   --pp-border: #d8dee4;
   --pp-border-strong: #c3cdd6;
+  /* 0.72.3 控件描边（WCAG 1.4.11 ≥3:1）：输入框/选择框/文本域/按钮专用；卡片轮廓与分区线仍用 --pp-border */
+  --pp-border-control: #828b95;
+  --pp-border-control-hover: #6e7781;
   /* 文字 */
   --pp-text: #1f2328;
   --pp-text-strong: #0f141a;
@@ -49,13 +52,20 @@
   --pp-accent-weak: #ddf4ff;
   --pp-accent-soft: rgba(9, 105, 218, .08);
   --pp-accent-line: rgba(9, 105, 218, .24);
-  --pp-success: #1a7f37;
-  --pp-ok: #1a7f37;
+  --pp-success: #116329;
+  --pp-ok: #116329;
   --pp-ok-bg: rgba(31, 134, 61, .12);
-  --pp-warn: #9a6700;
+  --pp-warn: #7a4d00;
   --pp-warn-bg: rgba(154, 103, 0, .12);
   --pp-danger: #cf222e;
   --pp-danger-bg: rgba(207, 34, 46, .10);
+  /* 0.72.2 对比度补齐 AA：文字压浅底专用 fg 令牌与主按钮底令牌（与 prefs.css 同值） */
+  --pp-accent-fg: var(--pp-accent);
+  --pp-danger-fg: #b31d28;             /* 0.72.3：原 var(--pp-danger) 压 danger-bg 只有 4.30，硬值后 5.73 */
+  --pp-btn-primary-bg: var(--pp-accent);
+  --pp-btn-primary-bg-hover: var(--pp-accent-emphasis);
+  --pp-on-accent: #ffffff;
+  --pp-overlay: rgba(0, 0, 0, .42);
   --pp-btn-hover: #eef1f4;
   --pp-soft: rgba(127, 127, 127, .10);
   --pp-border2: #eef0f3;
@@ -76,16 +86,23 @@
   --pp-shadow-3: 0 12px 40px rgba(15, 20, 26, .22);
   /* 间距（4pt 基线） */
   --pp-sp-1: 4px;
+  --pp-sp-1h: 6px;
   --pp-sp-2: 8px;
+  --pp-sp-2h: 10px;
   --pp-sp-3: 12px;
   --pp-sp-4: 16px;
   --pp-sp-5: 22px;
   /* 字号 */
   --pp-fs-xs: 10.5px;
-  --pp-fs-sm: 11.5px;
+  --pp-fs-sm: 12px;
   --pp-fs-md: 12.5px;
   --pp-fs-lg: 13.5px;
   --pp-fs-xl: 15px;
+  --pp-fs-2xl: 24px;
+  /* 动效时长（0.72.2 收编） */
+  --pp-dur-fast: .12s;
+  --pp-dur-med: .16s;
+  --pp-dur-slow: .2s;
 }
 
 /* ---------- 深色（跟随系统；显式选浅色时不生效） ---------- */
@@ -98,6 +115,9 @@
     --pp-field: #1b1f24;
     --pp-border: #3d444d;
     --pp-border-strong: #4d565f;
+    /* 0.72.3 控件描边（WCAG 1.4.11 ≥3:1）：输入框/选择框/文本域/按钮专用；卡片轮廓与分区线仍用 --pp-border */
+    --pp-border-control: #6e7a86;
+    --pp-border-control-hover: #8d99a6;
     --pp-text: #e6edf3;
     --pp-text-strong: #f2f6fa;
     --pp-text2: #c9d1d9;
@@ -120,6 +140,11 @@
     --pp-soft: rgba(255, 255, 255, .06);
     --pp-border2: #2c333f;
     --pp-focus-ring: rgba(68, 147, 248, .28);
+    /* 0.72.2：深色下文字压浅底用亮档 fg；主按钮底加深补 AA（4.63/6.47） */
+    --pp-accent-fg: #79b8ff;
+    --pp-danger-fg: #ff7b72;
+    --pp-btn-primary-bg: #1f6feb;
+    --pp-btn-primary-bg-hover: #1158c7;
     --pp-user: #2f6fed;
     --pp-user-text: #f4f7ff;
     --pp-ai: #242b37;
@@ -141,6 +166,9 @@
   --pp-field: #1b1f24;
   --pp-border: #3d444d;
   --pp-border-strong: #4d565f;
+  /* 0.72.3 控件描边（WCAG 1.4.11 ≥3:1）：输入框/选择框/文本域/按钮专用；卡片轮廓与分区线仍用 --pp-border */
+  --pp-border-control: #6e7a86;
+  --pp-border-control-hover: #8d99a6;
   --pp-text: #e6edf3;
   --pp-text-strong: #f2f6fa;
   --pp-text2: #c9d1d9;
@@ -163,6 +191,11 @@
   --pp-soft: rgba(255, 255, 255, .06);
   --pp-border2: #2c333f;
   --pp-focus-ring: rgba(68, 147, 248, .28);
+  /* 0.72.2：深色下文字压浅底用亮档 fg；主按钮底加深补 AA（4.63/6.47） */
+  --pp-accent-fg: #79b8ff;
+  --pp-danger-fg: #ff7b72;
+  --pp-btn-primary-bg: #1f6feb;
+  --pp-btn-primary-bg-hover: #1158c7;
   --pp-user: #2f6fed;
   --pp-user-text: #f4f7ff;
   --pp-ai: #242b37;

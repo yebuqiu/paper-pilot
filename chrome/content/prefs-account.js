@@ -4,15 +4,17 @@
 /* Papilot 设置窗格脚本·账号与模型通道（0.14.0 新增；0.15.0 随设置界面重构改版）
  * 与 prefs-pane.js 同窗格运行；经 Zotero.Papilot.account / .channels 访问
  * bootstrap 作用域的 Account / Channels 模块。
- * 交互逻辑移植自「AI 带教中心」模型通道面板：状态卡 + 通道行（切换/实测/参数/删除）
+ * 交互逻辑移植自「AI 带教中心」模型通道面板：状态卡 + 通道行（切换/测试连接/参数/删除）
  * + 新增/编辑表单（厂商预设自动填充、密钥检测、上游拉取模型、模型 chips、extraBody）。
  * 0.15.0：动态元素改用 prefs.xhtml 内 <html:style> 的 .pp-* 类（随系统明暗主题）；
  * 语义色经 CSS 变量引用（var(--pp-success) 等，定义于 .pp-root 作用域）。
+ * 0.72.2 无障碍：付款弹窗 Esc/focus trap/真关闭钮；通道测试反馈行内化
  */
 /* global Zotero, window, document, Components */
 
 (function () {
   const HTML_NS = "http://www.w3.org/1999/xhtml";
+  const SVG_NS = "http://www.w3.org/2000/svg";
   const zh = (Zotero.locale || "").toLowerCase().startsWith("zh");
   const $ = (id) => document.getElementById(id);
   const PP = () => Zotero.Papilot || {};
@@ -175,13 +177,15 @@
     const AI = aiTier();
     const parts = [];
     let cls = "pp-ai-tier";
+    // 0.72.3：说明条里的 emoji 一律删字符改纯文字（文案本身已自解释，
+    // 图标只是读屏噪音；改内联 SVG 会把这块 pre-wrap 文本切成 DOM 片段，不值当）
     if (AI.reason === "trial" && AI.trial && AI.trial.active) {
       cls += " pp-ai-tier-trial";
-      parts.push("🎁 全模型试用中，剩 " + AI.trial.daysLeft + " 天（至 "
+      parts.push("全模型试用中，剩 " + AI.trial.daysLeft + " 天（至 "
         + fmtDate(AI.trial.endsAt) + "）——当前可使用全部官方模型，到期后回到基础模型。");
     } else if (AI.reason === "none" && AI.lockedModels && AI.lockedModels.length) {
       const endedAt = AI.trial && AI.trial.endsAt;
-      parts.push("🔒 " + AI.lockedModels.join("、") + " 属于高级模型，需要专业版"
+      parts.push(AI.lockedModels.join("、") + " 属于高级模型，需要专业版"
         + (endedAt ? "（全模型试用已于 " + fmtDate(endedAt) + " 结束）" : "")
         + "。当前可用：" + (AI.models || []).join("、") + "。");
     }
@@ -195,7 +199,7 @@
   /**
    * 官方模型下拉（1.4.9 套餐分层）：
    *  - 可用模型以服务端 /v1/models 为准（**已按套餐过滤**），列表天然正确；
-   *  - 需升级的模型以 🔒 灰显追加在末尾——让用户**看见**自己缺什么，比藏起来更有转化力；
+   *  - 需升级的模型以「（需专业版）」灰显追加在末尾——让用户**看见**自己缺什么，比藏起来更有转化力；
    *  - 当前保存的模型若已被锁（试用结束 / 套餐到期回落），**可见地**回落到默认并写明原因，
    *    **不静默改配置**（静默会让用户以为还在用原来那个模型）；
    *  - 旧服务端没有 ai 块（reason === "unknown"）→ 一律不做锁定与回落，避免把老服务端用户锁死。
@@ -224,7 +228,8 @@
       if (known) {
         for (const m of AI.lockedModels) {
           if (list.indexOf(m) >= 0) continue;
-          const o = el("option", { value: m }, "🔒 " + m);
+          // <option> 只渲染纯文本（SVG 在 option 里不显示）→ 用文字标记代替图标
+          const o = el("option", { value: m }, m + "（需专业版）");
           o.style.color = "var(--pp-muted)";
           sel.appendChild(o);
         }
@@ -432,7 +437,7 @@
     // （写在刷新之前会被刷新重置掉——这是本项目踩过的坑）
     if (AI.lockedModels.indexOf(v) >= 0) {
       Promise.resolve(fillOfficialModelSelect()).then(() => {
-        renderAiTierNote("🔒「" + v + "」需要专业版，已保持原模型不变。");
+        renderAiTierNote("「" + v + "」需要专业版，已保持原模型不变。");
       }).catch(() => { /* ignore */ });
       return;
     }
@@ -543,8 +548,24 @@
 
   const OrderDlg = {
     _mask: null, _node: null, _kind: "", _order: null, _refs: null,
+    _onKey: null, _returnFocus: null,
 
     isOpen() { return !!this._node; },
+
+    /** 弹窗内可聚焦元素（供 focus trap 循环；无 querySelectorAll 的环境返回空表） */
+    _focusables() {
+      try {
+        if (!this._node || typeof this._node.querySelectorAll !== "function") return [];
+        const list = this._node.querySelectorAll("button, a[href], input, select, textarea, [tabindex]");
+        const out = [];
+        for (const n of list) {
+          if (n.disabled) continue;
+          if (n.getAttribute && n.getAttribute("tabindex") === "-1") continue;
+          out.push(n);
+        }
+        return out;
+      } catch (e) { return []; }
+    },
 
     /**
      * 打开付款单（单例）。order 为服务端订单对象；actions = {claim,cancel,refresh}
@@ -556,14 +577,41 @@
         const root = $("pp-dlg-root");
         if (!root) return false;                 // 老面板/装配异常：回退内联区
         this.close();                            // 单例：先拆旧单
+        // 记住触发按钮，关闭后归还焦点（无障碍：焦点不丢回文档顶）
+        try {
+          const ae = document.activeElement;
+          this._returnFocus = (ae && typeof ae.focus === "function") ? ae : null;
+        } catch (e) { this._returnFocus = null; }
         const mask = el("div", { class: "pp-order-mask" });
-        const card = el("div", { class: "pp-order-dlg" });
+        const card = el("div", { class: "pp-order-dlg",
+          role: "dialog", "aria-modal": "true", "aria-labelledby": "pp-order-dlg-title" });
         mask.appendChild(card);
 
         const head = el("div", { class: "pp-dlg-head" });
-        const title = el("b", { class: "pp-dlg-title" });
+        const title = el("b", { class: "pp-dlg-title", id: "pp-order-dlg-title" });
         const badge = el("span", { class: "pp-dlg-badge" });
-        const x = el("span", { class: "pp-dlg-close", title: "关闭" }, "×");
+        // 真关闭钮（0.72.2 无障碍）：内联 SVG x，键盘可达 + 读屏可辨
+        const x = el("button", { class: "pp-dlg-close", type: "button",
+          title: "关闭", "aria-label": "关闭" });
+        try {
+          const svg = document.createElementNS(SVG_NS, "svg");
+          svg.setAttribute("viewBox", "0 0 24 24");
+          svg.setAttribute("width", "14");
+          svg.setAttribute("height", "14");
+          svg.setAttribute("fill", "none");
+          svg.setAttribute("stroke", "currentColor");
+          svg.setAttribute("stroke-width", "2");
+          svg.setAttribute("stroke-linecap", "round");
+          svg.setAttribute("aria-hidden", "true");
+          const l1 = document.createElementNS(SVG_NS, "line");
+          l1.setAttribute("x1", "18"); l1.setAttribute("y1", "6");
+          l1.setAttribute("x2", "6"); l1.setAttribute("y2", "18");
+          const l2 = document.createElementNS(SVG_NS, "line");
+          l2.setAttribute("x1", "6"); l2.setAttribute("y1", "6");
+          l2.setAttribute("x2", "18"); l2.setAttribute("y2", "18");
+          svg.appendChild(l1); svg.appendChild(l2);
+          x.appendChild(svg);
+        } catch (e) { x.textContent = "×"; }   // SVG 不可用时退回字符
         head.appendChild(title); head.appendChild(badge); head.appendChild(x);
         card.appendChild(head);
 
@@ -574,7 +622,7 @@
         const rows = el("div", { class: "pp-dlg-rows" });
         const qr = el("img", { class: "pp-dlg-qr", style: "display:none" });
         const note = el("div", { class: "pp-dlg-note" });
-        const msg = el("div", { class: "pp-msg pp-dlg-msg" });
+        const msg = el("div", { class: "pp-msg pp-dlg-msg", "aria-live": "polite" });
         body.appendChild(content); body.appendChild(amount); body.appendChild(tail);
         body.appendChild(rows); body.appendChild(qr); body.appendChild(note); body.appendChild(msg);
 
@@ -643,6 +691,37 @@
         refresh.addEventListener("click", () => act("refresh", "正在查询…", "✓ 状态已刷新", "查询失败"));
         cancel.addEventListener("click", () => act("cancel", "正在取消…", "✓ 已取消", "取消失败"));
 
+        /* 0.72.2 无障碍：Esc 关闭 + Tab/Shift+Tab 在弹窗内循环（focus trap）。
+         * 监听挂在 document 上（无 document.addEventListener 的环境退回遮罩），close() 摘掉。 */
+        this._onKey = (ev) => {
+          try {
+            if (!ev) return;
+            if (ev.key === "Escape") {
+              if (ev.preventDefault) ev.preventDefault();
+              self.close();
+              return;
+            }
+            if (ev.key !== "Tab") return;
+            const items = self._focusables();
+            if (!items.length) return;
+            let idx = items.indexOf(document.activeElement);
+            if (ev.shiftKey) idx = idx <= 0 ? items.length - 1 : idx - 1;
+            else idx = idx < 0 || idx === items.length - 1 ? 0 : idx + 1;
+            if (ev.preventDefault) ev.preventDefault();
+            items[idx].focus();
+          } catch (e) { /* 键盘兜底失败不阻断交互 */ }
+        };
+        try {
+          if (document && typeof document.addEventListener === "function") {
+            document.addEventListener("keydown", this._onKey);
+          } else {
+            mask.addEventListener("keydown", this._onKey);
+          }
+        } catch (e) { /* 老环境无键盘监听也不影响鼠标操作 */ }
+
+        // 打开时焦点进弹窗：关闭钮是 DOM 序第一个可交互元素
+        try { x.focus(); } catch (e) { /* ignore */ }
+
         this._apply(order);
         return true;
       } catch (e) {
@@ -694,9 +773,29 @@
     },
 
     close() {
+      // 摘掉键盘监听（Esc/focus trap 只在弹窗存活期间生效）
+      if (this._onKey) {
+        try {
+          if (document && typeof document.removeEventListener === "function") {
+            document.removeEventListener("keydown", this._onKey);
+          }
+        } catch (e) { /* ignore */ }
+        try {
+          if (this._mask && typeof this._mask.removeEventListener === "function") {
+            this._mask.removeEventListener("keydown", this._onKey);
+          }
+        } catch (e) { /* ignore */ }
+        this._onKey = null;
+      }
       try {
         if (this._mask && this._mask.parentNode) this._mask.parentNode.removeChild(this._mask);
       } catch (e) { /* ignore */ }
+      // 焦点归还触发按钮（关弹窗后键盘用户不丢位置）
+      try {
+        const back = this._returnFocus;
+        if (back && typeof back.focus === "function") back.focus();
+      } catch (e) { /* ignore */ }
+      this._returnFocus = null;
       this._mask = null; this._node = null; this._refs = null; this._kind = ""; this._order = null;
     },
   };
@@ -905,7 +1004,14 @@
     if (!mbSel && list.length) mbSel = pickDefaultOption(list);
     for (const o of list) {
       const on = mbSel && mbSel.plan === o.plan && Number(mbSel.months) === Number(o.months);
-      const chip = el("span", { class: on ? "pp-mb-opt pp-mb-opt-on" : "pp-mb-opt" }, o.text);
+      // 0.72.3 无障碍：档位是真按钮（span 假按钮键盘不可达）。pp-mb-opt 自带边框/底色，
+      // 只补 font-family 让按钮继承面板字体，避免 UI 字体漂移。
+      const chip = el("button", {
+        type: "button",
+        class: on ? "pp-mb-opt pp-mb-opt-on" : "pp-mb-opt",
+        "aria-pressed": on ? "true" : "false",
+        style: "font-family:inherit;",
+      }, o.text);
       chip.addEventListener("click", () => {
         mbSel = o;
         // 换了档位：之前试算的折后价已经不对了 —— 主动作废，避免用户按旧价格转账
@@ -978,11 +1084,14 @@
         left.appendChild(el("div", { class: "pp-dev-meta" }, meta));
         row.appendChild(left);
         const act = el("div", { class: "pp-dev-act" });
-        const rename = el("span", { class: "pp-link" }, "重命名");
+        // 0.72.3 无障碍：链接外观用契约类 .pp-link-btn 的真按钮（span 假按钮键盘不可达）
+        const rename = el("button", { type: "button", class: "pp-link-btn",
+          "aria-label": "重命名设备「" + name + "」" }, "重命名");
         rename.addEventListener("click", () => onRenameDevice(d));
         act.appendChild(rename);
         if (!d.current) {
-          const kick = el("span", { class: "pp-link pp-link-danger" }, "踢出");
+          const kick = el("button", { type: "button", class: "pp-link-btn pp-link-danger",
+            "aria-label": "踢出设备「" + name + "」" }, "踢出");
           kick.addEventListener("click", () => onKickDevice(d));
           act.appendChild(kick);
         } else {
@@ -1410,7 +1519,12 @@
     for (const o of balOpts) {
       const on = balSel && balSel.id === o.id;
       const text = (o.label || o.amountText || "") + (o.bonusText ? "（" + o.bonusText + "）" : "");
-      const chip = el("span", { class: on ? "pp-mb-opt pp-mb-opt-on" : "pp-mb-opt" }, text);
+      const chip = el("button", {
+        type: "button",
+        class: on ? "pp-mb-opt pp-mb-opt-on" : "pp-mb-opt",
+        "aria-pressed": on ? "true" : "false",
+        style: "font-family:inherit;",
+      }, text);
       chip.addEventListener("click", () => {
         balSel = o;
         renderBalOptions();
@@ -1780,8 +1894,11 @@
       b.addEventListener("click", () => onSwitch(c.id));
       acts.appendChild(b);
     }
-    const bTest = mkBtn("实测", "小负荷真实调用一次，返回模型/延迟/应答");
-    bTest.addEventListener("click", () => onTest(c.id, bTest));
+    const bTest = mkBtn("测试连接", "小负荷真实调用一次，返回模型/延迟/应答");
+    /* 行内反馈槽（0.72.2：测试结果写回本行右侧，不再跳卡片底部；
+     * #pp-ch-test-result 保留为表单级错误兜底位） */
+    const rowMsg = el("span", { class: "pp-msg", "aria-live": "polite" });
+    bTest.addEventListener("click", () => onTest(c.id, bTest, rowMsg));
     acts.appendChild(bTest);
     const bEdit = mkBtn("参数", c.official ? "官方通道说明" : "编辑通道参数");
     bEdit.addEventListener("click", () => onEdit(c));
@@ -1792,6 +1909,7 @@
       acts.appendChild(bDel);
     }
     row.appendChild(acts);
+    row.appendChild(rowMsg);
     return row;
   }
 
@@ -1834,29 +1952,30 @@
     try { Zotero.Prefs.clear(PREF_PREFIX + "uiShowFullUrl", true); } catch (e) { /* ignore */ }
   }
 
-  async function onTest(id, btn) {
-    const result = $("pp-ch-test-result");
+  async function onTest(id, btn, msgEl) {
+    // 行内优先：结果写回本行 .pp-msg 槽；无槽时回退卡片底部表单级兜底位
+    const result = msgEl || $("pp-ch-test-result");
     btn.disabled = true;
     btn.textContent = "…";
-    result.textContent = "实测中（真实调用一次）…";
+    result.textContent = "测试连接中（真实调用一次）…";
     result.style.color = "var(--pp-muted)";
     try {
       const j = await channels().testChannel(id);
       if (j.ok) {
         result.textContent = "";
         result.appendChild(el("span", { style: "color:var(--pp-success);" },
-          "✓ " + id + " 通道正常：模型 " + j.model + "，延迟 " + j.latencyMs + "ms，应答「" + (j.reply || "") + "」"));
+          "✓ 成功 · 模型 " + j.model + " · 延迟 " + j.latencyMs + "ms · 应答「" + (j.reply || "") + "」"));
       } else {
         result.textContent = "";
         result.appendChild(el("span", { style: "color:var(--pp-danger);" },
-          "✗ " + id + " 调用失败：" + (j.error || "未知错误")));
+          "✗ 失败 · " + (j.error || "未知错误")));
       }
     } catch (e) {
-      result.textContent = "✗ " + (e && e.message || "实测异常");
+      result.textContent = "✗ 失败 · " + (e && e.message || "测试连接异常");
       result.style.color = "var(--pp-danger)";
     } finally {
       btn.disabled = false;
-      btn.textContent = "实测";
+      btn.textContent = "测试连接";
     }
   }
 
@@ -1956,22 +2075,36 @@
     const cur = ($("pp-mf-model").value || "").trim();
     mfModels.forEach((m, i) => {
       const selected = m === cur;
+      // 0.72.3 无障碍：pill 只负责外观，内部放两个**同级**真按钮
+      // （按钮不能嵌套按钮）——「设为默认」与「移除」各自键盘可达、各有独立无障碍名。
       const chip = el("span", {
         class: selected ? "pp-chip pp-chip-on" : "pp-chip",
-        title: "点击设为该通道默认模型",
       });
-      chip.appendChild(document.createTextNode(m + " "));
-      const x = el("span", { class: "pp-chip-x", title: "从列表移除" }, "×");
-      x.addEventListener("click", (ev) => {
-        ev.stopPropagation(); // 只移除，不触发「设为默认」
-        mfModels.splice(i, 1);
-        renderModelChips();
-      });
-      chip.appendChild(x);
-      chip.addEventListener("click", () => {
+      const pick = el("button", {
+        type: "button",
+        class: "pp-chip-pick",
+        title: "设为该通道默认模型",
+        "aria-pressed": selected ? "true" : "false",
+        "aria-label": "设为默认模型 " + m,
+        style: "appearance:none;background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer",
+      }, m);
+      pick.addEventListener("click", () => {
         $("pp-mf-model").value = m;
         renderModelChips();
       });
+      const x = el("button", {
+        type: "button",
+        class: "pp-chip-x",
+        title: "从列表移除",
+        "aria-label": "从列表移除 " + m,
+        style: "appearance:none;background:none;border:0;padding:0;font-family:inherit;font-size:inherit;cursor:pointer",
+      }, "×");
+      x.addEventListener("click", () => {
+        mfModels.splice(i, 1);
+        renderModelChips();
+      });
+      chip.appendChild(pick);
+      chip.appendChild(x);
       box.appendChild(chip);
     });
   }
@@ -2011,7 +2144,7 @@
       }
     } finally {
       btn.disabled = false;
-      btn.textContent = "📡 拉取";
+      btn.textContent = "拉取";   // 0.72.3：按钮文字已自解释，不再挂图标（与 xhtml 初始文案一致）
     }
   }
 
@@ -2055,7 +2188,7 @@
       setDetectResult("✗ " + (e && e.message || "检测异常"), "var(--pp-danger)");
     } finally {
       btn.disabled = false;
-      btn.textContent = "🔍 检测";
+      btn.textContent = "检测";   // 0.72.3：同上，去图标只留文字
     }
   }
 

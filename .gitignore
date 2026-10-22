@@ -22,6 +22,14 @@ node_modules/
 # 发行版安装包（Gitee raw 可直链下载；其余构建产物仍不入库）
 !dist/
 !dist/*.xpi
+# 瘦身试打包（--modular 验证用；未过 init 门控前不随发行版入库）
+dist/*-slim.xpi
+# 0.73.0 模块包：每次构建由 scripts/build-module.py 从仓库源文件重新生成，
+# 属于发布到模块仓库的制品，不入主仓（避免 1.3MB 二进制重复堆积）
+dist/modules/
+
+# 发布预备树（publish-modules.py --stage 的产物，含 9 份模块源码副本）
+build/
 # 0.68.2 WPS 加载项独立发布物（GPL-3.0 组件，不随 xpi 分发；卡片按需下载）
 
 # 一次性修补脚本（其它会话的临时产物，禁止入库）

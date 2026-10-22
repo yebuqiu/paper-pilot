@@ -269,6 +269,8 @@ var I18n = (() => {
     // ---- 0.11.0 新增 ----
     menuHub: zh ? "Papilot 功能中心" : "Papilot Feature Hub",
     menuWizard: zh ? "首次使用向导" : "First-run setup",
+    // ---- 0.73.0 组件商店 ----
+    menuModuleStore: zh ? "Papilot 组件商店（按需安装）" : "Papilot Component Store",
     // ---- 0.66.0 个人中心 · 账号与密钥（Pro） ----
     menuVault: zh ? "账号与密钥（个人中心）" : "Credentials & Accounts",
     menuVaultLocked: zh ? "账号与密钥需要专业版" : "Credentials center requires Pro",

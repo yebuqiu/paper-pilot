@@ -470,7 +470,8 @@ ok(re.search(r"function aiTier\(\)", prefs_js) is not None, "13.4 面板有 aiTi
 ok("typeof raw !== \"object\"" in prefs_js, "13.5 非对象返回（含 Promise）→ 安全降级")
 ok("Array.isArray(raw.lockedModels)" in prefs_js, "13.6 锁定列表强制成数组（否则 for…of 会抛）")
 ok(re.search(r"function renderAiTierNote\(note\)", prefs_js) is not None, "13.7 面板有分层说明条渲染")
-ok('"🔒 " + m' in prefs_js, "13.8 需升级的模型以 🔒 灰显列出（让用户看见差距）")
+# 0.72.3：标记从 🔒 字符改为文字「（需专业版）」（<option> 里画不了 SVG，emoji 一律清掉）
+ok('m + "（需专业版）"' in prefs_js, "13.8 需升级的模型以「（需专业版）」灰显列出（让用户看见差距）")
 ok("全模型试用中，剩 " in prefs_js, "13.9 试用中显示剩余天数")
 ok("已回落到 " in prefs_js and "C.upsert({ id: C.OFFICIAL_ID, model: AI.defaultModel })" in prefs_js,
    "13.10 当前模型已锁 → 回落到默认并**写明原因**（不静默改配置）")
@@ -1098,7 +1099,18 @@ ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 #   ③ 语言/密钥这类「契约数据」在模块与设置界面之间对不上 → 选了引擎却发不出请求。
 TRANSLATE_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "translate.js")
 PREFS_TRANSLATE_JS = os.path.join(ROOT, "chrome", "content", "prefs-translate.js")
-tr_js = io.open(TRANSLATE_JS, encoding="utf-8").read()
+# 0.73.0 重构：原单一 translate.js（1940 行，语言/术语表/公式/签名/注册表/配置/运行时
+# 八种职责混合）拆为「5 个子模块 + 门面」。下列内容守卫仍按**模块整体**断言 ——
+# tr_js = 按装配顺序拼接的 6 文件源码（函数归属哪个物理文件不影响行为契约）。
+TRANSLATE_PARTS = ["translate-lang.js", "translate-crypto.js", "translate-glossary.js",
+                   "translate-formula.js", "translate-engines.js", "translate.js"]
+def _read_translate_module():
+    _buf = []
+    for _p in TRANSLATE_PARTS:
+        _fp = os.path.join(ROOT, "chrome", "content", "scripts", "ai", _p)
+        _buf.append(io.open(_fp, encoding="utf-8").read() if os.path.exists(_fp) else "")
+    return "\n".join(_buf)
+tr_js = _read_translate_module()
 trp_js = io.open(PREFS_TRANSLATE_JS, encoding="utf-8").read()
 
 ok('"ai/translate.js"' in mainjs, "22.1 main.js 装配清单含 ai/translate.js")
@@ -1235,6 +1247,53 @@ ok("msgEl.textContent = text" in trp_js and "setMsg(text, color);" in trp_js,
    "22.66 行内与底部双写（反馈不再跑到屏幕外）")
 ok("test/prefs-translate.test.js" in _pf3, "22.67 preflight 含翻译设置面板测试")
 
+# ---- 22.68~22.74：0.73.0 翻译模块拆分（单一巨石 → 5 子模块 + 门面，对外接口不变）----
+# 起因：translate.js 涨到 1940 行，语言模型/术语表/公式掩码/签名算法/引擎注册表/
+#      配置/运行时八种职责混在一起，改一处要在八个主题间跳转；拆分后按文件定界，
+#      依赖单向（lang/crypto → engines → 门面；glossary/formula → 门面）。
+for _pf in TRANSLATE_PARTS:
+    ok(os.path.exists(os.path.join(ROOT, "chrome", "content", "scripts", "ai", _pf)),
+       "22.68 翻译子模块文件存在：%s" % _pf)
+def _mjl22(marker):
+    for _i, _l in enumerate(mainjs.split("\n")):
+        if marker in _l:
+            return _i
+    return -1
+_tr_seq = [_mjl22('"ai/%s"' % _p) for _p in TRANSLATE_PARTS]
+ok(all(_x >= 0 for _x in _tr_seq) and _tr_seq == sorted(_tr_seq),
+   "22.69 ★ 装配顺序 = lang→crypto→glossary→formula→engines→门面（依赖单向，门面最后）")
+ok(_mjl22('"ai/pdf-text.js"') >= 0 and _mjl22('"ai/translate-lang.js"') > _mjl22('"ai/pdf-text.js"'),
+   "22.70 子模块排在 pdf-text.js 之后（保持 §25.3 的确定性顺序前提）")
+_tr_facade = io.open(TRANSLATE_JS, encoding="utf-8").read()
+ok("var TranslateSvc" in _tr_facade and "TranslateLang" in _tr_facade
+   and "TranslateCrypto" in _tr_facade and "TranslateGlossary" in _tr_facade
+   and "TranslateFormula" in _tr_facade and "TranslateEngines" in _tr_facade,
+   "22.71 ★ translate.js 为组合门面（别名引用全部 5 个子模块）")
+for _gv in ["var TranslateLang", "var TranslateCrypto", "var TranslateGlossary",
+            "var TranslateFormula", "var TranslateEngines"]:
+    ok(_gv in tr_js, "22.72 子模块以 var 全局暴露（loadSubScript 共享作用域语义）：%s" % _gv)
+# 拆分不允许丢对外接口：门面的导出键清单必须与 0.72.x 完全一致
+_ok_keys = ["LANGS", "normalizeLang", "langMeta", "langLabel", "langName", "langCode",
+            "SERVICES", "get", "list", "activeEngine", "isLLM", "ready", "available",
+            "unavailableHint", "overview", "parseSecret", "joinSecret", "resolveSecret",
+            "makeCtx", "buildEndpoint", "extractResult", "SEG_MAX",
+            "parseGlossary", "glossary", "glossaryAll", "glossaryDomains", "activeDomains",
+            "glossaryBlock", "glossaryFingerprint", "glossaryStats",
+            "glossaryToCsv", "parseGlossaryImport", "mergeGlossary",
+            "maskInlineFormulas", "unmaskFormulas",
+            "googleTk", "sha1Bytes", "hmacSha1", "base64", "encodeRFC5987", "utf8Bytes",
+            "cfg", "saveCfg", "setActive", "setSecret", "secretOf",
+            "targetCode", "sourceCode", "targetName", "translate", "testEngine",
+            "clearCache", "clearCooldown", "cooldownLeft", "probeLocal", "LOCAL_PROBES", "migrate"]
+_tr_export = _tr_facade.split("return {", 1)[1] if "return {" in _tr_facade else ""
+_ok_missing = [_k for _k in _ok_keys
+               if not re.search(r"(^|[\s,{])%s([,:\s}])" % re.escape(_k), _tr_export)]
+ok(not _ok_missing,
+   "22.73 ★ 门面导出键与拆分前一致（缺失：%s）" % (", ".join(_ok_missing) or "无"))
+ok("require('./translate-files')" in io.open(os.path.join(ROOT, "test", "translate.test.js"),
+   encoding="utf-8").read(),
+   "22.74 测试经 test/translate-files.js 单一真源加载模块（防多份清单漂移）")
+
 # ---------- 23. 菜单瘦身（插件 0.29.0）----------
 # 改动面：menus.js 注册表化 + classic 回退、prefs.js 三个菜单 pref、
 # prefs.xhtml 菜单定制卡片、prefs-menu.js 面板脚本、main.js 暴露 menus/i18n。
@@ -1251,8 +1310,8 @@ ok('"menuMode", "menuHiddenGroups", "menuQuickItems"' in menus_js,
 for _gid in ["ai", "notes", "citation", "tags", "meta", "cn", "automation", "state"]:
     ok(('id: "%s"' % _gid) in menus_js, "23.6 语义分组注册表含 %s" % _gid)
 _item_reg_src = menus_js.split("GROUPS:")[0]
-ok(_item_reg_src.count("labelKey:") == 55,
-   "23.7 ★ 注册表恰好 55 条命令（实测 %d；0.53.0 +综述工作台；0.61.0 +国标参考文献导出、0.62.0 +Obsidian 导出、0.63.0 +OCR 与笔记工具、0.70.0 +标签管理器；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源）" % _item_reg_src.count("labelKey:"))
+ok(_item_reg_src.count("labelKey:") == 56,
+   "23.7 ★ 注册表恰好 56 条命令（实测 %d；0.53.0 +综述工作台；0.61.0 +国标参考文献导出、0.62.0 +Obsidian 导出、0.63.0 +OCR 与笔记工具、0.70.0 +标签管理器；0.36.0 撤 pdf-inline；0.42.0 撤文本双栏、+嵌套标签、+评级组×6；0.43.0 +知网登录；0.43.1 登录类收敛到设置面板，撤 cn-login；0.44.0（实验）+第三方文献源；0.72.4 +组件商店）" % _item_reg_src.count("labelKey:"))
 ok("type\", \"radio\"" in menus_js and "ReadingState.getState" in menus_js,
    "23.8 阅读状态为 radio 子菜单并按当前选中条目打点")
 ok('"chrome/content/prefs-menu.js"' in mainjs, "23.9 设置面板注册 prefs-menu.js 脚本")
@@ -1920,12 +1979,13 @@ ok("prefs-fold.js" in mainjs, "31.2 main.js 注册 prefs-fold.js（scripts 列�
 for _eid in ("pp-fold-expand", "pp-fold-collapse"):
     ok(_eid in xhtml_ids, "31.3 prefs.xhtml 含折叠工具条 #%s" % _eid)
 _FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "skills", "subscriptions", "schedule", "popup",
-              "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys", "cloud", "wps"]
+              "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys", "cloud", "wps",
+              "glossary", "pdfdual"]
 _fold_found = re.findall(r'data-fold="([a-z]+)"', prefs_xhtml)
 ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
-   "31.4 prefs.xhtml 的 19 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务；0.53.0 检索订阅；0.56.0 云同步；0.68.1 WPS 集成）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 19,
-   "31.5 折叠卡片共 19 张（0.49.0 定时任务，0.53.0 检索订阅，0.56.0 云同步，0.68.1 WPS 集成；不多不少，防止漏包一张）")
+   "31.4 prefs.xhtml 的 21 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务；0.53.0 检索订阅；0.56.0 云同步；0.68.1 WPS 集成；0.72.4 翻译卡拆三：translate/glossary/pdfdual）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 21,
+   "31.5 折叠卡片共 21 张（0.49.0 定时任务，0.53.0 检索订阅，0.56.0 云同步，0.68.1 WPS 集成，0.72.4 翻译卡拆三；不多不少，防止漏包一张）")
 ok('pref("extensions.zotero.papilot.prefsFoldOpen", "account");' in prefsdef,
    "31.6 prefs.js 有 prefsFoldOpen 默认值（默认展开账号卡；点过全部收起后写空串，记忆优先）")
 ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
@@ -1991,8 +2051,8 @@ CHAT_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "chat.js")
 _chat_js = io.open(CHAT_JS, encoding="utf-8").read()
 ok("研究问题" in _chat_js and "结论与边界" in _chat_js and "只写论文里有的内容" in _chat_js,
    "35.7 summarize 四要素结构化（问题/方法/结果/边界）+ 不补写纪律")
-TR_JS = os.path.join(ROOT, "chrome", "content", "scripts", "ai", "translate.js")
-_tr_js = io.open(TR_JS, encoding="utf-8").read()
+# 0.73.0：translate.js 已拆为「5 子模块 + 门面」，复用 §22 的模块整体拼接读（tr_js）
+_tr_js = tr_js
 ok("术语表（以下术语必须按给定译法翻译" in _tr_js and "上一段的译文" in _tr_js,
    "35.8 translate.js 术语表与上下文注入未随优化丢失")
 RP_JS = os.path.join(ROOT, "chrome", "content", "scripts", "features", "reader-popup.js")
@@ -2635,7 +2695,7 @@ ok('pref("extensions.zotero.papilot.reviewWorkbenchEnabled", true)' in prefsdef,
    "46.15 reviewWorkbenchEnabled 默认开")
 ok("test/search-subs.test.js" in _preflight_src and "test/review-workbench.test.js" in _preflight_src,
    "46.16 preflight 注册两个新测试套件")
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 19, "46.17 折叠卡共 19 张（订阅卡、云同步卡、WPS 集成卡已计入）")
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 21, "46.17 折叠卡共 21 张（订阅卡、云同步卡、WPS 集成卡、0.72.4 翻译卡拆三已计入）")
 
 # ---------- 47. 0.54.0 审查修复（P0-P2 十项） ----------
 ok('addCondition("note", "contains"' in _at_js,
@@ -3219,8 +3279,8 @@ ok(len(_cat_names) == 7, "52.1 7 个大类标签都带名称与计数（实际 %
 ok([n for n, _ in _cat_names] == ["账号与会员", "AI 能力", "阅读与翻译", "文献获取",
                                  "条目与标签", "界面与效率", "数据与同步"],
    "52.2 ★ 分类顺序按使用频率固定（改顺序属于信息架构变更，需同步文档）")
-ok(sum(int(c) for _, c in _cat_names) == 19,
-   "52.3 各大类计数之和 = 19（计数写错会让用户以为丢功能）")
+ok(sum(int(c) for _, c in _cat_names) == 21,
+   "52.3 各大类计数之和 = 21（计数写错会让用户以为丢功能；0.72.4 翻译卡拆三后 阅读与翻译=5）")
 for _id in ("pp-toolbar", "pp-prefs-search", "pp-prefs-search-clear", "pp-pref-count", "pp-anchor-nav"):
     ok('"%s"' % _id in prefs_xhtml or 'id="%s"' % _id in prefs_xhtml or _id in prefs_xhtml,
        "52.4 设置面板含工具条元素 %s" % _id)
@@ -3245,8 +3305,8 @@ for _sel in (".pp-root .pp-toolbar", ".pp-root .pp-search", ".pp-root .pp-count"
 ok("@media (max-width: 560px)" in prefs_css and "@media (prefers-color-scheme: dark)" in prefs_css,
    "52.11 ★ 响应式（≤560px 单列）与暗色主题两套规则都在")
 ok("prefers-reduced-motion" in prefs_css, "52.12 尊重系统的减少动效偏好")
-ok("class=\"pp-card pp-fold\"" in prefs_xhtml and prefs_xhtml.count('class="pp-card pp-fold"') == 19,
-   "52.13 折叠卡仍为 19 张（重组只搬家；0.68.1 新增 WPS 集成仅加卡不改结构）")
+ok("class=\"pp-card pp-fold\"" in prefs_xhtml and prefs_xhtml.count('class="pp-card pp-fold"') == 21,
+   "52.13 折叠卡仍为 21 张（重组只搬家；0.68.1 新增 WPS 集成、0.72.4 翻译卡拆三仅加卡不改结构）")
 ok(os.path.exists(os.path.join(ROOT, "test", "prefs-fold.test.js")),
    "52.14 折叠/搜索测试套件在库")
 
@@ -3916,6 +3976,106 @@ ok("Zotero.Papilot.subsBridge" in _ps_src,
    "64.23 面板经 Zotero.Papilot.subsBridge 取模块（不直接引用全局，便于降级）")
 ok("test/subs-bridge.test.js" in _preflight_src,
    "64.24 ★ preflight 注册落地桥测试（幂等 / 回填 / 建源去重是这一层的核心不变量）")
+
+# ==================== 65. 模块化运行时（0.73.0） ====================
+# 背景：功能组件从主包拆出后，「装错一个目录 / 漏一个文件 / 源站被改」不再表现为
+# 构建失败，而是用户侧「商店空白 / 装完没反应」。这一节盯四类静默故障：
+#   ① modules/<id>/module.json 的 id 与目录名不一致（打包脚本按目录名找，永远装不上）；
+#   ② builtin-index.json 与 modules/ 数量漂移（离线首启少一个组件 / 多一个死链）；
+#   ③ module-store.xhtml 出现未定义实体（§30 纪律：整页空白）；
+#   ④ 写注册表时给 IOUtils.writeUTF8 传 mode（分册 03 铁律：截断/权限异常）。
+_MOD_DIR = os.path.join(ROOT, "modules")
+_mod_ids = []
+if os.path.isdir(_MOD_DIR):
+    _mod_ids = sorted(d for d in os.listdir(_MOD_DIR)
+                      if os.path.isdir(os.path.join(_MOD_DIR, d)))
+
+_mod_problems = []
+if not _mod_ids:
+    _mod_problems.append("modules/ 下没有模块目录")
+for _d in _mod_ids:
+    _mp = os.path.join(_MOD_DIR, _d, "module.json")
+    if not os.path.exists(_mp):
+        _mod_problems.append("%s: 缺 module.json" % _d)
+        continue
+    try:
+        _m = json.load(io.open(_mp, encoding="utf-8"))
+    except Exception as _e:
+        _mod_problems.append("%s: module.json 解析失败 %s" % (_d, _e))
+        continue
+    if _m.get("id") != _d:
+        _mod_problems.append("%s: id=%r 与目录名不一致" % (_d, _m.get("id")))
+    if not isinstance(_m.get("files"), list) or not _m.get("files"):
+        _mod_problems.append("%s: files 为空" % _d)
+ok(not _mod_problems,
+   "65.1 ★ 每个 modules/<id>/module.json 的 id 与目录名一致且 files 非空 → %s"
+   % ("; ".join(_mod_problems) or "全部通过"))
+
+_BIDX_PATH = os.path.join(ROOT, "chrome", "content", "modules", "builtin-index.json")
+_idx_problems = []
+_idx_mods = []
+if not os.path.exists(_BIDX_PATH):
+    _idx_problems.append("builtin-index.json 不存在")
+else:
+    try:
+        _bidx = json.load(io.open(_BIDX_PATH, encoding="utf-8"))
+        _idx_mods = _bidx.get("modules") or []
+        if not isinstance(_idx_mods, list):
+            _idx_problems.append("modules 不是数组")
+            _idx_mods = []
+    except Exception as _e:
+        _idx_problems.append("解析失败：%s" % _e)
+if len(_idx_mods) != len(_mod_ids):
+    _idx_problems.append("索引 %d 条 != modules/ 目录 %d 个" % (len(_idx_mods), len(_mod_ids)))
+for _m in _idx_mods:
+    _mid = _m.get("id") if isinstance(_m, dict) else None
+    if not _mid or _mid not in _mod_ids:
+        _idx_problems.append("索引 id %r 在 modules/ 找不到" % (_mid,))
+ok(not _idx_problems,
+   "65.2 ★ builtin-index.json 模块数 == modules/ 子目录数，且每个 id 都能找到 → %s"
+   % ("; ".join(_idx_problems) or "全部匹配"))
+
+_MS_XHTML = os.path.join(ROOT, "chrome", "content", "module-store.xhtml")
+_msx_problem = None
+if not os.path.exists(_MS_XHTML):
+    _msx_problem = "文件不存在"
+else:
+    try:
+        import xml.etree.ElementTree as _ET2
+        _ET2.fromstring(io.open(_MS_XHTML, encoding="utf-8").read())
+    except Exception as _e:
+        _msx_problem = str(_e)
+ok(_msx_problem is None,
+   "65.3 ★ module-store.xhtml 能通过 XML 解析（§30：未定义实体会整页空白）→ %s"
+   % (_msx_problem or "XML 合法"))
+
+_MS_WIN = os.path.join(ROOT, "chrome", "content", "module-store-window.js")
+_ms_win_src = io.open(_MS_WIN, encoding="utf-8").read() if os.path.exists(_MS_WIN) else ""
+_win_problems = []
+if not _ms_win_src:
+    _win_problems.append("文件不存在")
+else:
+    if "&nbsp;" in _ms_win_src:
+        _win_problems.append("含 &nbsp;（XML 未定义实体）")
+    _oc_hits = re.findall(r"\bonclick\s*=", _ms_win_src)
+    if _oc_hits:
+        _win_problems.append("含内联 onclick=（%d 处）" % len(_oc_hits))
+ok(not _win_problems,
+   "65.4 ★ module-store-window.js 无 &nbsp; 且无内联 onclick= → %s"
+   % ("; ".join(_win_problems) or "全部通过"))
+
+_ML_PATH = os.path.join(ROOT, "chrome", "content", "scripts", "core", "module-loader.js")
+_ml_src = io.open(_ML_PATH, encoding="utf-8").read() if os.path.exists(_ML_PATH) else ""
+_ml_problems = []
+if not _ml_src:
+    _ml_problems.append("文件不存在")
+else:
+    _mode_hits = re.findall(r"writeUTF8\([^)]*\{[^)]*mode", _ml_src)
+    if _mode_hits:
+        _ml_problems.append("writeUTF8 带 mode 参数：%s" % (_mode_hits,))
+ok(not _ml_problems,
+   "65.5 ★ module-loader.js 的 IOUtils.writeUTF8 调用不带 mode（分册 03 铁律）→ %s"
+   % ("; ".join(_ml_problems) or "全部通过"))
 
 print("=" * 60)
 for p in passes:

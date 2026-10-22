@@ -9,9 +9,25 @@ import io, os, sys, zipfile, json, re, hashlib
 # （真机实踩：worktree 构建出的包里有主树的未提交新文件，版本也不是传入的那个）。
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(ROOT)
+
+# ★ 0.73.0 模块化拆包开关（默认关闭）：
+#   带 --modular 时，scripts/module-map.json 声明的文件改由 dist/modules/*.zip 分发，
+#   主包只保留骨架 + chrome/content/modules/builtin-index.json（商店离线快照）。
+#   不加该参数时，下面所有逻辑（含版本号取值）与历史版本逐字一致。
+MODULAR = "--modular" in sys.argv[1:]
+if MODULAR:
+    sys.argv = [a for a in sys.argv if a != "--modular"]   # 版本号仍取第一个位置参数
+
 VER = sys.argv[1] if len(sys.argv) > 1 else "0.18.1"
 argv = sys.argv[1:]          # 供 --note / --no-update-json 判定
-OUT = "dist/papilot-%s.xpi" % VER
+# --out：试打包/瘦身包验证时另存，避免覆盖已发布的同名 xpi（默认行为不变）
+def _arg_value(flag):
+    if flag in argv:
+        i = argv.index(flag)
+        if i + 1 < len(argv) and argv[i + 1].strip():
+            return argv[i + 1].strip()
+    return None
+OUT = _arg_value("--out") or ("dist/papilot-%s.xpi" % VER)
 
 TOP = ["bootstrap.js", "LICENSE", "NOTICE", "THIRD-PARTY-NOTICES.md", "prefs.js", "README.md", "README.en.md", "manifest.json"]
 
@@ -68,6 +84,42 @@ for root in ["chrome", "locale"]:
             inc.append(p)
 inc.sort(key=lambda p: (p not in TOP, p))
 
+# ---------------------------------------------------------------------------
+# --modular：按 scripts/module-map.json 的显式清单剔除模块侧文件（0.73.0）
+#
+# 纪律：
+#   · 清单里的路径一律相对 chrome/content/ 书写，这里拼成包内路径再比对；
+#   · 声明了却不在待打包清单里的文件 = 清单与磁盘脱节，直接报错，不静默放过；
+#   · builtin-index.json 是主包唯一保留的模块侧文件（商店离线快照），显式兜底收入。
+# 不加 --modular 时本段整体跳过，inc 与历史版本完全一致。
+# ---------------------------------------------------------------------------
+_MOD_REPORT = []
+if MODULAR:
+    _map_path = os.path.join(ROOT, "scripts", "module-map.json")
+    if not os.path.exists(_map_path):
+        raise SystemExit("--modular 需要 scripts/module-map.json，但文件不存在")
+    with open(_map_path, "r", encoding="utf-8") as _mf:
+        _mod_map = json.load(_mf)
+    _in_inc = set(inc)
+    _excluded = set()
+    for _m in _mod_map.get("modules", []):
+        _mid = _m.get("id")
+        _hits, _miss = [], []
+        for _rel in _m.get("files", []):
+            _p = "chrome/content/" + _rel
+            (_hits if _p in _in_inc else _miss).append(_p)
+        if _miss:
+            raise SystemExit("模块 %s 声明的文件不在待打包清单里: %s" % (_mid, _miss[:5]))
+        _excluded.update(_hits)
+        _MOD_REPORT.append((_mid, len(_hits), sum(os.path.getsize(p) for p in _hits)))
+    inc = [p for p in inc if p not in _excluded]
+    _bi = "chrome/content/modules/builtin-index.json"
+    if os.path.exists(_bi) and _bi not in inc:
+        inc.append(_bi)
+        inc.sort(key=lambda p: (p not in TOP, p))
+    print("模块化拆包：排除 %d 个文件 / %d 字节，主包剩 %d 个条目"
+          % (len(_excluded), sum(r[2] for r in _MOD_REPORT), len(inc)))
+
 names = set(inc)
 print("待打包 %d 个文件" % len(inc))
 bad = [p for p in inc if not os.path.exists(p)]
@@ -79,6 +131,14 @@ with zipfile.ZipFile(OUT, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
     for p in inc:
         z.write(p, p)
 print("已生成", OUT, os.path.getsize(OUT), "bytes")
+
+if MODULAR:
+    _out_size = os.path.getsize(OUT)
+    _src_size = sum(os.path.getsize(p) for p in inc)
+    print("模块化主包：条目 %d 个，源 %d 字节，xpi %d 字节（%.2f MB）"
+          % (len(inc), _src_size, _out_size, _out_size / 1024.0 / 1024.0))
+    for _mid, _cnt, _size in _MOD_REPORT:
+        print("  · %-24s 排除 %3d 个文件 %9d 字节" % (_mid, _cnt, _size))
 
 # 自检
 with zipfile.ZipFile(OUT) as z:

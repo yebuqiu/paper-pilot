@@ -11,10 +11,11 @@
  * 语言两项（源/目标）走 prefs.xhtml 的 preference= 声明式绑定，本脚本不碰；
  * 引擎 id / 回退链 / 超时 / 重试 / 缓存 / 各引擎密钥存 pref translateCfg。
  *
- * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测关键节点，
+ * ⚠ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测关键节点，
  *    不存在就延迟重试，否则 null 崩溃会让整个面板永远不 loaded（同 prefs-pane）。
- * ⚠️ 动态创建的节点一律经变量持有，**不要**用 $(…) 去取动态节点，
+ * ⚠ 动态创建的节点一律经变量持有，**不要**用 $(…) 去取动态节点，
  *    否则 check-wiring 的「元素 id 必须存在于 prefs.xhtml」守卫会误报。
+ * 0.72.2 设计修复：动词统一 / emoji 清除 / aria-live / 密钥眼睛钮改内联 SVG。
  */
 /* global Zotero, window, document */
 
@@ -46,6 +47,28 @@
   };
 
   const PASSWORD_KEYS = { key: 1, apiKey: 1, secretKey: 1, token: 1, appkey: 1 };
+
+  /* 0.72.2：密钥眼睛钮改内联 SVG（Lucide eye 风，currentColor 跟随主题），不再用 emoji 眼睛 */
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  function eyeIcon() {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "14");
+    svg.setAttribute("height", "14");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "1.5");
+    svg.setAttribute("aria-hidden", "true");
+    const outline = document.createElementNS(SVG_NS, "path");
+    outline.setAttribute("d", "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z");
+    const pupil = document.createElementNS(SVG_NS, "circle");
+    pupil.setAttribute("cx", "12");
+    pupil.setAttribute("cy", "12");
+    pupil.setAttribute("r", "3");
+    svg.appendChild(outline);
+    svg.appendChild(pupil);
+    return svg;
+  }
 
   /* ---------- 折叠式布局（0.31.0）----------
    * 16 个引擎全平铺，每行还带密钥表单与说明 → "界面过于杂乱"。
@@ -85,7 +108,7 @@
     const c = S.cfg();
     if (!svc) {
       box.appendChild(el("span", { style: "color:var(--pp-danger);" },
-        zh ? "⚠ 没有可用的翻译引擎" : "⚠ No usable translation engine"));
+        zh ? "没有可用的翻译引擎" : "No usable translation engine"));
       return;
     }
     // ready() 已内聚「大模型引擎要求 AI 就绪 / 需密钥引擎要求已配置」的判定
@@ -120,9 +143,10 @@
     for (const s of S.list()) {
       const opt = el("option", { value: s.id });
       let label = s.name;
-      if (s.group === "free" && !s.needsSecret) label += " 🆓";
-      if (s.needsSecret) label += " 🔑";
-      if (s.llm) label += " 🤖";
+      // 0.72.2：引擎标记文字化（原免费/密钥/机器人三个 emoji 随平台漂移，改纯文字后缀）
+      if (s.group === "free" && !s.needsSecret) label += zh ? "（免费）" : " (free)";
+      if (s.needsSecret) label += zh ? "（需密钥）" : " (key)";
+      if (s.llm) label += zh ? "（AI）" : " (AI)";
       opt.textContent = label;
       sel.appendChild(opt);
     }
@@ -576,12 +600,21 @@
         input.setAttribute("data-k", f.key);
         cell.appendChild(input);
         if (isPw) {
-          const eye = el("button", { class: "pp-btn pp-btn-sm", title: zh ? "显示/隐藏" : "show/hide" }, "👁");
+          // 0.72.2：单 eye 图标常显，只切 aria-label 与输入框类型（不再切换 emoji 字符）
+          const eye = el("button", {
+            class: "pp-btn pp-btn-sm",
+            title: zh ? "显示/隐藏" : "show/hide",
+            "aria-label": zh ? "显示密钥" : "Show secret",
+          });
+          eye.appendChild(eyeIcon());
           eye.style.opacity = "0.55";
           eye.addEventListener("click", () => {
             const show = input.type === "password";
             input.type = show ? "text" : "password";
             eye.style.opacity = show ? "1" : "0.55";
+            eye.setAttribute("aria-label", show
+              ? (zh ? "隐藏密钥" : "Hide secret")
+              : (zh ? "显示密钥" : "Show secret"));
           });
           cell.appendChild(eye);
         }
@@ -633,6 +666,7 @@
     const rowMsg = el("div", {
       class: "pp-tr-rowmsg",
       style: "font-size:11px;line-height:1.45;text-align:right;word-break:break-word;min-height:0;",
+      "aria-live": "polite", // 0.72.2：行内测试结果对读屏可见
     }, "");
     bTest.addEventListener("click", () => onTest(s.id, bTest, rowMsg));
     acts.appendChild(bTest);
@@ -714,14 +748,14 @@
     }
   }
 
-  /** 检测本机自建翻译服务（LibreTranslate 5000 / Lingva 3000 / DLX 1188），命中即一键填入地址 */
+  /** 扫描本机自建翻译服务（LibreTranslate 5000 / Lingva 3000 / DLX 1188），命中即一键填入地址 */
   async function onLocalScan() {
     const S = T();
     const btn = $("pp-tr-local-scan");
     const box = $("pp-tr-local");
     if (!S || !box) return;
     if (btn) btn.disabled = true;
-    box.textContent = zh ? "检测中（本机 5000 / 3000 / 1188 端口）…" : "Scanning localhost ports…";
+    box.textContent = zh ? "扫描中（本机 5000 / 3000 / 1188 端口）…" : "Scanning localhost ports…";
     box.style.color = "var(--pp-muted)";
     try {
       const r = await S.probeLocal(2000);
@@ -757,7 +791,7 @@
 
   /**
    * 「测试」：真实调用一次引擎。
-   * ⚠️ 0.31.0 修的坑：此前结果只写进卡片底部那个**共用**结果区，而它在十几行引擎之后 ——
+   * ⚠ 0.31.0 修的坑：此前结果只写进卡片底部那个**共用**结果区，而它在十几行引擎之后 ——
    * 用户点了按钮，反馈出现在屏幕外，按钮又飞快复原，观感就是"测试没反应"。
    * 现在双写：**行内即时反馈**（就在按钮下方）+ 底部汇总（多引擎对比时仍有用）。
    * 失败一律给出可读原因（缺密钥 / 取 token 失败 / HTTP 状态 / 超时…），不静默。

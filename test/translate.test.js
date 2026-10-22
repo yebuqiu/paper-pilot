@@ -25,7 +25,8 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const SRC = path.join(ROOT, 'chrome', 'content', 'scripts', 'ai', 'translate.js');
+// 0.73.0：翻译模块拆为「5 子模块 + 门面」，加载清单走单一真源（与 main.js 装配序一致）
+const MODULE_FILES = require('./translate-files');
 
 let pass = 0;
 const fails = [];
@@ -109,7 +110,9 @@ const sandbox = {
 };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-vm.runInContext(fs.readFileSync(SRC, 'utf8'), sandbox, { filename: 'translate.js' });
+for (const f of MODULE_FILES) {
+  vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
+}
 const T = sandbox.TranslateSvc;
 
 /** 写配置（覆盖默认） */

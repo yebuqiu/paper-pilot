@@ -1,0 +1,3664 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Papilot 设置面板 · 0.72.3 设计预览</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #eff1f4;
+    color: #1f2328;
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #15181c; color: #e6edf3; }
+  }
+  .pv-note {
+    max-width: 1000px; margin: 0 auto; padding: 10px 14px;
+    font-size: 12px; color: #5b6570; line-height: 1.7;
+    background: #fffbe8; border-bottom: 1px solid #ecd9a0;
+  }
+  @media (prefers-color-scheme: dark) {
+    .pv-note { background: #2a2618; border-bottom-color: #4a4020; color: #d8cba0; }
+  }
+  .pv-note b { color: #8a6d00; }
+  @media (prefers-color-scheme: dark) { .pv-note b { color: #e0c060; } }
+  /* 模拟 Zotero 设置窗格：面板自身是滚动容器（flex="1" + overflow-y:auto），
+     这样吸顶工具条 / 锚点定位的表现与真机一致 */
+  .pp-root { max-width: 1000px; margin: 0 auto; display: block;
+             height: calc(100vh - 46px); overflow-y: auto !important; }
+  body { overflow: hidden; }
+</style>
+<style>
+/* ===== 以下是 chrome/content/prefs.css 原文（与插件内完全一致） ===== */
+/* Papilot 设置面板样式
+ * SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen
+ *
+ * 视觉语言：GitHub Primer / VS Code 设置页的卡片式，0.65.0 做了一次系统性收敛——
+ *   层次 = 大类标签（pp-cat-label）> 卡片（pp-card）> 子分区（pp-sub）> 行（pp-row / pp-field）
+ *   令牌 = 颜色 / 间距 / 圆角 / 阴影 / 字号全部收在 .pp-root 的 CSS 变量里，
+ *          控件、卡片、状态反馈只引用令牌，不再各写一套散值。
+ *
+ * 纪律：
+ *   ① 全部选择器以 .pp-root 收口，不泄漏到设置窗口其它面板；
+ *   ② 明暗两套值只改变量（@media prefers-color-scheme），组件规则只写一次；
+ *   ③ 只做「表现层」覆盖——不改任何 id、不改 display 语义（折叠靠 .pp-fold-closed），
+ *      所以既有的十五条面板脚本、preference= 声明式绑定都不受影响；
+ *   ④ 响应式只在 760px / 560px 两个断点做栅格降列与工具条换行，不隐藏任何功能。
+ *
+ * 0.72.2 令牌修订：状态色 AA 补齐/焦点环实色化/字号间距半步档收编/新增 pp-link-btn·pp-disclose·pp-notes 契约类
+ */
+
+/* ========================================================================
+   1. 设计令牌
+   ======================================================================== */
+.pp-root {
+  /* 表面与描边 */
+  --pp-surface: #ffffff;
+  --pp-surface-2: #f6f8fa;
+  --pp-surface-3: #eceff3;
+  --pp-field: #ffffff;
+  --pp-border: #d8dee4;
+  --pp-border-strong: #c3cdd6;
+  /* 0.72.3 控件描边（WCAG 1.4.11 ≥3:1）：只给输入框/选择框/文本域/按钮这类「可交互控件边界」用。
+     --pp-border 继续服务卡片轮廓与 1px 分区线（装饰性，不属 1.4.11 强制范围），两者不要互换。
+     实测：亮色 #828b95 对白 3.46、对 surface-2 3.25、对 btn-hover 3.05；hover #6e7781 对白 4.55、对 btn-hover 4.01。 */
+  --pp-border-control: #828b95;
+  --pp-border-control-hover: #6e7781;
+  /* 文字 */
+  --pp-text: #1f2328;
+  --pp-text-strong: #0f141a;
+  --pp-text2: #3d444d;          /* 兼容旧内联样式别名 */
+  --pp-muted: #5b6570;
+  --pp-faint: #6a7380;   /* 3.37→4.8 对比度（占位符 / 时间戳等最弱文字） */
+  /* 强调与状态 */
+  --pp-accent: #0969da;
+  --pp-accent-emphasis: #0757b3;
+  --pp-accent-weak: #ddf4ff;
+  --pp-accent-soft: rgba(9, 105, 218, .08);
+  --pp-accent-line: rgba(9, 105, 218, .24);
+  --pp-success: #116329;
+  --pp-ok-bg: rgba(31, 134, 61, .12);
+  --pp-danger: #cf222e;
+  --pp-danger-bg: rgba(207, 34, 46, .10);
+  --pp-warn: #7a4d00;
+  --pp-warn-bg: rgba(154, 103, 0, .12);
+  /* 文字态 fg 令牌：浅色下 fg=原色（零视觉变化），深色媒体查询里覆盖为更亮的文字色 */
+  --pp-accent-fg: var(--pp-accent);
+  --pp-danger-fg: #b31d28;               /* 0.72.3：原 var(--pp-danger) 压 danger-bg 只有 4.30，硬值后 5.73 */
+  /* 主按钮组件层令牌（浅色=现状值，深色覆盖） */
+  --pp-btn-primary-bg: var(--pp-accent);
+  --pp-btn-primary-bg-hover: var(--pp-accent-emphasis);
+  --pp-on-accent: #ffffff;
+  --pp-overlay: rgba(0, 0, 0, .42);
+  --pp-btn-hover: #eef1f4;
+  --pp-soft: rgba(127, 127, 127, .10);   /* 兼容旧内联样式别名 */
+  --pp-border2: #c3cdd6;                 /* 兼容旧内联样式别名 */
+  --pp-bg: #ffffff;                      /* 兼容旧内联样式别名 */
+  --pp-focus-ring: rgba(9, 105, 218, .20);
+  /* 形状与阴影 */
+  --pp-radius-sm: 6px;
+  --pp-radius-md: 8px;
+  --pp-radius-lg: 12px;
+  --pp-shadow-1: 0 1px 2px rgba(15, 20, 26, .06);
+  --pp-shadow-2: 0 6px 20px rgba(15, 20, 26, .10);
+  --pp-shadow-3: 0 12px 40px rgba(15, 20, 26, .22);
+  /* 间距（4pt 基线 + 两个半步档：6px/10px 为实测高频散值正式收编） */
+  --pp-sp-1: 4px;
+  --pp-sp-1h: 6px;
+  --pp-sp-2: 8px;
+  --pp-sp-2h: 10px;
+  --pp-sp-3: 12px;
+  --pp-sp-4: 16px;
+  --pp-sp-5: 22px;
+  /* 字号 */
+  --pp-fs-xs: 10.5px;
+  --pp-fs-sm: 12px;
+  --pp-fs-md: 12.5px;
+  --pp-fs-lg: 13.5px;
+  --pp-fs-xl: 15px;
+  --pp-fs-2xl: 24px;
+  /* 动效时长 */
+  --pp-dur-fast: .12s;
+  --pp-dur-med: .16s;
+  --pp-dur-slow: .2s;
+  /* 0.72.3：让原生控件（checkbox / select 弹层 / 滚动条）跟随面板明暗。
+     只写在 .pp-root 上，不写 :root —— 否则会污染宿主 Zotero 的其它窗口。 */
+  color-scheme: light;
+  font-size: var(--pp-fs-md);
+  color: var(--pp-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  /* ⚠ 块内声明与下方 :root[data-theme="dark"] .pp-root **必须逐条同值**（同一批令牌、同一批取值）。
+     check-wiring 有守卫：两处不一致会当场报错，改一处必须同步另一处。
+     guard `:not([data-theme="light"])` 不能删：否则系统深色时用户显式选的浅色主题会被顶掉。 */
+  :root:not([data-theme="light"]) .pp-root {
+    --pp-surface: #21252b;
+    --pp-surface-2: #1a1e23;
+    --pp-surface-3: #2a3038;
+    --pp-field: #1b1f24;
+    --pp-border: #3d444d;
+    --pp-border-strong: #4d565f;
+    /* 实测：#6e7a86 对 field 3.78、对 surface 3.51、对 btn-hover 3.04；hover #8d99a6 对 field 5.71、对 btn-hover 4.59 */
+    --pp-border-control: #6e7a86;
+    --pp-border-control-hover: #8d99a6;
+    --pp-text: #e6edf3;
+    --pp-text-strong: #f2f6fa;
+    --pp-text2: #c9d1d9;
+    --pp-muted: #9198a1;
+    --pp-faint: #8b949e;   /* 3.35→5.0 对比度（暗色下同上） */
+    --pp-accent: #4493f8;
+    --pp-accent-emphasis: #2f81f7;
+    --pp-accent-weak: #17233a;
+    --pp-accent-soft: rgba(68, 147, 248, .12);
+    --pp-accent-line: rgba(68, 147, 248, .30);
+    --pp-success: #3fb950;
+    --pp-ok-bg: rgba(63, 185, 80, .16);
+    --pp-danger: #f85149;
+    --pp-danger-bg: rgba(248, 81, 73, .14);
+    --pp-warn: #d29922;
+    --pp-warn-bg: rgba(210, 153, 34, .16);
+    /* 深色下文字态：accent/danger 原色保留给填充与描边，文字用更亮的 fg（AA 补齐） */
+    --pp-accent-fg: #79b8ff;
+    --pp-danger-fg: #ff7b72;
+    --pp-btn-primary-bg: #1f6feb;
+    --pp-btn-primary-bg-hover: #1158c7;
+    --pp-btn-hover: #2a3038;
+    --pp-soft: rgba(255, 255, 255, .06);
+    --pp-border2: #4d565f;
+    --pp-bg: #21252b;
+    --pp-focus-ring: rgba(68, 147, 248, .28);
+    --pp-shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
+    --pp-shadow-2: 0 6px 20px rgba(0, 0, 0, .44);
+    --pp-shadow-3: 0 12px 40px rgba(0, 0, 0, .55);
+    color-scheme: dark;   /* 0.72.3：原生 checkbox / 下拉弹层 / 滚动条跟随深色（否则 appearance:auto 的复选框渲染成纯白方块） */
+  }
+}
+
+/* ---------- 深色（用户/主题系统显式指定 data-theme="dark"） ----------
+   0.72.3 补齐：此前只剩上面的 @media 块，于是「系统浅色 + 用户显式选深色」时
+   ui-tokens.css 的 8 个令牌翻成深色、prefs.css 这 30 多个仍是浅色，两套调色板混搭。
+   ⚠ 与上方 @media 块**必须逐条同值**（check-wiring 有守卫）。 */
+:root[data-theme="dark"] .pp-root {
+  --pp-surface: #21252b;
+  --pp-surface-2: #1a1e23;
+  --pp-surface-3: #2a3038;
+  --pp-field: #1b1f24;
+  --pp-border: #3d444d;
+  --pp-border-strong: #4d565f;
+  /* 实测：#6e7a86 对 field 3.78、对 surface 3.51、对 btn-hover 3.04；hover #8d99a6 对 field 5.71、对 btn-hover 4.59 */
+  --pp-border-control: #6e7a86;
+  --pp-border-control-hover: #8d99a6;
+  --pp-text: #e6edf3;
+  --pp-text-strong: #f2f6fa;
+  --pp-text2: #c9d1d9;
+  --pp-muted: #9198a1;
+  --pp-faint: #8b949e;   /* 3.35→5.0 对比度（暗色下同上） */
+  --pp-accent: #4493f8;
+  --pp-accent-emphasis: #2f81f7;
+  --pp-accent-weak: #17233a;
+  --pp-accent-soft: rgba(68, 147, 248, .12);
+  --pp-accent-line: rgba(68, 147, 248, .30);
+  --pp-success: #3fb950;
+  --pp-ok-bg: rgba(63, 185, 80, .16);
+  --pp-danger: #f85149;
+  --pp-danger-bg: rgba(248, 81, 73, .14);
+  --pp-warn: #d29922;
+  --pp-warn-bg: rgba(210, 153, 34, .16);
+  /* 深色下文字态：accent/danger 原色保留给填充与描边，文字用更亮的 fg（AA 补齐） */
+  --pp-accent-fg: #79b8ff;
+  --pp-danger-fg: #ff7b72;
+  --pp-btn-primary-bg: #1f6feb;
+  --pp-btn-primary-bg-hover: #1158c7;
+  --pp-btn-hover: #2a3038;
+  --pp-soft: rgba(255, 255, 255, .06);
+  --pp-border2: #4d565f;
+  --pp-bg: #21252b;
+  --pp-focus-ring: rgba(68, 147, 248, .28);
+  --pp-shadow-1: 0 1px 2px rgba(0, 0, 0, .40);
+  --pp-shadow-2: 0 6px 20px rgba(0, 0, 0, .44);
+  --pp-shadow-3: 0 12px 40px rgba(0, 0, 0, .55);
+  color-scheme: dark;   /* 0.72.3：同 media 块，显式深色下原生控件也要跟着翻 */
+}
+
+/* ========================================================================
+   2. 面板外壳：工具条 / 搜索 / 计数 / 大类直达 / 大类标签
+   ======================================================================== */
+
+/* 工具条：搜索左、批量操作右；吸顶（不支持 sticky 的环境退化为普通块，不影响使用） */
+.pp-root .pp-toolbar {
+  position: sticky;
+  top: -12px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-2);
+  flex-wrap: wrap;
+  margin: 0 0 var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-3);
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-lg);
+  box-shadow: var(--pp-shadow-1);
+}
+.pp-root .pp-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 220px;
+  min-width: 140px;
+}
+.pp-root .pp-search-icon {
+  position: absolute;
+  left: 8px;
+  font-size: var(--pp-fs-md);
+  line-height: 1;
+  color: var(--pp-faint);
+  pointer-events: none;
+}
+.pp-root .pp-search-icon svg { width: 13px; height: 13px; display: block; }
+.pp-root .pp-search .pp-input {
+  width: 100%;
+  height: 28px;
+  padding-left: 25px;
+  padding-right: 24px;
+}
+.pp-root .pp-search-clear {
+  position: absolute;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--pp-muted);
+  font-size: var(--pp-fs-lg);
+  line-height: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pp-root .pp-search-clear svg { width: 13px; height: 13px; display: block; }
+.pp-root .pp-search-clear:hover { background: var(--pp-btn-hover); color: var(--pp-text); }
+.pp-root .pp-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-1h);
+  flex-wrap: wrap;
+}
+.pp-root .pp-count {
+  font-size: var(--pp-fs-xs);
+  color: var(--pp-muted);
+  font-variant-numeric: tabular-nums;
+  background: var(--pp-surface-2);
+  border: 1px solid var(--pp-border);
+  border-radius: 999px;
+  padding: 1px var(--pp-sp-2);
+  white-space: nowrap;
+}
+.pp-root .pp-count-hit { color: var(--pp-accent-fg); border-color: var(--pp-accent-line); background: var(--pp-accent-soft); }
+
+/* 兼容旧类名：0.65.0 前工具条叫 .pp-fold-bar（旧脚本/旧文档引用时不至于裸奔） */
+.pp-root .pp-fold-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-2);
+  flex-wrap: wrap;
+  margin: 0 0 var(--pp-sp-2);
+}
+
+/* 大类直达：由 prefs-hotkeys.js 动态填充 chip */
+.pp-root .pp-anchor-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-1h);
+  flex-wrap: wrap;
+  margin: 0 0 2px;
+}
+.pp-root .pp-anchor-nav .pp-hint {
+  font-size: var(--pp-fs-xs);
+  letter-spacing: .06em;
+  margin-right: 2px;
+}
+.pp-root .pp-anchor-nav .pp-btn {
+  height: 24px;
+  padding: 0 var(--pp-sp-2);
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  background: var(--pp-surface-2);
+  border-color: transparent;
+  border-radius: 999px;
+}
+.pp-root .pp-anchor-nav .pp-btn:hover:not(:disabled) {
+  color: var(--pp-accent-fg);
+  background: var(--pp-accent-soft);
+  border-color: var(--pp-accent);
+}
+/* 直达跳转后的落点反馈（0.68.4）：滚动若被 Zotero 的容器吃掉，至少能看见「跳到了哪一类」 */
+.pp-root .pp-jump-flash { animation: pp-jump-flash 0.9s ease-out; border-radius: 6px; }
+@keyframes pp-jump-flash {
+  0%   { background: var(--pp-accent-soft); }
+  60%  { background: var(--pp-accent-soft); }
+  100% { background: transparent; }
+}
+/* 当前所在分类的 chip（0.68.4）：滚动同步 / 点击后高亮，给「我在哪一类」一个视觉落点。
+   注意 #pp-anchor-nav 本身**不做 sticky**——双吸顶会盖住分类标签。 */
+.pp-root .pp-anchor-nav .pp-btn.pp-anchor-active {
+  color: var(--pp-accent-fg);
+  background: var(--pp-accent-soft);
+  border-color: var(--pp-accent);
+  font-weight: 600;
+}
+
+/* 大类标签：小号字距 + 左侧强调竖条 + 右侧计数 + 细分隔线 */
+.pp-root .pp-cat-label {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-2);
+  margin: var(--pp-sp-5) 0 var(--pp-sp-2) 2px;
+  padding-bottom: var(--pp-sp-1h);
+  border-bottom: 1px solid var(--pp-border);
+  font-size: var(--pp-fs-xs);
+  font-weight: 700;
+  letter-spacing: .12em;
+  color: var(--pp-muted);
+  scroll-margin-top: 56px;  /* 给吸顶工具条留位：锚点定位后标题不被遮住 */
+}
+.pp-root .pp-cat-label::before {
+  content: "";
+  flex: none;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--pp-accent);
+  opacity: .9;
+}
+.pp-root .pp-cat-name { flex: none; }
+.pp-root .pp-cat-count {
+  margin-left: auto;
+  font-size: var(--pp-fs-xs);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--pp-muted);
+  background: var(--pp-surface-2);
+  border: 1px solid var(--pp-border);
+  border-radius: 999px;
+  padding: 0 var(--pp-sp-2);
+  line-height: 16px;
+}
+/* 首个大类紧贴直达条，不必再吃 22px 上边距 */
+.pp-root #pp-anchor-nav + .pp-cat-label { margin-top: var(--pp-sp-1); }
+/* 0.68.4 直达条与首个大类之间插了搜索空态节点，相邻选择器不再命中——同样补一条 */
+.pp-root #pp-prefs-empty + .pp-cat-label { margin-top: var(--pp-sp-1); }
+
+/* 搜索 0 命中空态（0.68.4）：语气与 .pp-hint 一致，上下留白避免「整屏空白像是坏了」 */
+.pp-root .pp-empty {
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  line-height: 1.6;
+  padding: var(--pp-sp-2h) 2px var(--pp-sp-1);
+  text-align: center;
+}
+/* 搜索态：命中的卡即使处于折叠状态也展开内容，便于直接看到命中的设置项 */
+.pp-root.pp-searching .pp-card:not(.pp-hidden) .pp-card-body { display: block; }
+.pp-root.pp-searching .pp-card:not(.pp-hidden) .pp-fold-arrow { transform: rotate(0deg); }
+.pp-root .pp-hidden { display: none !important; }
+
+/* ========================================================================
+   3. 卡片
+   ======================================================================== */
+.pp-root .pp-card {
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-lg);
+  padding: var(--pp-sp-3) var(--pp-sp-4) var(--pp-sp-4);
+  margin: 0 0 var(--pp-sp-2);
+  box-shadow: var(--pp-shadow-1);
+  transition: box-shadow var(--pp-dur-med) ease, border-color var(--pp-dur-med) ease;
+  scroll-margin-top: 56px;
+}
+.pp-root .pp-card:hover { box-shadow: var(--pp-shadow-2); }
+.pp-root .pp-fold-head {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-2);
+  min-width: 0;
+  margin: -2px -8px 0;
+  padding: var(--pp-sp-1) var(--pp-sp-2) var(--pp-sp-1);
+  border-radius: var(--pp-radius-md);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--pp-dur-fast) ease;
+}
+.pp-root .pp-fold-head:hover { background: var(--pp-surface-2); }
+/* 键盘焦点：标题行是 role=button 的可聚焦元素，必须有可见焦点环（鼠标点击不显示）。
+   0.72.2 起统一为「2px 实色 accent 主环 + 4px alpha 光晕」双层——单层 alpha 提到 .65 也不达 3:1 */
+.pp-root .pp-fold-head:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pp-accent), 0 0 0 4px var(--pp-focus-ring);
+}
+.pp-root .pp-fold-head:focus:not(:focus-visible) { outline: none; }
+.pp-root .pp-fold-head:hover .pp-card-title { color: var(--pp-accent); }
+.pp-root .pp-fold-head .pp-card-title { flex: none; }
+.pp-root .pp-fold-head .pp-card-desc {
+  flex: 1 1 auto;
+  margin-top: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 展开态：标题行与内容之间加一条细分隔线，读起来像「分区」而不是「一段文字」 */
+.pp-root .pp-card:not(.pp-fold-closed) .pp-fold-head {
+  /* 上 4 / 下 4 对称（旧值上 4 下 8 会把图标与箭头顶高 2.5px）；间隔交给 margin */
+  padding-bottom: var(--pp-sp-1);
+  margin-bottom: var(--pp-sp-2);
+  border-bottom: 1px solid var(--pp-border);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.pp-root .pp-card-icon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--pp-radius-md);
+  background: var(--pp-accent-soft);
+  border: 1px solid var(--pp-accent-line);
+  color: var(--pp-accent);
+  font-size: var(--pp-fs-md);
+  line-height: 1;
+}
+/* 卡图标内容物（0.72.2 契约类，P0-①）：emoji 换成 16×16 内联 SVG，stroke=currentColor */
+.pp-root .pp-card-icon svg { width: 16px; height: 16px; display: block; }
+.pp-root .pp-card-title {
+  font-size: var(--pp-fs-lg);
+  font-weight: 600;
+  letter-spacing: .01em;
+  color: var(--pp-text-strong);
+  white-space: nowrap;
+  transition: color var(--pp-dur-fast) ease;
+}
+.pp-root .pp-card-desc {
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  margin-top: 3px;
+  line-height: 1.5;
+}
+.pp-root .pp-fold-arrow {
+  flex: none;
+  /* 0.72.3：行尾对齐不能靠 .pp-card-desc 占位——≤560 隐藏 desc 后箭头会停在标题右侧 8px；
+     margin-left:auto 让它在有无 desc 时都贴右。字号从 fs-xs(10.5) 提到 fs-sm(12)，1× 下 ▾ 不再是小数点。 */
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--pp-faint);
+  font-size: var(--pp-fs-sm);
+  line-height: 1;
+  transition: transform var(--pp-dur-med) ease, background var(--pp-dur-fast) ease;
+}
+.pp-root .pp-fold-head:hover .pp-fold-arrow { background: var(--pp-btn-hover); color: var(--pp-muted); }
+.pp-root .pp-fold-closed .pp-fold-arrow { transform: rotate(-90deg); }
+.pp-root .pp-fold-closed .pp-card-body { display: none; }
+.pp-root .pp-fold-closed { padding-bottom: var(--pp-sp-2h); }
+.pp-root .pp-card-body { animation: pp-card-in var(--pp-dur-med) ease both; }
+@keyframes pp-card-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 卡片内子分区 */
+.pp-root .pp-sub {
+  border-top: 1px solid var(--pp-border);
+  margin-top: var(--pp-sp-3);
+  padding-top: var(--pp-sp-3);
+}
+.pp-root .pp-sub-title {
+  font-size: var(--pp-fs-md);
+  font-weight: 600;
+  color: var(--pp-text-strong);
+  letter-spacing: .01em;
+}
+.pp-root .pp-sub-desc {
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  margin-top: 2px;
+  margin-bottom: var(--pp-sp-1);
+  line-height: 1.55;
+}
+.pp-root .pp-subblock {
+  border-top: 1px dashed var(--pp-border);
+  padding-top: var(--pp-sp-2h);
+  margin-top: var(--pp-sp-2h);
+}
+.pp-root .pp-subtitle {
+  font-size: var(--pp-fs-md);
+  font-weight: 600;
+  color: var(--pp-text-strong);
+}
+
+/* 渐进披露（0.72.2 契约类，P1-⑦）：原生 html:details，白得键盘与 aria；
+   summary 前的 chevron 用 data-uri SVG + mask 继承 currentColor，[open] 态旋转 90° */
+.pp-root .pp-disclose {
+  margin-top: var(--pp-sp-2);
+  border-top: 1px dashed var(--pp-border);
+  padding-top: var(--pp-sp-2h);
+}
+.pp-root .pp-disclose > summary {
+  cursor: pointer;
+  font-size: var(--pp-fs-md);
+  font-weight: 600;
+  color: var(--pp-accent);
+  list-style: none;
+}
+.pp-root .pp-disclose > summary::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: var(--pp-sp-1h);
+  vertical-align: -1px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3.5 10.5 8 6 12.5' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M6 3.5 10.5 8 6 12.5' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain;
+  transition: transform var(--pp-dur-med) ease;
+}
+.pp-root .pp-disclose[open] > summary::before { transform: rotate(90deg); }
+.pp-root .pp-disclose > summary:focus-visible { outline: 2px solid var(--pp-accent); outline-offset: 2px; border-radius: var(--pp-radius-sm); }
+
+/* ========================================================================
+   4. 布局原语
+   ======================================================================== */
+.pp-root .pp-row {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-2);
+  margin-top: var(--pp-sp-2h);
+  flex-wrap: wrap;
+}
+.pp-root .pp-row-tight { margin-top: var(--pp-sp-1h); }
+.pp-root .pp-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pp-sp-2h); margin-top: var(--pp-sp-2h); }
+.pp-root .pp-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--pp-sp-2h); margin-top: var(--pp-sp-2h); }
+.pp-root .pp-field { display: flex; flex-direction: column; gap: var(--pp-sp-1); min-width: 0; }
+.pp-root .pp-label {
+  font-size: var(--pp-fs-md);
+  color: var(--pp-text);
+  line-height: 1.4;
+}
+.pp-root .pp-hint {
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  line-height: 1.6;
+}
+/* 说明列表（0.72.2 契约类，P1-⑫）：字墙段落的条列化容器 */
+.pp-root .pp-notes {
+  margin: var(--pp-sp-1) 0;
+  padding-left: var(--pp-sp-4);
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  line-height: 1.6;
+}
+.pp-root .pp-notes > li { margin-top: 2px; }
+.pp-root .pp-notes > li:first-child { margin-top: 0; }
+.pp-root .pp-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pp-sp-2);
+  font-size: var(--pp-fs-md);
+  color: var(--pp-text);
+  line-height: 1.5;
+  margin-top: var(--pp-sp-2);
+}
+.pp-root .pp-check input { margin: 2px 0 0; flex: none; }
+.pp-root .pp-grow { flex: 1; }
+/* 0.72.3：.pp-field 是 column flex，.pp-grow 的 flex:1 把 flex-basis 归 0（主轴=高度），
+   控件 height:28px 被压成 24px（#pp-sk-source 实测）。这里只在 field 内把 basis 改回 auto，
+   宽度依旧靠 align-items:stretch 撑满；行内布局（.pp-row 等）的 .pp-grow 行为不变。 */
+.pp-root .pp-field .pp-grow { flex: 1 1 auto; }
+
+/* ========================================================================
+   5. 控件
+   ======================================================================== */
+.pp-root .pp-input,
+.pp-root .pp-select {
+  height: 28px;
+  padding: 3px var(--pp-sp-2);
+  font-size: var(--pp-fs-md);
+  font-family: inherit;
+  color: var(--pp-text);
+  background: var(--pp-field);
+  border: 1px solid var(--pp-border-control);
+  border-radius: var(--pp-radius-sm);
+  min-width: 0;
+  box-sizing: border-box;
+  transition: border-color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
+}
+.pp-root .pp-select { padding-right: var(--pp-sp-1h); }
+.pp-root .pp-input:hover:not(:focus),
+.pp-root .pp-select:hover:not(:focus) { border-color: var(--pp-border-control-hover); }
+.pp-root .pp-input:focus,
+.pp-root .pp-select:focus,
+.pp-root .pp-textarea:focus {
+  outline: none;
+  border-color: var(--pp-accent);
+  box-shadow: 0 0 0 2px var(--pp-accent), 0 0 0 4px var(--pp-focus-ring);
+}
+.pp-root .pp-input::placeholder,
+.pp-root .pp-textarea::placeholder { color: var(--pp-faint); }
+.pp-root .pp-textarea {
+  padding: var(--pp-sp-2);
+  font-size: var(--pp-fs-md);
+  font-family: inherit;
+  line-height: 1.65;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  color: var(--pp-text);
+  background: var(--pp-field);
+  border: 1px solid var(--pp-border-control);
+  border-radius: var(--pp-radius-md);
+  transition: border-color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease;
+}
+.pp-root .pp-input[type="checkbox"],
+.pp-root .pp-check input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--pp-accent);
+}
+.pp-root .pp-color {
+  width: 34px;
+  height: 26px;
+  border: 1px solid var(--pp-border-control);
+  border-radius: var(--pp-radius-sm);
+  background: var(--pp-field);
+  cursor: pointer;
+  flex: none;
+  padding: 1px;
+}
+.pp-root .pp-color:hover { border-color: var(--pp-border-control-hover); }
+.pp-root .pp-btn {
+  height: 28px;
+  padding: 0 var(--pp-sp-3);
+  font-size: var(--pp-fs-md);
+  font-family: inherit;
+  color: var(--pp-text);
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border-control);
+  border-radius: var(--pp-radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--pp-dur-fast) ease, border-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease;
+}
+.pp-root .pp-btn:hover:not(:disabled) {
+  background: var(--pp-btn-hover);
+  border-color: var(--pp-border-control-hover);
+}
+.pp-root .pp-btn:active:not(:disabled) { background: var(--pp-surface-3); }
+.pp-root .pp-btn:focus-visible {
+  outline: none;
+  border-color: var(--pp-accent);
+  box-shadow: 0 0 0 2px var(--pp-accent), 0 0 0 4px var(--pp-focus-ring);
+}
+/* 0.72.3：运行时 span → button 化的四个类，0.72.2 的 .pp-link-btn 契约没覆盖它们，
+   缺 focus-visible 时只剩 Gecko 的 UA 默认环（可见但不是本项目的双层环）。
+   环的写法与 .pp-btn / .pp-ts-chip 一致；`.pp-chip-x` 在 pill 内部，用单层 outline+offset 免得 box-shadow 压到 pill 边框。 */
+.pp-root .pp-mb-opt:focus-visible,
+.pp-root .pp-ds-chip:focus-visible,
+.pp-root .pp-chip-pick:focus-visible {
+  outline: none;
+  border-color: var(--pp-accent);
+  box-shadow: 0 0 0 2px var(--pp-accent), 0 0 0 4px var(--pp-focus-ring);
+}
+.pp-root .pp-chip-x:focus-visible {
+  outline: 2px solid var(--pp-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.pp-root .pp-btn-primary {
+  color: var(--pp-on-accent);
+  background: var(--pp-btn-primary-bg);
+  border-color: var(--pp-btn-primary-bg);
+  box-shadow: var(--pp-shadow-1);
+}
+.pp-root .pp-btn-primary:hover:not(:disabled) {
+  color: var(--pp-on-accent);
+  background: var(--pp-btn-primary-bg-hover);
+  border-color: var(--pp-btn-primary-bg-hover);
+}
+.pp-root .pp-btn-primary:active:not(:disabled) { background: var(--pp-btn-primary-bg-hover); }
+.pp-root .pp-btn-sm { height: 24px; padding: 0 var(--pp-sp-2); font-size: var(--pp-fs-sm); }
+.pp-root .pp-btn:disabled { opacity: .5; cursor: default; }
+.pp-root .pp-btn-eye { padding: 0 var(--pp-sp-2); display: inline-flex; align-items: center; justify-content: center; }
+.pp-root .pp-btn-eye svg { width: 14px; height: 14px; display: block; }
+.pp-root .pp-link {
+  color: var(--pp-accent);
+  cursor: pointer;
+  font-size: var(--pp-fs-md);
+  text-decoration: none;
+}
+.pp-root .pp-link:hover { text-decoration: underline; }
+/* 链接外观的真按钮（0.72.2 契约类，P0-③）：span.pp-link 假按钮的替代，白得 Enter/Space 键盘触发 */
+.pp-root .pp-link-btn {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: var(--pp-fs-md);
+  color: var(--pp-accent);
+  cursor: pointer;
+}
+.pp-root .pp-link-btn:hover { text-decoration: underline; }
+.pp-root .pp-link-btn:focus-visible { outline: 2px solid var(--pp-accent); outline-offset: 2px; border-radius: 2px; }
+.pp-root .pp-link-danger { color: var(--pp-danger-fg); }
+.pp-root .pp-msg {
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  line-height: 1.5;
+  min-height: 16px;
+  transition: color var(--pp-dur-fast) ease;
+}
+
+/* 徽标 / 头像 */
+.pp-root .pp-pill {
+  font-size: var(--pp-fs-xs);
+  padding: 1px var(--pp-sp-2);
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.pp-root .pp-pill-ok { background: var(--pp-ok-bg); color: var(--pp-success); border-color: var(--pp-ok-bg); }
+.pp-root .pp-pill-warn { background: var(--pp-warn-bg); color: var(--pp-warn); border-color: var(--pp-warn-bg); }
+.pp-root .pp-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pp-on-accent);
+  background: linear-gradient(135deg, var(--pp-btn-primary-bg), var(--pp-btn-primary-bg-hover));
+  font-size: var(--pp-fs-xl);
+  font-weight: 700;
+  box-shadow: var(--pp-shadow-1);
+}
+.pp-root .pp-account-name { font-size: var(--pp-fs-lg); color: var(--pp-text-strong); }
+.pp-root .pp-account-email {
+  font-size: var(--pp-fs-sm);
+  /* 0.72.3：这是真按钮（点击切换邮箱明文），文字必须带链接色——
+     muted 灰与旁边不可点的 meta 文字同色，会让它看起来不是控件。
+     虚线下划线只作附加提示，不承担可点识别（因此允许低于 3:1）。 */
+  color: var(--pp-accent);
+  cursor: pointer;
+  border-bottom: 1px dashed var(--pp-border-strong);
+}
+.pp-root .pp-account-email:hover { color: var(--pp-accent-fg); }
+.pp-root .pp-account-meta { font-size: var(--pp-fs-sm); color: var(--pp-muted); margin-top: var(--pp-sp-2); line-height: 1.75; }
+
+/* ========================================================================
+   6. 会员 / 额度 / 订单（账号卡）
+   ======================================================================== */
+.pp-root .pp-mb {
+  margin-top: var(--pp-sp-2h);
+  padding: var(--pp-sp-3);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-lg);
+  background: var(--pp-surface-2);
+}
+.pp-root .pp-mb-head { display: flex; align-items: center; gap: var(--pp-sp-2); flex-wrap: wrap; }
+.pp-root .pp-mb-badge {
+  font-size: var(--pp-fs-xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+  padding: 2px var(--pp-sp-2);
+  border-radius: 999px;
+  color: var(--pp-accent);
+  background: var(--pp-accent-weak);
+  border: 1px solid var(--pp-accent-line);
+}
+.pp-root .pp-mb-badge-pro {
+  color: var(--pp-on-accent);
+  background: linear-gradient(135deg, var(--pp-btn-primary-bg), var(--pp-btn-primary-bg-hover));
+  border-color: var(--pp-btn-primary-bg);
+}
+.pp-root .pp-mb-title { font-size: var(--pp-fs-lg); font-weight: 600; color: var(--pp-text-strong); }
+.pp-root .pp-mb-expiry { font-size: var(--pp-fs-sm); color: var(--pp-muted); }
+.pp-root .pp-mb-expiry-warn { color: var(--pp-warn); font-weight: 600; }
+.pp-root .pp-mb-expiry-expired { color: var(--pp-danger-fg); font-weight: 600; }
+.pp-root .pp-mb-features { margin-top: var(--pp-sp-2); display: flex; flex-direction: column; gap: 3px; }
+.pp-root .pp-mb-feat {
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  line-height: 1.55;
+  padding-left: var(--pp-sp-3);
+  position: relative;
+}
+.pp-root .pp-mb-feat::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: .62em;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--pp-accent);
+  opacity: .55;
+}
+/* 免费版 vs 专业版对照表 */
+.pp-root .pp-mb-compare {
+  margin-top: var(--pp-sp-2);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-md);
+  overflow: hidden;
+  background: var(--pp-surface);
+}
+.pp-root .pp-mb-compare-head {
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  font-size: var(--pp-fs-sm);
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--pp-muted);
+  background: var(--pp-surface-2);
+  border-bottom: 1px solid var(--pp-border);
+}
+.pp-root .pp-mb-compare table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--pp-fs-sm);
+}
+.pp-root .pp-mb-compare th,
+.pp-root .pp-mb-compare td {
+  padding: var(--pp-sp-1h) var(--pp-sp-2);
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.5;
+  border-bottom: 1px solid var(--pp-border);
+  color: var(--pp-text);
+}
+.pp-root .pp-mb-compare thead th {
+  font-size: var(--pp-fs-xs);
+  font-weight: 600;
+  color: var(--pp-muted);
+  background: var(--pp-surface-2);
+}
+.pp-root .pp-mb-compare th:nth-child(1),
+.pp-root .pp-mb-compare td:nth-child(1) { width: 34%; }
+.pp-root .pp-mb-compare th:nth-child(2),
+.pp-root .pp-mb-compare td:nth-child(2) { width: 32%; }
+.pp-root .pp-mb-compare th:nth-child(3),
+.pp-root .pp-mb-compare td:nth-child(3) { width: 34%; }
+.pp-root .pp-mb-compare th.pp-cmp-pro,
+.pp-root .pp-mb-compare td.pp-cmp-pro { background: var(--pp-accent-soft); }
+.pp-root .pp-mb-compare thead th.pp-cmp-pro { color: var(--pp-accent-fg); }
+.pp-root .pp-mb-compare tbody tr:last-child td { border-bottom: 0; }
+.pp-root .pp-mb-compare tbody tr:hover td { background: var(--pp-surface-2); }
+.pp-root .pp-mb-compare tbody tr:hover td.pp-cmp-pro { background: var(--pp-accent-soft); }
+.pp-root .pp-mb-compare .pp-cmp-k { color: var(--pp-text); font-weight: 500; }
+.pp-root .pp-mb-compare .pp-cmp-sub {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--pp-fs-xs);
+  font-weight: 400;
+  color: var(--pp-muted);
+}
+.pp-root .pp-mb-compare .pp-cmp-yes { color: var(--pp-success); font-weight: 700; }
+.pp-root .pp-mb-compare .pp-cmp-no { color: var(--pp-faint); }
+.pp-root .pp-mb-compare-note {
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  font-size: var(--pp-fs-xs);
+  line-height: 1.6;
+  color: var(--pp-muted);
+  background: var(--pp-surface-2);
+  border-top: 1px solid var(--pp-border);
+}
+.pp-root .pp-mb-order {
+  margin-top: var(--pp-sp-2h);
+  padding-top: var(--pp-sp-2h);
+  border-top: 1px dashed var(--pp-border);
+}
+.pp-root .pp-mb-order-head { display: flex; align-items: baseline; gap: var(--pp-sp-2); flex-wrap: wrap; }
+.pp-root .pp-mb-price-note { font-size: var(--pp-fs-sm); color: var(--pp-muted); }
+.pp-root .pp-mb-opt {
+  cursor: pointer;
+  font-size: var(--pp-fs-sm);
+  padding: var(--pp-sp-1) var(--pp-sp-2h);
+  border-radius: var(--pp-radius-sm);
+  color: var(--pp-text);
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border-control);
+  transition: border-color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease;
+}
+.pp-root .pp-mb-opt:hover { border-color: var(--pp-accent); color: var(--pp-accent); }
+.pp-root .pp-mb-opt-on {
+  color: var(--pp-accent-fg);
+  background: var(--pp-accent-weak);
+  border-color: var(--pp-accent);
+  font-weight: 600;
+}
+.pp-root .pp-mb-opt-soon {
+  opacity: .7;
+  cursor: default;
+  font-size: var(--pp-fs-sm);
+  padding: var(--pp-sp-1) var(--pp-sp-2h);
+  border-radius: var(--pp-radius-sm);
+  color: var(--pp-muted);
+  background: var(--pp-surface-2);
+  border: 1px dashed var(--pp-border);
+}
+.pp-root .pp-mb-pay { margin-top: var(--pp-sp-2h); }
+.pp-root .pp-mb-pay-info {
+  font-size: var(--pp-fs-sm);
+  line-height: 1.7;
+  color: var(--pp-text);
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-md);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.pp-root .pp-mb-qr {
+  max-width: 180px;
+  margin-top: var(--pp-sp-2);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-md);
+  background: var(--pp-on-accent);  /* QR 码底必须恒白保证可扫，on-accent 双主题同为 #fff */
+  padding: var(--pp-sp-1);
+}
+.pp-root .pp-mb-warn { font-size: var(--pp-fs-sm); color: var(--pp-warn); margin-top: var(--pp-sp-2); line-height: 1.6; }
+.pp-root .pp-mb-quote {
+  margin-top: var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  border-radius: var(--pp-radius-md);
+  font-size: var(--pp-fs-sm);
+  line-height: 1.6;
+  color: var(--pp-text);
+  background: var(--pp-accent-soft);
+  border: 1px solid var(--pp-accent-line);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+/* 到期提醒 */
+/* 真按钮化（0.72.2 契约类，P0-③）：整张横幅是 <button>，先清零 UA 按钮样式；
+   视觉规则仍由下方 .pp-mb-renew 提供（该规则选择器已并入 button.pp-mb-renew 以盖过本重置） */
+.pp-root button.pp-mb-renew {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.pp-root .pp-mb-renew,
+.pp-root button.pp-mb-renew {
+  margin-top: var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  border-radius: var(--pp-radius-md);
+  cursor: pointer;
+  font-size: var(--pp-fs-sm);
+  line-height: 1.55;
+  color: var(--pp-warn);
+  background: var(--pp-warn-bg);
+  border: 1px solid var(--pp-warn);
+}
+.pp-root .pp-mb-renew:hover { border-color: var(--pp-accent); }
+.pp-root .pp-mb-renew-expired {
+  color: var(--pp-danger-fg);
+  background: var(--pp-danger-bg);
+  border-color: var(--pp-danger);
+  font-weight: 600;
+}
+/* 用量趋势 */
+.pp-root .pp-mb-usage {
+  margin-top: var(--pp-sp-2);
+  padding-top: var(--pp-sp-2);
+  border-top: 1px dashed var(--pp-border);
+}
+.pp-root .pp-mb-usage-head { font-size: var(--pp-fs-sm); color: var(--pp-muted); }
+.pp-root .pp-mb-bars {
+  margin-top: var(--pp-sp-1h);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--pp-sp-1h);
+  height: 44px;
+}
+.pp-root .pp-mb-bar-col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; }
+.pp-root .pp-mb-bar {
+  width: 16px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, var(--pp-accent), var(--pp-accent-emphasis));
+}
+.pp-root .pp-mb-bar-zero { background: var(--pp-border); }
+.pp-root .pp-mb-bar-day { font-size: var(--pp-fs-xs); color: var(--pp-muted); margin-top: 3px; }
+/* AI 额度 */
+.pp-root .pp-bal { margin-top: var(--pp-sp-2); padding-top: var(--pp-sp-2); border-top: 1px dashed var(--pp-border); }
+.pp-root .pp-bal-head { display: flex; align-items: baseline; gap: var(--pp-sp-2); }
+.pp-root .pp-bal-total {
+  font-size: var(--pp-fs-xl);
+  font-weight: 700;
+  color: var(--pp-accent);
+  font-variant-numeric: tabular-nums;
+}
+.pp-root .pp-bal-detail { margin-top: 3px; font-size: var(--pp-fs-sm); color: var(--pp-muted); line-height: 1.6; }
+.pp-root .pp-bal .pp-hint { display: block; margin-top: var(--pp-sp-1); }
+.pp-root .pp-bal-recharge { margin-top: var(--pp-sp-2h); padding-top: var(--pp-sp-2h); border-top: 1px dashed var(--pp-border); }
+/* 登录设备 */
+.pp-root .pp-dev-block {
+  margin-top: var(--pp-sp-2h);
+  padding: var(--pp-sp-2h) var(--pp-sp-3);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-lg);
+  background: var(--pp-surface-2);
+}
+.pp-root .pp-dev-head { display: flex; align-items: center; gap: var(--pp-sp-2); flex-wrap: wrap; }
+.pp-root .pp-dev-head .pp-row-tight { flex: 1 1 auto; }
+.pp-root .pp-dev-list { margin-top: var(--pp-sp-2); display: flex; flex-direction: column; gap: var(--pp-sp-1h); }
+.pp-root .pp-dev-row {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-2h);
+  padding: var(--pp-sp-2);
+  border-radius: var(--pp-radius-md);
+  border: 1px solid var(--pp-border);
+  background: var(--pp-surface);
+  transition: border-color var(--pp-dur-fast) ease;
+}
+.pp-root .pp-dev-row:hover { border-color: var(--pp-border-strong); }
+.pp-root .pp-dev-row-cur { border-color: var(--pp-accent); background: var(--pp-accent-soft); }
+.pp-root .pp-dev-info { flex: 1 1 auto; min-width: 0; }
+.pp-root .pp-dev-name { font-size: var(--pp-fs-md); font-weight: 600; color: var(--pp-text-strong); }
+.pp-root .pp-dev-meta { font-size: var(--pp-fs-xs); color: var(--pp-muted); line-height: 1.5; }
+.pp-root .pp-dev-act { display: flex; gap: var(--pp-sp-2h); flex: 0 0 auto; }
+/* 套餐 AI 能力说明 */
+.pp-root .pp-ai-tier {
+  margin-top: var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  border-radius: var(--pp-radius-md);
+  font-size: var(--pp-fs-sm);
+  line-height: 1.65;
+  color: var(--pp-text);
+  background: var(--pp-surface-2);
+  border: 1px solid var(--pp-border);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.pp-root .pp-ai-tier-trial {
+  color: var(--pp-warn);
+  background: var(--pp-warn-bg);
+  border-color: var(--pp-warn);
+}
+
+/* ========================================================================
+   7. 模型通道 / 翻译引擎列表
+   ======================================================================== */
+.pp-root .pp-ch-status { font-size: var(--pp-fs-md); color: var(--pp-muted); min-height: 16px; line-height: 1.6; }
+.pp-root .pp-ch-list { margin-top: var(--pp-sp-2); }
+.pp-root .pp-ch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-2h);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-md);
+  background: var(--pp-surface-2);
+  transition: border-color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
+}
+.pp-root .pp-ch-row:hover { border-color: var(--pp-accent-line); background: var(--pp-surface); }
+.pp-root .pp-ch-head { display: flex; align-items: center; gap: var(--pp-sp-1h); }
+.pp-root .pp-ch-name { font-weight: 600; font-size: var(--pp-fs-lg); color: var(--pp-text-strong); }
+.pp-root .pp-ch-sub {
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-muted);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pp-root .pp-ch-modelcap { font-size: var(--pp-fs-xs); color: var(--pp-muted); text-align: center; margin-top: 1px; }
+.pp-root .pp-form { border-top: 1px dashed var(--pp-border); margin-top: var(--pp-sp-3); padding-top: var(--pp-sp-3); }
+.pp-root .pp-chip {
+  font-size: var(--pp-fs-sm);
+  padding: 2px var(--pp-sp-2);
+  border-radius: 999px;
+  color: var(--pp-text);
+  background: var(--pp-surface-2);
+  border: 1px solid var(--pp-border-control);
+  transition: border-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
+}
+.pp-root .pp-chip:hover { border-color: var(--pp-accent); color: var(--pp-accent); }
+.pp-root .pp-chip-on {
+  color: var(--pp-accent-fg);
+  background: var(--pp-accent-weak);
+  border-color: var(--pp-accent);
+  font-weight: 600;
+}
+.pp-root .pp-chip-x { cursor: pointer; color: var(--pp-danger-fg); font-weight: 700; margin-left: var(--pp-sp-1); }
+
+/* ========================================================================
+   8. 分区数据（数据集 chips / 徽章预览）
+   ======================================================================== */
+.pp-root .pp-datasets { display: flex; flex-wrap: wrap; gap: var(--pp-sp-1h); margin-top: var(--pp-sp-1); }
+/* 期刊订阅候选列表（0.69.0）：整行一条，限高滚动——50 行不能把整张卡撑成一屏半。
+   不用 .pp-datasets 的 flex-wrap（那是给卡片网格用的，行会被并排压缩）。 */
+.pp-root .pp-journal-list {
+  display: block;
+  margin-top: var(--pp-sp-2);
+  max-height: 360px;
+  overflow-y: auto;
+  border-top: 1px solid var(--pp-border);
+}
+.pp-root .pp-ds-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pp-sp-1);
+  font-size: var(--pp-fs-sm);
+  padding: 2px var(--pp-sp-2h);
+  border-radius: 999px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--pp-text);
+  background: var(--pp-surface-2);
+  border: 1px solid var(--pp-border-control);
+  transition: border-color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease;
+}
+.pp-root .pp-ds-chip:hover { border-color: var(--pp-accent); color: var(--pp-accent); }
+.pp-root .pp-ds-on {
+  color: var(--pp-accent-fg);
+  background: var(--pp-accent-weak);
+  border-color: var(--pp-accent);
+  font-weight: 600;
+}
+.pp-root .pp-rank-preview {
+  margin-top: var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  min-height: 24px;
+  border: 1px dashed var(--pp-border);
+  border-radius: var(--pp-radius-md);
+  background: var(--pp-surface-2);
+  font-size: var(--pp-fs-xs);
+  line-height: 20px;
+}
+.pp-root .pp-rank-preview .pp-badge-demo {
+  display: inline-block;
+  color: var(--pp-on-accent);
+  border-radius: 4px;
+  padding: 0 var(--pp-sp-1);
+  font-size: var(--pp-fs-xs);
+  line-height: 16px;
+  margin-inline-end: var(--pp-sp-1);
+  white-space: nowrap;
+}
+
+/* ========================================================================
+   9. 界面主题 / 壁纸 / PDF 阅读主题
+   ======================================================================== */
+.pp-root .pp-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: var(--pp-sp-2);
+  margin-top: var(--pp-sp-2h);
+}
+.pp-root .pp-theme-card {
+  padding: var(--pp-sp-2);
+  border: 1px solid var(--pp-border-control);
+  border-radius: var(--pp-radius-md);
+  background: var(--pp-surface-2);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color var(--pp-dur-fast) ease, box-shadow var(--pp-dur-fast) ease, transform var(--pp-dur-fast) ease;
+}
+.pp-root .pp-theme-card:hover {
+  border-color: var(--pp-accent);
+  transform: translateY(-1px);
+  box-shadow: var(--pp-shadow-2);
+}
+.pp-root .pp-theme-on {
+  border-color: var(--pp-accent);
+  background: var(--pp-accent-weak);
+  box-shadow: 0 0 0 2px var(--pp-focus-ring);
+}
+.pp-root .pp-theme-swatches {
+  display: flex;
+  height: 26px;
+  border-radius: var(--pp-radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--pp-border);
+}
+.pp-root .pp-wp-preview { height: 52px; }
+.pp-root #pp-photo-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.pp-root #pp-photo-grid .pp-wp-preview { height: 68px; }
+.pp-root .pp-theme-cat {
+  margin: var(--pp-sp-4) 0 var(--pp-sp-1h);
+  padding-left: var(--pp-sp-2);
+  border-left: 3px solid var(--pp-accent);
+  font-size: var(--pp-fs-md);
+  font-weight: 600;
+  color: var(--pp-text-strong);
+}
+.pp-root .pp-theme-chip { flex: 1; }
+.pp-root .pp-theme-name {
+  margin-top: var(--pp-sp-1h);
+  font-size: var(--pp-fs-sm);
+  font-weight: 600;
+  color: var(--pp-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pp-root .pp-theme-tag { font-size: var(--pp-fs-xs); color: var(--pp-muted); margin-top: 2px; }
+.pp-root .pp-pdf-list { display: flex; flex-direction: column; gap: var(--pp-sp-1h); margin-top: var(--pp-sp-2h); }
+.pp-root .pp-pdf-item {
+  display: flex;
+  align-items: center;
+  gap: var(--pp-sp-2);
+  padding: var(--pp-sp-1h) var(--pp-sp-2h);
+  border: 1px solid var(--pp-border-control);
+  border-radius: var(--pp-radius-md);
+  background: var(--pp-surface-2);
+  font-size: var(--pp-fs-md);
+  color: var(--pp-text);
+  cursor: pointer;
+  transition: border-color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
+}
+.pp-root .pp-pdf-item:hover { border-color: var(--pp-accent); background: var(--pp-surface); }
+.pp-root .pp-pdf-on { border-color: var(--pp-accent); background: var(--pp-accent-weak); }
+.pp-root .pp-pdf-badge { font-size: var(--pp-fs-xs); color: var(--pp-muted); margin-left: auto; white-space: nowrap; }
+
+/* ========================================================================
+   10. 第三方文献源（试验）：分组入口芯片
+   ======================================================================== */
+.pp-root .pp-ts-list { display: flex; flex-direction: column; gap: 2px; margin-top: var(--pp-sp-2); }
+.pp-root .pp-ts-group {
+  font-size: var(--pp-fs-xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: var(--pp-muted);
+  margin: var(--pp-sp-2) 0 var(--pp-sp-1h) 2px;
+}
+.pp-root .pp-ts-list > .pp-ts-group:first-child { margin-top: 0; }
+.pp-root .pp-ts-chips { display: flex; flex-wrap: wrap; gap: var(--pp-sp-1h); }
+.pp-root .pp-ts-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pp-sp-1h);
+  max-width: 100%;
+  padding: 3px var(--pp-sp-2h);
+  border-radius: var(--pp-radius-md);
+  cursor: pointer;
+  font-size: var(--pp-fs-sm);
+  font-family: inherit;
+  line-height: 1.5;
+  color: var(--pp-text);
+  background: var(--pp-surface-2);
+  border: 1px solid var(--pp-border-control);
+  transition: border-color var(--pp-dur-fast) ease, color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
+}
+.pp-root .pp-ts-chip:hover:not(:disabled) {
+  border-color: var(--pp-accent);
+  color: var(--pp-accent);
+  background: var(--pp-surface);
+}
+.pp-root .pp-ts-chip:focus-visible {
+  outline: none;
+  border-color: var(--pp-accent);
+  box-shadow: 0 0 0 2px var(--pp-accent), 0 0 0 4px var(--pp-focus-ring);
+}
+.pp-root .pp-ts-dot { font-size: var(--pp-fs-xs); line-height: 1; flex: none; }
+.pp-root .pp-ts-chip-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ========================================================================
+   11. 脚本动态生成的行（检索订阅 / 定时任务 / AI 记忆 / 快捷键 / 翻译引擎）
+   —— 这些行此前只有 .pp-row 的裸 flex 版式，视觉上与表单混在一起；
+      改成「浅底小卡 + 悬停描边」，列表一眼可辨。
+   ======================================================================== */
+.pp-root .pp-subs-row,
+.pp-root .pp-sch-row,
+.pp-root .pp-mem-row {
+  margin-top: var(--pp-sp-1h);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-md);
+  background: var(--pp-surface-2);
+  transition: border-color var(--pp-dur-fast) ease, background var(--pp-dur-fast) ease;
+}
+.pp-root .pp-subs-row:hover,
+.pp-root .pp-sch-row:hover,
+.pp-root .pp-mem-row:hover { border-color: var(--pp-accent-line); background: var(--pp-surface); }
+.pp-root .pp-subs-row .pp-label,
+.pp-root .pp-sch-row .pp-label { font-weight: 600; color: var(--pp-text-strong); }
+.pp-root .pp-sch-time { width: 90px; text-align: center; font-variant-numeric: tabular-nums; }
+.pp-root .pp-subs-time,
+.pp-root .pp-subs-last,
+.pp-root .pp-sch-state { font-variant-numeric: tabular-nums; }
+.pp-root .pp-mem-kind {
+  flex: none;
+  font-size: var(--pp-fs-xs);
+  font-weight: 600;
+  padding: 1px var(--pp-sp-2);
+  border-radius: 999px;
+  color: var(--pp-accent-fg);
+  background: var(--pp-accent-weak);
+  border: 1px solid var(--pp-accent-line);
+}
+.pp-root .pp-mem-text { flex: 1 1 auto; min-width: 0; line-height: 1.55; color: var(--pp-text); }
+.pp-root .pp-mem-time { flex: none; font-size: var(--pp-fs-xs); color: var(--pp-faint); }
+/* 快捷键行：等宽显示组合键，行内分隔更清楚 */
+.pp-root .pp-hk-row {
+  margin-top: var(--pp-sp-1h);
+  padding: var(--pp-sp-1h) var(--pp-sp-2h);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-md);
+  background: var(--pp-surface-2);
+}
+.pp-root .pp-hk-row:hover { border-color: var(--pp-accent-line); background: var(--pp-surface); }
+.pp-root .pp-hk-combo {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: var(--pp-fs-sm);
+  color: var(--pp-text-strong);
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-sm);
+  padding: 1px var(--pp-sp-2);
+  text-align: center;
+  white-space: nowrap;
+}
+/* 翻译引擎列表行 */
+.pp-root .pp-tr-rowmsg { flex: 1 1 100%; }
+.pp-root .pp-tr-listhead { display: flex; align-items: center; gap: var(--pp-sp-2); flex-wrap: wrap; }
+.pp-root .pp-tr-toggle { margin-left: auto; }
+
+/* ========================================================================
+   12. 云同步（坚果云）
+   ======================================================================== */
+.pp-root .pp-cloud-track,
+.pp-root #pp-cloud-track {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--pp-surface-3);
+  overflow: hidden;
+}
+.pp-root #pp-cloud-bar { height: 100%; background: var(--pp-accent); transition: width .2s ease; }
+.pp-root #pp-cloud-log {
+  max-height: 150px;
+  overflow: auto;
+  white-space: pre-wrap;
+  padding: var(--pp-sp-2);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-md);
+  background: var(--pp-surface-2);
+  font-size: var(--pp-fs-xs);
+  line-height: 1.6;
+}
+
+/* ========================================================================
+   13. 付款订单弹窗
+   ======================================================================== */
+.pp-root .pp-order-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: var(--pp-overlay);
+}
+.pp-root .pp-order-dlg {
+  width: 424px;
+  max-width: 92vw;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: var(--pp-sp-4) var(--pp-sp-4) var(--pp-sp-3);
+  font-size: var(--pp-fs-md);
+  color: var(--pp-text);
+  background: var(--pp-surface);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-lg);
+  box-shadow: var(--pp-shadow-3);
+}
+.pp-root .pp-dlg-head { display: flex; align-items: center; gap: var(--pp-sp-2); }
+.pp-root .pp-dlg-title { font-size: var(--pp-fs-lg); font-weight: 700; color: var(--pp-text-strong); }
+.pp-root .pp-dlg-badge {
+  font-size: var(--pp-fs-xs);
+  line-height: 1.6;
+  padding: 1px var(--pp-sp-2);
+  border-radius: 999px;
+  color: var(--pp-muted);
+  background: var(--pp-surface-2);
+  border: 1px solid var(--pp-border);
+}
+.pp-root .pp-dlg-badge-warn { color: var(--pp-warn); background: var(--pp-warn-bg); border-color: var(--pp-warn); }
+.pp-root .pp-dlg-badge-info { color: var(--pp-accent); background: var(--pp-accent-weak); border-color: var(--pp-accent); }
+.pp-root .pp-dlg-badge-ok { color: var(--pp-success); background: var(--pp-ok-bg); border-color: var(--pp-success); }
+.pp-root .pp-dlg-badge-muted { color: var(--pp-muted); background: var(--pp-surface-2); border-color: var(--pp-border); }
+.pp-root .pp-dlg-close {
+  margin-left: auto;
+  padding: 2px var(--pp-sp-1);
+  border-radius: var(--pp-radius-sm);
+  color: var(--pp-muted);
+  font-size: var(--pp-fs-xl);
+  line-height: 1;
+  cursor: pointer;
+}
+.pp-root .pp-dlg-close:hover { color: var(--pp-text); background: var(--pp-btn-hover); }
+.pp-root .pp-dlg-close:focus-visible { outline: 2px solid var(--pp-accent); outline-offset: 2px; }
+.pp-root .pp-dlg-body { margin-top: var(--pp-sp-2); }
+.pp-root .pp-dlg-content { font-size: var(--pp-fs-md); color: var(--pp-muted); }
+.pp-root .pp-dlg-amount {
+  margin-top: var(--pp-sp-1);
+  font-size: var(--pp-fs-2xl);
+  font-weight: 700;
+  letter-spacing: .01em;
+  color: var(--pp-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+.pp-root .pp-dlg-tail {
+  margin-top: var(--pp-sp-1h);
+  padding: var(--pp-sp-1h) var(--pp-sp-2);
+  border-radius: var(--pp-radius-md);
+  font-size: var(--pp-fs-sm);
+  line-height: 1.55;
+  color: var(--pp-warn);
+  background: var(--pp-warn-bg);
+  border: 1px solid var(--pp-warn);
+}
+.pp-root .pp-dlg-rows { margin-top: var(--pp-sp-2); padding-top: var(--pp-sp-1h); border-top: 1px dashed var(--pp-border); }
+.pp-root .pp-dlg-row { display: flex; gap: var(--pp-sp-2h); padding: 2px 0; align-items: baseline; }
+.pp-root .pp-dlg-k { flex: none; width: 64px; font-size: var(--pp-fs-sm); color: var(--pp-muted); }
+.pp-root .pp-dlg-v { flex: 1; font-size: var(--pp-fs-md); word-break: break-all; }
+.pp-root .pp-dlg-qr {
+  display: block;
+  margin: var(--pp-sp-2h) auto var(--pp-sp-1);
+  width: 148px;
+  height: 148px;
+  object-fit: contain;
+  background: var(--pp-on-accent);  /* QR 码底恒白，同上 */
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-md);
+  padding: var(--pp-sp-1);
+}
+.pp-root .pp-dlg-note { margin-top: var(--pp-sp-1h); font-size: var(--pp-fs-sm); color: var(--pp-muted); line-height: 1.55; }
+.pp-root .pp-dlg-legal { margin-top: var(--pp-sp-2); font-size: var(--pp-fs-xs); color: var(--pp-faint); line-height: 1.55; }
+.pp-root .pp-dlg-msg { margin-top: var(--pp-sp-1); min-height: 16px; }
+.pp-root .pp-dlg-actions { display: flex; flex-wrap: wrap; gap: var(--pp-sp-1h); margin-top: var(--pp-sp-2); }
+.pp-root .pp-order-view { font-size: var(--pp-fs-sm); }
+
+/* ========================================================================
+   14. 响应式：760px 收窄栅格，560px 全部单列
+   ======================================================================== */
+@media (max-width: 760px) {
+  .pp-root .pp-grid3 { grid-template-columns: 1fr 1fr; }
+  .pp-root .pp-theme-grid { grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); }
+}
+@media (max-width: 560px) {
+  .pp-root .pp-toolbar { position: static; }
+  .pp-root .pp-grid2,
+  .pp-root .pp-grid3 { grid-template-columns: 1fr; }
+  .pp-root .pp-toolbar-actions { width: 100%; }
+  .pp-root .pp-count { order: 2; }
+  .pp-root .pp-fold-head .pp-card-desc { display: none; }
+  .pp-root .pp-mb-compare table { font-size: var(--pp-fs-xs); }
+  .pp-root .pp-mb-compare th:nth-child(1),
+  .pp-root .pp-mb-compare td:nth-child(1) { width: 40%; }
+  .pp-root .pp-order-dlg { width: 100%; }
+}
+
+/* 尊重系统的减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  .pp-root .pp-card,
+  .pp-root .pp-fold-head,
+  .pp-root .pp-fold-arrow,
+  .pp-root .pp-btn,
+  .pp-root .pp-theme-card,
+  .pp-root .pp-card-body { transition: none; animation: none; }
+}
+
+/* ========================================================================
+   15. 账号与密钥入口（0.66.0）：账号卡底部的一条窄横幅
+   只做「入口」，真正的凭据列表在独立窗口 vault.xhtml 里
+   （设置面板中不渲染任何密钥值，避免截图/录屏泄露）
+   ======================================================================== */
+.pp-root .pp-vault-entry {
+  display: flex; align-items: center; gap: var(--pp-sp-3); flex-wrap: wrap;
+  margin-top: var(--pp-sp-3); padding: var(--pp-sp-2h) var(--pp-sp-3);
+  border: 1px solid var(--pp-border); border-radius: var(--pp-radius-md);
+  background: var(--pp-surface-2);
+}
+.pp-root .pp-vault-entry-main { flex: 1; min-width: 180px; }
+.pp-root .pp-vault-entry-title { font-size: var(--pp-fs-md); color: var(--pp-text); }
+.pp-root .pp-vault-entry .pp-hint { margin-top: 2px; line-height: 1.55; }
+
+/* ===== prefs.css 结束 ===== */
+</style>
+</head>
+<body>
+<div class="pv-note">
+  <b>静态设计预览（示例数据）</b> — 结构与样式直接取自插件真实的 <code>prefs.xhtml</code> /
+  <code>prefs.css</code>；账号、订单、订阅等动态区域用示例数据填充，<b>不是真实账号信息</b>。
+  可点卡片标题折叠、用顶部搜索框过滤。此页仅用于视觉评审，不进入插件包。
+</div>
+
+
+<!-- Papilot 设置窗格（Zotero 设置内的 XUL fragment，非完整文档） -->
+<!-- ⚠️ 不能写 <?xml ?> 声明：Zotero 用 MozXULElement.parseXULToFragment 把本文件
+     内容嵌进模板解析，XML 声明只能出现在文档开头，嵌在中间会报 "not well-formed XML"
+     导致整个面板空白（Z10.0.3 实证）。注释节点无碍，可保留。 -->
+<!-- Zotero 7+ 绑定方式：控件直接写完整 pref key（preference="extensions.zotero.xxx.yyy"），
+     设置窗口自动经 Zotero.Prefs 双向同步；不要再放 <preferences><preference> 元素（Z10 已废弃，
+     仅剩兼容 shim 且会刷警告） -->
+<!-- 视觉语言（0.15.0 起）：GitHub Primer / VS Code 设置页的卡片式——每个功能模块一张卡片
+     （标题 + 说明 + 表单行），强相关模块在卡片内分 pp-sub 子分区，层次 = 分组 > 卡片 > 子分区 > 行。
+     样式在 prefs.css（经 register 的 stylesheets 参数随面板加载——官方推荐通道），
+     配色经 CSS 变量随系统明暗主题切换；全部选择器以 .pp- 前缀收在 .pp-root 作用域内。 -->
+<!-- 0.38.0 折叠式：卡片 = 可折叠分组（.pp-fold），展开状态记在 prefsFoldOpen pref。 -->
+<!-- 0.65.0 信息架构重组：设置项增至 19 组后，按「用户真正要做的事」重新分为 7 类，
+     每类带标题 + 计数，顶部提供「搜索 + 全部展开/收起 + 大类直达」工具条：
+       ① 账号与会员   ② AI 能力      ③ 阅读与翻译   ④ 文献获取
+       ⑤ 条目与标签   ⑥ 界面与效率   ⑦ 数据与同步
+     ★ 兼容性铁律：本次只调整**卡片顺序**与折叠头的图标/标题/说明，卡片内部 DOM、
+       元素 id、preference= 声明式绑定一律原样保留（十五个面板脚本全靠 getElementById
+       探测元素）；data-fold 键也全部未改（prefsFoldOpen 记忆、reader-popup 的
+       _prefsFocus="channels" 深链都依赖它）。折叠仍只由 prefs-fold.js 切
+       .pp-fold-closed 类实现，不挪动、不删除任何功能节点。 -->
+
+<div xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      xmlns:html="http://www.w3.org/1999/xhtml"
+      class="pp-root" style="padding:12px;overflow-y:auto;">
+
+  <!-- ============ 顶部工具条：搜索 + 批量展开 + 大类直达（0.65.0） ============ -->
+  <div class="pp-toolbar">
+    <div class="pp-search">
+      <span class="pp-search-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></span>
+      <input type="text" id="pp-prefs-search" class="pp-input pp-search-input"
+                  aria-label="搜索设置项" placeholder="搜索设置项：额度 / 翻译 / 快捷键 / 同步 …"/>
+      <button id="pp-prefs-search-clear" class="pp-search-clear" title="清空搜索" style="display:none;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+    </div>
+    <div class="pp-toolbar-actions">
+      <span id="pp-pref-count" class="pp-count">19 项 · 7 类</span>
+      <button id="pp-recommend" class="pp-btn pp-btn-sm" title="把「推荐项」一次改齐（先列出将要修改的项）">推荐配置</button>
+      <button id="pp-wizard-open" class="pp-btn pp-btn-sm" title="重新运行首次使用向导（登录 / 通道 / 翻译）">首次使用向导</button>
+      <button id="pp-fold-expand" class="pp-btn pp-btn-sm">全部展开</button>
+      <button id="pp-fold-collapse" class="pp-btn pp-btn-sm">全部收起</button>
+    </div>
+  </div>
+
+  <div id="pp-recommend-msg" class="pp-msg" aria-live="polite" style="margin:0 0 6px 2px;"></div>
+
+  <!-- 大类直达（由 prefs-hotkeys.js 按 .pp-cat-label 动态生成，点击滚动定位并展开首张卡） -->
+  <div id="pp-anchor-nav" class="pp-anchor-nav"></div>
+
+  <!-- 搜索 0 命中空态（0.68.4）：默认隐藏，由 prefs-fold.js 的 apply() 按命中数开关。
+       没有它时「搜了个不存在的词」表现为整屏空白，用户以为面板坏了。 -->
+  <div id="pp-prefs-empty" class="pp-empty" style="display:none;">没有匹配的设置项 —— 试试「额度」「翻译」「同步」「快捷键」</div>
+
+  <!-- ============ 分类 · 账号与会员（1 项） ============ -->
+  <div class="pp-cat-label"><span class="pp-cat-name">账号与会员</span><span class="pp-cat-count">1 项</span></div>
+  <div class="pp-card pp-fold" data-fold="account" data-search-strings-raw="账号 登录 注册 会员 余额 订单 激活码 设备 account login register membership balance order redeem 邮箱 密码 找回">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span><span class="pp-card-title">账号与会员</span>
+      <span class="pp-card-desc">登录或注册后使用官方 AI 模型（按额度扣费）；会员权益、AI 额度与登录设备都在这一张卡里</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <!-- 未登录：登录表单（0.15.0 起不再提供服务器地址入口，固定连接官方服务） -->
+      <div id="pp-login-view">
+        <div class="pp-hint" style="margin-top:10px;">登录账号即可使用官方模型（注册赠送 ¥6 额度，专业版每月发放 ¥20 额度）；没有账号点「注册账号」——直接在下面填表注册，不用跳浏览器。</div>
+        <div class="pp-grid2">
+          <label class="pp-field">
+            <span class="pp-label">邮箱</span>
+            <input type="text" id="pp-login-email" class="pp-input" placeholder="you@example.com"/>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">密码</span>
+            <input type="password" id="pp-login-password" class="pp-input"
+                        placeholder="登录密码（只用于登录请求，不会保存）"/>
+          </label>
+        </div>
+        <div class="pp-row">
+          <button id="pp-login-btn" class="pp-btn pp-btn-primary">登录</button>
+          <button type="button" id="pp-register-link" class="pp-link-btn">注册账号</button>
+          <button type="button" id="pp-forgot-link" class="pp-link-btn">忘记密码？</button>
+          <span id="pp-login-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+      <!-- 未登录 · 注册表单（0.20.0 内置注册：直接调服务端 /api/auth/register） -->
+      <div id="pp-register-view" style="display:none;">
+        <div class="pp-hint" style="margin-top:10px;">注册后需到邮箱点验证链接激活（24 小时内有效）；若站点未配置邮件服务，会自动直接激活。</div>
+        <div class="pp-grid2">
+          <label class="pp-field">
+            <span class="pp-label">邮箱</span>
+            <input type="text" id="pp-reg-email" class="pp-input" placeholder="you@example.com"/>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">昵称（可选）</span>
+            <input type="text" id="pp-reg-nickname" class="pp-input" placeholder="怎么称呼你"/>
+          </label>
+        </div>
+        <div class="pp-grid2" style="margin-top:10px;">
+          <label class="pp-field">
+            <span class="pp-label">密码（至少 8 位）</span>
+            <input type="password" id="pp-reg-password" class="pp-input" placeholder="至少 8 位"/>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">确认密码</span>
+            <input type="password" id="pp-reg-password2" class="pp-input" placeholder="再输一次"/>
+          </label>
+        </div>
+        <div class="pp-row">
+          <button id="pp-reg-btn" class="pp-btn pp-btn-primary">注册</button>
+          <button type="button" id="pp-reg-back" class="pp-link-btn">返回登录</button>
+          <span id="pp-reg-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+        <div id="pp-reg-verify-row" class="pp-row" style="display:none;">
+          <button id="pp-reg-resend" class="pp-btn pp-btn-sm">重发验证邮件</button>
+          <span id="pp-reg-resend-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+      <!-- 已登录：账号卡片 -->
+      <div id="pp-account-view" style="display:none;">
+        <div class="pp-row" style="margin-top:12px;">
+          <div id="pp-account-badge" class="pp-avatar">P</div>
+          <div class="pp-field">
+            <b id="pp-account-name" class="pp-account-name"></b>
+            <button type="button" id="pp-account-email" class="pp-link-btn pp-account-email"></button>
+          </div>
+        </div>
+        <div id="pp-account-meta" class="pp-account-meta"></div>
+
+        <!-- ===== 0.23.0 会员（等级 / 到期 / 购买 / 激活码） ===== -->
+        <div id="pp-mb-block" class="pp-mb">
+          <div class="pp-mb-head">
+            <span id="pp-mb-badge" class="pp-mb-badge">FREE</span>
+            <span id="pp-mb-title" class="pp-mb-title">免费版</span>
+            <span id="pp-mb-expiry" class="pp-mb-expiry"></span>
+          </div>
+          <!-- 到期/已过期提醒横幅（0.24.4：剩余 ≤7 天出现，点击直接打开续费面板） -->
+          <button type="button" id="pp-mb-renew" class="pp-mb-renew" style="display:none;"></button>
+          <div id="pp-mb-features" class="pp-mb-features"></div>
+          <!-- 消耗趋势（0.46.0：今日/近 7 天金额 + 近 7 天迷你柱状图；不再显示调用次数上限） -->
+          <div id="pp-mb-usage" class="pp-mb-usage" style="display:none;"></div>
+          <!-- ===== 0.26.0 AI 额度余额（注册赠送 / 订阅额度 / 充值） ===== -->
+          <div id="pp-bal-block" class="pp-bal" style="display:none;">
+            <div class="pp-bal-head">
+              <b>AI 额度</b>
+              <span id="pp-bal-total" class="pp-bal-total"></span>
+            </div>
+            <div id="pp-bal-detail" class="pp-bal-detail"></div>
+            <div id="pp-bal-note" class="pp-hint"></div>
+            <div class="pp-row pp-row-tight">
+              <button id="pp-bal-recharge-toggle" class="pp-btn pp-btn-primary pp-btn-sm">充值额度</button>
+              <button id="pp-bal-refresh" class="pp-btn pp-btn-sm">刷新</button>
+              <span id="pp-bal-msg" class="pp-msg" aria-live="polite"></span>
+            </div>
+            <!-- 充值面板：档位 → 生成订单 → 扫码 → 我已完成支付 → 轮询入账 -->
+            <div id="pp-bal-recharge" class="pp-bal-recharge" style="display:none;">
+              <div class="pp-mb-order-head">
+                <b>充值 AI 额度</b>
+                <span id="pp-bal-price-note" class="pp-mb-price-note"></span>
+              </div>
+              <div id="pp-bal-options" class="pp-row pp-row-tight"></div>
+              <div class="pp-row pp-row-tight">
+                <button id="pp-bal-create" class="pp-btn pp-btn-primary pp-btn-sm">生成充值订单</button>
+                <button id="pp-bal-close" class="pp-btn pp-btn-sm">收起</button>
+                <span id="pp-bal-order-msg" class="pp-msg" aria-live="polite"></span>
+              </div>
+              <div id="pp-bal-pay" class="pp-mb-pay" style="display:none;">
+                <div id="pp-bal-pay-info" class="pp-mb-pay-info"></div>
+                <img id="pp-bal-qr" class="pp-mb-qr" style="display:none;" alt="付款二维码，请用手机扫码支付"/>
+                <div class="pp-row pp-row-tight">
+                  <button id="pp-bal-claim" class="pp-btn pp-btn-primary pp-btn-sm">我已完成支付</button>
+                  <!-- 0.50.0 在线支付（服务端 1.7.0+ 开通时出现）：创建网关收银台 → 浏览器扫码 → 回调自动入账 -->
+                  <button id="pp-bal-online" class="pp-btn pp-btn-primary pp-btn-sm" style="display:none;">在线支付（扫码）</button>
+                  <button id="pp-bal-poll" class="pp-btn pp-btn-sm">刷新订单状态</button>
+                  <button id="pp-bal-cancel" class="pp-btn pp-btn-sm">取消订单</button>
+                  <!-- 0.49.0 付款单弹窗：自动弹出只在生成订单时发生一次，这里可随时重开 -->
+                  <button type="button" id="pp-bal-order-view" class="pp-link-btn pp-order-view">查看付款单</button>
+                </div>
+                <div id="pp-bal-pay-result" class="pp-msg" aria-live="polite"></div>
+              </div>
+            </div>
+          </div>
+          <div class="pp-row pp-row-tight">
+            <button id="pp-mb-upgrade" class="pp-btn pp-btn-primary pp-btn-sm">升级专业版</button>
+            <button id="pp-mb-refresh" class="pp-btn pp-btn-sm">刷新</button>
+            <button type="button" id="pp-mb-code-toggle" class="pp-link-btn">有激活码？</button>
+            <span id="pp-mb-result" class="pp-msg" aria-live="polite"></span>
+          </div>
+          <!-- 激活码兑换（线下购买 / 赠送 / 补偿） -->
+          <div id="pp-mb-code-row" class="pp-row" style="display:none;">
+            <input type="text" id="pp-mb-code-input" class="pp-input"
+                        style="min-width:210px;" placeholder="PP-XXXX-XXXX-XXXX" aria-label="会员激活码"/>
+            <button id="pp-mb-code-btn" class="pp-btn pp-btn-sm">激活</button>
+            <span class="pp-hint">大小写与连字符都不敏感</span>
+          </div>
+          <!-- 下单面板 -->
+          <div id="pp-mb-order" class="pp-mb-order" style="display:none;">
+            <div class="pp-mb-order-head">
+              <b>升级到专业版</b>
+              <span id="pp-mb-price-note" class="pp-mb-price-note"></span>
+            </div>
+            <div id="pp-mb-options" class="pp-row pp-row-tight"></div>
+            <!-- 0.24.6 优惠码：只打折，与「激活码」（直接发会员）分工不同 -->
+            <div class="pp-row pp-row-tight">
+              <input type="text" id="pp-mb-coupon" class="pp-input"
+                          style="min-width:210px;" placeholder="CP-XXXX-XXXX-XXXX（可选）" aria-label="会员优惠码"/>
+              <button id="pp-mb-coupon-btn" class="pp-btn pp-btn-sm">应用优惠码</button>
+              <span id="pp-mb-coupon-msg" class="pp-hint"></span>
+            </div>
+            <div id="pp-mb-quote" class="pp-mb-quote" style="display:none;"></div>
+            <div class="pp-row pp-row-tight">
+              <button id="pp-mb-create" class="pp-btn pp-btn-primary pp-btn-sm">生成订单</button>
+              <button id="pp-mb-close-order" class="pp-btn pp-btn-sm">收起</button>
+              <span id="pp-mb-order-msg" class="pp-msg" aria-live="polite"></span>
+            </div>
+            <div id="pp-mb-pay" class="pp-mb-pay" style="display:none;">
+              <div id="pp-mb-pay-info" class="pp-mb-pay-info"></div>
+              <img id="pp-mb-qr" class="pp-mb-qr" style="display:none;" alt="付款二维码，请用手机扫码支付"/>
+              <div class="pp-row pp-row-tight">
+                <button id="pp-mb-claim" class="pp-btn pp-btn-primary pp-btn-sm">我已完成支付</button>
+                <!-- 0.60.0 会员订单在线支付（服务端 1.8.7+ 开通时出现）：扫码后回调自动开通，无需人工核销 -->
+                <button id="pp-mb-online" class="pp-btn pp-btn-primary pp-btn-sm" style="display:none;">在线支付（扫码）</button>
+                <button id="pp-mb-poll" class="pp-btn pp-btn-sm">刷新订单状态</button>
+                <button id="pp-mb-cancel" class="pp-btn pp-btn-sm">取消订单</button>
+                <!-- 0.49.0 付款单弹窗：自动弹出只在生成订单时发生一次，这里可随时重开 -->
+                <button type="button" id="pp-mb-order-view" class="pp-link-btn pp-order-view">查看付款单</button>
+              </div>
+              <div id="pp-mb-pay-result" class="pp-msg" aria-live="polite"></div>
+            </div>
+          </div>
+          <!-- 0.60.2 免费版 vs 专业版对照表：把「会员与非会员到底差在哪」一次说清。
+             内容按**真实门控**写，不照抄营销文案：除了 AI 额度 / 模型范围 /
+             第三方文献源（试验）与支持方式，其余核心功能免费版同样可用。
+             0.68.4：默认收起（8 行表常驻会把「当前套餐 / 升级」挤出首屏），点标题展开。 -->
+        <button type="button" id="pp-mb-compare-toggle" class="pp-link-btn" aria-expanded="false">免费版 vs 专业版差异 ▾</button>
+        <div id="pp-mb-compare" class="pp-mb-compare" style="display:none;">
+          <div class="pp-mb-compare-head">免费版 vs 专业版</div>
+          <table>
+            <thead>
+              <tr>
+                <th class="pp-cmp-k">对比项</th>
+                <th>免费版</th>
+                <th class="pp-cmp-pro">专业版</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="pp-cmp-k">AI 额度</td>
+                <td>注册赠送 ¥6<br/><span class="pp-cmp-sub">30 天内有效</span></td>
+                <td class="pp-cmp-pro">每月 ¥20<br/><span class="pp-cmp-sub">当月有效，不结转</span></td>
+              </tr>
+              <tr>
+                <td class="pp-cmp-k">官方模型</td>
+                <td>auto + 基础模型<br/><span class="pp-cmp-sub">deepseek-v4-flash</span></td>
+                <td class="pp-cmp-pro">全部官方模型<br/><span class="pp-cmp-sub">含推理档 / 长上下文</span></td>
+              </tr>
+              <tr>
+                <td class="pp-cmp-k">第三方文献源<span class="pp-cmp-sub">（试验）</span></td>
+                <td><span class="pp-cmp-no">—</span></td>
+                <td class="pp-cmp-pro"><span class="pp-cmp-yes">✓</span> 可用</td>
+              </tr>
+              <tr>
+                <td class="pp-cmp-k">期刊分区 / 标签治理 / 附件体检</td>
+                <td><span class="pp-cmp-yes">✓</span></td>
+                <td class="pp-cmp-pro"><span class="pp-cmp-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td class="pp-cmp-k">库内问答 / PDF 对比翻译</td>
+                <td><span class="pp-cmp-yes">✓</span></td>
+                <td class="pp-cmp-pro"><span class="pp-cmp-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td class="pp-cmp-k">检索订阅 / 云同步</td>
+                <td><span class="pp-cmp-yes">✓</span></td>
+                <td class="pp-cmp-pro"><span class="pp-cmp-yes">✓</span></td>
+              </tr>
+              <tr>
+                <td class="pp-cmp-k">自带 API Key</td>
+                <td><span class="pp-cmp-yes">✓</span></td>
+                <td class="pp-cmp-pro"><span class="pp-cmp-yes">✓</span> 多通道切换</td>
+              </tr>
+              <tr>
+                <td class="pp-cmp-k">支持方式</td>
+                <td>社区</td>
+                <td class="pp-cmp-pro">邮件优先</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="pp-mb-compare-note">
+            免费版已包含全部核心功能；专业版的差异集中在 AI 额度、可用模型范围与试验性文献源。
+            额度用完后仍可继续使用自己的 API Key，不受额度限制。
+          </div>
+        </div>
+        <!-- 会话持久化异常提示（0.23.0：写盘失败不再静默） -->
+          <div id="pp-mb-persist-warn" class="pp-mb-warn" style="display:none;"></div>
+          <!-- 登录设备（0.24.7）：自查「我在几台机器上登录着」并能踢掉可疑设备 -->
+          <div id="pp-dev-block" class="pp-dev-block" style="display:none;">
+            <div class="pp-dev-head">
+              <b>登录设备</b>
+              <span id="pp-dev-stat" class="pp-hint"></span>
+              <span class="pp-row-tight"></span>
+              <button id="pp-dev-refresh" class="pp-btn pp-btn-sm">刷新</button>
+              <button id="pp-dev-kick-others" class="pp-btn pp-btn-sm">踢出其他设备</button>
+            </div>
+            <div id="pp-dev-list" class="pp-dev-list"></div>
+            <div id="pp-dev-msg" class="pp-msg" aria-live="polite"></div>
+          </div>
+        </div>
+        <div class="pp-row">
+          <label class="pp-label" for="pp-account-official-model">官方模型</label>
+          <select id="pp-account-official-model" class="pp-select" style="min-width:180px;"></select>
+          <button id="pp-account-refresh" class="pp-btn pp-btn-sm">刷新状态</button>
+          <button id="pp-logout-btn" class="pp-btn pp-btn-sm">退出登录</button>
+          <span id="pp-account-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+        <!-- 套餐 AI 能力说明（1.4.9）：试用剩余天数 / 需升级的模型 -->
+        <div id="pp-ai-tier-note" class="pp-ai-tier" style="display:none;"></div>
+        <!-- 0.66.0 个人中心 · 账号与密钥（Pro）：知网 / 坚果云 / 分区 / 自定义 AI Key 集中管理 -->
+        <div id="pp-vault-entry" class="pp-vault-entry">
+          <div class="pp-vault-entry-main">
+            <b class="pp-vault-entry-title">账号与密钥</b>
+            <div class="pp-hint">知网、坚果云、期刊分区与自定义 AI 模型的账号/密钥集中管理：默认脱敏、按需解锁、可加密托管到你自己的账号（换机一键取回）</div>
+          </div>
+          <button id="pp-vault-open" class="pp-btn pp-btn-primary pp-btn-sm">打开凭据中心</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 分类 · AI 能力（3 项） ============ -->
+  <div class="pp-cat-label"><span class="pp-cat-name">AI 能力</span><span class="pp-cat-count">3 项</span></div>
+  <div class="pp-card pp-fold" data-fold="channels" data-search-strings-raw="模型 通道 密钥 厂商 延迟 channel model api key provider">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3"></path><path d="M15 7V3"></path><path d="M6 7h12v4a6 6 0 0 1-12 0V7z"></path><path d="M12 17v4"></path></svg></span><span class="pp-card-title">AI 模型通道</span>
+      <span class="pp-card-desc">多套配置一键切换；「活动通道」供全部 AI 功能使用。官方通道登录即用，也可接入自己的 OpenAI 兼容接口</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div id="pp-ch-status" class="pp-ch-status" style="margin-top:10px;"></div>
+      <div class="pp-hint">每行的模型下拉框 = 该通道当前调用的模型（改动立即生效，无需保存）；「切换」= 设为活动通道（全部 AI 功能经此通道）。接口地址与密钥一律防窥屏隐藏（不可见明文）；连接是否可用看「连接测试」结果。</div>
+      <div id="pp-ch-list" class="pp-ch-list" style="gap:6px;"></div>
+      <div class="pp-row">
+        <button id="pp-ch-add" class="pp-btn">＋ 新增通道</button>
+      </div>
+      <!-- 通道编辑表单（新增/参数） -->
+      <div id="pp-ch-form" class="pp-form" style="display:none;">
+        <label class="pp-field">
+          <span class="pp-label">厂商预设（选择后自动填充接口地址与建议模型）</span>
+          <select id="pp-mf-provider" class="pp-select pp-grow"></select>
+        </label>
+        <div id="pp-mf-provider-note" class="pp-hint"></div>
+        <div class="pp-grid2">
+          <label class="pp-field">
+            <span class="pp-label">通道 id</span>
+            <input type="text" id="pp-mf-id" class="pp-input" placeholder="小写字母/数字/连字符，创建后不可改"/>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">名称</span>
+            <input type="text" id="pp-mf-name" class="pp-input" placeholder="如 DeepSeek 日常通道"/>
+          </label>
+        </div>
+        <label class="pp-field" style="margin-top:10px;">
+          <span class="pp-label">接口地址 baseUrl（OpenAI 兼容 /v1）</span>
+          <input type="text" id="pp-mf-baseUrl" class="pp-input" placeholder="https://api.deepseek.com/v1"/>
+        </label>
+        <div class="pp-field" style="margin-top:10px;">
+          <label class="pp-label" for="pp-mf-apiKey">API Key（编辑时留空 = 保持原密钥不变）</label>
+          <div class="pp-row" style="margin-top:0;">
+            <input type="password" id="pp-mf-apiKey" class="pp-input pp-grow" placeholder="sk-..."/>
+            <button id="pp-mf-detect" class="pp-btn pp-btn-sm"
+                         title="按密钥/接口地址自动识别厂商并拉取模型列表">检测</button>
+          </div>
+          <div id="pp-mf-detect-result" class="pp-hint" style="min-height:14px;"></div>
+        </div>
+        <div class="pp-field" style="margin-top:10px;">
+          <div class="pp-label">模型列表（上游拉取或手动添加；点击模型名 = 设为默认模型）</div>
+          <div id="pp-mf-models" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+        </div>
+        <div class="pp-row" style="margin-top:6px;">
+          <input type="text" id="pp-mf-model-add" class="pp-input pp-grow" placeholder="添加模型名（如 glm-4.5 / ep-xxx）" aria-label="要添加的模型名"/>
+          <button id="pp-mf-models-add" class="pp-btn pp-btn-sm">＋ 添加</button>
+          <button id="pp-mf-models-fetch" class="pp-btn pp-btn-sm"
+                       title="用当前接口地址与密钥拉取上游模型">拉取</button>
+        </div>
+        <div class="pp-grid2" style="margin-top:10px;">
+          <label class="pp-field">
+            <span class="pp-label">默认模型 model</span>
+            <input type="text" id="pp-mf-model" class="pp-input" placeholder="auto / deepseek-chat / glm-4.5 ..."/>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">探活超时（毫秒，正式对话不受此限）</span>
+            <input type="number" id="pp-mf-timeoutMs" class="pp-input" placeholder="12000"/>
+          </label>
+        </div>
+        <label class="pp-field" style="margin-top:10px;">
+          <span class="pp-label">附加请求参数 extraBody（JSON，如推理档/温度覆盖）</span>
+          <textarea id="pp-mf-extraBody" class="pp-textarea" rows="2" placeholder='{"reasoning_effort":"low"}'></textarea>
+        </label>
+        <div class="pp-row">
+          <button id="pp-mf-save" class="pp-btn pp-btn-primary pp-grow">保存通道</button>
+          <button id="pp-mf-cancel" class="pp-btn pp-grow">取消</button>
+        </div>
+        <div id="pp-mf-err" class="pp-msg" aria-live="polite" style="color:var(--pp-danger);min-height:14px;"></div>
+      </div>
+      <div id="pp-ch-test-result" class="pp-msg" aria-live="polite" style="margin-top:6px;min-height:14px;"></div>
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="aiparams" data-search-strings-raw="AI 参数 温度 提示词 上下文 智能体 工具 agent tools top_p 历史轮数 快捷指令 命令标签 slash temperature prompt context">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"></line><circle cx="9" cy="6" r="2.2"></circle><line x1="3" y1="12" x2="21" y2="12"></line><circle cx="15" cy="12" r="2.2"></circle><line x1="3" y1="18" x2="21" y2="18"></line><circle cx="7" cy="18" r="2.2"></circle></svg></span><span class="pp-card-title">AI 参数与智能体</span>
+      <span class="pp-card-desc">温度 / 上下文 / 智能体 / 提示词模板 / 快捷指令，统一作用于当前活动通道</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div class="pp-grid3">
+        <label class="pp-field">
+          <span class="pp-label">最大输出 tokens</span>
+          <input type="number" class="pp-input"/>
+        </label>
+        <label class="pp-field">
+          <span class="pp-label">温度（0-2，越低越稳定）</span>
+          <input type="number" class="pp-input"
+                      min="0" max="2" step="0.1"/>
+        </label>
+        <label class="pp-field">
+          <span class="pp-label">送入 AI 的全文最大字符数</span>
+          <input type="number" class="pp-input"/>
+        </label>
+      </div>
+      <div class="pp-hint" style="margin-top:4px;">超长全文在送入前截断，避免撑爆上下文窗口</div>
+
+      <!-- 3.1 对话与上下文（0.48.0：多轮上下文管理可配） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">对话与上下文</div>
+        <div class="pp-sub-desc">多轮对话时携带的历史窗口与采样参数</div>
+        <div class="pp-grid2">
+          <label class="pp-field">
+            <span class="pp-label">对话历史轮数（1-30，默认 6）</span>
+            <input type="number" class="pp-input"
+                        min="1" max="30" step="1"/>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">top_p 核采样（0-1，留空 = 不传）</span>
+            <input type="number" class="pp-input"
+                        min="0" max="1" step="0.05" placeholder="留空 = 不传该参数"/>
+          </label>
+        </div>
+        <div class="pp-hint">历史轮数越大，追问时的上下文越完整，token 消耗也越高；部分网关不支持 top_p 时留空即可。</div>
+      </div>
+
+      <!-- 3.2 智能体（0.48.0：交互设计参考开源项目 Hermes Agent） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">智能体（Agent 模式）</div>
+        <div class="pp-sub-desc">开启后 AI 问答浮窗升级为智能体：对复杂任务先规划步骤，再按需调用工具（检索文献库 / 读全文 / 加笔记 / 打标签），多轮工具结果自动汇入上下文</div>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-agent-mode"/>
+          <span>启用智能体模式（默认关；关闭时保持纯文献问答，行为与旧版一致）</span>
+        </label>
+        <div class="pp-grid2">
+          <label class="pp-field">
+            <span class="pp-label">单次问答工具调用轮数上限（1-12）</span>
+            <input type="number" class="pp-input"
+                        min="1" max="12" step="1"/>
+          </label>
+          <div class="pp-field">
+            <label class="pp-label" for="pp-agent-confirm">写操作保护</label>
+            <label class="pp-check">
+              <input type="checkbox" id="pp-agent-confirm"/>
+              <span>写操作（加笔记 / 打标签）执行前逐次弹确认</span>
+            </label>
+          </div>
+        </div>
+        <div class="pp-field" style="margin-top:6px;">
+          <div class="pp-label">工具开关（点击启用 / 禁用）</div>
+          <div id="pp-agent-tools" class="pp-datasets"></div>
+          <div class="pp-hint">读类工具无副作用；写类工具默认逐次确认（取消上面的勾选 = 自主模式）。浮窗里输入 / 可唤起命令面板（/agent 快速开关、/tools 查看清单）。</div>
+        </div>
+      </div>
+
+      <!-- 3.3 提示词模板（System Prompt 预设 + 自定义） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">提示词模板</div>
+        <div class="pp-sub-desc">System Prompt 对全部 AI 功能生效（问答 / 翻译 / 总结 / 打标签）；点预设一键填充，可再手动微调</div>
+        <div class="pp-row" style="margin-top:4px;">
+          <button id="pp-syspreset-strict" class="pp-btn pp-btn-sm">严谨学术（默认）</button>
+          <button id="pp-syspreset-critical" class="pp-btn pp-btn-sm">批判审稿人</button>
+          <button id="pp-syspreset-explain" class="pp-btn pp-btn-sm">轻松讲解</button>
+          <button id="pp-syspreset-reset" class="pp-btn pp-btn-sm">清空</button>
+          <span id="pp-syspreset-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+        <label class="pp-field" style="margin-top:8px;">
+          <span class="pp-label">System Prompt</span>
+          <textarea id="pp-sysprompt" class="pp-textarea" rows="4"></textarea>
+        </label>
+      </div>
+
+      <!-- 3.3b 研究者画像（0.49.0：注入所有 AI 功能的 system prompt，长期偏好） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">研究者画像</div>
+        <div class="pp-sub-desc">写下你的研究方向、关注问题、写作与术语偏好——每轮 AI 回答都会带上这段画像（对所有 AI 功能生效）；留空则不注入</div>
+        <div class="pp-field" style="margin-top:6px;">
+          <textarea aria-label="研究者画像" id="pp-profile" class="pp-textarea" rows="3"
+            placeholder="例：我研究图神经网络在药物发现中的应用，关注可解释性与分布外泛化；写作偏好简洁陈述、术语保留英文原词；审稿场景请严格按证据分级。"></textarea>
+        </div>
+      </div>
+
+      <!-- 3.3c Agent 决策模型路由（0.49.0：工具决策轮用轻量模型，最终回答走主通道） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">智能体决策模型</div>
+        <div class="pp-sub-desc">可选：填一个模型名（如 gpt-4o-mini / claude-haiku），智能体的工具决策轮用它、最终回答仍走主通道——降低官方通道成本。留空 = 全用主通道模型</div>
+        <div class="pp-field" style="margin-top:6px;">
+          <input type="text" id="pp-agent-decision-model" class="pp-input" placeholder="留空 = 不路由" aria-label="智能体决策模型名（留空则用主通道）"/>
+        </div>
+      </div>
+
+      <!-- 3.3d AI 记忆（0.51.0：Agent 长期记忆，可浏览/删除） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">AI 记忆</div>
+        <div class="pp-sub-desc">Agent 可在对话中自行记住研究方向、结论与偏好（memory_write），之后每次对话都会带上（与「研究者画像」互补：画像是静态设定，记忆是对话中积累的事实）；可随时删除单条或清空</div>
+        <div id="pp-mem-list" class="pp-datasets" style="margin-top:6px;"></div>
+        <div class="pp-row" style="margin-top:6px;">
+          <button id="pp-mem-clear" class="pp-btn pp-btn-sm">清空全部</button>
+          <span id="pp-mem-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <!-- 3.3e 回答引用与相关文献开关（0.51.0） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-row" style="flex-wrap:wrap;gap:16px;">
+          <label class="pp-check">
+            <input type="checkbox"/>
+            <span>AI 回答内「文献 n」可点击定位</span>
+          </label>
+          <label class="pp-check">
+            <input type="checkbox"/>
+            <span>条目详情面板显示「相关文献」（S2 推荐）</span>
+          </label>
+          <label class="pp-check">
+            <input type="checkbox"/>
+            <span>条目详情面板显示「引文上下文」（引用句倾向）</span>
+          </label>
+          <label class="pp-check">
+            <input type="checkbox"/>
+            <span>启用「标注→论点速记」菜单</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 3.4 快捷指令（命令标签管理） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">快捷指令（命令标签）</div>
+        <div class="pp-sub-desc">浮窗 / 分屏窗口输入框以 / 开头即可唤起命令面板：内置会话命令 + 下方标签直达。长按浮窗标签可编辑；此处可查看 / 删除 / 导入导出</div>
+        <div id="pp-agent-tags" class="pp-datasets" style="margin-top:6px;"></div>
+        <div class="pp-row" style="margin-top:6px;">
+          <button id="pp-tags-export" class="pp-btn pp-btn-sm">导出到剪贴板（JSON）</button>
+          <button id="pp-tags-import" class="pp-btn pp-btn-sm">从剪贴板导入</button>
+          <span id="pp-tags-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="skills" data-search-strings-raw="技能 商店 技能包 安装 导入 导出 制作 skill pack store hub">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3a1 1 0 0 0 1-1V5a2 2 0 0 1 4 0v1a1 1 0 0 0 1 1h3a1 1 0 0 1 1 1v3a1 1 0 0 0 1 1h1a2 2 0 0 1 0 4h-1a1 1 0 0 0-1 1v3a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-1a2 2 0 0 0-4 0v1a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a2 2 0 0 0 0-4H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"></path></svg></span><span class="pp-card-title">技能包商店</span>
+      <span class="pp-card-desc">提示词标签 / 术语 / 笔记模板 / Agent 预设，一键安装与分享</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div class="pp-row">
+        <button id="pp-sk-open" class="pp-btn pp-btn-primary">打开技能商店</button>
+        <span id="pp-sk-msg" class="pp-msg" aria-live="polite"></span>
+      </div>
+      <div class="pp-hint" style="margin-top:4px;">技能包把常用 AI 配置打包成一键安装的单元：提示词标签、领域术语、笔记模板与 Agent 预设；商店内可制作自己的技能包并导出分享。</div>
+
+      <!-- 3b.1 已安装 -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">已安装</div>
+        <div class="pp-sub-desc">当前已安装的技能包（悬停查看详情）</div>
+        <div id="pp-sk-installed" class="pp-datasets"></div>
+        <div class="pp-row" style="margin-top:4px;">
+          <button id="pp-sk-refresh" class="pp-btn pp-btn-sm">刷新</button>
+          <span class="pp-hint">在商店里更新 / 卸载后这里会自动同步；显示不对时点刷新。</span>
+        </div>
+        <div class="pp-hint">卸载 / 更新单个技能包请进商店操作；全部卸载不需要，去商店管理。</div>
+      </div>
+
+      <!-- 3b.2 导入技能包 -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">导入技能包</div>
+        <div class="pp-sub-desc">从剪贴板读取技能包 JSON 并安装（与商店导出格式一致，适合点对点分享）</div>
+        <div class="pp-row" style="margin-top:4px;">
+          <button id="pp-sk-import" class="pp-btn pp-btn-sm">从剪贴板导入 JSON</button>
+          <span id="pp-sk-import-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <!-- 3b.3 目录源（可选） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">目录源（可选）</div>
+        <label class="pp-field">
+          <span class="pp-label">在线目录 JSON 地址</span>
+          <input type="text" id="pp-sk-source" class="pp-input pp-grow" placeholder="https://…/skill-catalog.json（默认官方源；清空 = 仅用内置目录，离线可用）"/>
+        </label>
+        <div class="pp-hint">默认已配置官方目录（Gitee），点商店「刷新目录」即可拉取最新技能包；也可换第三方目录地址；清空则只用插件内置目录（离线可用）。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 分类 · 阅读与翻译（3 项） ============ -->
+  <div class="pp-cat-label"><span class="pp-cat-name">阅读与翻译</span><span class="pp-cat-count">3 项</span></div>
+  <div class="pp-card pp-fold" data-fold="translate" data-search-strings-raw="翻译 引擎 术语表 目标语言 translate engine glossary language 字体 字号 语言">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg></span><span class="pp-card-title">翻译引擎与术语表</span>
+      <span class="pp-card-desc">划词、全文对照、标题摘要共用一套引擎；可选 AI 大模型、免费引擎或自填密钥，术语表保证全文一致</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div id="pp-tr-status" class="pp-ch-status" style="margin-top:10px;"></div>
+      <div class="pp-grid3">
+        <label class="pp-field">
+          <span class="pp-label">当前翻译引擎</span>
+          <select id="pp-tr-active" class="pp-select"></select>
+        </label>
+        <label class="pp-field">
+          <span class="pp-label">源语言</span>
+          <select id="pp-tr-from" class="pp-select">
+            <option value="auto">自动检测</option>
+            <option value="zh-CN">中文（简体）</option>
+            <option value="zh-TW">中文（繁體）</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="es">Español</option>
+            <option value="ru">Русский</option>
+            <option value="pt">Português</option>
+            <option value="it">Italiano</option>
+            <option value="ar">العربية</option>
+          </select>
+        </label>
+        <label class="pp-field">
+          <span class="pp-label">目标语言</span>
+          <select id="pp-tr-to" class="pp-select">
+            <option value="zh-CN">中文（简体）</option>
+            <option value="zh-TW">中文（繁體）</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="es">Español</option>
+            <option value="ru">Русский</option>
+            <option value="pt">Português</option>
+            <option value="it">Italiano</option>
+            <option value="ar">العربية</option>
+          </select>
+        </label>
+      </div>
+      <div class="pp-hint">源语言一般选「自动检测」；目标语言对全部翻译功能统一生效（与「阅读器划词浮窗」卡片里的选择是同一项）。</div>
+      <label class="pp-field" style="margin-top:10px;">
+        <span class="pp-label">主引擎失败时自动依次尝试（回退链，逗号分隔引擎 id）</span>
+        <input type="text" id="pp-tr-fallback" class="pp-input" placeholder="google, bing, youdao"/>
+        <div class="pp-hint">稳定性保障：主引擎超时 / 限流 / 报错时自动换用下一个可用引擎；结果区会标注实际使用的引擎。留空则不回退。</div>
+      </label>
+      <div class="pp-grid3" style="margin-top:6px;">
+        <label class="pp-field">
+          <span class="pp-label">单次请求超时（毫秒）</span>
+          <input type="number" id="pp-tr-timeout" class="pp-input" min="3000" max="120000" placeholder="15000"/>
+        </label>
+        <label class="pp-check" style="margin-top:18px;">
+          <input type="checkbox" id="pp-tr-retry"/>
+          <span>失败自动重试一次（5xx/超时/网络抖动）</span>
+        </label>
+        <label class="pp-check" style="margin-top:18px;">
+          <input type="checkbox" id="pp-tr-cache"/>
+          <span>结果缓存（同一段内容不重复请求）</span>
+        </label>
+      </div>
+      <div class="pp-grid3" style="margin-top:6px;">
+        <label class="pp-field">
+          <span class="pp-label">单个引擎预算（毫秒，0=不限）</span>
+          <input type="number" id="pp-tr-route" class="pp-input" min="0" max="120000" placeholder="20000"/>
+        </label>
+        <label class="pp-field">
+          <span class="pp-label">回退链总预算（毫秒，0=不限）</span>
+          <input type="number" id="pp-tr-total" class="pp-input" min="0" max="300000" placeholder="45000"/>
+        </label>
+        <label class="pp-field">
+          <span class="pp-label">失败冷却（秒，0=关闭）</span>
+          <input type="number" id="pp-tr-cooldown" class="pp-input" min="0" max="3600" placeholder="60"/>
+        </label>
+      </div>
+      <div class="pp-hint">稳定性三件套：单路预算到点就换下一个引擎；总预算到点就停整条链；某引擎刚失败过会在冷却期内被自动跳过（由其它引擎顶上），避免一次网络抖动把整条链跑满。</div>
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">自建 / 离线（可选，零成本且无额度限制）</div>
+        <ul class="pp-notes">
+          <li>本机跑一个翻译服务即可摆脱额度与外网依赖：LibreTranslate（默认 5000 端口）、Lingva（3000）、DLX（1188）</li>
+          <li>点下面的按钮会自动发现并一键填入地址，无需新增任何引擎</li>
+        </ul>
+        <div class="pp-row">
+          <button id="pp-tr-local-scan" class="pp-btn pp-btn-sm">扫描本机服务</button>
+          <span id="pp-tr-local" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+      <div class="pp-hint" style="margin-top:10px;">数据去向：免密钥引擎会把待译文本发往对应服务商（Google / 微软 / 腾讯 / 有道等）；「AI 大模型」引擎发往你在「AI 模型通道」里配置的通道；自建引擎（LibreTranslate / Lingva / DLX）与本地 Ollama 不出本机。未发表的稿件建议优先走自建或本地通道。</div>
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">术语表与全文翻译优化</div>
+        <ul class="pp-notes">
+          <li>语法：每行一条「原文 = 译文」（也可用 =&gt; 或 TAB 分隔；# 与 // 开头为注释）</li>
+          <li>可选第三段标注领域——「原文 = 译文 | 领域」（多标签用 ; 分隔，如「myocardial infarction = 心肌梗死 | 医学」）</li>
+          <li>仅对「AI 大模型」引擎生效：翻译时注入提示词，待译段落命中的术语优先注入，保证专业术语全文一致；Google / DeepL 等专用引擎没有指令通道、无法使用术语约束</li>
+          <li>可导入开源术语库的 CSV / TSV / JSON 文件（如 IATE 导出、计算机 / 医学领域词表）；翻译完成后状态行会汇报「术语一致 n/m」</li>
+        </ul>
+        <div class="pp-field">
+          <textarea aria-label="术语表内容（每行一条：原文 = 译文）" id="pp-tr-glossary" class="pp-textarea" rows="5" wrap="off"
+            placeholder="# 例：transformer = Transformer&#10;# 例：graph neural network = 图神经网络&#10;# 例：myocardial infarction = 心肌梗死 | 医学&#10;# 例：large language model => 大语言模型 | 计算机"></textarea>
+          <div id="pp-tr-glossary-msg" class="pp-hint" style="min-height:14px;"></div>
+          <div id="pp-tr-glossary-domains" class="pp-hint" style="min-height:20px;margin-top:2px;"></div>
+        </div>
+        <div class="pp-row" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px;">
+          <button id="pp-tr-glossary-import" class="pp-btn pp-btn-sm">导入文件</button>
+          <button id="pp-tr-glossary-export" class="pp-btn pp-btn-sm">导出 CSV</button>
+          <select id="pp-tr-glossary-pack" class="pp-select" style="max-width:220px;" aria-label="选择术语领域词包"></select>
+          <button id="pp-tr-glossary-pack-add" class="pp-btn pp-btn-sm">添加领域词包</button>
+        </div>
+        <!-- 0.4x 在线词包目录（数据源：GitHub open-termbank，CC BY 4.0） -->
+        <div class="pp-row" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;">
+          <button id="pp-tr-glossary-online-fetch" class="pp-btn pp-btn-sm">获取在线目录</button>
+          <span id="pp-tr-glossary-online-status" class="pp-hint" style="min-height:14px;"></span>
+        </div>
+        <div id="pp-tr-glossary-online-list" class="pp-hint" style="min-height:0;"></div>
+        <div class="pp-grid3" style="margin-top:6px;">
+          <label class="pp-check">
+            <input type="checkbox" id="pp-tr-bl-struct"/>
+            <span>全文对照：结构化提取（公式原样保留、图表注单列、过滤页眉页脚与图表碎片行）</span>
+          </label>
+          <label class="pp-check">
+            <input type="checkbox" id="pp-tr-bl-context"/>
+            <span>全文对照：上下文感知（带上文档标题与上一段译文，术语与行文更一致；仅 AI 引擎）</span>
+          </label>
+          <label class="pp-check">
+            <input type="checkbox" id="pp-tr-formula"/>
+            <span>行内公式保护（非 AI 引擎：高置信公式片段占位不翻译，译后原样还原）</span>
+          </label>
+        </div>
+      </div>
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">PDF 对照翻译（左原版 / 右译文）</div>
+        <div class="pp-sub-desc">打开「PDF 对照翻译」后是一个双栏窗口：左栏是原版 PDF 页面，右栏是同一页的译文——译文按原文的段落位置逐段替换（保留图表与公式图形、页数与分页一致），两栏可同步滚动。入口：右键条目「PDF 对照翻译（左原版 / 右译文）」，或功能中心 / 工作台 / 阅读器右侧栏翻译面板。</div>
+        <div class="pp-grid3">
+          <label class="pp-field">
+            <span class="pp-label">右栏形态</span>
+            <select id="pp-pd-rightmode" class="pp-select">
+              <option value="mono">译文替换原文（图表与公式保留，推荐）</option>
+              <option value="overlay">译文叠加在原位上（原文淡显，便于核对）</option>
+            </select>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">译文字号（相对原文的倍数 0.7–1.6）</span>
+            <input type="number" id="pp-pd-scale" class="pp-input" min="0.7" max="1.6" step="0.05" placeholder="1"/>
+          </label>
+          <div class="pp-field">
+            <div class="pp-label" aria-hidden="true">&#160;</div>
+            <label class="pp-check">
+              <input type="checkbox" id="pp-pd-sync"/>
+              <span>左右两栏同步滚动</span>
+            </label>
+          </div>
+        </div>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-pd-zoom"/>
+          <span>左右两栏同步缩放（页高一致，位置对应更准）</span>
+        </label>
+      </div>
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-desc">「设为当前」= 用作主翻译引擎；「纳入回退」= 主引擎失败时依次尝试；带「密钥」标记的引擎需先填好凭据。默认只列常用引擎，点右上「展开全部」查看其余（含免配置 / 自备密钥 / 自建地址）。</div>
+        <div id="pp-tr-list" class="pp-ch-list" style="gap:6px;"></div>
+      </div>
+      <div id="pp-tr-test-result" class="pp-msg" aria-live="polite" style="margin-top:6px;min-height:14px;"></div>
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="popup" data-search-strings-raw="划词 浮窗 拼接 批注 selection popup concat annotation">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></span><span class="pp-card-title">阅读器划词浮窗</span>
+      <span class="pp-card-desc">PDF 里选中文字即弹浮窗：翻译 / 解读 / 追问</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <label class="pp-check">
+        <input type="checkbox" id="pp-popup-enabled"/>
+        <span>启用划词浮窗</span>
+      </label>
+      <label class="pp-check">
+        <input type="checkbox" id="pp-popup-auto"/>
+        <span>划词即自动翻译（无需点击，带限流与去重）</span>
+      </label>
+      <label class="pp-check">
+        <input type="checkbox" id="pp-popup-stream"/>
+        <span>流式输出（逐字显示；网关不支持时自动降级）</span>
+      </label>
+      <label class="pp-check">
+        <input type="checkbox" id="pp-popup-writeback"/>
+        <span>允许把译文/解读写入高亮批注（在批注上划词时显示按钮）</span>
+      </label>
+      <label class="pp-check">
+        <input type="checkbox" id="pp-popup-concat"/>
+        <span>拼接模式：按住 Ctrl/Cmd 划词可多段累加，松开后合并翻译（读双栏排版文献好用）</span>
+      </label>
+      <div class="pp-row">
+        <label class="pp-label" for="pp-popup-lang">翻译目标语言</label>
+        <select id="pp-popup-lang" class="pp-select">
+          <option value="zh-CN">中文（简体）</option>
+          <option value="zh-TW">中文（繁體）</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="es">Español</option>
+          <option value="ru">Русский</option>
+          <option value="pt">Português</option>
+          <option value="it">Italiano</option>
+          <option value="ar">العربية</option>
+        </select>
+      </div>
+      <div class="pp-hint" style="margin-top:4px;">目标语言对全部翻译功能统一生效（划词浮窗 / 全文对照 / 标题摘要），与上方「翻译引擎」卡片是同一项设置。</div>
+      <div class="pp-hint" style="margin-top:8px;">0.15.0：浮窗已支持 A−/A+ 字号缩放（自动记住）、结果区展开/收起、生成中随时「停止」。</div>
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="pdftheme" data-search-strings-raw="PDF 阅读主题 护眼 夜间 叠色 pdf theme night">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg></span><span class="pp-card-title">PDF 阅读主题</span>
+      <span class="pp-card-desc">护眼 / 羊皮纸等浅色叠色，夜间模式反色；不修改 PDF 本体</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div id="pp-pdf-theme-list" class="pp-pdf-list"></div>
+      <div class="pp-hint" style="margin-top:8px;">也可在 PDF 阅读器工具栏点「主题图标」快速切换；对新打开的 PDF 自动应用</div>
+
+      <!-- 9.1 自定义叠色 -->
+      <div class="pp-sub">
+        <div class="pp-sub-title">自定义叠色（选用「自定义颜色」时生效）</div>
+        <div class="pp-sub-desc">半透明色层叠在原 PDF 上——深色叠白底即护眼底色，文字仍清晰透出</div>
+        <div class="pp-grid2">
+          <div class="pp-field">
+            <label class="pp-label" for="pp-pt-color">叠色颜色</label>
+            <div class="pp-row" style="margin-top:0;">
+              <input type="text" id="pp-pt-color" class="pp-input pp-grow" placeholder="#578f32"/>
+              <input type="color" id="pp-pt-color-pick" class="pp-color" style="width:34px;height:26px;padding:1px;" aria-label="叠色颜色拾色器"/>
+            </div>
+          </div>
+          <label class="pp-field">
+            <span class="pp-label">不透明度（5-60）</span>
+            <input type="number" id="pp-pt-opacity" class="pp-input" min="5" max="60" step="5" placeholder="30"/>
+          </label>
+        </div>
+        <div class="pp-row">
+          <button id="pp-pt-apply" class="pp-btn pp-btn-primary">保存并预览</button>
+          <span id="pp-pt-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 分类 · 文献获取（4 项） ============ -->
+  <div class="pp-cat-label"><span class="pp-cat-name">文献获取</span><span class="pp-cat-count">4 项</span></div>
+  <div class="pp-card pp-fold" data-fold="cnki" data-search-strings-raw="知网 CNKI 登录 账号 校园网 IP 授权 验证 转换器 cnki login campus verify translator 邮箱 手机号 密码">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14"></path><path d="M12 6v14"></path><path d="M8 8v12"></path><path d="M4 4v16"></path></svg></span><span class="pp-card-title">知网账号与校园网</span>
+      <span class="pp-card-desc">校园网自动识别 IP 授权；非校园网可登录个人账号兜底。浏览器抓取也依赖这里的会话</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div class="pp-row" style="margin-top:10px;">
+        <span id="pp-cnki-status" class="pp-msg" aria-live="polite">打开面板时自动检测权限…</span>
+      </div>
+      <div class="pp-hint">校园网/机构网络下点「检测权限」即可自动建立机构会话（走 IP 登录，无需账号）；账号凭据只存本机，不会上传。</div>
+      <div class="pp-grid2">
+        <label class="pp-field">
+          <span class="pp-label">知网用户名</span>
+          <input type="text" id="pp-cnki-user" class="pp-input" placeholder="手机号 / 邮箱 / 账号"/>
+        </label>
+        <label class="pp-field">
+          <span class="pp-label">知网密码</span>
+          <input type="password" id="pp-cnki-pass" class="pp-input" placeholder="只存本机 Zotero，不进云端"/>
+        </label>
+      </div>
+      <div class="pp-hint">也可以存到「账号与密钥」：加密托管到你自己的账号，换机一键取回；那里默认脱敏显示。</div>
+      <div class="pp-row">
+        <button id="pp-cnki-login-btn" class="pp-btn pp-btn-primary">登录知网</button>
+        <button id="pp-cnki-detect-btn" class="pp-btn pp-btn-sm">检测权限</button>
+        <button id="pp-cnki-clear-btn" class="pp-btn pp-btn-sm">清除凭据/退出登录</button>
+      </div>
+      <div class="pp-row">
+        <button id="pp-cnki-verify-btn" class="pp-btn pp-btn-sm">解除风控验证</button>
+        <button id="pp-cnki-translators-btn" class="pp-btn pp-btn-sm">更新中文转换器</button>
+        <span id="pp-cnki-result" class="pp-msg" aria-live="polite"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="thirdsrc" data-search-strings-raw="第三方 文献源 入口 知网 万方 维普 镜像 scihub sci-hub pubmed arxiv 预印本 学术搜索 谷歌 实验 试用 third-party source endpoint">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.5a2 2 0 0 1-.2.9L4.7 20.5a1 1 0 0 0 .9 1.5h12.8a1 1 0 0 0 .9-1.5L14.2 10.4a2 2 0 0 1-.2-.9V2"></path><path d="M8.5 2h7"></path><path d="M7 16h10"></path></svg></span><span class="pp-card-title">第三方文献源（试验）</span>
+      <span class="pp-card-desc">中文库 / 英文全文 / 预印本 / 学术搜索入口一键直达，可带入 DOI 或标题检索；面向 Pro 试用，默认关闭</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div class="pp-hint">实验功能：以下为第三方公开站点入口，仅供检索与定位；请自行评估并遵守各站点条款。</div>
+      <div class="pp-row">
+        <label class="pp-check"><input type="checkbox" id="pp-ts-enabled"/><span>启用实验功能（Pro 试用）</span></label>
+        <span id="pp-ts-gate" class="pp-msg" aria-live="polite"></span>
+      </div>
+      <div class="pp-row">
+        <input type="text" id="pp-ts-query" class="pp-input pp-grow" placeholder="可选：输入 DOI 或标题，点入口即在该站检索" aria-label="实验站点检索词（DOI 或标题）"/>
+      </div>
+      <div class="pp-row pp-row-tight"><span id="pp-ts-query-hint" class="pp-hint"></span></div>
+      <div id="pp-ts-endpoints" class="pp-ts-list"></div>
+      <div class="pp-row">
+        <button id="pp-ts-ping-btn" class="pp-btn pp-btn-primary">测试连接</button>
+        <span id="pp-ts-status" class="pp-msg" aria-live="polite">未检测</span>
+      </div>
+      <div class="pp-row"><span id="pp-ts-result" class="pp-msg" aria-live="polite"></span></div>
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="subscriptions" data-search-strings-raw="订阅 检索 定时 自动入库 arxiv openalex pubmed 速递 推荐 作者 收藏 忽略 通知 反馈 期刊 杂志 刊 一键订阅 journal journals issn 期刊订阅 subscription search saved query author notify feedback 价格 续费 邮件">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"></path><path d="M4 4a16 16 0 0 1 16 16"></path><circle cx="5" cy="19" r="1.5"></circle></svg></span><span class="pp-card-title">检索订阅</span>
+      <span class="pp-card-desc">按期刊一键订阅（500+ 种内置、3 万+ 可搜）；也可按研究领域推荐主题（含作者追踪），一句话建订阅；定时多源检索、去重入库、生成速递</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <!-- 3c2.0 按期刊订阅（0.69.0）：内置 500+ 种期刊目录 + 在线搜 3 万+ 刊，点一下就订阅 -->
+      <div class="pp-sub" style="margin-top:0;">
+        <div class="pp-sub-title">按期刊订阅</div>
+        <div class="pp-hint">不用去期刊官网找 RSS、不用查 ISSN：输入刊名（中文名、缩写、ISSN 都认），点「订阅」即可。默认每天 08:00 取近 30 天新文章、最多 10 条，可在下方列表改成每周或仅手动。</div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center;">
+          <input id="pp-sub-journal-q" class="pp-input pp-grow" style="min-width:280px;" placeholder="搜期刊：Nature / 柳叶刀 / NEJM / 0028-4793 / 临床医学" aria-label="搜索期刊（刊名 / 缩写 / ISSN）"/>
+          <button id="pp-sub-journal-search" class="pp-btn pp-btn-sm">在线搜索</button>
+          <span id="pp-sub-journal-msg" class="pp-msg" aria-live="polite"></span>
+        </div>
+        <div id="pp-sub-journal-subjects" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+        <div id="pp-sub-journal-list" class="pp-journal-list"></div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center;">
+          <button id="pp-sub-journal-subscribe" class="pp-btn pp-btn-primary pp-btn-sm" disabled="disabled">订阅所选</button>
+          <span id="pp-sub-journal-sel" class="pp-hint">未选择期刊</span>
+        </div>
+      </div>
+
+      <!-- 3c2.1 智能推荐 -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">根据你的研究领域推荐</div>
+        <div class="pp-hint">扫描库内文献的标题 / 标签 / 摘要，给出可解释的主题订阅。默认只预览、不创建。</div>
+        <div id="pp-subs-reco" style="margin-top:6px;"></div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+          <button id="pp-subs-reco-refresh" class="pp-btn pp-btn-sm">重新分析我的库</button>
+          <span id="pp-subs-reco-msg" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <!-- 3c2.2 一句话创建（AI 解析） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">用一句话创建</div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+          <input id="pp-sub-nl" class="pp-input pp-grow" style="min-width:300px;" placeholder="例如：追踪大模型推理效率与稀疏注意力，主要看 arXiv 和 OpenAlex" aria-label="一句话描述订阅需求"/>
+          <button id="pp-sub-ai" class="pp-btn pp-btn-sm">AI 解析</button>
+          <span id="pp-sub-nl-msg" class="pp-msg" aria-live="polite"></span>
+        </div>
+        <div class="pp-hint">AI 只把描述翻译成检索条件（英文关键词 / 分类 / 来源），不会自动创建、不会自动入库；解析结果会填进下方表单，由你确认并试跑。</div>
+      </div>
+
+      <!-- 3c2.3 订阅列表 + 试跑结果 -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">我的订阅</div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+          <button id="pp-subs-export" class="pp-btn pp-btn-sm">导出到剪贴板</button>
+          <button id="pp-subs-import" class="pp-btn pp-btn-sm">从剪贴板导入</button>
+          <button id="pp-subs-feedback-clear" class="pp-btn pp-btn-sm" title="清空「收藏 / 忽略」学习记录（之后预览不再据此加减分）">清空反馈学习</button>
+          <span class="pp-hint">导出只含配置（名称 / 条件 / 来源 / 频率 / 开关），不含运行记录；导入会重新分配 id，并跳过同名订阅。</span>
+        </div>
+        <!-- 3c2.3b 订阅落地（0.71.0）：检索订阅不是 RSS，左侧原本看不到任何入口。
+             这里把它落到「我的文库 → 订阅期刊 / <刊名>」分类，并尽力挂成原生【订阅】的 RSS 源。 -->
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+          <button id="pp-subs-bridge" class="pp-btn pp-btn-sm" title="在「我的文库」下建「订阅期刊」分类并把已入库的文章归档；能给到 RSS 的刊同时挂到左侧【订阅】">同步到左侧面板</button>
+          <span id="pp-subs-bridge-msg" class="pp-hint" style="flex:1 1 100%;"></span>
+        </div>
+        <ul class="pp-notes">
+          <li>左侧【订阅】是 Zotero 原生 RSS 区，而这里的订阅走 OpenAlex / Crossref 接口检索，两者本来不相通</li>
+          <li>点上面的按钮会：①在「我的文库」下建「订阅期刊」分类（每本刊一个子分类，已入库的文章一并归档，中文刊同样有效）；②对能解析到 RSS 的刊（Elsevier / Nature / Science / BMJ / 知网等）再挂一条到左侧【订阅】</li>
+        </ul>
+        <div id="pp-subs-list" class="pp-datasets"></div>
+        <div id="pp-subs-detail" style="margin-top:6px;"></div>
+      </div>
+
+      <!-- 3c2.4 新建 / 编辑表单（共用） -->
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title" id="pp-subs-form-title">新建订阅</div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+          <input id="pp-sub-name" class="pp-input" placeholder="名称（如：图神经网络）" style="width:180px;" aria-label="订阅名称"/>
+          <input id="pp-sub-keywords" class="pp-input" placeholder="关键词（逗号分隔，建议英文）" style="width:240px;" aria-label="订阅关键词（逗号分隔）"/>
+        </div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+          <input id="pp-sub-journals" class="pp-input pp-grow" style="min-width:320px;" readonly="readonly" placeholder="（可选）期刊条件：用上方「按期刊订阅」添加，ISSN 自动带出，不用手填" aria-label="订阅的期刊条件（只读）"/>
+          <button id="pp-sub-journals-clear" class="pp-btn pp-btn-sm" style="display:none;" title="只清掉期刊条件，其它条件与频率不变">清空期刊条件</button>
+          <span class="pp-hint">期刊条件可与关键词叠加，例如「The Lancet + 心肌梗死」只看该刊的相关文章</span>
+        </div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;align-items:center;">
+          <span class="pp-hint">来源：</span>
+          <label class="pp-check" style="margin-top:0;"><input type="checkbox" id="pp-sub-src-arxiv"/><span>arXiv</span></label>
+          <label class="pp-check" style="margin-top:0;"><input type="checkbox" id="pp-sub-src-openalex"/><span>OpenAlex</span></label>
+          <label class="pp-check" style="margin-top:0;"><input type="checkbox" id="pp-sub-src-crossref"/><span>Crossref</span></label>
+          <label class="pp-check" style="margin-top:0;" title="生物医学（含 PubMed 记录与预印本）；国内网络通常比 NCBI 稳定"><input type="checkbox" id="pp-sub-src-europepmc"/><span>Europe PMC</span></label>
+          <label class="pp-check" style="margin-top:0;" title="NCBI 官方检索；部分网络不可达时单独报错，不影响其它源"><input type="checkbox" id="pp-sub-src-pubmed"/><span>PubMed</span></label>
+          <select id="pp-sub-mode" class="pp-select" style="width:130px;" aria-label="关键词匹配方式">
+            <option value="all">多词同时命中</option>
+            <option value="any">任一命中</option>
+            <option value="phrase">整句短语</option>
+          </select>
+        </div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+          <select id="pp-sub-freq" class="pp-select" style="width:110px;" aria-label="订阅检索频率">
+            <option value="manual">仅手动</option>
+            <option value="daily">每日</option>
+            <option value="weekly">每周</option>
+          </select>
+          <input id="pp-sub-time" class="pp-input" placeholder="08:00" style="width:90px;" aria-label="定时检索时间（如 08:00）"/>
+        </div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;">
+          <label class="pp-check" style="margin-top:0;"><input type="checkbox" id="pp-sub-auto"/><span>命中自动入库</span></label>
+          <label class="pp-check" style="margin-top:0;"><input type="checkbox" id="pp-sub-seed" title="把库内画像高频词并入关键词；建议配合「任一命中」，否则条件可能过严"/><span>并入库内画像词</span></label>
+        </div>
+        <details class="pp-disclose">
+          <summary>更多条件</summary>
+          <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:8px;">
+            <input id="pp-sub-cats" class="pp-input" placeholder="arXiv 分类（cs.LG,cs.CL）" style="width:180px;" aria-label="arXiv 分类条件"/>
+            <input id="pp-sub-authors" class="pp-input" placeholder="作者（逗号分隔，最多 6 位）" style="width:220px;" aria-label="作者条件"/>
+            <input id="pp-sub-exclude" class="pp-input" placeholder="排除词（逗号分隔）" style="width:180px;" aria-label="排除词条件"/>
+          </div>
+          <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+            <input id="pp-sub-weekdays" class="pp-input" placeholder="每周：1,3,5（1=周一）" style="width:170px;" aria-label="每周运行日（1=周一）"/>
+            <input id="pp-sub-maxagedays" class="pp-input" placeholder="只看近 N 天（0=不限）" style="width:150px;" aria-label="只看最近多少天（0=不限）"/>
+            <input id="pp-sub-max" class="pp-input" placeholder="每次最多 10" style="width:110px;" aria-label="每次最多取几条"/>
+          </div>
+          <div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;">
+            <label class="pp-check" style="margin-top:0;" title="定时运行有新入库时弹一条系统通知；手动「立即运行」不打扰"><input type="checkbox" id="pp-sub-notify"/><span>有新增时系统通知</span></label>
+            <label class="pp-check" style="margin-top:0;"><input type="checkbox" id="pp-sub-ai-rerank" title="只发送命中条目的标题与摘要片段，最多 12 条/次；失败自动退回确定性排序"/><span>AI 相关性复核</span></label>
+            <label class="pp-check" style="margin-top:0;"><input type="checkbox" id="pp-sub-ai-digest" title="最多 15 条/次；失败时速递笔记照常生成"/><span>AI 速递速览</span></label>
+          </div>
+          <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+            <span class="pp-hint">礼貌邮箱（可选，提高 OpenAlex / Crossref 配额）：</span>
+            <input id="pp-sub-mailto" class="pp-input" placeholder="you@example.com" style="width:200px;" aria-label="礼貌邮箱（OpenAlex / Crossref 配额）"/>
+          </div>
+          <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;align-items:center;">
+            <span class="pp-hint">OpenAlex Key（可选，提高调用配额）：</span>
+            <input id="pp-sub-openalex-key" type="password" class="pp-input" placeholder="可选：openalex.org/settings/api 免费申请" style="width:260px;" aria-label="OpenAlex API Key"/>
+          </div>
+        </details>
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center;">
+          <button id="pp-subs-preview" class="pp-btn pp-btn-sm">试跑预览</button>
+          <button id="pp-subs-add" class="pp-btn pp-btn-primary pp-btn-sm">保存订阅</button>
+          <button id="pp-subs-cancel" class="pp-btn pp-btn-sm" style="display:none;">取消编辑</button>
+          <span id="pp-sub-msg" class="pp-msg" aria-live="polite"></span>
+        </div>
+        <ul class="pp-notes">
+          <li>试跑只取数不入库；保存后才按频率执行；每日/每周错过 6 小时内补跑；去重记账保留最近 1000 条</li>
+          <li>关键词多词默认 AND；分类多值为并集；作者与关键词同时填写时，作者组与关键词组按 AND 组合（多个作者之间为 OR）</li>
+          <li>预览卡上的「收藏 / 忽略」会微调之后的排序；被忽略的条目不再进入速递笔记（只计入跳过数），可在上方「清空反馈学习」重置</li>
+          <li>OpenAlex / Crossref / PubMed 免费无需 Key（OpenAlex 可选填免费 Key）</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="schedule" data-search-strings-raw="定时 任务 晨报 日报 周报 体检 计划 schedule cron digest report health">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></span><span class="pp-card-title">定时任务</span>
+      <span class="pp-card-desc">到点自动生成笔记：研究晨报（每日新增）· 阅读周报 · 库体检报告</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div id="pp-sch-rows"></div>
+      <div class="pp-hint">时间格式 HH:MM（本地时间），留空 = 关闭该任务；插件运行期间每 60 秒检查一次，同一任务每天最多执行一次（错过后 6 小时内补跑）。报告生成在文献库根目录的独立笔记中。</div>
+    </div>
+  </div>
+
+  <!-- ============ 分类 · 条目与标签（3 项） ============ -->
+  <div class="pp-cat-label"><span class="pp-cat-name">条目与标签</span><span class="pp-cat-count">3 项</span></div>
+  <div class="pp-card pp-fold" data-fold="columns" data-search-strings-raw="列 分区 被引量 标题译文 阅读进度 进度条 高能 评级 column rank citation progress rating translation">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg></span><span class="pp-card-title">列表数据列</span>
+      <span class="pp-card-desc">分区 / 被引量 / 标题译文 / 评级 / 阅读进度：列表里显示哪些数据由你决定</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+
+      <!-- 5.1 期刊分区 -->
+      <div class="pp-sub" style="border-top:none;margin-top:2px;padding-top:0;">
+        <div class="pp-sub-title">期刊分区（easyScholar 在线 + 离线数据兜底）</div>
+        <div class="pp-sub-desc">优先级：自定义 JSON &gt; easyScholar 在线查询 &gt; 内置示例数据（仅作兜底）</div>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-rank-enabled"/>
+          <span>启用期刊分区列（即时生效）</span>
+        </label>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-es-enabled"/>
+          <span>启用 easyScholar 在线查询（JCR 分区 / 影响因子 / 中科院分区）</span>
+        </label>
+        <div class="pp-field" style="margin-top:10px;">
+          <label class="pp-label" for="pp-es-key">自定义 SecretKey（可选）</label>
+          <div class="pp-row" style="margin-top:0;">
+            <input type="password" id="pp-es-key"
+                        class="pp-input pp-grow" placeholder="填写你自己的 SecretKey（easyscholar.cn 免费注册后获取）"/>
+            <button id="pp-es-key-eye" class="pp-btn pp-btn-eye" title="显示/隐藏密钥" aria-label="显示密钥"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button id="pp-es-clear" class="pp-btn pp-btn-sm">清空查询缓存</button>
+            <span id="pp-es-stats" class="pp-hint"></span>
+          </div>
+          <div class="pp-row" style="margin-top:6px;">
+            <button id="pp-es-host-save" class="pp-btn pp-btn-sm">存到我的账号</button>
+            <button id="pp-es-host-load" class="pp-btn pp-btn-sm">从账号取回</button>
+            <button id="pp-es-host-del" class="pp-btn pp-btn-sm">删除托管</button>
+            <span id="pp-es-host-state" class="pp-hint"></span>
+          </div>
+          <div class="pp-hint">在线分区数据需要你自己的 easyScholar SecretKey —— 在 easyscholar.cn 免费注册即可获取，额度归你自己所有。填好后点「存到我的账号」，密钥会加密保存（AES-256-GCM），换电脑或重装后自动取回；服务端只做保管，不提供任何第三方额度。未填写时分区列只显示插件内置的离线数据（覆盖常见期刊，不会联网）。</div>
+        </div>
+        <div class="pp-field" style="margin-top:12px;">
+          <div class="pp-label">显示哪些分区数据（勾选即展示；一篇文章的全部命中分区以徽章完整展示）</div>
+          <div class="pp-hint" style="margin-bottom:2px;">中文期刊按「中文分级 / 北大核心 / CSCD / 中国科技核心」分类展示；国际期刊按「JCR / 中科院 / CCF / 影响因子」展示；机构/高校分级目录与其余评级始终可见于悬停详情。</div>
+          <div id="pp-rank-datasets" class="pp-datasets"></div>
+        </div>
+        <div class="pp-row">
+          <label class="pp-label" for="pp-rank-style">徽章配色风格</label>
+          <select id="pp-rank-style" class="pp-select">
+            <option value="color">分区色阶（Q1 红 / Q2 橙 / Q3 蓝 / CCF 绿 / TOP 金描边）</option>
+            <option value="mono">单色（跟随界面主题强调色）</option>
+          </select>
+          <label class="pp-label" for="pp-rank-max">每行最多显示</label>
+          <input type="number" id="pp-rank-max" class="pp-input" min="1" max="12" style="width:64px;"/>
+          <span class="pp-hint">个徽章（超出显示 +N）</span>
+        </div>
+        <div id="pp-rank-preview" class="pp-rank-preview"></div>
+        <div class="pp-row">
+          <button id="pp-rank-export" class="pp-btn pp-btn-sm">导出分区配置</button>
+          <button id="pp-rank-import" class="pp-btn pp-btn-sm">导入分区配置</button>
+          <span id="pp-rank-cfg-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+        <div class="pp-field" style="margin-top:10px;">
+          <label class="pp-label" for="pp-rank-path-input">自定义分区数据 JSON 路径</label>
+          <div class="pp-row" style="margin-top:0;">
+            <input type="text" id="pp-rank-path-input"
+                        class="pp-input pp-grow" placeholder="留空则走 easyScholar 在线查询；内置示例数据仅在无在线数据时兜底"/>
+            <button id="pp-rank-browse" class="pp-btn pp-btn-sm">浏览…</button>
+          </div>
+          <ul class="pp-notes">
+            <li>格式：{"期刊名小写规范化": "分区文本"}</li>
+            <li>文本会按语义解析成彩色徽章，例如 "1区 Top" → 中科院1区（TOP 金描边）、"JCR Q2 / IF 5.1"、"CCF-A"、"北大核心"、"T1"；解析不出的文本显示为「其他/自定义文本」徽章，完整原文在悬停详情中</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 5.2 被引量 -->
+      <div class="pp-sub">
+        <div class="pp-sub-title">被引量（Semantic Scholar）</div>
+        <div class="pp-sub-desc">数据缓存 24 小时；右键菜单「重新抓取被引量」可手动刷新所选条目</div>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-cite-enabled"/>
+          <span>启用被引量列（即时生效，右键条目列表表头勾选显示）</span>
+        </label>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-s2-title"/>
+          <span>无 DOI 的条目按标题检索兜底（较慢，可能误匹配）</span>
+        </label>
+        <div class="pp-field" style="margin-top:10px;">
+          <label class="pp-label" for="pp-s2-key">Semantic Scholar API Key（可留空）</label>
+          <div class="pp-row" style="margin-top:0;">
+            <input type="password" id="pp-s2-key"
+                        class="pp-input pp-grow" placeholder="默认掩码显示，防窥屏"/>
+            <button id="pp-s2-key-eye" class="pp-btn pp-btn-eye" title="显示/隐藏密钥" aria-label="显示密钥"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>
+            <button id="pp-s2-clear" class="pp-btn pp-btn-sm">清空查询缓存</button>
+            <span id="pp-s2-stats" class="pp-hint"></span>
+          </div>
+          <div class="pp-hint">申请地址 https://www.semanticscholar.org/product/api ，配置后速度更快</div>
+        </div>
+      </div>
+
+      <!-- 5.3 标题译文 / 评级（0.42.0；阅读进度 0.46.0 起独立为下方 5.4） -->
+      <div class="pp-sub">
+        <div class="pp-sub-title">更多数据列（0.42.0 新增）</div>
+        <div class="pp-sub-desc">译文列显示「AI 翻译标题与摘要」写回的译文；评级列显示 ★（右键条目 → 评级 设置）</div>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-ttcol-enabled"/>
+          <span>启用标题译文列（即时生效）</span>
+        </label>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-ratingcol-enabled"/>
+          <span>启用评级列（★，可在标签页按星筛选）</span>
+        </label>
+      </div>
+
+      <!-- 5.4 阅读进度（0.46.0 进度条 2.0：主形态＝标题列内嵌，无需勾选任何列） -->
+      <div class="pp-sub">
+        <div class="pp-sub-title">阅读进度（画在标题列背景）</div>
+        <div class="pp-sub-desc">进度直接显示在每条文献的标题背后，装完即见、不用勾选任何列：进度 = 读到哪一页 ÷ 总页数（自动融合阅读器实时页码、Zotero 原生「上次读到」与标注所在页），都没有时按阅读时长估算。数据只存本机（位置随 Zotero 账号同步的部分除外），不上传</div>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-progrow-enabled"/>
+          <span>在标题列显示阅读进度（推荐；装完插件即见）</span>
+        </label>
+        <div class="pp-grid2">
+          <label class="pp-field">
+            <span class="pp-label">标题内样式</span>
+            <select id="pp-progrow-style" class="pp-select">
+              <option value="heat">高能进度条（每页一格，读得越久颜色越深；还没有每页数据时自动整体填充）</option>
+              <option value="fill">整体填充（标题背景按进度百分比铺色）</option>
+            </select>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">进度口径</span>
+            <select id="pp-progcol-basis" class="pp-select">
+              <option value="auto">自动（位置优先，无位置按时长估算）</option>
+              <option value="position">仅阅读位置（读到第几页）</option>
+              <option value="time">仅阅读时长（0.42.0 行为）</option>
+            </select>
+          </label>
+        </div>
+        <label class="pp-check" style="margin-top:6px;">
+          <input type="checkbox" id="pp-progcol-autofinish"/>
+          <span>进度反向驱动阅读状态（有进度：未读 → 在读；位置进度达到阈值：自动标记已读；时长口径不触发「已读」）</span>
+        </label>
+        <div class="pp-grid2">
+          <label class="pp-field">
+            <span class="pp-label">自动「已读」阈值（%，80-100）</span>
+            <input type="number" id="pp-progcol-finishpct" class="pp-input" min="80" max="100" step="5"/>
+          </label>
+          <div class="pp-field" style="align-self:end;">
+            <div class="pp-hint">悬停标题可看「读到第几页 / 累计分钟」；某篇想从头读：右键条目 → 阅读状态 → 重置阅读进度（标注不受影响）</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5.5 「阅读进度」数据列（可选：默认隐藏，点列头按进度排序用） -->
+      <div class="pp-sub">
+        <div class="pp-sub-title">「阅读进度」数据列（可选）</div>
+        <div class="pp-sub-desc">标题内嵌进度已覆盖日常查看；这个列是给想「点列头按进度排序」的用户的可选位——右键条目列表表头勾选「阅读进度」后生效</div>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-progcol-enabled"/>
+          <span>注册「阅读进度」列（即时生效；列可见性仍在表头右键菜单里控制）</span>
+        </label>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-progcol-colorstate"/>
+          <span>列内进度条按阅读状态着色（已读绿色 / 在读跟随主题强调色 / 未读中性灰）</span>
+        </label>
+        <div class="pp-grid2">
+          <label class="pp-field">
+            <span class="pp-label">列内进度条样式</span>
+            <select id="pp-progcol-style" class="pp-select">
+              <option value="bar">线性填充条 + 百分比（默认）</option>
+              <option value="gradient">渐变填充条（蓝 → 绿）</option>
+              <option value="percent">仅百分比标注（最紧凑）</option>
+            </select>
+          </label>
+          <div class="pp-field" style="align-self:end;">
+            <div class="pp-hint">列仅负责排序与精确数值展示；行内（标题背景）显示不受这里开关影响</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="tagging" data-search-strings-raw="打标 规则 标签 自动化 tag rule automation">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><circle cx="7.5" cy="7.5" r="1.5"></circle></svg></span><span class="pp-card-title">规则打标与 AI 打标</span>
+      <span class="pp-card-desc">无 AI 依赖的规则打标，加上 AI 打标的数量、语言与置信度偏好</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+
+      <!-- 6.1 规则打标 -->
+      <div class="pp-sub" style="border-top:none;margin-top:2px;padding-top:0;">
+        <div class="pp-sub-title">规则打标（按条件自动打标签）</div>
+        <div class="pp-sub-desc">每行一条规则：标签 | 字段 | 操作 | 值（// 开头为注释）</div>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-ruletag-auto"/>
+          <span>新条目入库时自动应用规则（右键菜单「规则打标」可随时手动应用）</span>
+        </label>
+        <div class="pp-field" style="margin-top:8px;">
+          <textarea class="pp-textarea" rows="6"
+                         placeholder="例：#方法/机器学习 | abstractNote | contains | machine learning" aria-label="规则打标规则（每行一条）"></textarea>
+        </div>
+      </div>
+
+      <!-- 6.2 AI 功能 -->
+      <div class="pp-sub">
+        <div class="pp-sub-title">AI 功能参数</div>
+        <div class="pp-sub-desc">自定义 Prompt 供 AI 问答侧栏与工作台使用</div>
+        <label class="pp-field" style="margin-top:6px;">
+          <span class="pp-label">自定义 Prompt（每行一条，格式：名称=提示词）</span>
+          <textarea class="pp-textarea" rows="3"
+                         placeholder="周报生成=请把这篇论文的要点整理成周报条目"></textarea>
+        </label>
+        <div class="pp-grid2">
+          <label class="pp-field">
+            <span class="pp-label">文献矩阵一次最多处理篇数</span>
+            <input type="number" class="pp-input"/>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">AI 打标签每次建议个数</span>
+            <input type="number" class="pp-input"/>
+          </label>
+        </div>
+        <div class="pp-field" style="margin-top:8px;">
+          <label class="pp-check">
+            <input type="checkbox" id="pp-autotag-vocab"/>
+            <span>AI 打标签优先复用库内已有标签（把全库高频标签喂给 AI，从源头减少同义变体，建议开启）</span>
+          </label>
+          <label class="pp-check" style="margin-top:4px;">
+            <input type="checkbox" id="pp-autotag-cache"/>
+            <span>缓存 AI 标签建议（标题/摘要等未变化时命中缓存，不重复消耗 AI 额度）</span>
+          </label>
+        </div>
+        <div class="pp-grid2">
+          <label class="pp-field">
+            <span class="pp-label">AI 标签语言</span>
+            <select id="pp-autotag-lang" class="pp-select">
+              <option value="auto">跟随界面语言</option>
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">建议默认勾选的置信度（0 到 1）</span>
+            <input type="number" id="pp-autotag-threshold" class="pp-input" min="0" max="1" step="0.1"/>
+          </label>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="enhance" data-search-strings-raw="增强 附件命名 笔记模板 Anki 对照翻译 补全文 OCR 扫描件 识别 文字层 渲染 template anki attachment unpaywall scihub ocr scan render 字体 路径 附件 重命名">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg></span><span class="pp-card-title">工具与增强</span>
+      <span class="pp-card-desc">阅读状态 / 附件命名 / 补全文 / Anki 制卡 / 笔记模板 / 扫描件 OCR</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <label class="pp-check" style="margin-top:6px;">
+        <input type="checkbox" id="pp-rs-auto"/>
+        <span>新条目入库自动标记「未读」（打开 PDF 自动转为「在读」）</span>
+      </label>
+      <label class="pp-check" style="margin-top:6px;">
+        <input type="checkbox" id="pp-upd-notice"/>
+        <span>有新版本时提示我（Zotero 自身的插件更新是静默后台替换、不会弹提示；本项默认开，同一版本只提示一次）</span>
+      </label>
+      <label class="pp-check" style="margin-top:6px;">
+        <input type="checkbox" id="pp-quickbar-enabled"/>
+        <span>顶部快捷按钮（条目列表上方的一键菜单：高频直达项 + 功能中心 + 设置；直达项内容与右键菜单共用「菜单定制」的配置）</span>
+      </label>
+      <label class="pp-field" style="margin-top:10px;">
+        <span class="pp-label">附件命名模板</span>
+        <input type="text" class="pp-input"
+                    placeholder="{author} - {year} - {title}"/>
+        <div class="pp-hint">可用变量：{author} {year} {title}；右键菜单「附件按规则重命名」执行</div>
+      </label>
+      <div class="pp-grid2">
+        <label class="pp-field">
+          <span class="pp-label">全文对照翻译分段字符数</span>
+          <input type="number" class="pp-input"/>
+        </label>
+        <label class="pp-field">
+          <span class="pp-label">Anki 制卡张数</span>
+          <input type="number" class="pp-input"/>
+        </label>
+      </div>
+      <label class="pp-field" style="margin-top:10px;">
+        <span class="pp-label">双栏对照窗口字号（px，11–28）</span>
+        <input type="number" class="pp-input"/>
+        <div class="pp-hint">「全文对照翻译」打开左右双栏窗口（左原文 / 右译文，窄屏自动单栏）；窗口工具栏也可随时 A− / A+ 调字号、切换布局，均即时保存</div>
+      </label>
+      <label class="pp-field" style="margin-top:10px;">
+        <span class="pp-label">Unpaywall 邮箱（开放获取补全文用，可留空）</span>
+        <input type="text" class="pp-input"
+                    placeholder="you@example.com"/>
+      </label>
+      <div class="pp-field" style="margin-top:10px;">
+        <div class="pp-label">补全文补充渠道：Sci-Hub / Sci-Net（Unpaywall 未命中时）</div>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-scihub-enabled"/>
+          <span>启用 Sci-Hub 补全文（按镜像顺序探测；要求人机验证时在 Zotero 中打开验证页，完成后重跑即可）</span>
+        </label>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-scinet-enabled"/>
+          <span>Sci-Hub 未收录（2021 年后新文献居多）时尝试 Sci-Net</span>
+        </label>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-pubdirect-enabled"/>
+          <span>出版商直连兜底（doi.org → 出版商页提取 PDF；连校园 VPN / 机构订阅时可补到新文献，无订阅时自动跳过）</span>
+        </label>
+        <div class="pp-grid2" style="margin-top:8px;">
+          <label class="pp-field">
+            <span class="pp-label">Sci-Hub 镜像（逗号分隔，按序尝试）</span>
+            <input type="text" class="pp-input"
+                        placeholder="sci-hub.ru, sci-hub.se, sci-hub.st, sci-hub.ren, sci-hub.ee, sci-hub.hkvisa.net, sci-hub.mksa.top"/>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">Sci-Net 地址（新文献兜底）</span>
+            <input type="text" class="pp-input"
+                        placeholder="https://sci-net.xyz"/>
+          </label>
+        </div>
+        <ul class="pp-notes">
+          <li>默认镜像链 7 个（0.43.0 扩充；旧默认值会在升级后自动迁移），镜像可换成自己网络下可用的（如 sci-hub.box）；某镜像不可达会自动换下一个并在 5 分钟内记住、不再反复等待</li>
+          <li>出版商直连需全局/隧道式校园 VPN（网址改写式 WebVPN 无效）</li>
+          <li>补充渠道仅供个人学术研究用途，如所在机构/地区有版权要求可在此关闭</li>
+        </ul>
+      </div>
+      <div class="pp-field" style="margin-top:10px;">
+        <label class="pp-label" for="pp-tpl-custom">自定义笔记模板（每行一条：名称=模板正文，换行用 \n）</label>
+        <textarea id="pp-tpl-custom" class="pp-textarea" rows="3"
+                       placeholder="周报卡=## {{title}}\n本周进展：\n{{aiSummary}}"></textarea>
+        <div class="pp-hint">占位符：{{title}} {{creators}} {{creatorsShort}} {{year}} {{journalAbbr}} {{volume}} {{issue}} {{pages}} {{doi}} {{tags}} {{collections}} {{annotations}} {{aiSummary}}；条件块 {{#if doi}}…{{else}}…{{/if}}，循环 {{#each tags}}…{{this}}…{{/each}}（0.61.0 起）。</div>
+        <div class="pp-row" style="margin-top:8px;">
+          <button id="pp-tpl-export" class="pp-btn pp-btn-sm">导出模板到剪贴板</button>
+          <button id="pp-tpl-import" class="pp-btn pp-btn-sm">从剪贴板导入模板</button>
+          <span id="pp-tpl-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+      <div class="pp-subblock" style="gap:6px;">
+        <div class="pp-subtitle">OCR（扫描版 PDF：右键菜单「扫描件 OCR」）</div>
+        <div style="gap:8px;align-items:center;">
+          <label class="pp-label">每次最多页数（1–500）</label>
+          <input id="pp-ocr-maxpages" type="number" min="1" max="500" class="pp-input" style="width:80px;" aria-label="OCR 每次最多页数"/>
+          <span id="pp-ocr-pages-msg" class="pp-hint"></span>
+        </div>
+        <div style="gap:8px;align-items:center;">
+          <label class="pp-label">渲染倍率（越大越清晰，也更慢更耗额度）</label>
+          <select id="pp-ocr-scale" style="width:170px;"><option value="1.5">1.5（快、省额度）</option><option value="2">2（默认）</option><option value="3">3（小字更准）</option></select>
+        </div>
+        <label class="pp-check"><input type="checkbox" id="pp-ocr-autofallback"/><span>该 PDF 没有文字层时，AI 问答自动使用已识别文本（只读本机，不触发识别）</span></label>
+        <label class="pp-check"><input type="checkbox" id="pp-ocr-skip"/><span>重新识别时跳过已有文字的页（可中断续跑；关掉才会覆盖）</span></label>
+        <div class="pp-hint">只把当前页的图片发给你的 AI 通道（不上传整份 PDF）；识别结果只存本机数据目录，「AI 问答」可直接使用。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 分类 · 界面与效率（4 项） ============ -->
+  <div class="pp-cat-label"><span class="pp-cat-name">界面与效率</span><span class="pp-cat-count">4 项</span></div>
+  <!-- WPS 集成：对接 Papilot Cite（加载项载荷随包分发；旧版 wps-zotero 一键清理） -->
+  <div class="pp-card pp-fold" data-fold="wps" data-search-strings-raw="wps 文字 引用 文献 插入 参考文献 zotero citation 加载项 papilot cite 代理 21932 信任 旧版 残留 清理 writer">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg></span><span class="pp-card-title">WPS 集成（Papilot Cite）</span>
+      <span class="pp-card-desc">在 WPS 文字里插入引文、生成参考文献表；加载项随本插件分发，这里负责安装、检测与清理旧版残留</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div class="pp-row" style="flex-wrap:wrap;gap:8px;">
+        <span id="pp-wps-dot" class="pp-msg" aria-hidden="true">●</span>
+        <span id="pp-wps-state" class="pp-msg" aria-live="polite">未检测</span>
+        <span id="pp-wps-summary" class="pp-hint"></span>
+      </div>
+
+      <div class="pp-grid2" style="margin-top:8px;">
+        <div class="pp-field">
+          <div class="pp-label">WPS 加载项</div>
+          <span id="pp-wps-addon" class="pp-hint">—</span>
+        </div>
+        <div class="pp-field">
+          <div class="pp-label">注册记录</div>
+          <span id="pp-wps-reg" class="pp-hint">—</span>
+        </div>
+        <div class="pp-field">
+          <div class="pp-label">WPS 信任</div>
+          <span id="pp-wps-trust" class="pp-hint">—</span>
+        </div>
+        <div class="pp-field">
+          <div class="pp-label">本地代理</div>
+          <span id="pp-wps-proxy" class="pp-hint">—</span>
+        </div>
+        <div class="pp-field">
+          <div class="pp-label">Zotero 集成端口</div>
+          <span id="pp-wps-zotero" class="pp-hint">—</span>
+        </div>
+        <div class="pp-field">
+          <div class="pp-label">旧版残留</div>
+          <span id="pp-wps-legacy" class="pp-hint">—</span>
+        </div>
+      </div>
+
+      <div class="pp-row" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
+        <button id="pp-wps-detect" class="pp-btn pp-btn-sm">刷新</button>
+        <button id="pp-wps-install" class="pp-btn pp-btn-primary pp-btn-sm">安装加载项</button>
+        <button id="pp-wps-proxy-start" class="pp-btn pp-btn-sm">启动代理</button>
+        <button id="pp-wps-clean" class="pp-btn pp-btn-sm">清理旧版残留</button>
+        <button id="pp-wps-open-addon" class="pp-btn pp-btn-sm">打开加载项目录</button>
+      </div>
+
+      <div id="pp-wps-msg" class="pp-msg" aria-live="polite" style="margin-top:8px;"></div>
+      <div class="pp-hint" style="margin-top:6px;">
+        链路 = WPS 加载项 Papilot Cite → 本地代理（21932）→ Zotero 集成协议（23119）。
+        加载项与本插件同为 Apache-2.0，<strong>随包分发、点上面即可安装</strong>；装好后 WPS 会问一次
+        「首次加载，是否信任？」→ 点【确定】（WPS 的安全设计，只能在 WPS 里点）。
+      </div>
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="uitheme" data-search-strings-raw="界面主题 壁纸 配色 theme wallpaper appearance 字体 颜色 背景 大小">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.9 0 1.7-.7 1.7-1.7 0-.4-.2-.8-.4-1.1-.3-.3-.5-.7-.5-1.1 0-.9.7-1.7 1.7-1.7h2c3 0 5.6-2.5 5.6-5.6C22 6 17.5 2 12 2z"></path><circle cx="13.5" cy="6.5" r="1.2"></circle><circle cx="17.5" cy="10.5" r="1.2"></circle><circle cx="8.5" cy="7.5" r="1.2"></circle><circle cx="6.5" cy="12.5" r="1.2"></circle></svg></span><span class="pp-card-title">界面主题与壁纸</span>
+      <span class="pp-card-desc">主题 = 配色 + 壁纸一体包，点击卡片立即应用；与 PDF 阅读主题可独立搭配</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <!-- 主题库（0.17.0 分类：动漫 / 风景 / 动态） -->
+      <div id="pp-ui-special" class="pp-theme-grid"></div>
+      <div class="pp-theme-cat">标准</div>
+      <div id="pp-cat-standard" class="pp-theme-grid"></div>
+      <div class="pp-theme-cat">动漫风</div>
+      <div id="pp-cat-anime" class="pp-theme-grid"></div>
+      <div class="pp-theme-cat">风景</div>
+      <div id="pp-cat-scenery" class="pp-theme-grid"></div>
+      <div class="pp-theme-cat">动态壁纸</div>
+      <div id="pp-cat-dynamic" class="pp-theme-grid"></div>
+      <div class="pp-theme-cat">巨物动漫风</div>
+      <div id="pp-cat-giant" class="pp-theme-grid"></div>
+      <div class="pp-theme-cat">在线美图（Unsplash 直链 · 需联网）</div>
+      <div id="pp-photo-grid" class="pp-theme-grid"></div>
+      <div class="pp-hint" style="margin-top:8px;">「浅」= 浅色基调 · 「深」= 深色基调 · 「动态」= 动态壁纸 · 「在线」= 在线美图（点击即应用为壁纸）；面板随壁纸变半透明玻璃，设置窗口不含壁纸</div>
+
+      <!-- 8.1 外观参数 -->
+      <div class="pp-sub">
+        <div class="pp-sub-title">外观参数</div>
+        <div class="pp-sub-desc">壁纸模式与透明度即时生效；切换主题时会带上该主题的推荐可见度，可再手动微调</div>
+        <div class="pp-row" style="margin-top:8px;">
+          <label class="pp-label" for="pp-wp-mode">壁纸模式</label>
+          <select id="pp-wp-mode" class="pp-select">
+            <option value="theme">跟随主题（用主题包自带壁纸）</option>
+            <option value="off">关闭壁纸（纯配色主题）</option>
+            <option value="custom">自定义文件（图片或视频）</option>
+          </select>
+        </div>
+        <div class="pp-row" style="margin-top:8px;">
+          <label class="pp-label" for="pp-wp-opacity">壁纸可见度</label>
+          <input type="range" id="pp-wp-opacity" min="10" max="90" step="5" style="flex:1;max-width:220px;"/>
+          <span id="pp-wp-opacity-label" class="pp-hint">70%</span>
+        </div>
+        <div id="pp-wp-custom-row" class="pp-row" style="margin-top:6px;display:none;">
+          <label class="pp-label" for="pp-wp-path">壁纸文件</label>
+          <input type="text" id="pp-wp-path" class="pp-input pp-grow" placeholder="本地图片或视频路径（jpg/png/mp4/webm…）"/>
+          <button id="pp-wp-browse" class="pp-btn pp-btn-sm">浏览…</button>
+        </div>
+        <div id="pp-wp-url-row" class="pp-row" style="margin-top:6px;display:none;">
+          <label class="pp-label" for="pp-wp-url">在线 URL</label>
+          <input type="text" id="pp-wp-url" class="pp-input pp-grow" placeholder="图片或视频直链 https://…（优先于本地路径）"/>
+        </div>
+        <div id="pp-wp-free-row" class="pp-row" style="margin-top:6px;display:none;">
+          <span class="pp-label">免费资源</span>
+          <button id="pp-wp-picsum" class="pp-btn pp-btn-sm" title="picsum.photos 随机摄影图（CC0 免费）">随机美图</button>
+          <button id="pp-wp-picsum-seed" class="pp-btn pp-btn-sm" title="固定种子的 picsum 图（每次相同）">固定美图</button>
+        </div>
+        <div id="pp-wp-custom-preview" style="display:none;margin-top:8px;"></div>
+        <div class="pp-hint">自定义文件仅按路径引用（不复制入库）；在线 URL 走浏览器缓存；视频以静音循环播放作为动态壁纸；免费资源来自 picsum.photos（CC0 摄影图，无需 Key）</div>
+      </div>
+
+      <!-- 8.2 自定义配色（自定义主题用） -->
+      <div class="pp-sub">
+        <div class="pp-sub-title">自定义配色（「自定义主题」卡片专用）</div>
+        <div class="pp-sub-desc">只填核心角色，工具栏/标签栏/次级文字等由模块自动派生；深浅基调决定链接色等少数派生值</div>
+        <div class="pp-grid2">
+          <div class="pp-field">
+            <label class="pp-label" for="pp-ut-bg">窗口底色 background</label>
+            <div class="pp-row" style="margin-top:0;">
+              <input type="text" id="pp-ut-bg" class="pp-input pp-grow" placeholder="#ffffff"/>
+              <input type="color" id="pp-ut-bg-pick" class="pp-color" style="width:34px;height:26px;padding:1px;" aria-label="窗口底色拾色器"/>
+            </div>
+          </div>
+          <div class="pp-field">
+            <label class="pp-label" for="pp-ut-side">侧栏 / 工具栏 side</label>
+            <div class="pp-row" style="margin-top:0;">
+              <input type="text" id="pp-ut-side" class="pp-input pp-grow" placeholder="#f6f8fa"/>
+              <input type="color" id="pp-ut-side-pick" class="pp-color" style="width:34px;height:26px;padding:1px;" aria-label="侧栏 / 工具栏颜色拾色器"/>
+            </div>
+          </div>
+          <div class="pp-field">
+            <label class="pp-label" for="pp-ut-surface">卡片表面 surface</label>
+            <div class="pp-row" style="margin-top:0;">
+              <input type="text" id="pp-ut-surface" class="pp-input pp-grow" placeholder="#ffffff"/>
+              <input type="color" id="pp-ut-surface-pick" class="pp-color" style="width:34px;height:26px;padding:1px;" aria-label="卡片表面颜色拾色器"/>
+            </div>
+          </div>
+          <div class="pp-field">
+            <label class="pp-label" for="pp-ut-ink">正文文字 ink</label>
+            <div class="pp-row" style="margin-top:0;">
+              <input type="text" id="pp-ut-ink" class="pp-input pp-grow" placeholder="#1f2328"/>
+              <input type="color" id="pp-ut-ink-pick" class="pp-color" style="width:34px;height:26px;padding:1px;" aria-label="正文文字颜色拾色器"/>
+            </div>
+          </div>
+          <div class="pp-field">
+            <label class="pp-label" for="pp-ut-accent">强调色 accent</label>
+            <div class="pp-row" style="margin-top:0;">
+              <input type="text" id="pp-ut-accent" class="pp-input pp-grow" placeholder="#0969da"/>
+              <input type="color" id="pp-ut-accent-pick" class="pp-color" style="width:34px;height:26px;padding:1px;" aria-label="强调色拾色器"/>
+            </div>
+          </div>
+          <div class="pp-field">
+            <label class="pp-label" for="pp-ut-line">分割线 line</label>
+            <div class="pp-row" style="margin-top:0;">
+              <input type="text" id="pp-ut-line" class="pp-input pp-grow" placeholder="#d1d9e0"/>
+              <input type="color" id="pp-ut-line-pick" class="pp-color" style="width:34px;height:26px;padding:1px;" aria-label="分割线颜色拾色器"/>
+            </div>
+          </div>
+        </div>
+        <label class="pp-check">
+          <input type="checkbox" id="pp-ut-dark"/>
+          <span>按深色基调派生（链接/状态色取深色系）</span>
+        </label>
+        <div class="pp-row">
+          <button id="pp-ut-apply" class="pp-btn pp-btn-primary">应用自定义色板</button>
+          <span id="pp-ut-result" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="menu" data-search-strings-raw="菜单 右键 分组 直达 menu context group quick 快捷键 图标">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12h-8"></path><path d="M21 6H8"></path><path d="M21 18h-8"></path><path d="M3 6v4c0 1.1.9 2 2 2h3"></path><path d="M3 10v6c0 1.1.9 2 2 2h3"></path></svg></span><span class="pp-card-title">菜单定制</span>
+      <span class="pp-card-desc">右键菜单与「工具」菜单的结构、分组与高频直达项，所有改动即时生效</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div class="pp-row" style="margin-top:6px;">
+        <label class="pp-label" for="pp-menu-mode">菜单结构</label>
+        <select id="pp-menu-mode" class="pp-select">
+          <option value="grouped">分组两层（推荐：高频直达 + 语义分组）</option>
+          <option value="classic">经典平铺（0.28 及以前的单层结构）</option>
+        </select>
+      </div>
+      <div class="pp-hint" style="margin-top:4px;">分组模式下，条目右键菜单从 40 项平铺收拢为「直达 + 分组」；被折叠的功能仍可从功能中心与「工具 → Papilot」到达。</div>
+      <div class="pp-field" style="margin-top:10px;">
+        <div class="pp-label">右键菜单中隐藏的分组（取消勾选即从右键菜单移除）</div>
+        <div id="pp-menu-groups" class="pp-menu-groups" style="display:flex;flex-wrap:wrap;gap:4px 18px;"></div>
+        <div class="pp-hint">隐藏只是收起入口：功能本体不受影响，恢复勾选即回来。</div>
+      </div>
+      <div class="pp-field" style="margin-top:10px;">
+        <div class="pp-label">右键菜单顶部高频直达项（最多 3 个）</div>
+        <div class="pp-grid3">
+          <select id="pp-menu-quick-0" class="pp-select" aria-label="直达位 1"></select>
+          <select id="pp-menu-quick-1" class="pp-select" aria-label="直达位 2"></select>
+          <select id="pp-menu-quick-2" class="pp-select" aria-label="直达位 3"></select>
+        </div>
+        <div class="pp-hint">直达项与分组内条目是同一功能的两处入口；选「（无）」表示该位留空。</div>
+      </div>
+      <div id="pp-menu-result" class="pp-msg" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div class="pp-card pp-fold" data-fold="hotkeys" data-search-strings-raw="快捷键 录制 改键 hotkey shortcut keyboard 键位 冲突">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="7" cy="10" r="1"></circle><circle cx="12" cy="10" r="1"></circle><circle cx="17" cy="10" r="1"></circle><circle cx="7" cy="14" r="1"></circle><circle cx="12" cy="14" r="1"></circle><circle cx="17" cy="14" r="1"></circle></svg></span><span class="pp-card-title">快捷键</span>
+      <span class="pp-card-desc">点击「录制」后按下新组合键即可改键，改动即时生效</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div id="pp-hotkeys-list"></div>
+      <div class="pp-hint" style="margin-top:8px;">录制时按 Esc 取消；「重置」恢复默认组合。自动化规则里配的快捷键也会出现在此列表（标签前缀「自动化：」）。</div>
+      <div id="pp-hotkeys-result" class="pp-msg" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <!-- ============ 分类 · 数据与同步（1 项） ============ -->
+  <div class="pp-cat-label"><span class="pp-cat-name">数据与同步</span><span class="pp-cat-count">1 项</span></div>
+  <div class="pp-card pp-fold" data-fold="cloud" data-search-strings-raw="云同步 坚果云 webdav 备份 同步 技能包 安装包 冲突 应用密码 断点续传 nutstore sync backup 邮箱 密码 日志 恢复 续传 端口 路径 设置项">
+    <div class="pp-fold-head">
+      <span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9h-1.26A8 8 0 1 0 9 19h9a5 5 0 0 0 0-10z"></path><polyline points="7.5 13.5 9.5 11.5 11.5 13.5"></polyline><line x1="9.5" y1="11.5" x2="9.5" y2="16.5"></line><polyline points="12.5 14.5 14.5 16.5 16.5 14.5"></polyline><line x1="14.5" y1="11.5" x2="14.5" y2="16.5"></line></svg></span><span class="pp-card-title">云同步与备份</span>
+      <span class="pp-card-desc">设置、AI 对话、技能包与安装包统一走坚果云 WebDAV：增量同步、冲突不丢数据、断点续传</span>
+      <span class="pp-fold-arrow">▾</span>
+    </div>
+    <div class="pp-card-body">
+      <div class="pp-row" style="flex-wrap:wrap;gap:8px;">
+        <span id="pp-cloud-dot" class="pp-msg" aria-hidden="true">●</span>
+        <span id="pp-cloud-state" class="pp-msg" aria-live="polite">未连接</span>
+        <span id="pp-cloud-last" class="pp-hint"></span>
+      </div>
+      <div class="pp-hint" style="margin-top:4px;">
+        坚果云 WebDAV <strong>不接受登录密码</strong>：请到「账户信息 → 安全选项 → 添加应用密码」生成一个专用密码，填在下面。
+        登录密码直连会返回 401（已实测）。
+      </div>
+      <div class="pp-row" style="margin-top:6px;">
+        <button id="pp-cloud-apppw" class="pp-btn pp-btn-sm">打开应用密码页面</button>
+        <span class="pp-hint">浏览器打开后回到这里填密码即可</span>
+      </div>
+
+      <div class="pp-grid2" style="margin-top:10px;">
+        <label class="pp-field">
+          <span class="pp-label">坚果云账号（邮箱）</span>
+          <input type="text" id="pp-cloud-email" class="pp-input" placeholder="you@example.com"/>
+        </label>
+        <label class="pp-field">
+          <span class="pp-label">应用密码</span>
+          <input type="password" id="pp-cloud-token" class="pp-input" placeholder="在坚果云安全设置里生成的应用密码"/>
+        </label>
+      </div>
+      <div class="pp-hint">也可以存到「账号与密钥」：加密托管到你自己的账号，换机一键取回；那里默认脱敏显示。</div>
+      <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:6px;">
+        <label class="pp-check"><input type="checkbox" id="pp-cloud-remember"/> 在本机记住应用密码</label>
+        <button id="pp-cloud-save" class="pp-btn pp-btn-primary">保存并测试连接</button>
+        <span id="pp-cloud-msg" class="pp-msg" aria-live="polite"></span>
+      </div>
+
+      <div class="pp-sub" style="margin-top:14px;">
+        <div class="pp-sub-title">同步范围</div>
+        <div class="pp-sub-desc">勾选即参与同步；密钥类设置（API Key / 各类密码）永远不会离开本机</div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:14px;margin-top:6px;">
+          <label class="pp-check"><input type="checkbox" id="pp-cloud-ds-settings"/> 设置项</label>
+          <label class="pp-check"><input type="checkbox" id="pp-cloud-ds-chat"/> AI 对话记录</label>
+          <label class="pp-check"><input type="checkbox" id="pp-cloud-ds-packs"/> 技能包与安装包</label>
+        </div>
+      </div>
+
+      <div class="pp-grid2" style="margin-top:10px;">
+        <label class="pp-field">
+          <span class="pp-label">云端同步目录</span>
+          <input type="text" id="pp-cloud-root" class="pp-input" placeholder="/Papilot"/>
+        </label>
+        <label class="pp-field">
+          <span class="pp-label">冲突策略</span>
+          <select id="pp-cloud-policy" class="pp-select">
+            <option value="keepBoth">两份都留（推荐）</option>
+            <option value="local">本机覆盖云端</option>
+            <option value="remote">云端覆盖本机</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="pp-grid2" style="margin-top:8px;">
+        <label class="pp-field">
+          <span class="pp-label">同步方向</span>
+          <select id="pp-cloud-direction" class="pp-select">
+            <option value="both">双向（推荐）</option>
+            <option value="up">仅上传</option>
+            <option value="down">仅下载</option>
+          </select>
+        </label>
+      </div>
+
+      <details class="pp-disclose">
+        <summary>高级参数（分卷与限额）</summary>
+        <div class="pp-grid2" style="margin-top:8px;">
+          <label class="pp-field">
+            <span class="pp-label">自动同步间隔（分钟，0 = 关闭）</span>
+            <input type="text" id="pp-cloud-auto" class="pp-input" placeholder="0"/>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">单文件上限（MB）</span>
+            <input type="text" id="pp-cloud-maxmb" class="pp-input" placeholder="512"/>
+          </label>
+        </div>
+        <div class="pp-grid2" style="margin-top:8px;">
+          <div class="pp-field">
+            <label class="pp-label" for="pp-cloud-large">大文件阈值 / 分片（MB）</label>
+            <div class="pp-row" style="gap:6px;">
+              <input type="text" id="pp-cloud-large" class="pp-input" placeholder="64" style="width:70px;"/>
+              <input type="text" id="pp-cloud-part" class="pp-input" placeholder="32" style="width:70px;" aria-label="分片大小（MB）"/>
+            </div>
+          </div>
+          <label class="pp-field">
+            <span class="pp-label">设置快照上限（KB）</span>
+            <input type="text" id="pp-cloud-snapkb" class="pp-input" placeholder="1024"/>
+          </label>
+        </div>
+        <div class="pp-grid2" style="margin-top:8px;">
+          <label class="pp-field">
+            <span class="pp-label">分卷组装上限（MB）</span>
+            <input type="text" id="pp-cloud-assemble" class="pp-input" placeholder="128"/>
+          </label>
+          <label class="pp-field">
+            <span class="pp-label">单次同步文件上限</span>
+            <input type="text" id="pp-cloud-maxfiles" class="pp-input" placeholder="2000"/>
+          </label>
+        </div>
+        <div class="pp-grid2" style="margin-top:8px;">
+          <label class="pp-field">
+            <span class="pp-label">目录深度上限</span>
+            <input type="text" id="pp-cloud-maxdepth" class="pp-input" placeholder="6"/>
+          </label>
+        </div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;">
+          <label class="pp-check"><input type="checkbox" id="pp-cloud-keep-parts"/> 保留旧分卷（排障用）</label>
+          <span class="pp-hint">超限时整数据集跳过，不做"只同步看到的部分"（漏扫会误判成云端独有）。</span>
+        </div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:10px;margin-top:6px;">
+          <label class="pp-check"><input type="checkbox" id="pp-cloud-propagate"/> 传播删除（仅技能包/安装包）</label>
+          <span class="pp-hint">对端在删除之后没改过的文件才会一起删；改过的保留。</span>
+        </div>
+      </details>
+
+      <div class="pp-sub" style="margin-top:12px;">
+        <div class="pp-sub-title">冲突留档</div>
+        <div class="pp-sub-desc">两边同时修改时，旧版本留在本机（不自动删），可在这里查看</div>
+        <div id="pp-cloud-conflicts" class="pp-datasets"></div>
+        <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:4px;">
+          <button id="pp-cloud-conflict-open" class="pp-btn pp-btn-sm">打开冲突目录</button>
+          <button id="pp-cloud-conflict-refresh" class="pp-btn pp-btn-sm">刷新</button>
+          <span id="pp-cloud-conflict-msg" class="pp-msg" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div class="pp-row" style="flex-wrap:wrap;gap:8px;margin-top:12px;">
+        <button id="pp-cloud-sync" class="pp-btn pp-btn-primary">立即同步</button>
+        <button id="pp-cloud-up" class="pp-btn pp-btn-sm">仅上传</button>
+        <button id="pp-cloud-down" class="pp-btn pp-btn-sm">仅下载</button>
+        <button id="pp-cloud-cancel" class="pp-btn pp-btn-sm">取消</button>
+        <button id="pp-cloud-stage" class="pp-btn pp-btn-sm">收集技能包</button>
+        <button id="pp-cloud-open" class="pp-btn pp-btn-sm">打开本地同步目录</button>
+        <button id="pp-cloud-logout" class="pp-btn pp-btn-sm">退出登录</button>
+      </div>
+
+      <div id="pp-cloud-track" class="pp-cloud-track" style="margin-top:10px;">
+        <div id="pp-cloud-bar" style="width:0%;"></div>
+      </div>
+      <div id="pp-cloud-progress" class="pp-hint" style="margin-top:4px;"></div>
+      <div id="pp-cloud-log" class="pp-hint" style="margin-top:6px;max-height:150px;overflow:auto;white-space:pre-wrap;"></div>
+      <div class="pp-hint" style="margin-top:6px;">本功能与 Zotero 自带的附件同步互不干扰（独立目录 /Papilot）；两者可同时使用。</div>
+    </div>
+  </div>
+
+  <!-- ============ 付款订单弹窗挂载点（0.49.0） ============
+       下单成功（会员购买 / AI 额度充值）自动弹出一张付款单；「查看付款单」可重开。
+       ★ 必须放在根级、折叠组之外：.pp-fold-closed 会给分组挂 display:none，
+       fixed 定位的子节点同样会被祖先隐藏（弹窗在组收起后打不开）。 -->
+  <div id="pp-dlg-root"></div>
+
+</div>
+
+
+<script>
+/* ---- 仅预览用：折叠 / 搜索 / 示例数据（与插件内 prefs-fold.js 的判定口径一致） ---- */
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var cards = [].slice.call(document.querySelectorAll('.pp-card.pp-fold'));
+  cards.forEach(function (c) { c.classList.add('pp-fold-closed'); });
+  cards.forEach(function (c) {
+    var head = c.querySelector('.pp-fold-head');
+    if (!head) return;
+    head.addEventListener('click', function () { c.classList.toggle('pp-fold-closed'); });
+  });
+  var exp = $('pp-fold-expand'), col = $('pp-fold-collapse');
+  if (exp) exp.addEventListener('click', function () {
+    cards.forEach(function (c) { c.classList.remove('pp-fold-closed'); });
+  });
+  if (col) col.addEventListener('click', function () {
+    cards.forEach(function (c) { c.classList.add('pp-fold-closed'); });
+  });
+
+  /* 搜索：标题 + 说明 + 关键词，命中即展开，组内零命中隐藏标签 */
+  var input = $('pp-prefs-search'), clearBtn = $('pp-prefs-search-clear'), count = $('pp-pref-count');
+  var base = count ? count.textContent : '';
+  var idx = cards.map(function (c) {
+    var t = c.querySelector('.pp-card-title'), d = c.querySelector('.pp-card-desc');
+    return { el: c, text: [t && t.textContent, d && d.textContent,
+      c.getAttribute('data-search-strings-raw') || ''].join(' ').toLowerCase() };
+  });
+  function apply() {
+    var terms = (input.value || '').toLowerCase().split(/\s+/).filter(Boolean);
+    var on = terms.length > 0, hit = 0;
+    idx.forEach(function (it) {
+      var ok = !on || terms.every(function (t) { return it.text.indexOf(t) >= 0; });
+      if (ok) hit++;
+      it.el.classList.toggle('pp-hidden', !ok);
+    });
+    var kids = document.querySelector('.pp-root').children;
+    for (var i = 0; i < kids.length; i++) {
+      if (!kids[i].classList.contains('pp-cat-label')) continue;
+      var any = false;
+      for (var j = i + 1; j < kids.length; j++) {
+        if (kids[j].classList.contains('pp-cat-label')) break;
+        if (kids[j].classList.contains('pp-card') && !kids[j].classList.contains('pp-hidden')) any = true;
+      }
+      kids[i].classList.toggle('pp-hidden', on && !any);
+    }
+    document.querySelector('.pp-root').classList.toggle('pp-searching', on);
+    if (count) count.textContent = on ? hit + ' / ' + idx.length + ' 项' : base;
+    if (count) count.classList.toggle('pp-count-hit', on);
+    if (clearBtn) clearBtn.style.display = on ? '' : 'none';
+  }
+  if (input) { input.addEventListener('input', apply); }
+  if (clearBtn) clearBtn.addEventListener('click', function () { input.value = ''; apply(); });
+
+  /* ---- 示例数据：真实面板里由各 prefs-*.js 渲染 ---- */
+  var h = function (html) { var d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; };
+  var add = function (id, html) { var host = $(id); if (host) host.appendChild(h(html)); };
+
+  /* 大类直达（真实面板由 prefs-hotkeys.js 生成） */
+  var nav = $('pp-anchor-nav');
+  if (nav) {
+    nav.appendChild(h('<span class="pp-hint">直达：</span>'));
+    [].slice.call(document.querySelectorAll('.pp-cat-label')).forEach(function (lab) {
+      var nm = lab.querySelector('.pp-cat-name');
+      var btn = h('<button class="pp-btn pp-btn-sm">' + (nm ? nm.textContent : lab.textContent) + '</button>');
+      btn.addEventListener('click', function () {
+        lab.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        var n = lab.nextElementSibling;
+        while (n && !n.classList.contains('pp-card')) n = n.nextElementSibling;
+        if (n) n.classList.remove('pp-fold-closed');
+      });
+      nav.appendChild(btn);
+    });
+  }
+
+  // 账号：切到已登录视图
+  var lv = $('pp-login-view'), av = $('pp-account-view');
+  if (lv) lv.style.display = 'none';
+  if (av) av.style.display = '';
+  if ($('pp-account-name')) $('pp-account-name').textContent = '陈老师';
+  if ($('pp-account-email')) $('pp-account-email').textContent = 'chen@example.edu.cn';
+  if ($('pp-account-meta')) $('pp-account-meta').textContent = '注册于 2026-09-12 · 本机 1 台设备登录中';
+  if ($('pp-mb-badge')) { $('pp-mb-badge').textContent = 'PRO'; $('pp-mb-badge').classList.add('pp-mb-badge-pro'); }
+  if ($('pp-mb-title')) $('pp-mb-title').textContent = '专业版';
+  if ($('pp-mb-expiry')) $('pp-mb-expiry').textContent = '有效期至 2027-03-12（剩 143 天）';
+  if ($('pp-mb-features')) $('pp-mb-features').innerHTML =
+    '<div class="pp-mb-feat">全部官方模型（含推理档 / 长上下文）</div>'
+    + '<div class="pp-mb-feat">每月 ¥20 AI 额度，当月有效</div>'
+    + '<div class="pp-mb-feat">第三方文献源（试验）可用</div>';
+  if ($('pp-mb-usage')) {
+    $('pp-mb-usage').style.display = '';
+    $('pp-mb-usage').innerHTML = '<div class="pp-mb-usage-head">今日 ¥1.24 · 近 7 天 ¥7.86</div>'
+      + '<div class="pp-mb-bars">' + [0.2, 0.4, 0.15, 0.55, 0.35, 0.9, 0.7].map(function (v, i) {
+        return '<div class="pp-mb-bar-col"><div class="pp-mb-bar' + (v ? '' : ' pp-mb-bar-zero')
+          + '" style="height:' + Math.round(v * 40) + 'px"></div><div class="pp-mb-bar-day">'
+          + ['一', '二', '三', '四', '五', '六', '日'][i] + '</div></div>';
+      }).join('') + '</div>';
+  }
+  if ($('pp-bal-block')) {
+    $('pp-bal-block').style.display = '';
+    $('pp-bal-block').querySelector('.pp-bal-total').textContent = '¥ 23.40';
+    $('pp-bal-detail').textContent = '订阅额度 ¥20.00（2026-11 到期）· 充值余额 ¥3.40';
+    $('pp-bal-note').textContent = '按响应模型计价，逐次扣减；额度用完可切换到自己的 API Key。';
+  }
+  if ($('pp-dev-block')) {
+    $('pp-dev-block').style.display = '';
+    $('pp-dev-stat').textContent = '2 台在线';
+    add('pp-dev-list', '<div class="pp-dev-row pp-dev-row-cur"><div class="pp-dev-info">'
+      + '<div class="pp-dev-name">Windows · 本机</div>'
+      + '<div class="pp-dev-meta">最后活跃：刚刚 · 192.168.1.6</div></div>'
+      + '<div class="pp-dev-act"><span class="pp-link pp-link-danger">退出</span></div></div>');
+    add('pp-dev-list', '<div class="pp-dev-row"><div class="pp-dev-info">'
+      + '<div class="pp-dev-name">macOS · 办公室</div>'
+      + '<div class="pp-dev-meta">最后活跃：2 天前 · 10.0.0.22</div></div>'
+      + '<div class="pp-dev-act"><span class="pp-link pp-link-danger">退出</span></div></div>');
+  }
+  if ($('pp-ai-tier-note')) {
+    $('pp-ai-tier-note').style.display = '';
+    $('pp-ai-tier-note').textContent = '全模型可用 · 本月剩余额度 ¥20.00';
+  }
+
+  // 模型通道
+  if ($('pp-ch-status')) {
+    $('pp-ch-status').textContent = '活动通道：官方（deepseek-v4.1-flash）· 连接正常；另有 1 个自建通道';
+  }
+  add('pp-ch-list', '<div class="pp-ch-row"><div style="flex:1;min-width:0">'
+    + '<div class="pp-ch-head"><span class="pp-ch-name">官方通道</span>'
+    + '<span class="pp-pill pp-pill-ok">使用中</span></div>'
+    + '<div class="pp-ch-sub">api.papilot.example/v1 · 密钥 已隐藏</div></div>'
+    + '<select class="pp-select" style="width:170px"><option>deepseek-v4.1-flash</option>'
+    + '<option>deepseek-v4.1-pro</option></select></div>');
+  add('pp-ch-list', '<div class="pp-ch-row"><div style="flex:1;min-width:0">'
+    + '<div class="pp-ch-head"><span class="pp-ch-name">自建 · Ollama</span>'
+    + '<span class="pp-pill pp-pill-warn">离线</span></div>'
+    + '<div class="pp-ch-sub">http://127.0.0.1:11434/v1 · 密钥 已隐藏</div></div>'
+    + '<select class="pp-select" style="width:170px"><option>qwen2.5:14b</option></select></div>');
+
+  // 翻译引擎
+  add('pp-tr-list', '<div class="pp-ch-row"><div style="flex:1;min-width:0">'
+    + '<div class="pp-ch-head"><span class="pp-ch-name">AI 大模型</span>'
+    + '<span class="pp-pill pp-pill-ok">当前</span><span class="pp-pill">回退 1</span></div>'
+    + '<div class="pp-ch-sub">走「官方通道」· 支持术语表约束 · 最近一次 1.2s</div></div>'
+    + '<div class="pp-row" style="margin:0"><button class="pp-btn pp-btn-sm">设为当前</button>'
+    + '<button class="pp-btn pp-btn-sm">测试</button></div></div>');
+  add('pp-tr-list', '<div class="pp-ch-row"><div style="flex:1;min-width:0">'
+    + '<div class="pp-ch-head"><span class="pp-ch-name">Google 翻译</span>'
+    + '<span class="pp-pill">免密钥</span></div>'
+    + '<div class="pp-ch-sub">无需配置 · 不支持术语表 · 最近一次 0.4s</div></div>'
+    + '<div class="pp-row" style="margin:0"><button class="pp-btn pp-btn-sm">设为当前</button>'
+    + '<button class="pp-btn pp-btn-sm">测试</button></div></div>');
+
+  // 主题墙
+  var themes = [['晨雾蓝', ['#eef4ff', '#dbe7ff', '#8fb4ff', '#2f6fed'], '浅色'],
+                ['墨夜', ['#1b1f24', '#22272e', '#3d444d', '#4493f8'], '深色'],
+                ['羊皮纸', ['#fbf6ec', '#f3e9d2', '#d8c9a8', '#8a6d3b'], '浅色'],
+                ['樱', ['#fdf2f5', '#f9dbe4', '#f2a7bd', '#c2185b'], '浅色']];
+  ['pp-cat-standard'].forEach(function (id) {
+    themes.forEach(function (t) {
+      add(id, '<div class="pp-theme-card' + (t[0] === '晨雾蓝' ? ' pp-theme-on' : '') + '">'
+        + '<div class="pp-theme-swatches">' + t[1].map(function (c) {
+          return '<span style="flex:1;background:' + c + '"></span>'; }).join('') + '</div>'
+        + '<div class="pp-theme-name">' + t[0] + '</div>'
+        + '<div class="pp-theme-tag">' + t[2] + ' · 壁纸</div></div>');
+    });
+  });
+
+  // PDF 阅读主题
+  [['关闭（原样）', '默认'], ['护眼浅绿', '推荐'], ['羊皮纸', ''], ['夜间反色', '深色页']].forEach(function (t, i) {
+    add('pp-pdf-theme-list', '<div class="pp-pdf-item' + (i === 1 ? ' pp-pdf-on' : '') + '">'
+      + '<span style="width:14px;height:14px;border-radius:4px;border:1px solid var(--pp-border);'
+      + 'background:' + ['#fff', '#dff0d2', '#f3e9d2', '#111'][i] + '"></span>'
+      + '<span>' + t[0] + '</span><span class="pp-pdf-badge">' + t[1] + '</span></div>');
+  });
+
+  // 第三方文献源
+  function tsGroup(name, chips) {
+    add('pp-ts-endpoints', '<div class="pp-ts-group">' + name + '</div>');
+    add('pp-ts-endpoints', '<div class="pp-ts-chips">' + chips.map(function (c) {
+      return '<button class="pp-ts-chip"><span class="pp-ts-dot" style="color:var(--pp-success)">●</span>'
+        + '<span class="pp-ts-chip-name">' + c + '</span></button>'; }).join('') + '</div>');
+  }
+  tsGroup('中文库', ['知网', '万方', '维普', '百度学术']);
+  tsGroup('英文全文', ['Sci-Hub', 'Sci-Net', 'PubMed Central']);
+  tsGroup('预印本 / 搜索', ['arXiv', 'bioRxiv', 'Google Scholar']);
+
+  // 技能包
+  ['学术写作', '医学翻译', '文献精读', '审稿助手'].forEach(function (n, i) {
+    add('pp-sk-installed', '<span class="pp-ds-chip' + (i === 0 ? ' pp-ds-on' : '') + '">'
+      + (i === 0 ? '✓ ' : '') + n + ' v1.' + (i + 2) + '</span>');
+  });
+
+  // 检索订阅
+  [['图神经网络', 'arXiv · OpenAlex', '每日 08:00', '今天 08:02 抓到 12 条', 1],
+   ['可解释性', 'arXiv · Crossref', '每周一 09:00', '昨天 09:01 抓到 5 条', 0]].forEach(function (r) {
+    add('pp-subs-list', '<div class="pp-row pp-subs-row"><span class="pp-label">' + r[0] + '</span>'
+      + '<span class="pp-hint" style="border:1px solid var(--pp-border);border-radius:6px;padding:0 5px">'
+      + r[1] + '</span><span class="pp-hint pp-subs-spec">关键词 3 · 排除 1</span>'
+      + '<span class="pp-hint pp-subs-time">' + r[2] + '</span>'
+      + '<span class="pp-hint pp-subs-last">' + r[3] + '</span>'
+      + '<button class="pp-btn pp-btn-sm">预览</button><button class="pp-btn pp-btn-sm">立即运行</button>'
+      + '<button class="pp-btn pp-btn-sm">历史</button><button class="pp-btn pp-btn-sm">编辑</button>'
+      + '<button class="pp-btn pp-btn-sm">删除</button></div>');
+  });
+
+  // 定时任务
+  [['研究晨报', '08:00', '今天 08:00 已生成'], ['阅读周报', '周一 09:00', '本周一已生成'],
+   ['库体检', '', '未启用']].forEach(function (r) {
+    add('pp-sch-rows', '<div class="pp-row pp-sch-row"><span class="pp-label" style="min-width:120px">'
+      + r[0] + '</span><input class="pp-input pp-sch-time" value="' + r[1] + '" placeholder="HH:MM">'
+      + '<span class="pp-hint pp-sch-state">' + r[2] + '</span>'
+      + '<button class="pp-btn pp-btn-sm">立即运行</button></div>');
+  });
+
+  // 快捷键
+  [['打开 AI 问答', '主窗口', 'Ctrl+Shift+K'], ['划词翻译', '阅读器', 'Ctrl+Enter'],
+   ['功能中心', '主窗口', 'Ctrl+Shift+P'], ['快速打标', '主窗口', 'Ctrl+Shift+T']].forEach(function (r) {
+    add('pp-hotkeys-list', '<div class="pp-row pp-hk-row"><span class="pp-label" style="min-width:200px">'
+      + r[0] + '</span><span class="pp-hint" style="min-width:56px">' + r[1] + '</span>'
+      + '<span class="pp-hint pp-hk-combo">' + r[2] + '</span>'
+      + '<button class="pp-btn pp-btn-sm">录制</button><button class="pp-btn pp-btn-sm">重置</button>'
+      + '<input type="checkbox" checked></div>');
+  });
+
+  // AI 记忆 / 命令标签
+  [['偏好', '图表一律用矢量图，坐标轴标注单位', '09-28']].forEach(function (r) {
+    add('pp-mem-list', '<div class="pp-row pp-mem-row"><span class="pp-mem-kind">' + r[0] + '</span>'
+      + '<span class="pp-hint pp-mem-text">' + r[1] + '</span>'
+      + '<span class="pp-hint pp-mem-time">' + r[2] + '</span>'
+      + '<button class="pp-btn pp-btn-sm">删除</button></div>');
+  });
+  ['精读', '审稿', '术语核对', '周报'].forEach(function (n, i) {
+    add('pp-agent-tags', '<span class="pp-ds-chip' + (i === 0 ? ' pp-ds-on' : '') + '">/' + n + '</span>');
+  });
+  ['检索文献库', '读全文', '加笔记', '打标签', '查引用'].forEach(function (n, i) {
+    add('pp-agent-tools', '<span class="pp-ds-chip' + (i < 3 ? ' pp-ds-on' : '') + '">' + n + '</span>');
+  });
+  // 分区数据集 chips（真实面板由 prefs-pane.js 渲染）
+  ['中科院分区', 'JCR', 'CCF', '北大核心', 'CSCD', '影响因子'].forEach(function (n, i) {
+    add('pp-rank-datasets', '<span class="pp-ds-chip' + (i < 3 ? ' pp-ds-on' : '') + '">'
+      + (i < 3 ? '✓ ' : '') + n + '</span>');
+  });
+  if ($('pp-rank-preview')) {
+    $('pp-rank-preview').innerHTML = '<span style="color:var(--pp-muted);font-size:11px;margin-right:6px">配色图例：</span>'
+      + [['Q1', '#c0392b'], ['Q2', '#d97706'], ['中科院1区', '#b91c1c'], ['CCF-A', '#15803d'],
+         ['北大核心', '#1d4ed8'], ['IF 9.4', '#6b7280']].map(function (b) {
+        return '<span class="pp-badge-demo" style="background:' + b[1] + '">' + b[0] + '</span>'; }).join('');
+  }
+  // 菜单分组勾选
+  if ($('pp-menu-groups')) {
+    ['文献处理', '阅读与翻译', '笔记与写作', '批量分析', '账号与设置'].forEach(function (n) {
+      $('pp-menu-groups').appendChild(h('<label class="pp-check" style="margin-top:0">'
+        + '<input type="checkbox" checked><span>' + n + '</span></label>'));
+    });
+  }
+  // 云同步状态
+  if ($('pp-cloud-state')) {
+    $('pp-cloud-state').textContent = '已连接';
+    $('pp-cloud-dot').style.color = 'var(--pp-success)';
+    $('pp-cloud-last').textContent = '上次同步：3 分钟前 · 12 个文件';
+    $('pp-cloud-progress').textContent = '设置项 4/4 · 对话 12/12 · 技能包 3/3';
+    $('pp-cloud-bar').style.width = '100%';
+    $('pp-cloud-log').textContent = '09:12:04  拉取远端索引… 14 项\n09:12:05  上传 2 个变更（settings.json, chat-index.json）\n09:12:06  完成，无冲突';
+  }
+  // 默认展开前两张卡，便于评审卡片展开态
+  ['account', 'channels'].forEach(function (k) {
+    var el = document.querySelector('[data-fold="' + k + '"]');
+    if (el) el.classList.remove('pp-fold-closed');
+  });
+})();
+</script>
+
+</body>
+</html>

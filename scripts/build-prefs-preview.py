@@ -345,7 +345,7 @@ html = """<!DOCTYPE html>
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Papilot 设置面板 · 0.65.0 设计预览</title>
+<title>Papilot 设置面板 · __VER__ 设计预览</title>
 <style>
   html, body { margin: 0; padding: 0; }
   body {
@@ -389,6 +389,6 @@ __DEMO__
 </body>
 </html>
 """
-html = html.replace("__CSS__", css).replace("__BODY__", x).replace("__DEMO__", DEMO)
+html = html.replace("__CSS__", css).replace("__BODY__", x).replace("__DEMO__", DEMO).replace("__VER__", _ver)
 io.open(OUT, "w", encoding="utf-8", newline="\n").write(html)
 print("预览页写入:", OUT, len(html), "字节")

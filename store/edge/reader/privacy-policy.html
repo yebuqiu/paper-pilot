@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Papilot 学术阅读侧边栏 · 隐私政策</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --line:#e3e6ea; --text:#1f2329; --muted:#6b7280; --brand:#0f6e56; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.8 "Microsoft YaHei","PingFang SC",system-ui,sans-serif; }
+  header { background:#0d1526; color:#fff; padding:16px 24px; }
+  header .inner { max-width:820px; margin:0 auto; display:flex; align-items:center; gap:12px; }
+  header .logo { width:32px; height:32px; border-radius:8px; background:var(--brand); display:flex; align-items:center; justify-content:center; font-weight:700; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  main { max-width:820px; margin:0 auto; padding:26px 24px 80px; }
+  article { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:28px 30px; }
+  h2 { font-size:15px; margin:26px 0 8px; }
+  h2:first-of-type { margin-top:0; }
+  p, li { color:#33383f; }
+  table { width:100%; border-collapse:collapse; margin:10px 0 4px; font-size:13px; }
+  th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:#fafbfc; font-weight:600; }
+  .meta { color:var(--muted); font-size:12.5px; }
+  .note { background:#f7f9f8; border-left:3px solid var(--brand); padding:10px 14px; margin:12px 0; }
+  a { color:var(--brand); }
+</style>
+</head>
+<body>
+<header><div class="inner"><div class="logo">P</div><h1>Papilot 学术阅读侧边栏 · 隐私政策</h1></div></header>
+<main><article>
+<p class="meta">生效日期：2026-10-19　｜　版本：v1.1　｜　适用扩展：Papilot 学术阅读侧边栏（Edge Add-ons）</p>
+
+<p class="note"><b>一句话概括</b>：扩展只在你主动点击或发送问题时读取当前论文页的正文节选，并只发送到你选择的模型接口；不读取浏览历史，不做遥测，不出售数据。</p>
+
+<h2>一、适用范围</h2>
+<p>本政策适用于 Microsoft Edge 扩展「Papilot 学术阅读侧边栏」（以下简称“本扩展”）。本扩展可独立使用（自带模型 Key），也可登录 Papilot 账号使用官方模型网关。</p>
+<p>当你登录 Papilot 账号时，账号注册、会员、订单与计费相关信息同时受 <a href="https://pp.xinglintools.top/privacy">Papilot 账号服务隐私政策</a> 约束；两份政策如有重叠，以更具体者为准。</p>
+
+<h2>二、我们处理哪些信息</h2>
+<table>
+<tr><th>信息</th><th>何时处理</th><th>目的</th></tr>
+<tr><td>当前页标题、URL、正文节选（最多约 1.8 万字，可在设置中调整上限）</td><td>你点击「读取本页」「本页摘要」「创新与局限」或发送追问时</td><td>让模型基于当前论文作答</td></tr>
+<tr><td>你选中的文本（最多 4,000 字）</td><td>你点击「解释选中」「翻译选中」或带选区追问时</td><td>解释、翻译与追问</td></tr>
+<tr><td>术语表（你自行填写的 `原文 = 译名`）</td><td>你保存设置后，随请求一并发送</td><td>保证同一篇文章译名一致</td></tr>
+<tr><td>模型配置（接口地址、模型名、API Key）</td><td>你在设置页保存时</td><td>调用你指定的模型接口</td></tr>
+<tr><td>Papilot 账号邮箱、登录令牌与到期时间</td><td>你选择账号登录时</td><td>身份识别、额度计费与会话续期</td></tr>
+<tr><td>会话记录（问题与回答）</td><td>你使用过程中</td><td>仅保存在本机，便于回看与导出</td></tr>
+<tr><td>摘录（选中的原文、AI 回答、来源标题与链接）</td><td>你点「存摘录」时</td><td>仅保存在本机，供你回看与导出 Markdown</td></tr>
+</table>
+
+<p>我们<b>不</b>处理：你的浏览历史、Cookie、书签、密码管理器内容、Zotero 文献库、其他标签页内容；也不申请全站访问权限。</p>
+
+<h2>三、数据发送到哪里</h2>
+<ul>
+  <li><b>自带 Key 模式</b>：请求直接发送到你填写的模型接口（例如你自建的 OpenAI 兼容服务、云服务商或本机 Ollama）。我们不经过、也无法看到该请求。</li>
+  <li><b>Papilot 账号模式</b>：请求经 <code>https://pp.xinglintools.top</code> 转发至模型服务商，用于生成回答并按额度计费。转发内容仅为当次提示词、页面节选与选中文本。</li>
+  <li>我们不会将你的请求内容用于训练模型，也不会出售或用于广告。</li>
+  <li>模型服务商可能按其自身条款保留请求日志；如果你选择境外服务商，该次请求可能构成数据跨境传输。你可以改用境内服务商或本地模型来避免。</li>
+</ul>
+
+<h2>四、本地存储与保留</h2>
+<p>设置、术语表、会话记录、摘录与登录令牌保存在浏览器的 <code>chrome.storage.local</code> 中，仅本机可读，不参与浏览器账号同步，也不上传到我们的服务器（账号令牌本身除外，它由服务器签发）。摘录最多保留 200 条，可在「摘录」页删除或清空。</p>
+<p>你可以随时在扩展内清空会话、退出登录（立即清除令牌），或卸载扩展（浏览器会删除其本地存储）。我们不会在本地保留超出上述范围的副本。</p>
+
+<h2>五、权限说明</h2>
+<table>
+<tr><th>权限</th><th>用途</th></tr>
+<tr><td>sidePanel</td><td>展示阅读助手侧边栏</td></tr>
+<tr><td>storage</td><td>保存设置、术语表与会话</td></tr>
+<tr><td>scripting / activeTab</td><td>在你点击时读取当前标签页正文</td></tr>
+<tr><td>学术站点访问权限</td><td>在论文站点自动捕获划词；不包含全站通配</td></tr>
+<tr><td>pp.xinglintools.top</td><td>账号登录与官方模型网关</td></tr>
+</table>
+
+<h2>六、共享、出售与委托处理</h2>
+<p>我们不出售你的个人信息，也不向广告商共享。仅在以下必要情形共享：</p>
+<ul>
+  <li>你选择的模型服务商（生成回答所必需）；</li>
+  <li>账号模式下的支付渠道（仅订单与交易状态，用于履约与对账）；</li>
+  <li>法律法规要求或司法机关依法调取。</li>
+</ul>
+
+<h2>七、你的选择与权利</h2>
+<ul>
+  <li>不使用账号：选择自带 Key 模式，请求不经过我们的服务器。</li>
+  <li>不使用 AI：关闭或卸载扩展，不影响浏览器正常使用。</li>
+  <li>清除数据：清空会话、退出登录，或在 Edge 的扩展管理中移除本扩展。</li>
+  <li>账号数据：通过 <a href="https://pp.xinglintools.top/privacy">账号服务隐私政策</a> 中的联系方式申请查询、更正或删除。</li>
+</ul>
+
+<h2>八、安全</h2>
+<p>登录密码只用于换取令牌，不会写入本地存储；令牌仅保存在本机并以 HTTPS 传输。请注意：任何浏览器扩展的本地存储都可能被能访问你电脑的人读取，建议为操作系统账户设置锁屏密码。</p>
+
+<h2>九、儿童</h2>
+<p>本扩展面向科研与学习场景，不面向 14 周岁以下儿童，也不会主动收集其信息。</p>
+
+<h2>十、政策变更</h2>
+<p>功能或数据流程发生实质变化时，我们会更新本页并修改生效日期；重大变更会在扩展内提示。</p>
+
+<h2>十一、联系我们</h2>
+<p>数据控制者：Papilot 文献副驾运营方　｜　联系邮箱：<a href="mailto:947250030@qq.com">947250030@qq.com</a></p>
+</article></main>
+</body>
+</html>

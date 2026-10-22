@@ -7,7 +7,7 @@
  * 为什么要有它：右侧栏面板跑在 Zotero 的 ItemPane section 里，无人环境点不了；
  * 而它承担的是「翻译的入口本身」——一旦渲染崩了或按钮接线断了，表现就是
  * 「右侧栏一片空白 / 点了没反应」，属于最典型的静默失败。这里用「迷你 DOM」
- * 把面板**真跑一遍**（真实加载 utils.js + ai/translate.js，只桩掉 Zotero/网络），断言：
+ * 把面板**真跑一遍**（真实加载 utils.js + 翻译模块六文件（test/translate-files.js 清单），只桩掉 Zotero/网络），断言：
  *   ① section 注册参数：paneID / sidenav / l10nID / onRender 必填（Z10 缺了返回 false）；
  *   ② 面板结构：引擎下拉（选项数 = 引擎数、选中 = 活动引擎）、源/目标语言、待译框、结果区；
  *   ③ 划词填入：captureSelection 在条目匹配时自动填、用户编辑后不被覆盖；
@@ -28,7 +28,7 @@ const vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const FILES = [
   'chrome/content/scripts/core/utils.js',
-  'chrome/content/scripts/ai/translate.js',
+  ...require('./translate-files'),
   'chrome/content/scripts/panels/translate-pane.js',
 ];
 

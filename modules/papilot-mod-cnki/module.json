@@ -1,0 +1,58 @@
+{
+  "id": "papilot-mod-cnki",
+  "name": "知网与中文文献",
+  "version": "0.73.0",
+  "minHost": "0.73.0",
+  "apiVersion": 1,
+  "description": "知网等中文站点抓取、中文元数据补全、翻译器与中文 AI 摘要。",
+  "entry": "",
+  "mode": "scope",
+  "order": 40,
+  "provides": [
+    "cn-fetch",
+    "cn-meta",
+    "cn-translators",
+    "cn-ai"
+  ],
+  "depends": [],
+  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "repo": {
+    "github": "https://github.com/yebuqiu/zotero-papilot",
+    "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+  },
+  "globals": [
+    "CNAI",
+    "CNFetch",
+    "CNVerify",
+    "CNAuth",
+    "CNMeta",
+    "CNTranslators"
+  ],
+  "files": [
+    {
+      "path": "scripts/features/cn-ai.js",
+      "sha256": "c46e9e9a56c8f9597bf5236ad5899146561a39bd25ddcf774351186f3670b46e",
+      "size": 27060
+    },
+    {
+      "path": "scripts/features/cn-fetch.js",
+      "sha256": "0eda782a990be3aaf8f389de0e5ec73ad97a2b151ae90407adc27c32bf5bb835",
+      "size": 91550
+    },
+    {
+      "path": "scripts/features/cn-meta.js",
+      "sha256": "441b624ac350889fe23b8b6a79ef09989924aa9d6c6c229cc1d2be45dc95c3f9",
+      "size": 6925
+    },
+    {
+      "path": "scripts/features/cn-translators.js",
+      "sha256": "00f31d1f7381aa9a5692c52980c152465f015a4e8d23a4d3c0f4ed7ef433e5df",
+      "size": 9450
+    },
+    {
+      "path": "scripts/vendor/sm2.js",
+      "sha256": "c64a1ba548b10778bc93359432c492a8f0699f6b10af43802023bae3468c638e",
+      "size": 36012
+    }
+  ]
+}

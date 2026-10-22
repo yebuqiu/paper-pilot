@@ -28,6 +28,7 @@
  * ⚠️ Zotero 先加载脚本、后插入 fragment DOM —— init 必须探测 #pp-subs-list，
  *    不存在就延迟重试（同 prefs-schedule.js / prefs-agent.js 纪律）。
  * ⚠️ 动态生成的节点一律经变量持有，不用 $(…) 取动态节点（check-wiring 守卫）。
+ * 0.72.2 设计修复：AI 回填后自动展开「更多条件」details + 反馈槽 aria-live。
  */
 /* global Zotero, Services, window, document */
 
@@ -196,7 +197,7 @@
     row.appendChild(head);
 
     const bar = el("div", { style: "flex:1 1 100%;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;" });
-    const msg = el("span", { class: "pp-hint pp-subs-msg", style: "flex:1 1 100%;" });
+    const msg = el("span", { class: "pp-hint pp-subs-msg", style: "flex:1 1 100%;", "aria-live": "polite" });
 
     const btnPreview = el("button", { class: "pp-btn pp-btn-sm pp-subs-preview" }, "预览");
     btnPreview.addEventListener("click", () => doPreview(sub.id, null));
@@ -1122,6 +1123,21 @@
 
   /* ================== AI 解析 ================== */
 
+  /**
+   * 0.72.2 设计修复：AI 回填后自动展开「更多条件」details（.pp-disclose，summary 文案「更多条件」），
+   * 让用户看到被填了什么；details 由 xhtml 侧提供，缺失时静默跳过。
+   */
+  function openMoreConditions() {
+    try {
+      if (typeof document.querySelectorAll !== "function") return;
+      const list = document.querySelectorAll("details.pp-disclose");
+      for (let i = 0; i < list.length; i++) {
+        const sum = list[i].querySelector("summary");
+        if (sum && String(sum.textContent || "").indexOf("更多条件") >= 0) list[i].open = true;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   async function aiParse() {
     const s = S();
     const input = $("pp-sub-nl");
@@ -1144,6 +1160,7 @@
         return;
       }
       fillForm(r.input);
+      openMoreConditions(); // AI 填了高级条件 → 展开给用户看（0.72.2）
       editingId = "";
       const title = $("pp-subs-form-title");
       if (title) title.textContent = "新建订阅（AI 解析草稿）";

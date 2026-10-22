@@ -1,0 +1,456 @@
+{
+  "schema": 1,
+  "contentRoot": "chrome/content",
+  "version": "auto",
+  "hostMin": "auto",
+  "note": "files 为 chrome/content 相对路径的显式清单（构建期不再展开 glob）；sources 仅作切分表审计用。仓库实际布局中 features/、panels/、core/ 位于 scripts/ 下，个别窗口脚本位于 content 根。",
+  "modules": [
+    {
+      "id": "papilot-mod-pdf",
+      "name": "PDF 对照与 OCR",
+      "order": 20,
+      "description": "PDF 内嵌阅读、左右对照翻译、PDF 导出/比对/主题与 OCR 能力。",
+      "provides": [
+        "pdf-inline",
+        "pdf-dual",
+        "pdf-compare",
+        "pdf-export",
+        "pdf-theme",
+        "ocr"
+      ],
+      "depends": [],
+      "tags": [
+        "pdf",
+        "ocr",
+        "对照翻译"
+      ],
+      "recommended": true,
+      "pro": false,
+      "hot": true,
+      "repo": {
+        "github": "https://github.com/yebuqiu/zotero-papilot",
+        "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+      },
+      "sources": [
+        "vendor/pdfjs/**",
+        "features/pdf-inline.js",
+        "features/pdf-dual.js",
+        "features/pdf-export.js",
+        "features/pdf-compare.js",
+        "features/pdf-theme.js",
+        "features/ocr.js",
+        "scripts/pdf-render-worker.js"
+      ],
+      "files": [
+        "scripts/features/ocr.js",
+        "scripts/features/pdf-compare.js",
+        "scripts/features/pdf-dual.js",
+        "scripts/features/pdf-export.js",
+        "scripts/features/pdf-inline.js",
+        "scripts/features/pdf-theme.js",
+        "scripts/pdf-render-worker.js",
+        "vendor/pdfjs/LICENSE",
+        "vendor/pdfjs/pdf.min.js",
+        "vendor/pdfjs/pdf.worker.min.js"
+      ]
+    },
+    {
+      "id": "papilot-mod-ai",
+      "name": "AI 问答与翻译",
+      "order": 30,
+      "description": "AI 问答、翻译引擎、Agent 工具、聊天会话与记忆面板。",
+      "provides": [
+        "ai-chat",
+        "ai-translate",
+        "agent-tools",
+        "chat-sessions",
+        "agent-memory"
+      ],
+      "depends": [],
+      "tags": [
+        "ai",
+        "问答",
+        "翻译"
+      ],
+      "recommended": true,
+      "pro": false,
+      "hot": true,
+      "repo": {
+        "github": "https://github.com/yebuqiu/zotero-papilot",
+        "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+      },
+      "sources": [
+        "scripts/ai/**",
+        "panels/**",
+        "features/chat-sessions.js",
+        "features/agent-memory.js"
+      ],
+      "files": [
+        "scripts/ai/account.js",
+        "scripts/ai/agent-tools.js",
+        "scripts/ai/auto-tag.js",
+        "scripts/ai/channels.js",
+        "scripts/ai/chat.js",
+        "scripts/ai/client.js",
+        "scripts/ai/command-tags.js",
+        "scripts/ai/glossary-packs.js",
+        "scripts/ai/matrix.js",
+        "scripts/ai/pdf-text.js",
+        "scripts/ai/prompts.js",
+        "scripts/ai/providers.js",
+        "scripts/ai/semantic-scholar.js",
+        "scripts/ai/slash-commands.js",
+        "scripts/ai/translate-crypto.js",
+        "scripts/ai/translate-engines.js",
+        "scripts/ai/translate-formula.js",
+        "scripts/ai/translate-glossary.js",
+        "scripts/ai/translate-lang.js",
+        "scripts/ai/translate-writeback.js",
+        "scripts/ai/translate.js",
+        "scripts/features/agent-memory.js",
+        "scripts/features/chat-sessions.js",
+        "scripts/panels/ai-chat-pane.js",
+        "scripts/panels/chat-float.js",
+        "scripts/panels/glance-pane.js",
+        "scripts/panels/ref-pane.js",
+        "scripts/panels/translate-pane.js"
+      ]
+    },
+    {
+      "id": "papilot-mod-cnki",
+      "name": "知网与中文文献",
+      "order": 40,
+      "description": "知网等中文站点抓取、中文元数据补全、翻译器与中文 AI 摘要。",
+      "provides": [
+        "cn-fetch",
+        "cn-meta",
+        "cn-translators",
+        "cn-ai"
+      ],
+      "depends": [],
+      "tags": [
+        "知网",
+        "中文文献",
+        "抓取"
+      ],
+      "recommended": false,
+      "pro": false,
+      "hot": false,
+      "repo": {
+        "github": "https://github.com/yebuqiu/zotero-papilot",
+        "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+      },
+      "sources": [
+        "features/cn-fetch.js",
+        "features/cn-meta.js",
+        "features/cn-translators.js",
+        "features/cn-ai.js",
+        "scripts/vendor/**"
+      ],
+      "files": [
+        "scripts/features/cn-ai.js",
+        "scripts/features/cn-fetch.js",
+        "scripts/features/cn-meta.js",
+        "scripts/features/cn-translators.js",
+        "scripts/vendor/sm2.js"
+      ]
+    },
+    {
+      "id": "papilot-mod-discovery",
+      "name": "检索订阅与发现",
+      "order": 50,
+      "description": "期刊检索订阅、文献发现与 arXiv/期刊数据支持。",
+      "provides": [
+        "discovery",
+        "search-subs",
+        "lib-search",
+        "arxiv"
+      ],
+      "depends": [],
+      "tags": [
+        "检索",
+        "订阅",
+        "arxiv"
+      ],
+      "recommended": false,
+      "pro": false,
+      "hot": false,
+      "repo": {
+        "github": "https://github.com/yebuqiu/zotero-papilot",
+        "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+      },
+      "sources": [
+        "features/discovery.js",
+        "features/discovery-ui.js",
+        "features/search-subs.js",
+        "features/lib-search.js",
+        "scripts/arxiv/**",
+        "scripts/data/**"
+      ],
+      "files": [
+        "discovery-ui.js",
+        "scripts/arxiv/arxiv-analyze.js",
+        "scripts/arxiv/arxiv-atom.js",
+        "scripts/arxiv/arxiv-categories.js",
+        "scripts/arxiv/arxiv-dates.js",
+        "scripts/arxiv/arxiv-errors.js",
+        "scripts/arxiv/arxiv-fetch.js",
+        "scripts/arxiv/arxiv-query.js",
+        "scripts/arxiv/arxiv-rate-limiter.js",
+        "scripts/data/journals.js",
+        "scripts/features/discovery.js",
+        "scripts/features/lib-search.js",
+        "scripts/features/search-subs.js"
+      ]
+    },
+    {
+      "id": "papilot-mod-notes",
+      "name": "笔记与知识图谱",
+      "order": 60,
+      "description": "笔记工具与模板、笔记图谱、思维导图、Anki/Obsidian 导出与批注摘要。",
+      "provides": [
+        "note-tools",
+        "note-templates",
+        "note-graph",
+        "mindmap",
+        "anki-export",
+        "obsidian-export",
+        "annotation-digest",
+        "annotations"
+      ],
+      "depends": [],
+      "tags": [
+        "笔记",
+        "思维导图",
+        "导出"
+      ],
+      "recommended": false,
+      "pro": false,
+      "hot": false,
+      "repo": {
+        "github": "https://github.com/yebuqiu/zotero-papilot",
+        "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+      },
+      "sources": [
+        "features/note-tools.js",
+        "features/note-templates.js",
+        "features/note-graph.js",
+        "features/mindmap.js",
+        "features/anki-export.js",
+        "features/obsidian-export.js",
+        "features/annotation-digest.js",
+        "features/annotations.js"
+      ],
+      "files": [
+        "scripts/features/anki-export.js",
+        "scripts/features/annotation-digest.js",
+        "scripts/features/annotations.js",
+        "scripts/features/mindmap.js",
+        "scripts/features/note-graph.js",
+        "scripts/features/note-templates.js",
+        "scripts/features/note-tools.js",
+        "scripts/features/obsidian-export.js"
+      ]
+    },
+    {
+      "id": "papilot-mod-meta",
+      "name": "元数据与文库健康",
+      "order": 70,
+      "description": "元数据规则/清洗/检查、附件管理、查重与文库图谱/统计。",
+      "provides": [
+        "meta-rules",
+        "meta-enrich",
+        "meta-lint",
+        "meta-doctor",
+        "attach-manager",
+        "attach-doctor",
+        "fake-check",
+        "lib-graph",
+        "collection-stats"
+      ],
+      "depends": [],
+      "tags": [
+        "元数据",
+        "附件",
+        "查重"
+      ],
+      "recommended": false,
+      "pro": false,
+      "hot": false,
+      "repo": {
+        "github": "https://github.com/yebuqiu/zotero-papilot",
+        "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+      },
+      "sources": [
+        "features/meta-*.js",
+        "features/attach-*.js",
+        "features/fake-check.js",
+        "features/lib-graph.js",
+        "features/collection-stats.js"
+      ],
+      "files": [
+        "scripts/features/attach-doctor.js",
+        "scripts/features/attach-manager.js",
+        "scripts/features/collection-stats.js",
+        "scripts/features/fake-check.js",
+        "scripts/features/lib-graph.js",
+        "scripts/features/meta-doctor.js",
+        "scripts/features/meta-enrich.js",
+        "scripts/features/meta-lint.js",
+        "scripts/features/meta-rules.js"
+      ]
+    },
+    {
+      "id": "papilot-mod-cite",
+      "name": "引用与写作",
+      "order": 80,
+      "description": "参考文献格式化、引用上下文与溯源、WPS 引用加载项载荷。",
+      "provides": [
+        "cite-export",
+        "citation-context",
+        "citation-trace",
+        "ref-format",
+        "ref-sources",
+        "ref-import",
+        "wps-cite"
+      ],
+      "depends": [],
+      "tags": [
+        "引用",
+        "参考文献",
+        "wps"
+      ],
+      "recommended": false,
+      "pro": false,
+      "hot": false,
+      "repo": {
+        "github": "https://github.com/yebuqiu/zotero-papilot",
+        "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+      },
+      "sources": [
+        "tools/wps-cite.bundle.json",
+        "features/cite-export.js",
+        "features/citation-context.js",
+        "features/citation-trace.js",
+        "features/ref-format.js",
+        "features/ref-sources.js",
+        "features/ref-import.js"
+      ],
+      "files": [
+        "scripts/features/citation-context.js",
+        "scripts/features/citation-trace.js",
+        "scripts/features/cite-export.js",
+        "scripts/features/ref-format.js",
+        "scripts/features/ref-import.js",
+        "scripts/features/ref-sources.js",
+        "tools/wps-cite.bundle.json"
+      ]
+    },
+    {
+      "id": "papilot-mod-sync",
+      "name": "云同步与凭据",
+      "order": 90,
+      "description": "坚果云/WebDAV 云同步与本地凭据保险箱。",
+      "provides": [
+        "cloud-sync",
+        "cred-vault",
+        "webdav"
+      ],
+      "depends": [],
+      "tags": [
+        "同步",
+        "webdav",
+        "凭据"
+      ],
+      "recommended": false,
+      "pro": false,
+      "hot": false,
+      "repo": {
+        "github": "https://github.com/yebuqiu/zotero-papilot",
+        "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+      },
+      "sources": [
+        "features/cloud-sync.js",
+        "features/cred-vault.js",
+        "core/webdav.js",
+        "vault.js",
+        "vault.xhtml"
+      ],
+      "files": [
+        "scripts/core/webdav.js",
+        "scripts/features/cloud-sync.js",
+        "scripts/features/cred-vault.js",
+        "vault.js",
+        "vault.xhtml"
+      ]
+    },
+    {
+      "id": "papilot-mod-ui",
+      "name": "界面与工具窗口",
+      "order": 100,
+      "description": "主题与快捷键、技能包商店、标签管理、对比/双语/工作台窗口。",
+      "provides": [
+        "ui-theme",
+        "theme-toggle",
+        "skill-packs",
+        "hotkeys",
+        "toolbar-quick",
+        "skill-store",
+        "tag-manager",
+        "tag-menu",
+        "tag-ops",
+        "compare",
+        "bilingual-view",
+        "bilingual-translate",
+        "workbench"
+      ],
+      "depends": [],
+      "tags": [
+        "界面",
+        "主题",
+        "工具窗口"
+      ],
+      "recommended": true,
+      "pro": false,
+      "hot": false,
+      "repo": {
+        "github": "https://github.com/yebuqiu/zotero-papilot",
+        "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+      },
+      "sources": [
+        "features/ui-theme.js",
+        "features/theme-toggle.js",
+        "features/skill-packs.js",
+        "features/hotkeys.js",
+        "features/toolbar-quick.js",
+        "skill-store.js",
+        "skill-store.xhtml",
+        "tag-manager.js",
+        "tag-ops.js",
+        "tag-menu.js",
+        "compare.js",
+        "bilingual-view.js",
+        "features/bilingual-translate.js",
+        "workbench.js",
+        "workbench.xhtml"
+      ],
+      "files": [
+        "bilingual-view.js",
+        "compare.js",
+        "scripts/features/bilingual-translate.js",
+        "scripts/features/hotkeys.js",
+        "scripts/features/skill-packs.js",
+        "scripts/features/tag-menu.js",
+        "scripts/features/tag-ops.js",
+        "scripts/features/theme-toggle.js",
+        "scripts/features/toolbar-quick.js",
+        "scripts/features/ui-theme.js",
+        "skill-store.js",
+        "skill-store.xhtml",
+        "tag-manager.js",
+        "workbench.js",
+        "workbench.xhtml"
+      ]
+    }
+  ]
+}

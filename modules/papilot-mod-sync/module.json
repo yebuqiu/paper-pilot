@@ -1,0 +1,54 @@
+{
+  "id": "papilot-mod-sync",
+  "name": "云同步与凭据",
+  "version": "0.73.0",
+  "minHost": "0.73.0",
+  "apiVersion": 1,
+  "description": "坚果云/WebDAV 云同步与本地凭据保险箱。",
+  "entry": "",
+  "mode": "scope",
+  "order": 90,
+  "provides": [
+    "cloud-sync",
+    "cred-vault",
+    "webdav"
+  ],
+  "depends": [],
+  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "repo": {
+    "github": "https://github.com/yebuqiu/zotero-papilot",
+    "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+  },
+  "globals": [
+    "WebDAV",
+    "CloudSync",
+    "CredVault"
+  ],
+  "files": [
+    {
+      "path": "scripts/core/webdav.js",
+      "sha256": "fde58526c915fb62eba7c80904618e51ffd659775fca80599d28f6947c9e06a1",
+      "size": 28249
+    },
+    {
+      "path": "scripts/features/cloud-sync.js",
+      "sha256": "c4c49edc853886ad803538b668e9ef47f2452f59958fddcd52ce0f1d1dce1b67",
+      "size": 96281
+    },
+    {
+      "path": "scripts/features/cred-vault.js",
+      "sha256": "245e85b8216f74b36deffec3545137ad37a529d3d4b8905aed3e3ed5d507ff2c",
+      "size": 34653
+    },
+    {
+      "path": "vault.js",
+      "sha256": "7f9e2ad302da43fe94d11ed20250ae0cbdae32d7a7b5fd2a07e0f6ccc28d5519",
+      "size": 35107
+    },
+    {
+      "path": "vault.xhtml",
+      "sha256": "5add40245ffe529660988b797cef783ab6212d2a37779fd8313a2daff6661af6",
+      "size": 12203
+    }
+  ]
+}

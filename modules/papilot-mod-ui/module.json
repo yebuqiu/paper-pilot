@@ -1,0 +1,120 @@
+{
+  "id": "papilot-mod-ui",
+  "name": "界面与工具窗口",
+  "version": "0.73.0",
+  "minHost": "0.73.0",
+  "apiVersion": 1,
+  "description": "主题与快捷键、技能包商店、标签管理、对比/双语/工作台窗口。",
+  "entry": "",
+  "mode": "scope",
+  "order": 100,
+  "provides": [
+    "ui-theme",
+    "theme-toggle",
+    "skill-packs",
+    "hotkeys",
+    "toolbar-quick",
+    "skill-store",
+    "tag-manager",
+    "tag-menu",
+    "tag-ops",
+    "compare",
+    "bilingual-view",
+    "bilingual-translate",
+    "workbench"
+  ],
+  "depends": [],
+  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "repo": {
+    "github": "https://github.com/yebuqiu/zotero-papilot",
+    "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+  },
+  "globals": [
+    "BilingualTranslate",
+    "Hotkeys",
+    "SkillPacks",
+    "TagMenu",
+    "TagOps",
+    "ThemeToggle",
+    "ColumnViews",
+    "ToolbarQuick",
+    "UiTheme"
+  ],
+  "files": [
+    {
+      "path": "bilingual-view.js",
+      "sha256": "89c519957cc6cc4e3c244c24e13acbe59630914dea6816c1f262fd07e20975f4",
+      "size": 19235
+    },
+    {
+      "path": "compare.js",
+      "sha256": "f1e47ed8a8444bff30ea5663d790e5799165abee3623d698f5dd8143a774a0ea",
+      "size": 55876
+    },
+    {
+      "path": "scripts/features/bilingual-translate.js",
+      "sha256": "93b2d7a0094e820d32b0c50270c7129c03f62ab4e72ed70aa54d53c3da9d7a71",
+      "size": 16349
+    },
+    {
+      "path": "scripts/features/hotkeys.js",
+      "sha256": "ca1379db37454b42efd7c5f12f34f644109e09fd347acab38cbef44efb83625b",
+      "size": 14209
+    },
+    {
+      "path": "scripts/features/skill-packs.js",
+      "sha256": "63974466e5b542fa0028b53ff4308cdf40c115b9ee54869f49218760b73126cc",
+      "size": 174665
+    },
+    {
+      "path": "scripts/features/tag-menu.js",
+      "sha256": "a9c83d3fa382298db6069648d05c94f142b49b7638dd4773c068b71f2bb28341",
+      "size": 10344
+    },
+    {
+      "path": "scripts/features/tag-ops.js",
+      "sha256": "25442c0ee59551e6e123e4fa5a823c7b6ffd114151552f93060e4e96c249b0b4",
+      "size": 36866
+    },
+    {
+      "path": "scripts/features/theme-toggle.js",
+      "sha256": "89abee0d6b939d8360dd7791039b6c9bcf5eef00bc364c3570e32584bd92aa15",
+      "size": 28595
+    },
+    {
+      "path": "scripts/features/toolbar-quick.js",
+      "sha256": "9f93df94dcdb3e8426b28d753bdcaba8bf00c83530cc13c5c0dca1a20b523dad",
+      "size": 16779
+    },
+    {
+      "path": "scripts/features/ui-theme.js",
+      "sha256": "be7d66b83f0241fdbba4d4e63e071fffa98659c19fc9cc3b9013abe47a189b13",
+      "size": 110501
+    },
+    {
+      "path": "skill-store.js",
+      "sha256": "8f986628c6b06155cdda63466c436195d0a9548b5b655aa613d9979e162f3362",
+      "size": 43913
+    },
+    {
+      "path": "skill-store.xhtml",
+      "sha256": "b379ab5e9d03317ba39cb45fc9361ce5abaa89ddc8afa1235cfe4ed78883d9b0",
+      "size": 20624
+    },
+    {
+      "path": "tag-manager.js",
+      "sha256": "4d3cbd7e2f50fa50c9f656801679b98f3f7fca0e51944fcfc22693db267dd9d9",
+      "size": 56652
+    },
+    {
+      "path": "workbench.js",
+      "sha256": "ef63c3aad920d7ff29a3d8a16b0f52baa3815f50376c0ffd3a5cc3370b200c29",
+      "size": 41645
+    },
+    {
+      "path": "workbench.xhtml",
+      "sha256": "8895553802a7e6cc840c6d9139237ad2aef28019e4abe80061bef8fb5cad9ff5",
+      "size": 12913
+    }
+  ]
+}

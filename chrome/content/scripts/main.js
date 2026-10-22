@@ -4,7 +4,7 @@
 /* Papilot 主入口：装配各模块
  * 由 bootstrap.js 通过 Services.scriptloader 加载，共享 bootstrap 作用域
  */
-/* global Zotero, Services, Prefs, WizardGate, IOUtils, PathUtils, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, SkillPacks, CloudSync, WebDAV, OcrService, NoteTools, pdfjsLib, TagOps, TagMenu, _ppDiag */
+/* global Zotero, Services, Prefs, WizardGate, IOUtils, PathUtils, RankColumn, CitationColumn, S2Client, AIChatPane, GlancePane, TranslatePane, Menus, ReaderPopup, AIProviders, Account, Channels, AIClient, AIChat, RuleTag, CitationTrace, RefFormat, RefSources, RefImport, FakeCheck, SmartCleanup, MetaEnrich, ReadingState, AutoTag, Matrix, Annotations, CollectionStats, BilingualTranslate, CNMeta, CNTranslators, CNFetch, CNVerify, NoteTemplates, AttachManager, MindMap, ReviewGen, MetaLint, OAFetch, SciHub, AnkiExport, LibGraph, Prompts, UiTheme, PdfTheme, ThemeToggle, PdfCompare, TagCurator, AttachDoctor, LibSearch, Automation, AutoRead, NoteGraph, ReadingStats, ReadingProgress, MetaRules, Discovery, MCP, ArxivErrors, ArxivDates, ArxivQuery, ArxivCategories, ArxivAtom, ArxivAnalyze, ArxivRateLimiter, ArxivFetch, TranslateSvc, TranslateLang, TranslateCrypto, TranslateGlossary, TranslateFormula, TranslateEngines, CommandTags, SlashCommands, Hotkeys, RefPane, TranslateX, Rating, TitleTranslationColumn, ProgressColumn, RatingColumn, FullTextResolver, TranslateCompare, SkillPacks, CloudSync, WebDAV, OcrService, NoteTools, pdfjsLib, TagOps, TagMenu, _ppDiag */
 
 Zotero.Papilot = {
   id: null,
@@ -58,6 +58,9 @@ Zotero.Papilot = {
    */
   async _checkRenewal() {
     try {
+      // 0.73.0 瘦身包：未安装组件时 Account 是惰性占位（truthy），
+      // 绝不能据此弹「会员到期」模态框 —— 真机实测会把启动卡死在弹窗上。
+      if (typeof Account === "undefined" || !Account || Account.__ppFacade) return;
       if (!Account.isLoggedIn || !Account.isLoggedIn()) return;
       const rem = Account.renewalReminder && Account.renewalReminder();
       if (!rem || rem.daysLeft > 1) return;
@@ -148,8 +151,17 @@ Zotero.Papilot = {
       // 0.33.0 PDF 文本结构化分析：段落块 / 公式与图注识别 / 垃圾行过滤 / 阅读器逐页取文。
       // 必须排在 translate.js 与 bilingual-translate.js 之前（对照翻译消费它）
       "ai/pdf-text.js",
-      // 0.28.0 多引擎翻译：注册表 + 统一调用层（独立于 AI 大模型）
-      // 须排在 client.js 之后（llm 引擎要调 AIClient）、chat.js 与各 features 之前
+      // 0.28.0 多引擎翻译（0.73.0 拆分为「5 个子模块 + 门面」）：
+      //   translate-lang（语言模型）/ translate-crypto（签名算法）为纯函数零依赖；
+      //   translate-glossary（术语表域）/ translate-formula（行内公式掩码）仅依赖 Prefs；
+      //   translate-engines（引擎注册表 + 密钥）依赖前两者，须排在它们之后；
+      //   translate.js 是统一门面（配置/运行时/状态/迁移），须最后加载，
+      //   且排在 client.js 之后（llm 引擎要调 AIClient）、chat.js 与各 features 之前。
+      "ai/translate-lang.js",
+      "ai/translate-crypto.js",
+      "ai/translate-glossary.js",
+      "ai/translate-formula.js",
+      "ai/translate-engines.js",
       "ai/translate.js",
       // 0.4x 领域术语种子词包（设置面板「添加词包」消费；纯数据、无依赖）
       "ai/glossary-packs.js",
@@ -330,6 +342,12 @@ Zotero.Papilot = {
       "panels/chat-float.js",
       // 0.68.1 WPS 集成桥（检测 WPS 加载项/信任/代理；设置面板经 Zotero.Papilot.wpsBridge 访问）
       "features/wps-bridge.js",
+      // 0.73.0 模块化运行时（组件商店地基）：主包只留骨架，功能组件按需下载。
+      // 必须在 menus.js 之前 —— 菜单要读 moduleStore 判断入口可用性。
+      // modules-globals.js 是构建期生成的「组件→全局名」映射（瘦身包装桩用）。
+      "modules-globals.js",
+      "core/module-loader.js",
+      "core/module-store.js",
       "menus.js",
     ];
     for (const f of files) {
@@ -359,6 +377,67 @@ Zotero.Papilot = {
         await this._diag("brand migrated prefs=" + movedPrefs + " files=" + movedFiles);
       }
     } catch (e) { /* 迁移失败不影响启动 */ }
+
+    // 0.73.0 模块化运行时（组件商店地基）
+    // 主包只留骨架；已装组件在此处载入（scope 模式进共享作用域）。
+    // 无已装组件时 = 读一次不存在的 installed.json，纯 no-op，不拖慢启动。
+    try {
+      this.moduleLoader = ModuleLoader;
+      this.moduleStore = ModuleStore;
+      ModuleStore.init({ loader: ModuleLoader });
+      const mr = await ModuleLoader.init({ hostVersion: version });
+      await this._diag("modules ready: loaded=" + mr.loaded + " skipped=" + mr.skipped);
+      // 瘦身包：未安装组件声明过的全局先装惰性桩，后面的 this.account = Account
+      // 这类裸引用才不会 ReferenceError（完整包全部已定义 → 一个桩都不装）。
+      try {
+        const mg = (typeof ModuleGlobals !== "undefined") ? ModuleGlobals : [];
+        const nFacade = ModuleLoader.installFacades(mg);
+        if (nFacade) await this._diag("module facades: " + nFacade);
+      } catch (e) {
+        await this._diag("module facades FAILED: " + (e && (e.message || e)));
+      }
+      // 更新检查走 12h 缓存、fire-and-forget：失败静默，绝不挡启动
+      ModuleStore.checkUpdates(false).then(r => {
+        if (r && r.ok && r.updates.length) {
+          this._diag("module updates available: "
+            + r.updates.map(u => u.id + "@" + u.version).join(","));
+        }
+      }).catch(() => { /* 离线即忽略 */ });
+
+      // 自检钩子（默认关，仅 pref 显式设置时执行一次）：
+      // 真机验证「下载 → sha256 校验 → 原子安装 → 加载」整条链路。
+      // **绝不 await**：安装失败/离线都不能把启动拖住（真机实测过挂起）。
+      try {
+        const stId = Prefs.get("modulesSelftestInstall", "");
+        if (stId) {
+          Prefs.set("modulesSelftestInstall", "");
+          this._diag("module selftest: install " + stId + " (deferred)");
+          // 必须等 init 走完再装：中途换掉全局会让后面的装配拿到半新半旧的模块。
+          const later = (fn, ms) => {
+            try {
+              const w = Zotero.getMainWindow();
+              if (w && w.setTimeout) return w.setTimeout(fn, ms);
+            } catch (e) { /* ignore */ }
+            return setTimeout(fn, ms);
+          };
+          later(() => {
+            this._diag("module selftest: begin " + stId);
+            Promise.resolve(ModuleStore.install(stId)).then(sr => {
+              this._diag("module selftest: " + (sr && sr.ok ? "ok " : "FAILED ")
+                + (sr && sr.version ? sr.version : (sr && sr.error ? sr.error : "")));
+            }).catch(e => {
+              this._diag("module selftest FAILED: " + (e && (e.message || e)));
+            });
+          }, 8000);
+        }
+      } catch (e) {
+        this._diag("module selftest FAILED: " + (e && (e.message || e)));
+      }
+    } catch (e) {
+      await this._diag("module runtime init FAILED: " + (e && (e.stack || e.message) || e));
+      this.moduleLoader = this.moduleLoader || null;
+      this.moduleStore = this.moduleStore || null;
+    }
 
     // 暴露给设置窗口脚本（prefs-pane.js / prefs-account.js 运行在设置窗口作用域，
     // 访问不到 bootstrap 作用域，但能访问 Zotero 全局）
@@ -1218,6 +1297,31 @@ Zotero.Papilot = {
       return win.openDialog(
         "chrome://papilot/content/skill-store.xhtml",
         "papilot-skill-store",
+        "chrome,centerscreen,resizable,dialog=no",
+        { Zotero, Services }
+      );
+    } catch (e) {
+      try { Zotero.logError(e); } catch (e2) { /* ignore */ }
+      return null;
+    }
+  },
+
+  /**
+   * 0.73.0 打开组件商店窗口（单例）。
+   * 商店本身不依赖任何已装组件：目录可离线回落到包内快照，
+   * 因此 moduleStore 不可用也照样能开窗（页面会显示核心未就绪空态）。
+   */
+  openModuleStore() {
+    try {
+      const en = Services.wm.getEnumerator("papilot:modstore");
+      if (en.hasMoreElements()) { const w = en.getNext(); w.focus(); return w; }
+    } catch (e) { /* ignore */ }
+    const win = Zotero.getMainWindow();
+    if (!win) return null;
+    try {
+      return win.openDialog(
+        "chrome://papilot/content/module-store.xhtml",
+        "papilot-module-store",
         "chrome,centerscreen,resizable,dialog=no",
         { Zotero, Services }
       );

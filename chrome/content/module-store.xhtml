@@ -1,0 +1,90 @@
+<!-- SPDX-License-Identifier: Apache-2.0 | Copyright (c) 2026 Cassiuschen -->
+
+<!DOCTYPE window>
+<!-- Papilot · 组件商店（Module Store）独立窗口
+     纪律（与 skill-store.xhtml 同源，真机踩坑实录，务必保持）：
+       ① 不写 XML 声明；禁用一切未定义实体（如 nbsp / copy / mdash），占位一律 &#160;。
+       ② XUL 窗口顶部 <script> 先于后续 DOM 执行 → module-store-window.js 用 boot() +
+          DOMContentLoaded / readyState 双保险，绝不在脚本顶层碰 DOM。
+       ③ 表单控件三保险：静态与动态控件一律 no-native="true"，配色全部由
+          module-store.css 显式 appearance:none + background/color/border 定型
+          （win 平台皮肤会把未定型控件强制成透明底 + 蓝渐变 + max-height:25px）。
+       ④ 布局只用 html:div 弹性盒，不依赖 XUL 盒模型排内容。
+     核心域契约：Zotero.Papilot.moduleStore（另一模块实现），本窗口全程防御式调用；
+     缺方法只降级为空态，绝不抛错拖死 UI。单例（防重复打开）由打开方负责。
+     窗口参数 {Zotero, Services} 经 window.arguments 传入。 -->
+<window xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        xmlns:html="http://www.w3.org/1999/xhtml"
+        title="Papilot 组件商店"
+        windowtype="papilot:modstore"
+        width="820" height="620"
+        persist="screenX screenY width height sizemode">
+
+  <html:link rel="stylesheet" type="text/css" href="chrome://papilot/content/module-store.css"/>
+  <script src="chrome://papilot/content/module-store-window.js"></script>
+
+  <vbox flex="1" id="pp-ms-root" style="min-width:0;min-height:0;">
+
+    <!-- 顶栏：标题 + 副标题 + 搜索 + 刷新 -->
+    <html:div id="pp-ms-header" class="pp-ms-header">
+      <html:div class="pp-ms-headtext">
+        <html:div class="pp-ms-title">组件商店</html:div>
+        <html:div class="pp-ms-subtitle">按需下载功能组件，主包保持轻量</html:div>
+      </html:div>
+      <html:input id="pp-ms-search" class="pp-ms-search" type="text" no-native="true"
+                  placeholder="搜索组件名称 / 描述 / 标签"/>
+      <html:button id="pp-ms-refresh" class="pp-ms-btn" type="button"
+                   no-native="true">刷新</html:button>
+    </html:div>
+
+    <!-- 筛选 chip：全部 / 已安装 / 可更新 / 推荐（单选，JS 生成） -->
+    <html:div id="pp-ms-chipbar" class="pp-ms-chipbar">
+      <html:div id="pp-ms-chips" class="pp-ms-chips"></html:div>
+      <html:button id="pp-ms-updates-entry" class="pp-ms-linkbtn" type="button"
+                   no-native="true" style="display:none;">批量更新</html:button>
+    </html:div>
+
+    <!-- 主滚动区：三套视图页内切换，仅此区滚动 -->
+    <html:div id="pp-ms-main" class="pp-ms-main">
+
+      <!-- 视图 ① 列表 -->
+      <html:div id="pp-ms-view-list" class="pp-ms-view">
+        <html:div id="pp-ms-grid" class="pp-ms-grid"></html:div>
+        <html:div id="pp-ms-empty" class="pp-ms-empty" style="display:none;">
+          <html:div id="pp-ms-empty-title" class="pp-ms-empty-title"></html:div>
+          <html:div id="pp-ms-empty-sub" class="pp-ms-empty-sub"></html:div>
+          <html:button id="pp-ms-retry" class="pp-ms-btn pp-ms-btn-primary" type="button"
+                       no-native="true" style="display:none;">重试</html:button>
+        </html:div>
+      </html:div>
+
+      <!-- 视图 ② 详情（module-store-window.js 纯 DOM 装配） -->
+      <html:div id="pp-ms-view-detail" class="pp-ms-view" style="display:none;"></html:div>
+
+      <!-- 视图 ③ 批量更新 -->
+      <html:div id="pp-ms-view-updates" class="pp-ms-view" style="display:none;">
+        <html:div class="pp-ms-upd-head">
+          <html:div class="pp-ms-upd-headtext">
+            <html:div class="pp-ms-upd-title">可更新的组件</html:div>
+            <html:div id="pp-ms-upd-summary" class="pp-ms-upd-sub"></html:div>
+          </html:div>
+          <html:button id="pp-ms-update-all" class="pp-ms-btn pp-ms-btn-primary" type="button"
+                       no-native="true">全部更新</html:button>
+        </html:div>
+        <html:div id="pp-ms-upd-list" class="pp-ms-upd-list"></html:div>
+        <html:div id="pp-ms-upd-empty" class="pp-ms-empty" style="display:none;">
+          <html:div class="pp-ms-empty-title">全部都是最新的</html:div>
+          <html:div class="pp-ms-empty-sub">已安装的组件没有待更新版本。</html:div>
+        </html:div>
+      </html:div>
+
+    </html:div>
+
+    <!-- 底部固定状态条：所有操作反馈集中于此，不弹 alert -->
+    <html:div id="pp-ms-status" class="pp-ms-status">
+      <html:span id="pp-ms-spinner" class="pp-ms-spinner" style="display:none;"></html:span>
+      <html:span id="pp-ms-status-text" class="pp-ms-status-text"></html:span>
+    </html:div>
+
+  </vbox>
+</window>

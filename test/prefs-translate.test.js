@@ -6,7 +6,7 @@
  *
  * 为什么要有它：设置面板的翻译卡片此前**一个测试都没有**——所以「测试按钮点了没反应」
  * 这种问题只能靠用户发现。这个套件用「迷你 DOM」把 prefs-translate.js 真跑一遍
- * （真加载 core/utils.js + ai/translate.js，只桩掉 Zotero/网络），断言界面行为本身：
+ * （真加载 core/utils.js + 翻译模块六文件（test/translate-files.js 清单），只桩掉 Zotero/网络），断言界面行为本身：
  *   ① 渲染：状态行 / 引擎下拉（选项数 = 引擎数、选中 = 活动引擎）/ 语言下拉 / 预算三项；
  *   ② ★ 折叠式布局：默认只列「常用引擎」（≤6），标题显示常用个数，按钮文案含引擎总数，
  *      并有「已收起 N 个」提示；点「展开全部」→ 列出全部引擎且出现分类标题；
@@ -155,7 +155,8 @@ const sandbox = {
 };
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
-for (const f of ['chrome/content/scripts/core/utils.js', 'chrome/content/scripts/ai/translate.js',
+for (const f of ['chrome/content/scripts/core/utils.js',
+                 ...require('./translate-files'),
                  'chrome/content/scripts/ai/glossary-packs.js']) {
   vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), sandbox, { filename: f });
 }

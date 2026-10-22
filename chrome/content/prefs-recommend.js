@@ -11,6 +11,7 @@
  *
  * 运行环境：Zotero 设置窗口（脚本由 PreferencePanes.register 注入），
  * 因此顶层不碰 DOM，boot() 里探测节点后再绑。
+ * 0.72.2 设计修复：反馈槽补 aria-live。
  */
 /* global Zotero, Services, window, document */
 
@@ -67,6 +68,7 @@
   function setMsg(text, kind) {
     const el = $('pp-recommend-msg');
     if (!el) return;
+    el.setAttribute('aria-live', 'polite'); // 0.72.2：动态反馈对读屏可见
     el.textContent = text || '';
     el.className = 'pp-msg' + (kind ? ' pp-msg-' + kind : '');
   }
