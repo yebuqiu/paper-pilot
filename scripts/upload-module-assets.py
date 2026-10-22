@@ -130,11 +130,15 @@ def gh_upload(version, dry):
 def ge_upload(version, dry):
     token = ge_token()
     tag = "v" + version
-    q = urllib.parse.urlencode({"access_token": token, "page": 1, "per_page": 10})
-    rels = http("%s/repos/%s/%s/releases?%s" % (GE_API, GE_OWNER, GE_REPO, q), token)
-    rel = next((r for r in rels if r.get("tag_name") == tag), None)
-    if not rel:
-        die("Gitee 上没有 %s 的 Release（先跑 gitee-release.py --version %s）" % (tag, version))
+    # Gitee 的 releases 列表不按创建时间排序（第一页可能是最老的 tag），
+    # 必须按 tag 直查——真机实测 page1 返回的是 v0.13.0。
+    try:
+        rel = http("%s/repos/%s/%s/releases/tags/%s?access_token=%s"
+                   % (GE_API, GE_OWNER, GE_REPO, tag, urllib.parse.quote(token)), token)
+    except RuntimeError as e:
+        if "404" in str(e):
+            die("Gitee 上没有 %s 的 Release（先跑 gitee-release.py --version %s）" % (tag, version))
+        raise
     detail = http("%s/repos/%s/%s/releases/%d?access_token=%s"
                   % (GE_API, GE_OWNER, GE_REPO, rel["id"], urllib.parse.quote(token)), token)
     have = {a.get("name") for a in detail.get("assets") or []}
