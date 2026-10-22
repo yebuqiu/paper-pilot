@@ -3,6 +3,17 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.73.2",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.73.2.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "组件管理进设置面板（按需安装/更新/卸载）；撤掉首启合集弹窗"
+        },
+        {
           "version": "0.73.1",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.73.1.xpi",
           "applications": {

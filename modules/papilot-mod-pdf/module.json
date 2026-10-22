@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-pdf",
   "name": "PDF 对照与 OCR",
-  "version": "0.73.1",
-  "minHost": "0.73.1",
+  "version": "0.73.2",
+  "minHost": "0.73.2",
   "apiVersion": 1,
   "description": "PDF 内嵌阅读、左右对照翻译、PDF 导出/比对/主题与 OCR 能力。",
   "entry": "",
@@ -17,7 +17,7 @@
     "ocr"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.1 一致",
+  "whatsNew": "从主包拆出，功能与 0.73.2 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"

@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-ai",
   "name": "AI 问答与翻译",
-  "version": "0.73.1",
-  "minHost": "0.73.1",
+  "version": "0.73.2",
+  "minHost": "0.73.2",
   "apiVersion": 1,
   "description": "AI 问答、翻译引擎、Agent 工具、聊天会话与记忆面板。",
   "entry": "",
@@ -16,7 +16,7 @@
     "agent-memory"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.1 一致",
+  "whatsNew": "从主包拆出，功能与 0.73.2 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"

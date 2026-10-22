@@ -35,7 +35,7 @@
       <html:button id="pp-prefs-search-clear" class="pp-search-clear" title="清空搜索" style="display:none;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></html:button>
     </html:div>
     <html:div class="pp-toolbar-actions">
-      <html:span id="pp-pref-count" class="pp-count">21 项 · 7 类</html:span>
+      <html:span id="pp-pref-count" class="pp-count">22 项 · 7 类</html:span>
       <html:button id="pp-recommend" class="pp-btn pp-btn-sm" title="把「推荐项」一次改齐（先列出将要修改的项）">推荐配置</html:button>
       <html:button id="pp-wizard-open" class="pp-btn pp-btn-sm" title="重新运行首次使用向导（登录 / 通道 / 翻译）">首次使用向导</html:button>
       <html:button id="pp-fold-expand" class="pp-btn pp-btn-sm">全部展开</html:button>
@@ -1470,8 +1470,8 @@
     </html:div>
   </html:div>
 
-  <!-- ============ 分类 · 界面与效率（4 项） ============ -->
-  <html:div class="pp-cat-label"><html:span class="pp-cat-name">界面与效率</html:span><html:span class="pp-cat-count">4 项</html:span></html:div>
+  <!-- ============ 分类 · 界面与效率（5 项） ============ -->
+  <html:div class="pp-cat-label"><html:span class="pp-cat-name">界面与效率</html:span><html:span class="pp-cat-count">5 项</html:span></html:div>
   <!-- WPS 集成：对接 Papilot Cite（加载项载荷随包分发；旧版 wps-zotero 一键清理） -->
   <html:div class="pp-card pp-fold" data-fold="wps" data-search-strings-raw="wps 文字 引用 文献 插入 参考文献 zotero citation 加载项 papilot cite 代理 21932 信任 旧版 残留 清理 writer">
     <html:div class="pp-fold-head">
@@ -1691,6 +1691,23 @@
       <html:div id="pp-hotkeys-list"></html:div>
       <html:div class="pp-hint" style="margin-top:8px;">录制时按 Esc 取消；「重置」恢复默认组合。自动化规则里配的快捷键也会出现在此列表（标签前缀「自动化：」）。</html:div>
       <html:div id="pp-hotkeys-result" class="pp-msg" aria-live="polite"></html:div>
+    </html:div>
+  </html:div>
+
+  <html:div class="pp-card pp-fold" data-fold="mods" data-search-strings-raw="组件 模块 按需下载 组件商店 安装 卸载 更新 合集 轻量 瘦身 module component store install">
+    <html:div class="pp-fold-head">
+      <html:span class="pp-card-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></html:span><html:span class="pp-card-title">组件管理（按需下载）</html:span>
+      <html:span class="pp-card-desc">主包只留骨架，功能组件在这里按需安装 / 更新 / 卸载；首启不再逐个下载，「常用组件合集」一键装好 PDF·AI·界面三组</html:span>
+      <html:span class="pp-fold-arrow">▾</html:span>
+    </html:div>
+    <html:div class="pp-card-body">
+      <html:div class="pp-row" style="flex-wrap:wrap;gap:8px;">
+        <html:button id="pp-mods-refresh" class="pp-btn pp-btn-sm">刷新目录</html:button>
+        <html:button id="pp-mods-store" class="pp-btn pp-btn-sm">打开组件商店</html:button>
+        <html:span id="pp-mods-msg" class="pp-msg" aria-live="polite"></html:span>
+      </html:div>
+      <html:div id="pp-mods-list" style="margin-top:8px;"></html:div>
+      <html:div class="pp-hint" style="margin-top:6px;">完整安装包已含全部组件（此处全部显示「已安装」）；轻量包（-slim）首装后在这里按需下载。</html:div>
     </html:div>
   </html:div>
 

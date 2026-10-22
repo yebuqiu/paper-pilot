@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-ui",
   "name": "界面与工具窗口",
-  "version": "0.73.1",
-  "minHost": "0.73.1",
+  "version": "0.73.2",
+  "minHost": "0.73.2",
   "apiVersion": 1,
   "description": "主题与快捷键、技能包商店、标签管理、对比/双语/工作台窗口。",
   "entry": "",
@@ -24,7 +24,7 @@
     "workbench"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.1 一致",
+  "whatsNew": "从主包拆出，功能与 0.73.2 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"

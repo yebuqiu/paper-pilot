@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Papilot 文献副驾",
-  "version": "0.73.1",
+  "version": "0.73.2",
   "description": "Papilot 文献副驾 · Zotero 的 AI 文献副驾：中文文献路线补强、AI 问答与翻译、PDF 左右对照翻译、参考文献一键入库、阅读进度与题录清洗等（完整更新历史见 Gitee / GitHub Releases）。v0.71.0 让「检索订阅」真正落到左侧：订阅期刊后自动在「我的文库」下建「订阅期刊 / 刊名」分类，新文章入库即归类、历史文章一键回填，中文刊同样有效；能解析到 RSS 的刊（Elsevier / Nature / Science / BMJ / 知网等）再自动挂一条到 Zotero 原生【订阅】区，点开就能看新文章。设置面板「检索订阅 → 我的订阅」下方新增「同步到左侧面板」按钮与状态行（期刊订阅 N 本 · 分类 N/N · RSS N/N）。",
   "author": "Cassiuschen",
   "homepage_url": "https://gitee.com/cassiuschen9261/zotero-papilot",

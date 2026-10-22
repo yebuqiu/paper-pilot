@@ -1507,3 +1507,28 @@
 .pp-root .pp-vault-entry-main { flex: 1; min-width: 180px; }
 .pp-root .pp-vault-entry-title { font-size: var(--pp-fs-md); color: var(--pp-text); }
 .pp-root .pp-vault-entry .pp-hint { margin-top: 2px; line-height: 1.55; }
+
+/* ---------- 0.73.2 组件管理卡片 ---------- */
+.pp-root .pp-mods-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--pp-sp-3); padding: 8px 10px; border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-lg); background: var(--pp-surface-2);
+  margin-top: 6px;
+}
+.pp-root .pp-mods-row-bundle { border-color: var(--pp-accent); }
+.pp-root .pp-mods-row-main { flex: 1; min-width: 200px; }
+.pp-root .pp-mods-row-title { display: flex; align-items: center; gap: 6px; }
+.pp-root .pp-mods-row-name { font-size: var(--pp-fs-md); color: var(--pp-text); font-weight: 600; }
+.pp-root .pp-mods-row-desc { font-size: var(--pp-fs-sm); color: var(--pp-muted); margin-top: 2px; line-height: 1.5; }
+.pp-root .pp-mods-row-meta { font-size: var(--pp-fs-xs, 10.5px); color: var(--pp-faint); margin-top: 2px; }
+.pp-root .pp-mods-row-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+.pp-root .pp-mods-badge {
+  display: inline-block; padding: 1px 6px; border-radius: 8px;
+  font-size: 10.5px; background: var(--pp-field); color: var(--pp-muted);
+  border: 1px solid var(--pp-border);
+}
+.pp-root .pp-mods-badge-ok { color: #16a34a; border-color: #16a34a44; background: #16a34a14; }
+.pp-root .pp-mods-badge-warn { color: #d97706; border-color: #d9770644; background: #d9770614; }
+.pp-root .pp-mods-badge-danger { color: var(--pp-danger); border-color: var(--pp-danger); background: #dc262614; }
+.pp-root .pp-mods-badge-pro { color: var(--pp-accent); border-color: var(--pp-accent); }
+.pp-root .pp-mods-badge-bundle { color: var(--pp-accent); border-color: var(--pp-accent); background: #2563eb12; }

@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-meta",
   "name": "元数据与文库健康",
-  "version": "0.73.1",
-  "minHost": "0.73.1",
+  "version": "0.73.2",
+  "minHost": "0.73.2",
   "apiVersion": 1,
   "description": "元数据规则/清洗/检查、附件管理、查重与文库图谱/统计。",
   "entry": "",
@@ -20,7 +20,7 @@
     "collection-stats"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.1 一致",
+  "whatsNew": "从主包拆出，功能与 0.73.2 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"

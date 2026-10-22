@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-cnki",
   "name": "知网与中文文献",
-  "version": "0.73.1",
-  "minHost": "0.73.1",
+  "version": "0.73.2",
+  "minHost": "0.73.2",
   "apiVersion": 1,
   "description": "知网等中文站点抓取、中文元数据补全、翻译器与中文 AI 摘要。",
   "entry": "",
@@ -15,7 +15,7 @@
     "cn-ai"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.1 一致",
+  "whatsNew": "从主包拆出，功能与 0.73.2 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"

@@ -721,7 +721,7 @@ function chipsOf(dom) {
     eq(hdr, cardCount, 'A3.1 ★ 工具条计数 == 实际折叠卡数', { hdr: hdr, cards: cardCount });
     eq(catSum, cardCount, 'A3.2 ★ 各分类计数之和 == 实际折叠卡数',
       { sum: catSum, parts: catNums });
-    eq(cardCount, 21, 'A3.3 折叠卡仍为 21 张（与 .pp-cat-count 一起校验）');
+    eq(cardCount, 22, 'A3.3 折叠卡仍为 22 张（与 .pp-cat-count 一起校验；0.73.2 +组件管理）');
     eq(catNums.length, 7, 'A3.4 7 个分类标签各带一个计数徽标', catNums.length);
 
     // ---- A3.5 ★ P1-1b：文件头信息架构注释不得写成旧数字 ----

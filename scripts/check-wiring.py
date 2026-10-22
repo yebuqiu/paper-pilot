@@ -1980,12 +1980,12 @@ for _eid in ("pp-fold-expand", "pp-fold-collapse"):
     ok(_eid in xhtml_ids, "31.3 prefs.xhtml 含折叠工具条 #%s" % _eid)
 _FOLD_KEYS = ["account", "cnki", "thirdsrc", "channels", "translate", "aiparams", "skills", "subscriptions", "schedule", "popup",
               "columns", "tagging", "enhance", "uitheme", "pdftheme", "menu", "hotkeys", "cloud", "wps",
-              "glossary", "pdfdual"]
+              "glossary", "pdfdual", "mods"]
 _fold_found = re.findall(r'data-fold="([a-z]+)"', prefs_xhtml)
 ok(sorted(_fold_found) == sorted(_FOLD_KEYS),
-   "31.4 prefs.xhtml 的 21 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务；0.53.0 检索订阅；0.56.0 云同步；0.68.1 WPS 集成；0.72.4 翻译卡拆三：translate/glossary/pdfdual）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 21,
-   "31.5 折叠卡片共 21 张（0.49.0 定时任务，0.53.0 检索订阅，0.56.0 云同步，0.68.1 WPS 集成，0.72.4 翻译卡拆三；不多不少，防止漏包一张）")
+   "31.4 prefs.xhtml 的 22 个折叠分组键齐全（0.48.x 技能商店；0.49.0 定时任务；0.53.0 检索订阅；0.56.0 云同步；0.68.1 WPS 集成；0.72.4 翻译卡拆三；0.73.2 组件管理）→ 实际: %s" % ",".join(sorted(set(_fold_found))))
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 22,
+   "31.5 折叠卡片共 22 张（0.49.0 定时任务，0.53.0 检索订阅，0.56.0 云同步，0.68.1 WPS 集成，0.72.4 翻译卡拆三，0.73.2 组件管理；不多不少，防止漏包一张）")
 ok('pref("extensions.zotero.papilot.prefsFoldOpen", "account");' in prefsdef,
    "31.6 prefs.js 有 prefsFoldOpen 默认值（默认展开账号卡；点过全部收起后写空串，记忆优先）")
 ok("prefsFoldOpen" in _pfold_js and "pp-fold-closed" in _pfold_js,
@@ -2695,7 +2695,7 @@ ok('pref("extensions.zotero.papilot.reviewWorkbenchEnabled", true)' in prefsdef,
    "46.15 reviewWorkbenchEnabled 默认开")
 ok("test/search-subs.test.js" in _preflight_src and "test/review-workbench.test.js" in _preflight_src,
    "46.16 preflight 注册两个新测试套件")
-ok(prefs_xhtml.count('class="pp-card pp-fold"') == 21, "46.17 折叠卡共 21 张（订阅卡、云同步卡、WPS 集成卡、0.72.4 翻译卡拆三已计入）")
+ok(prefs_xhtml.count('class="pp-card pp-fold"') == 22, "46.17 折叠卡共 22 张（订阅卡、云同步卡、WPS 集成卡、0.72.4 翻译卡拆三、0.73.2 组件管理已计入）")
 
 # ---------- 47. 0.54.0 审查修复（P0-P2 十项） ----------
 ok('addCondition("note", "contains"' in _at_js,
@@ -3272,15 +3272,15 @@ ok("migration" not in io.open(os.path.join(ROOT, "scripts", "build-xpi.py"), enc
 #      （只加控件不接线 = 用户输了字没反应）；
 #   ③ 视觉令牌与组件规则在 prefs.css 里成套存在（颜色/间距/圆角/阴影各至少一处引用），
 #      且响应式断点没被删；
-#   ④ 折叠卡数量不变（18 张）——重组只许搬家，不许增删功能卡。
+#   ④ 折叠卡数量（当前 22 张）——增删卡必须同步注释与两处计数断言。
 _cat_names = re.findall(r'class="pp-cat-label"><html:span class="pp-cat-name">([^<]+)</html:span>'
                         r'<html:span class="pp-cat-count">(\d+) 项</html:span>', prefs_xhtml)
 ok(len(_cat_names) == 7, "52.1 7 个大类标签都带名称与计数（实际 %d 个）" % len(_cat_names))
 ok([n for n, _ in _cat_names] == ["账号与会员", "AI 能力", "阅读与翻译", "文献获取",
                                  "条目与标签", "界面与效率", "数据与同步"],
    "52.2 ★ 分类顺序按使用频率固定（改顺序属于信息架构变更，需同步文档）")
-ok(sum(int(c) for _, c in _cat_names) == 21,
-   "52.3 各大类计数之和 = 21（计数写错会让用户以为丢功能；0.72.4 翻译卡拆三后 阅读与翻译=5）")
+ok(sum(int(c) for _, c in _cat_names) == 22,
+   "52.3 各大类计数之和 = 22（计数写错会让用户以为丢功能；0.72.4 翻译卡拆三；0.73.2 +组件管理）")
 for _id in ("pp-toolbar", "pp-prefs-search", "pp-prefs-search-clear", "pp-pref-count", "pp-anchor-nav"):
     ok('"%s"' % _id in prefs_xhtml or 'id="%s"' % _id in prefs_xhtml or _id in prefs_xhtml,
        "52.4 设置面板含工具条元素 %s" % _id)
@@ -3305,8 +3305,8 @@ for _sel in (".pp-root .pp-toolbar", ".pp-root .pp-search", ".pp-root .pp-count"
 ok("@media (max-width: 560px)" in prefs_css and "@media (prefers-color-scheme: dark)" in prefs_css,
    "52.11 ★ 响应式（≤560px 单列）与暗色主题两套规则都在")
 ok("prefers-reduced-motion" in prefs_css, "52.12 尊重系统的减少动效偏好")
-ok("class=\"pp-card pp-fold\"" in prefs_xhtml and prefs_xhtml.count('class="pp-card pp-fold"') == 21,
-   "52.13 折叠卡仍为 21 张（重组只搬家；0.68.1 新增 WPS 集成、0.72.4 翻译卡拆三仅加卡不改结构）")
+ok("class=\"pp-card pp-fold\"" in prefs_xhtml and prefs_xhtml.count('class="pp-card pp-fold"') == 22,
+   "52.13 折叠卡仍为 22 张（重组只搬家；0.68.1 新增 WPS 集成、0.72.4 翻译卡拆三、0.73.2 组件管理仅加卡不改结构）")
 ok(os.path.exists(os.path.join(ROOT, "test", "prefs-fold.test.js")),
    "52.14 折叠/搜索测试套件在库")
 

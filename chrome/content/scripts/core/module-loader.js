@@ -473,15 +473,13 @@ var ModuleLoader = {
         return proxy;
       },
       apply() {
-        // 启动期静默（init 里的探测调用不该弹窗）；之后再提示安装
+        // 0.73.2：占位被调用一律静默（只记诊断）。弹窗打扰用户首装体验；
+        // 菜单入口由 menus.js 统一给「需要安装组件 → 打开商店」的提示。
         if (!booting) {
           try {
-            const store = (typeof Zotero !== "undefined" && Zotero.Papilot && Zotero.Papilot.moduleStore) || null;
-            if (store && typeof store.promptInstall === "function") {
-              const p = store.promptInstall(moduleId, { reason: "「" + globalName + "」属于未安装的组件。" });
-              if (p && typeof p.catch === "function") p.catch(() => {});
-            }
-          } catch (e) { /* 提示失败按无操作 */ }
+            const d = self._ensureDeps();
+            d.diag("facade called: " + globalName + " (module " + moduleId + " not installed)");
+          } catch (e) { /* ignore */ }
         }
         return proxy;      // 返回自身：X.list().active / X.foo().bar 不炸
       },
