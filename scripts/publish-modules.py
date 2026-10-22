@@ -40,6 +40,17 @@ def die(msg):
     raise SystemExit(1)
 
 
+def load_bundles():
+    out = []
+    bdir = ROOT / "bundles"
+    if bdir.is_dir():
+        for d in sorted(bdir.iterdir()):
+            mf = d / "module.json"
+            if mf.is_file():
+                out.append(json.loads(mf.read_text(encoding="utf-8")))
+    return out
+
+
 def load_modules():
     if not MODULES_DIR.is_dir():
         die("modules/ 不存在，先跑 python scripts/build-module.py --all")
@@ -113,6 +124,36 @@ def build_index(mods):
                 "gitee": "%s/raw/main/modules/%s/module.json" % (GE, m["id"]),
             },
         })
+    # 合集（bundles/<id>/module.json）：一次下载多模块，首启推荐
+    bdir_root = ROOT / "bundles"
+    if bdir_root.is_dir():
+        for bf in sorted(bdir_root.glob("*/module.json")):
+            b = json.loads(bf.read_text(encoding="utf-8"))
+            zp = zip_path_of(b)
+            entries.insert(0, {
+                "id": b["id"],
+                "name": b["name"],
+                "version": b["version"],
+                "description": b.get("description", ""),
+                "sizeBytes": zp.stat().st_size if zp.is_file() else 0,
+                "fileCount": 0,
+                "tags": ["合集", "推荐"],
+                "recommended": True,
+                "pro": False,
+                "hot": False,
+                "bundle": True,
+                "contains": list(b.get("modules") or []),
+                "whatsNew": b.get("whatsNew", ""),
+                "globals": [],
+                "download": {
+                    "github": "%s/releases/download/v%s/%s" % (GH, b["version"], zp.name),
+                    "gitee": "%s/releases/download/v%s/%s" % (GE, b["version"], zp.name),
+                },
+                "manifest": {
+                    "github": "%s/raw/main/bundles/%s/module.json" % (GH, b["id"]),
+                    "gitee": "%s/raw/main/bundles/%s/module.json" % (GE, b["id"]),
+                },
+            })
     return {
         "schema": 1,
         "updated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -132,6 +173,31 @@ def main():
     problems = []
     for m in mods:
         problems += verify(m)
+    # 合集：成员路径带 <mid>/ 前缀，清单 sha256 用成员 module.json
+    mod_by_id = {m["id"]: m for m in mods}
+    for b in load_bundles():
+        zp = zip_path_of(b)
+        if not zp.is_file():
+            problems.append("缺少合集 zip：%s" % zp)
+            continue
+        with zipfile.ZipFile(zp) as z:
+            names = set(z.namelist())
+            if "bundle.json" not in names:
+                problems.append("%s 包内缺 bundle.json" % b["id"])
+            for mid in (b.get("modules") or []):
+                if mid not in mod_by_id:
+                    problems.append("%s 引用未知模块 %s" % (b["id"], mid))
+                    continue
+                if ("%s/module.json" % mid) not in names:
+                    problems.append("%s 缺成员清单 %s" % (b["id"], mid))
+                    continue
+                for f in mod_by_id[mid].get("files") or []:
+                    rel = "%s/%s" % (mid, f["path"])
+                    if rel not in names:
+                        problems.append("%s 缺条目 %s" % (b["id"], rel))
+                        continue
+                    if hashlib.sha256(z.read(rel)).hexdigest() != f["sha256"]:
+                        problems.append("%s 条目 sha256 不符：%s" % (b["id"], rel))
     if problems:
         for p in problems:
             print("✗ " + p, file=sys.stderr)
@@ -158,12 +224,15 @@ def main():
     STAGE_DIR.mkdir(parents=True)
     for m in mods:
         shutil.copy2(zip_path_of(m), STAGE_DIR / zip_path_of(m).name)
+    for b in load_bundles():
+        shutil.copy2(zip_path_of(b), STAGE_DIR / zip_path_of(b).name)
 
+    n_files = sum(1 for _ in STAGE_DIR.glob("*.zip"))
     print("\n✓ 目录  : %s" % INDEX_FILE.relative_to(ROOT).as_posix())
     print("✓ 附件  : %s（%d 个 zip）"
-          % (STAGE_DIR.relative_to(ROOT).as_posix(), len(mods)))
-    print("\n发版时：把 %s 里 9 个 zip 作为 v%s Release 附件上传；"
-          % (STAGE_DIR.relative_to(ROOT).as_posix(), mods[0]["version"]))
+          % (STAGE_DIR.relative_to(ROOT).as_posix(), n_files))
+    print("\n发版时：把 %s 里 %d 个 zip 作为 v%s Release 附件上传；"
+          % (STAGE_DIR.relative_to(ROOT).as_posix(), n_files, mods[0]["version"]))
     print("        papilot-modules-index.json 随主仓提交即可（客户端 raw 直读）。")
 
 

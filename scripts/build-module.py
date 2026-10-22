@@ -112,6 +112,30 @@ def sha256_of(path):
 GLOBAL_RE = re.compile(r"^(?:var|const|let)\s+([A-Z][A-Za-z0-9_]*)\s*=", re.M)
 
 
+def main_js_order():
+    """主包 main.js 里 files 数组的权威加载顺序（chrome/content/scripts/ 相对路径）。
+
+    模块文件的加载顺序必须跟它一致——主包顺序是手排的依赖序（如 translate-lang
+    必须在 translate-engines 之前）。模块清单若按字母序加载，消费者会拿到占位桩。
+    """
+    main_js = (ROOT / "chrome" / "content" / "scripts" / "main.js").read_text(encoding="utf-8")
+    m = re.search(r"const files = \[(.*?)\];", main_js, re.S)
+    if not m:
+        return {}
+    order = {}
+    for i, name in enumerate(re.findall(r'"([a-zA-Z0-9_\-./]+\.js)"', m.group(1))):
+        order[name] = i
+    return order
+
+
+def sort_files_by_main(mod, order):
+    """模块 files 按主包顺序排；不在主包清单里的（窗口脚本等）保持原顺序排尾。"""
+    files = list(mod["files"])
+    files.sort(key=lambda f: (order.get(f.replace("scripts/", "", 1)
+                                       if f.startswith("scripts/") else f, 1 << 30), f))
+    return files
+
+
 def collect_globals(mod):
     """从模块源文件里提取顶层全局名（用于瘦身包的「缺组件占位」）。
 
@@ -158,7 +182,7 @@ def write_globals(doc):
 def build_manifest(mod):
     """按契约生成单个模块的 module.json 结构。"""
     entries = []
-    for rel in mod["files"]:
+    for rel in mod["files"]:    # 注：顺序在 cmd_all 已按主包次序排好
         path = content_file(rel)
         entries.append({
             "path": rel,
@@ -212,6 +236,50 @@ def zip_bytes(mod, manifest_blob):
     return buf.getvalue()
 
 
+BUNDLES_DIR = ROOT / "bundles"
+
+
+def bundle_manifest(bundle, mods_by_id, doc):
+    """合集清单：bundle.json（落盘名仍叫 module.json，靠 bundle:true 区分）。"""
+    return {
+        "id": bundle["id"],
+        "name": bundle["name"],
+        "version": doc["version"],
+        "minHost": doc["hostMin"],
+        "apiVersion": 1,
+        "description": bundle["description"],
+        "bundle": True,
+        "modules": list(bundle["modules"]),
+        "entry": "",
+        "mode": "scope",
+        "whatsNew": bundle.get("whatsNew") or "常用组件合集：%s" % "、".join(
+            mods_by_id[m]["name"] for m in bundle["modules"]),
+        "repo": {"github": doc["modules"][0]["repo"]["github"],
+                 "gitee": doc["modules"][0]["repo"]["gitee"]},
+        "files": [],
+    }
+
+
+def bundle_zip_bytes(bundle, mods_by_id, manifest_blobs, bman_blob):
+    """合集 zip：bundle.json 打头，其后每模块 <id>/module.json + <id>/<文件>。"""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED,
+                         compresslevel=ZIP_COMPRESS_LEVEL) as zf:
+        info = zipfile.ZipInfo("bundle.json", date_time=ZIP_DATE_TIME)
+        info.compress_type = zipfile.ZIP_DEFLATED
+        zf.writestr(info, bman_blob)
+        for mid in bundle["modules"]:
+            mod = mods_by_id[mid]
+            info = zipfile.ZipInfo("%s/module.json" % mid, date_time=ZIP_DATE_TIME)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            zf.writestr(info, manifest_blobs[mid])
+            for rel in mod["files"]:
+                info = zipfile.ZipInfo("%s/%s" % (mid, rel), date_time=ZIP_DATE_TIME)
+                info.compress_type = zipfile.ZIP_DEFLATED
+                zf.writestr(info, content_file(rel).read_bytes())
+    return buf.getvalue()
+
+
 def module_stats(mod):
     """返回（文件数、解压总字节）。"""
     total = 0
@@ -220,7 +288,7 @@ def module_stats(mod):
     return len(mod["files"]), total
 
 
-def build_index(doc, manifest_blobs, zip_sizes):
+def build_index(doc, manifest_blobs, zip_sizes, bundle_meta=None):
     """生成内置目录快照；sizeBytes 取实际 zip 字节数。"""
     version = doc["version"]
     host_min = doc["hostMin"]
@@ -249,6 +317,34 @@ def build_index(doc, manifest_blobs, zip_sizes):
             "recommended": bool(mod["recommended"]),
             "pro": bool(mod["pro"]),
             "hot": bool(mod["hot"]),
+        })
+    for b in (bundle_meta or []):
+        bundle = b["bundle"]
+        bid = bundle["id"]
+        zip_name = "%s-%s.zip" % (bid, version)
+        gh = doc["modules"][0]["repo"]["github"].rstrip("/")
+        ge = doc["modules"][0]["repo"]["gitee"].rstrip("/")
+        out_modules.insert(0, {
+            "id": bid,
+            "name": bundle["name"],
+            "version": version,
+            "description": bundle["description"],
+            "sizeBytes": zip_sizes[bid],
+            "fileCount": sum(len(b["mods_by_id"][m]["files"]) for m in bundle["modules"]),
+            "bundle": True,
+            "contains": list(bundle["modules"]),
+            "download": {
+                "github": "%s/releases/download/v%s/%s" % (gh, version, zip_name),
+                "gitee": "%s/releases/download/v%s/%s" % (ge, version, zip_name),
+            },
+            "manifest": {
+                "github": "%s/raw/main/bundles/%s/module.json" % (gh, bid),
+                "gitee": "%s/raw/main/bundles/%s/module.json" % (ge, bid),
+            },
+            "tags": list(bundle.get("tags") or ["合集"]),
+            "recommended": bool(bundle.get("recommended")),
+            "pro": False,
+            "hot": False,
         })
     return {
         "schema": 1,
@@ -290,6 +386,11 @@ def cmd_list(doc):
 def cmd_all(doc, no_zip):
     version = doc["version"]
     MODULES_DIR.mkdir(parents=True, exist_ok=True)
+    order = main_js_order()
+    if order:
+        for mod in doc["modules"]:
+            mod["files"] = sort_files_by_main(mod, order)
+        print("按主包 main.js 权威顺序重排模块文件（%d 个锚点）" % len(order))
     manifest_blobs = {}
     zip_sizes = {}
 
@@ -321,8 +422,32 @@ def cmd_all(doc, no_zip):
         print("打包 %-32s 解压 %10s → zip %10s" % (out.name, human(raw), human(len(blob))))
 
     # 索引最后写：sizeBytes 必须来自上面算出的真实 zip 体积
+    # 合集（合集打包在模块之后：manifest_blobs 已齐）
+    mods_by_id = {m["id"]: m for m in doc["modules"]}
+    bundle_meta = []
+    for bundle in doc.get("bundles") or []:
+        for mid in bundle["modules"]:
+            if mid not in mods_by_id:
+                die("合集 %s 引用未知模块 %s" % (bundle["id"], mid))
+        bman = bundle_manifest(bundle, mods_by_id, doc)
+        blob = manifest_bytes(bman)
+        BUNDLES_DIR.mkdir(parents=True, exist_ok=True)
+        bdir = BUNDLES_DIR / bundle["id"]
+        bdir.mkdir(parents=True, exist_ok=True)
+        with open(bdir / "module.json", "wb") as f:
+            f.write(blob)
+        zbytes = bundle_zip_bytes(bundle, mods_by_id, manifest_blobs, blob)
+        zip_sizes[bundle["id"]] = len(zbytes)
+        bundle_meta.append({"bundle": bundle, "mods_by_id": mods_by_id})
+        if not no_zip:
+            out = DIST_DIR / ("%s-%s.zip" % (bundle["id"], version))
+            with open(out, "wb") as f:
+                f.write(zbytes)
+            print("合集 %-32s %2d 模块 → zip %10s"
+                  % (out.name, len(bundle["modules"]), human(len(zbytes))))
+
     write_globals(doc)
-    index = build_index(doc, manifest_blobs, zip_sizes)
+    index = build_index(doc, manifest_blobs, zip_sizes, bundle_meta)
     write_json(INDEX_FILE, index)
     print("-" * 78)
     print("索引 %s（%d 个模块，hostMin %s）"

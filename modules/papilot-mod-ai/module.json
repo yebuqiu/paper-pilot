@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-ai",
   "name": "AI 问答与翻译",
-  "version": "0.73.0",
-  "minHost": "0.73.0",
+  "version": "0.73.1",
+  "minHost": "0.73.1",
   "apiVersion": 1,
   "description": "AI 问答、翻译引擎、Agent 工具、聊天会话与记忆面板。",
   "entry": "",
@@ -16,56 +16,51 @@
     "agent-memory"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "whatsNew": "从主包拆出，功能与 0.73.1 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
   },
   "globals": [
-    "Account",
-    "AgentTools",
-    "AutoTag",
-    "Channels",
-    "AIChat",
-    "AIClient",
-    "CommandTags",
-    "GlossaryPacks",
-    "Matrix",
-    "PdfText",
-    "Prompts",
     "AIProviders",
-    "S2Client",
-    "SlashCommands",
-    "TranslateCrypto",
-    "TranslateEngines",
-    "TranslateFormula",
-    "TranslateGlossary",
+    "Account",
+    "Channels",
+    "AIClient",
+    "PdfText",
     "TranslateLang",
-    "TranslateX",
+    "TranslateCrypto",
+    "TranslateGlossary",
+    "TranslateFormula",
+    "TranslateEngines",
     "TranslateSvc",
+    "GlossaryPacks",
+    "TranslateX",
+    "AIChat",
+    "Prompts",
+    "AgentTools",
+    "CommandTags",
+    "SlashCommands",
+    "AutoTag",
+    "Matrix",
+    "S2Client",
     "AgentMemory",
-    "ChatSessions",
     "AIChatPane",
-    "ChatFloat",
     "GlancePane",
+    "TranslatePane",
     "RefPane",
-    "TranslatePane"
+    "ChatSessions",
+    "ChatFloat"
   ],
   "files": [
+    {
+      "path": "scripts/ai/providers.js",
+      "sha256": "51396fe1c521ea3b695b387027e343982eb0f3fcea7c84b01bde2f236cec2fbb",
+      "size": 6765
+    },
     {
       "path": "scripts/ai/account.js",
       "sha256": "626514fc3a2035ac10cbee5aa677598e1d4df79bfe01bcccbb815188fdbc3e11",
       "size": 51231
-    },
-    {
-      "path": "scripts/ai/agent-tools.js",
-      "sha256": "ebfaa199606b3fb4beeb4d09dc7060d9cb8978868cf2365ef5ef377dca805bfb",
-      "size": 50737
-    },
-    {
-      "path": "scripts/ai/auto-tag.js",
-      "sha256": "c531ce2c33306efe312ce5c89cda605a27a0f943ef8b5b7971eb7e6cbb139e61",
-      "size": 27813
     },
     {
       "path": "scripts/ai/channels.js",
@@ -73,29 +68,9 @@
       "size": 27442
     },
     {
-      "path": "scripts/ai/chat.js",
-      "sha256": "2eeec65b4092284f4cf8291661a225f08445f5fe873f320bf238d0a1af3a4aaa",
-      "size": 18022
-    },
-    {
       "path": "scripts/ai/client.js",
       "sha256": "7afe594adc07873c0f9777a77f15cc96cdf5fa11d991585e7ce79257186935d8",
       "size": 14741
-    },
-    {
-      "path": "scripts/ai/command-tags.js",
-      "sha256": "49f3d39ef25e4efab14e1d51c3a1ccdb2113c8ac815110c5ccde83ec9c6772c7",
-      "size": 7303
-    },
-    {
-      "path": "scripts/ai/glossary-packs.js",
-      "sha256": "387045c0275f188f8bee0cfeb406f7d888900475886dca1fdb51870dddd562f0",
-      "size": 12129
-    },
-    {
-      "path": "scripts/ai/matrix.js",
-      "sha256": "b1e674a9a1f44792c88a17792de37991aa27f97f2c96ba26571d7d529b3e9202",
-      "size": 4900
     },
     {
       "path": "scripts/ai/pdf-text.js",
@@ -103,24 +78,9 @@
       "size": 15402
     },
     {
-      "path": "scripts/ai/prompts.js",
-      "sha256": "0126ee577ee4a4f020af6a8f3b283369f9d3ceb5890f2cd3897baf9ad14c602b",
-      "size": 6470
-    },
-    {
-      "path": "scripts/ai/providers.js",
-      "sha256": "51396fe1c521ea3b695b387027e343982eb0f3fcea7c84b01bde2f236cec2fbb",
-      "size": 6765
-    },
-    {
-      "path": "scripts/ai/semantic-scholar.js",
-      "sha256": "0d749d7e1a50ac56684c447101b82d3c94e9482c54c1b37c5654609a5dd6cd1b",
-      "size": 4239
-    },
-    {
-      "path": "scripts/ai/slash-commands.js",
-      "sha256": "5e4ca0b45499033caf17e064707e5a500e187bdd438d427bd95908b67c8147d6",
-      "size": 5675
+      "path": "scripts/ai/translate-lang.js",
+      "sha256": "84b23e05c4d193ae90b5e3c75232dabb59f5cbb32b85ab573d7770b58cc68637",
+      "size": 5890
     },
     {
       "path": "scripts/ai/translate-crypto.js",
@@ -128,9 +88,9 @@
       "size": 5819
     },
     {
-      "path": "scripts/ai/translate-engines.js",
-      "sha256": "8a13523d97420cc712d2ea90b1dc80042ab45993fbbe475ec6cbbffa86b1660d",
-      "size": 28451
+      "path": "scripts/ai/translate-glossary.js",
+      "sha256": "adbac57a5f9130fb2f2b352b43e30dba80acec13b521dcaa00b4003ed3feac25",
+      "size": 15450
     },
     {
       "path": "scripts/ai/translate-formula.js",
@@ -138,19 +98,9 @@
       "size": 5056
     },
     {
-      "path": "scripts/ai/translate-glossary.js",
-      "sha256": "adbac57a5f9130fb2f2b352b43e30dba80acec13b521dcaa00b4003ed3feac25",
-      "size": 15450
-    },
-    {
-      "path": "scripts/ai/translate-lang.js",
-      "sha256": "84b23e05c4d193ae90b5e3c75232dabb59f5cbb32b85ab573d7770b58cc68637",
-      "size": 5890
-    },
-    {
-      "path": "scripts/ai/translate-writeback.js",
-      "sha256": "685d3f9d37e16103784fc2df74259f0e1d71c15bfb83eac24a99b4ecd0b5748a",
-      "size": 4977
+      "path": "scripts/ai/translate-engines.js",
+      "sha256": "8a13523d97420cc712d2ea90b1dc80042ab45993fbbe475ec6cbbffa86b1660d",
+      "size": 28451
     },
     {
       "path": "scripts/ai/translate.js",
@@ -158,14 +108,59 @@
       "size": 34655
     },
     {
+      "path": "scripts/ai/glossary-packs.js",
+      "sha256": "387045c0275f188f8bee0cfeb406f7d888900475886dca1fdb51870dddd562f0",
+      "size": 12129
+    },
+    {
+      "path": "scripts/ai/translate-writeback.js",
+      "sha256": "685d3f9d37e16103784fc2df74259f0e1d71c15bfb83eac24a99b4ecd0b5748a",
+      "size": 4977
+    },
+    {
+      "path": "scripts/ai/chat.js",
+      "sha256": "2eeec65b4092284f4cf8291661a225f08445f5fe873f320bf238d0a1af3a4aaa",
+      "size": 18022
+    },
+    {
+      "path": "scripts/ai/prompts.js",
+      "sha256": "0126ee577ee4a4f020af6a8f3b283369f9d3ceb5890f2cd3897baf9ad14c602b",
+      "size": 6470
+    },
+    {
+      "path": "scripts/ai/agent-tools.js",
+      "sha256": "ebfaa199606b3fb4beeb4d09dc7060d9cb8978868cf2365ef5ef377dca805bfb",
+      "size": 50737
+    },
+    {
+      "path": "scripts/ai/command-tags.js",
+      "sha256": "49f3d39ef25e4efab14e1d51c3a1ccdb2113c8ac815110c5ccde83ec9c6772c7",
+      "size": 7303
+    },
+    {
+      "path": "scripts/ai/slash-commands.js",
+      "sha256": "5e4ca0b45499033caf17e064707e5a500e187bdd438d427bd95908b67c8147d6",
+      "size": 5675
+    },
+    {
+      "path": "scripts/ai/auto-tag.js",
+      "sha256": "c531ce2c33306efe312ce5c89cda605a27a0f943ef8b5b7971eb7e6cbb139e61",
+      "size": 27813
+    },
+    {
+      "path": "scripts/ai/matrix.js",
+      "sha256": "b1e674a9a1f44792c88a17792de37991aa27f97f2c96ba26571d7d529b3e9202",
+      "size": 4900
+    },
+    {
+      "path": "scripts/ai/semantic-scholar.js",
+      "sha256": "0d749d7e1a50ac56684c447101b82d3c94e9482c54c1b37c5654609a5dd6cd1b",
+      "size": 4239
+    },
+    {
       "path": "scripts/features/agent-memory.js",
       "sha256": "c8fce24889ee3acd05e7ecbee50d0870904b02339476709a6a49881d33def183",
       "size": 6530
-    },
-    {
-      "path": "scripts/features/chat-sessions.js",
-      "sha256": "89618de06d5b7325f19dd124cab899214b032e451ec7b7afa9dcc5f55881b4ec",
-      "size": 9917
     },
     {
       "path": "scripts/panels/ai-chat-pane.js",
@@ -173,14 +168,14 @@
       "size": 12507
     },
     {
-      "path": "scripts/panels/chat-float.js",
-      "sha256": "1fdcf49295c4468199740791c9d5c10f54f3f22e7f59a7dd26c7b2dff8bed02e",
-      "size": 93315
-    },
-    {
       "path": "scripts/panels/glance-pane.js",
       "sha256": "d3c55236be1d539ed41875937cedfa52ab5987ef53d5f0e4fa615565efba24a4",
       "size": 5466
+    },
+    {
+      "path": "scripts/panels/translate-pane.js",
+      "sha256": "0621652c3edddd11393e7c89093a0b993ca0ce875fad03acba63ac4e5e9ceec1",
+      "size": 26667
     },
     {
       "path": "scripts/panels/ref-pane.js",
@@ -188,9 +183,14 @@
       "size": 28707
     },
     {
-      "path": "scripts/panels/translate-pane.js",
-      "sha256": "0621652c3edddd11393e7c89093a0b993ca0ce875fad03acba63ac4e5e9ceec1",
-      "size": 26667
+      "path": "scripts/features/chat-sessions.js",
+      "sha256": "89618de06d5b7325f19dd124cab899214b032e451ec7b7afa9dcc5f55881b4ec",
+      "size": 9917
+    },
+    {
+      "path": "scripts/panels/chat-float.js",
+      "sha256": "1fdcf49295c4468199740791c9d5c10f54f3f22e7f59a7dd26c7b2dff8bed02e",
+      "size": 93315
     }
   ]
 }

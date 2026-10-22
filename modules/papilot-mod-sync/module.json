@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-sync",
   "name": "云同步与凭据",
-  "version": "0.73.0",
-  "minHost": "0.73.0",
+  "version": "0.73.1",
+  "minHost": "0.73.1",
   "apiVersion": 1,
   "description": "坚果云/WebDAV 云同步与本地凭据保险箱。",
   "entry": "",
@@ -14,7 +14,7 @@
     "webdav"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "whatsNew": "从主包拆出，功能与 0.73.1 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"

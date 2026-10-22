@@ -83,7 +83,7 @@ var ModuleStore = {
   /** JSON 拉取：Zotero 7+ 的 Zotero.HTTP.request 返回 Promise<response>（回调式不可靠）。 */
   async _defaultHttpGet(url) {
     const req = await Zotero.HTTP.request("GET", url, {
-      timeout: 15000,
+      timeout: 8000,
       responseType: "json",
       headers: { "Accept": "application/json", "Cache-Control": "no-cache" },
     });
@@ -94,7 +94,7 @@ var ModuleStore = {
   /** 二进制拉取（模块 zip）。 */
   async _defaultHttpGetBytes(url) {
     const req = await Zotero.HTTP.request("GET", url, {
-      timeout: 120000,
+      timeout: 60000,
       responseType: "arraybuffer",
     });
     const buf = req.response;
@@ -157,6 +157,10 @@ var ModuleStore = {
     }
 
     for (const url of this._catalogUrls()) {
+      if (this._deadUrls && this._deadUrls[url]) {
+        d.diag("catalog source skipped（本会话已知不通）: " + url);
+        continue;
+      }
       try {
         const data = await d.httpGet(url);
         const check = this.validateCatalog(data);
@@ -170,6 +174,9 @@ var ModuleStore = {
         return this._ok(this._catalogSource, data);
       } catch (e) {
         this._lastError = String(e && (e.message || e));
+        // 失败源本会话内不再重试——国内网络下 GitHub 不可达时，
+        // 每个操作都先等它超时一遍会显得「反复卡死」
+        (this._deadUrls = this._deadUrls || {})[url] = 1;
         d.diag("catalog source failed: " + this._lastError);
       }
     }
@@ -348,6 +355,7 @@ var ModuleStore = {
     let manifest = null, lastErr = null;
     for (const url of [entry.manifest && entry.manifest.github, entry.manifest && entry.manifest.gitee]) {
       if (!url) continue;
+      if (this._deadUrls && this._deadUrls[url]) continue;   // 本会话已知不通，不等超时
       try {
         const m = await d.httpGet(url);
         const v = this._loader._pure.validateManifest(m, null, this._loader.API_VERSION);
@@ -366,6 +374,7 @@ var ModuleStore = {
     let bytesOk = false;
     for (const url of [entry.download && entry.download.github, entry.download && entry.download.gitee]) {
       if (!url) continue;
+      if (this._deadUrls && this._deadUrls[url]) continue;   // 本会话已知不通，不等超时
       try {
         const bytes = await d.httpGetBytes(url);
         if (!bytes || !bytes.length) throw new Error("空文件");
@@ -394,6 +403,10 @@ var ModuleStore = {
   /** 未安装时的交互：确认 → 后台装。供 module-loader.require() 调用。 */
   async promptInstall(id, opts) {
     const o = opts || {};
+    // 瘦身包里点十个功能会弹十次同一确认框——会话内去重，一次只问一回
+    this._prompted = this._prompted || {};
+    if (this._prompted[id]) return { ok: false, error: "已提示过（组件商店内可随时安装）" };
+    this._prompted[id] = 1;
     const entry = this._entry(id) || null;
     if (!entry) {
       // 目录还没拉过：先拉一次再判断

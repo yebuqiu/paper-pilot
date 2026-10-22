@@ -1,0 +1,22 @@
+{
+  "id": "papilot-bundle-basic",
+  "name": "常用组件合集（首启推荐）",
+  "version": "0.73.1",
+  "minHost": "0.73.1",
+  "apiVersion": 1,
+  "description": "一次下载装好最常用的三组能力：PDF 对照与 OCR、AI 问答与面板、界面与效率增强。轻量版首次启动只需下载这一个包，其余组件后续在组件商店按需安装。",
+  "bundle": true,
+  "modules": [
+    "papilot-mod-pdf",
+    "papilot-mod-ai",
+    "papilot-mod-ui"
+  ],
+  "entry": "",
+  "mode": "scope",
+  "whatsNew": "常用组件合集：PDF 对照与 OCR、AI 问答与翻译、界面与工具窗口",
+  "repo": {
+    "github": "https://github.com/yebuqiu/zotero-papilot",
+    "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
+  },
+  "files": []
+}

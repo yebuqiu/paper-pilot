@@ -4025,12 +4025,21 @@ else:
             _idx_mods = []
     except Exception as _e:
         _idx_problems.append("解析失败：%s" % _e)
-if len(_idx_mods) != len(_mod_ids):
-    _idx_problems.append("索引 %d 条 != modules/ 目录 %d 个" % (len(_idx_mods), len(_mod_ids)))
+# 0.73.1 合集（bundles/<id>/）也是合法条目：目录 id 全集 = modules/ + bundles/
+_bundle_ids = set()
+_bundles_dir = os.path.join(ROOT, "bundles")
+if os.path.isdir(_bundles_dir):
+    for _d in os.listdir(_bundles_dir):
+        if os.path.isfile(os.path.join(_bundles_dir, _d, "module.json")):
+            _bundle_ids.add(_d)
+if len(_idx_mods) != len(_mod_ids) + len(_bundle_ids):
+    _idx_problems.append("索引 %d 条 != modules/ %d 个 + bundles/ %d 个"
+                         % (len(_idx_mods), len(_mod_ids), len(_bundle_ids)))
 for _m in _idx_mods:
     _mid = _m.get("id") if isinstance(_m, dict) else None
-    if not _mid or _mid not in _mod_ids:
-        _idx_problems.append("索引 id %r 在 modules/ 找不到" % (_mid,))
+    _is_bundle = isinstance(_m, dict) and _m.get("bundle")
+    if not _mid or (_mid not in _mod_ids and not (_is_bundle and _mid in _bundle_ids)):
+        _idx_problems.append("索引 id %r 在 modules/ 与 bundles/ 都找不到" % (_mid,))
 ok(not _idx_problems,
    "65.2 ★ builtin-index.json 模块数 == modules/ 子目录数，且每个 id 都能找到 → %s"
    % ("; ".join(_idx_problems) or "全部匹配"))

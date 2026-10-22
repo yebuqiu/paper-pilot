@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-notes",
   "name": "笔记与知识图谱",
-  "version": "0.73.0",
-  "minHost": "0.73.0",
+  "version": "0.73.1",
+  "minHost": "0.73.1",
   "apiVersion": 1,
   "description": "笔记工具与模板、笔记图谱、思维导图、Anki/Obsidian 导出与批注摘要。",
   "entry": "",
@@ -19,26 +19,26 @@
     "annotations"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "whatsNew": "从主包拆出，功能与 0.73.1 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
   },
   "globals": [
-    "AnkiExport",
-    "AnnotationDigest",
     "Annotations",
-    "MindMap",
-    "NoteGraph",
+    "AnnotationDigest",
+    "ObsidianExport",
     "NoteTemplates",
     "NoteTools",
-    "ObsidianExport"
+    "MindMap",
+    "AnkiExport",
+    "NoteGraph"
   ],
   "files": [
     {
-      "path": "scripts/features/anki-export.js",
-      "sha256": "81edf063fe32b590600e3c9e409ab1a7c50579bafd7ba9b171e9cd1ea1ac42a0",
-      "size": 4490
+      "path": "scripts/features/annotations.js",
+      "sha256": "95e07db1d48b0d9963146fa5eb6fd9fd5fbbceafa922ead71e52e7e3e0898346",
+      "size": 4776
     },
     {
       "path": "scripts/features/annotation-digest.js",
@@ -46,19 +46,9 @@
       "size": 12137
     },
     {
-      "path": "scripts/features/annotations.js",
-      "sha256": "95e07db1d48b0d9963146fa5eb6fd9fd5fbbceafa922ead71e52e7e3e0898346",
-      "size": 4776
-    },
-    {
-      "path": "scripts/features/mindmap.js",
-      "sha256": "a55b7c9f3ccfa0ee70e05f16d4d62f645cc32c42b23cee1fb1c259686414e955",
-      "size": 3806
-    },
-    {
-      "path": "scripts/features/note-graph.js",
-      "sha256": "341b93d4db637c44ca44144d01be23b456f32f924a27bed902d4d7116abe176b",
-      "size": 15377
+      "path": "scripts/features/obsidian-export.js",
+      "sha256": "d1e12140293e7aa77eaced147e6d5cbf1b92cf940efb801a7a5af43afb1b6c6b",
+      "size": 11048
     },
     {
       "path": "scripts/features/note-templates.js",
@@ -71,9 +61,19 @@
       "size": 29623
     },
     {
-      "path": "scripts/features/obsidian-export.js",
-      "sha256": "d1e12140293e7aa77eaced147e6d5cbf1b92cf940efb801a7a5af43afb1b6c6b",
-      "size": 11048
+      "path": "scripts/features/mindmap.js",
+      "sha256": "a55b7c9f3ccfa0ee70e05f16d4d62f645cc32c42b23cee1fb1c259686414e955",
+      "size": 3806
+    },
+    {
+      "path": "scripts/features/anki-export.js",
+      "sha256": "81edf063fe32b590600e3c9e409ab1a7c50579bafd7ba9b171e9cd1ea1ac42a0",
+      "size": 4490
+    },
+    {
+      "path": "scripts/features/note-graph.js",
+      "sha256": "341b93d4db637c44ca44144d01be23b456f32f924a27bed902d4d7116abe176b",
+      "size": 15377
     }
   ]
 }

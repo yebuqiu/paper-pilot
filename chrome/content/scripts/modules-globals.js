@@ -4,114 +4,114 @@ var ModuleGlobals = [
   {
     "id": "papilot-mod-pdf",
     "globals": [
-      "OcrService",
       "PdfCompare",
-      "PdfDual",
-      "PdfExport",
+      "OcrService",
+      "PdfTheme",
       "PdfInline",
-      "PdfTheme"
+      "PdfDual",
+      "PdfExport"
     ],
     "name": "PDF 对照与 OCR"
   },
   {
     "id": "papilot-mod-ai",
     "globals": [
-      "Account",
-      "AgentTools",
-      "AutoTag",
-      "Channels",
-      "AIChat",
-      "AIClient",
-      "CommandTags",
-      "GlossaryPacks",
-      "Matrix",
-      "PdfText",
-      "Prompts",
       "AIProviders",
-      "S2Client",
-      "SlashCommands",
-      "TranslateCrypto",
-      "TranslateEngines",
-      "TranslateFormula",
-      "TranslateGlossary",
+      "Account",
+      "Channels",
+      "AIClient",
+      "PdfText",
       "TranslateLang",
-      "TranslateX",
+      "TranslateCrypto",
+      "TranslateGlossary",
+      "TranslateFormula",
+      "TranslateEngines",
       "TranslateSvc",
+      "GlossaryPacks",
+      "TranslateX",
+      "AIChat",
+      "Prompts",
+      "AgentTools",
+      "CommandTags",
+      "SlashCommands",
+      "AutoTag",
+      "Matrix",
+      "S2Client",
       "AgentMemory",
-      "ChatSessions",
       "AIChatPane",
-      "ChatFloat",
       "GlancePane",
+      "TranslatePane",
       "RefPane",
-      "TranslatePane"
+      "ChatSessions",
+      "ChatFloat"
     ],
     "name": "AI 问答与翻译"
   },
   {
     "id": "papilot-mod-cnki",
     "globals": [
+      "CNMeta",
+      "CNTranslators",
       "CNAI",
       "CNFetch",
       "CNVerify",
-      "CNAuth",
-      "CNMeta",
-      "CNTranslators"
+      "CNAuth"
     ],
     "name": "知网与中文文献"
   },
   {
     "id": "papilot-mod-discovery",
     "globals": [
+      "LibSearch",
+      "JournalCatalog",
+      "SearchSubs",
+      "ArxivErrors",
+      "EXIT",
+      "ArxivDates",
+      "ArxivQuery",
+      "FIELDS",
+      "FIELD_LABELS",
+      "ArxivCategories",
+      "RAW",
+      "ALL",
+      "BY_CODE",
+      "ArxivAtom",
       "ArxivAnalyze",
       "STOPWORDS",
       "SECTION_LABELS",
       "LABEL_LOOKUP",
       "LABEL_ALT",
-      "ArxivAtom",
-      "ArxivCategories",
-      "RAW",
-      "ALL",
-      "BY_CODE",
-      "ArxivDates",
-      "ArxivErrors",
-      "EXIT",
-      "ArxivFetch",
-      "ArxivQuery",
-      "FIELDS",
-      "FIELD_LABELS",
       "ArxivRateLimiter",
-      "JournalCatalog",
-      "Discovery",
-      "LibSearch",
-      "SearchSubs"
+      "ArxivFetch",
+      "Discovery"
     ],
     "name": "检索订阅与发现"
   },
   {
     "id": "papilot-mod-notes",
     "globals": [
-      "AnkiExport",
-      "AnnotationDigest",
       "Annotations",
-      "MindMap",
-      "NoteGraph",
+      "AnnotationDigest",
+      "ObsidianExport",
       "NoteTemplates",
       "NoteTools",
-      "ObsidianExport"
+      "MindMap",
+      "AnkiExport",
+      "NoteGraph"
     ],
     "name": "笔记与知识图谱"
   },
   {
     "id": "papilot-mod-meta",
     "globals": [
-      "AttachDoctor",
-      "AttachManager",
       "CollectionStats",
       "FakeCheck",
-      "LibGraph",
-      "MetaDoctor",
       "MetaEnrich",
+      "AttachManager",
       "MetaLint",
+      "MetaDoctor",
+      "LibGraph",
+      "AttachDoctor",
       "MetaRules"
     ],
     "name": "元数据与文库健康"
@@ -125,10 +125,10 @@ var ModuleGlobals = [
       "CC_RANK",
       "CitationContext",
       "CitationTrace",
-      "CiteExport",
       "RefFormat",
+      "RefSources",
       "RefImport",
-      "RefSources"
+      "CiteExport"
     ],
     "name": "引用与写作"
   },
@@ -144,15 +144,15 @@ var ModuleGlobals = [
   {
     "id": "papilot-mod-ui",
     "globals": [
-      "BilingualTranslate",
-      "Hotkeys",
       "SkillPacks",
-      "TagMenu",
+      "BilingualTranslate",
       "TagOps",
+      "TagMenu",
+      "UiTheme",
       "ThemeToggle",
       "ColumnViews",
       "ToolbarQuick",
-      "UiTheme"
+      "Hotkeys"
     ],
     "name": "界面与工具窗口"
   }

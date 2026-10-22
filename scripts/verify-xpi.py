@@ -103,6 +103,30 @@ def start_catalog_server(dest):
             "manifest": {"github": "%s/modules/%s/module.json" % (base_url, mid)},
         })
 
+    # 合集也进本地目录（bundles/<id>/module.json + dist/<id>-<ver>.zip）
+    for bf in sorted((ROOT / "bundles").glob("*/module.json")):
+        b = json.loads(bf.read_text(encoding="utf-8"))
+        bid = b["id"]
+        out_dir = dest / "bundles" / bid
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "module.json").write_text(
+            json.dumps(b, ensure_ascii=False, indent=2), encoding="utf-8")
+        zp_src = ROOT / "dist" / "modules" / ("%s-%s.zip" % (bid, b["version"]))
+        if not zp_src.is_file():
+            die("缺少合集包：%s（先跑 build-module.py --all）" % zp_src)
+        shutil.copy2(zp_src, dest / "dist" / zp_src.name)
+        entries.insert(0, {
+            "id": bid, "name": b["name"], "version": b["version"],
+            "description": b.get("description", ""),
+            "sizeBytes": zp_src.stat().st_size,
+            "fileCount": 0, "tags": ["合集"], "recommended": True,
+            "pro": False, "hot": False, "bundle": True,
+            "contains": b.get("modules") or [],
+            "whatsNew": b.get("whatsNew", ""),
+            "download": {"github": "%s/dist/%s" % (base_url, zp_src.name)},
+            "manifest": {"github": "%s/bundles/%s/module.json" % (base_url, bid)},
+        })
+
     index = {"schema": 1, "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
              "modules": entries}
     (dest / "index.json").write_text(

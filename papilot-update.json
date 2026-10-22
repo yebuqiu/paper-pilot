@@ -3,6 +3,17 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.73.1",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.73.1.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "轻量版首启改为「常用组件合集」一次下载；失败源会话记忆 + 提示去重，不再反复卡死"
+        },
+        {
           "version": "0.73.0",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.73.0.xpi",
           "applications": {

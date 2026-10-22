@@ -819,6 +819,76 @@ async function testInnerManifestTraversal() {
 
 async function main() {
   testPure();
+/* ================= ⑧ 合集（bundle）安装 ================= */
+
+async function testBundle() {
+  const env = makeEnv();
+  const hashes = new Map();
+
+  const modA = manifestOf({ 'a.js': 'var A = 1;\n' }, { id: 'papilot-mod-a', version: '1.0.0' });
+  const modB = manifestOf({ 'b.js': 'var B = 2;\n' }, { id: 'papilot-mod-b', version: '1.0.0' });
+  const bman = {
+    id: 'papilot-bundle-demo', name: '合集', version: '1.0.0', bundle: true,
+    modules: ['papilot-mod-a', 'papilot-mod-b'], apiVersion: 1,
+  };
+  const pkg = {
+    'bundle.json': JSON.stringify(bman),
+    'papilot-mod-a/module.json': JSON.stringify(modA),
+    'papilot-mod-a/a.js': 'var A = 1;\n',
+    'papilot-mod-b/module.json': JSON.stringify(modB),
+    'papilot-mod-b/b.js': 'var B = 2;\n',
+  };
+  await initEnv(env);
+  setDeps(env, { unzip: unzipFrom(pkg, env.memfs, hashes) });
+  setDeps(env, { hashFile: async function (abs) { return hashes.get(abs); } });
+
+  const r = await env.loader.installFromZip('/tmp/bundle.zip', bman, {});
+  eq(r.ok, true, 'bundle：安装成功', r);
+  eq(r.action, 'bundle', 'bundle：action 标记');
+  const reg = JSON.parse(env.memfs.readRaw(P.join(env.deps.baseDir, 'modules', 'installed.json')));
+  ok(reg.modules['papilot-mod-a'] && reg.modules['papilot-mod-b'], 'bundle：两个成员都落注册表');
+  ok(reg.modules['papilot-bundle-demo'].bundle === true, 'bundle：合集条目带 bundle 标记');
+  eq(reg.modules['papilot-bundle-demo'].contains.length, 2, 'bundle：contains 两个成员');
+  ok(env.memfs.allFiles().some(p => p.indexOf('/papilot-mod-a/1.0.0/a.js') >= 0), 'bundle：成员文件落盘');
+  // loadAll 跳过合集条目、加载成员
+  const res = await env.loader.loadAll();
+  eq(env.loader.isInstalled('papilot-mod-a'), true, 'bundle：成员 isInstalled');
+  // 卸载合集 → 成员全清
+  const ru = await env.loader.uninstall('papilot-bundle-demo');
+  eq(ru.ok, true, 'bundle：卸载 ok');
+  eq(ru.removed.length, 2, 'bundle：卸载清掉两个成员');
+  const reg2 = JSON.parse(env.memfs.readRaw(P.join(env.deps.baseDir, 'modules', 'installed.json')));
+  ok(!reg2.modules['papilot-mod-a'] && !reg2.modules['papilot-bundle-demo'],
+    'bundle：卸载后注册表无残留');
+  ok(!env.memfs.allFiles().some(p => p.indexOf('papilot-mod-a') >= 0), 'bundle：卸载后目录无残留');
+}
+
+async function testBundleBadMember() {
+  const env = makeEnv();
+  const hashes = new Map();
+  const modA = manifestOf({ 'a.js': 'var A = 1;\n' }, { id: 'papilot-mod-a', version: '1.0.0' });
+  const bman = {
+    id: 'papilot-bundle-bad', name: '坏合集', version: '1.0.0', bundle: true,
+    modules: ['papilot-mod-a'], apiVersion: 1,
+  };
+  const pkg = {
+    'bundle.json': JSON.stringify(bman),
+    'papilot-mod-a/module.json': JSON.stringify(modA),
+    // 故意缺 a.js → diffFiles missing
+  };
+  await initEnv(env);
+  setDeps(env, { unzip: unzipFrom(pkg, env.memfs, hashes) });
+  setDeps(env, { hashFile: async function (abs) { return hashes.get(abs); } });
+  const r = await env.loader.installFromZip('/tmp/bad.zip', bman, {});
+  eq(r.ok, false, 'bundle：成员缺文件整包失败');
+  const rawBad = env.memfs.readRaw(P.join(env.deps.baseDir, 'modules', 'installed.json'));
+  const regBad = rawBad ? JSON.parse(rawBad) : { modules: {} };
+  eq(Object.keys(regBad.modules).length, 0, 'bundle：失败不留注册表半成品');
+  ok(!env.memfs.allFiles().some(p => p.indexOf('/modules/') >= 0 && p.indexOf('.tmp-') < 0),
+    'bundle：失败不留目录半成品');
+}
+
+
   await testLifecycle();
   await testNoHalfInstall();
   await testDowngrade();
@@ -828,6 +898,8 @@ async function main() {
   await testSandboxHandleKept();
   await testUninstallCleansPrevious();
   await testInnerManifestTraversal();
+  await testBundle();
+  await testBundleBadMember();
 
   if (fails.length) {
     console.log('');

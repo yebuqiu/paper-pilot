@@ -85,7 +85,12 @@ var ModuleLoader = {
         errors.push("需要主包 ≥ " + m.minHost + "（当前 " + hostVersion + "）");
       }
       if (m.mode && m.mode !== "scope" && m.mode !== "sandbox") errors.push("mode 非法：" + m.mode);
-      if (!Array.isArray(m.files) || m.files.length === 0) {
+      if (m.bundle) {
+        if (!Array.isArray(m.modules) || m.modules.length === 0) errors.push("bundle 缺 modules 列表");
+        else for (const mid of m.modules) {
+          if (!this.isValidId(mid)) errors.push("bundle 成员 id 非法：" + mid);
+        }
+      } else if (!Array.isArray(m.files) || m.files.length === 0) {
         errors.push("files 为空");
       } else {
         const seen = {};
@@ -396,7 +401,8 @@ var ModuleLoader = {
     let loaded = 0, skipped = 0;
     for (const id of Object.keys(reg.modules)) {
       const e = reg.modules[id];
-      if (!e || e.enabled === false) { skipped++; continue; }
+      if (!e || e.bundle) { skipped++; continue; }   // 合集条目只是记账，成员各自加载
+      if (e.enabled === false) { skipped++; continue; }
       if (e.broken) { skipped++; continue; }
       try {
         const ok = await this.loadModule(id);
@@ -504,7 +510,7 @@ var ModuleLoader = {
     const d = this._ensureDeps();
     const reg = await this._readRegistry();
     const e = reg.modules[id];
-    if (!e) return null;
+    if (!e || e.bundle) return null;
     const p = PathUtils.join(this._moduleDirOf(e), "module.json");
     try {
       return JSON.parse(await d.fs.readText(p));
@@ -568,7 +574,9 @@ var ModuleLoader = {
       if (!/\.js$/i.test(rel)) { skippedNonJs++; continue; }
       const abs = PathUtils.join(dir, ...String(rel).split("/"));
       try {
+        d.diag("module " + id + " loading " + rel);
         d.scriptLoader.load(d.fileURI(abs));
+        d.diag("module " + id + " loaded " + rel);
       } catch (err) {
         // worker 脚本（pdf-render-worker.js 之类）在主作用域必然抛，
         // 属预期：单个文件失败不该让整包不可用。
@@ -647,6 +655,104 @@ var ModuleLoader = {
   /* ================= 安装 / 卸载 / 回滚 ================= */
 
   /**
+   * 合集安装：一个 zip 装 N 个模块。先全部校验通过，再统一落盘，
+   * 任何一步失败都不留半成品（校验阶段不写注册表，move 阶段失败则回收已 move 的）。
+   */
+  async _installBundle(zipPath, manifest, o) {
+    const d = this._ensureDeps();
+    const reg = await this._readRegistry(true);
+    const tmp = PathUtils.join(this._modulesDir(), ".tmp-" + manifest.id + "-" + d.now());
+    const moved = [];
+    try {
+      await d.fs.mkdirp(tmp);
+      const un = await d.unzip(zipPath, tmp);
+      if (un && un.skipped) d.diag("bundle unzip skipped " + un.skipped + " unsafe entries");
+
+      // —— 校验阶段（不写盘）——
+      const plans = [];
+      for (const mid of manifest.modules) {
+        const mp = PathUtils.join(tmp, mid, "module.json");
+        let inner = null;
+        try { inner = JSON.parse(await d.fs.readText(mp)); } catch (e) { inner = null; }
+        if (!inner) throw new Error("合集缺成员清单：" + mid);
+        const iv = this._pure.validateManifest(inner, d.hostVersion, this.API_VERSION);
+        if (!iv.ok) throw new Error("成员清单非法 " + mid + "：" + iv.errors.join("; "));
+        if (inner.id !== mid) throw new Error("成员 id 不一致：" + mid);
+        if (inner.bundle) throw new Error("不支持合集嵌套：" + mid);
+        if (String(inner.version) !== String(manifest.version)) {
+          throw new Error("成员版本不一致：" + mid);
+        }
+        const content = {};
+        for (const f of inner.files) {
+          const abs = PathUtils.join(tmp, mid, ...String(f.path).split("/"));
+          if (!(await d.fs.exists(abs))) { content[f.path] = null; continue; }
+          const st = await d.fs.stat(abs);
+          content[f.path] = { size: st.size, sha256: await d.hashFile(abs) };
+        }
+        const bad = this._pure.diffFiles(inner, content);
+        if (bad.length) throw new Error("成员校验失败 " + mid + "（首个：" + bad[0].path + "/" + bad[0].reason + "）");
+        plans.push({ mid, inner });
+      }
+
+      // —— 落盘阶段 ——
+      const nowIso = new Date(d.now()).toISOString();
+      let next = reg;
+      for (const p of plans) {
+        const finalDir = PathUtils.join(this._modulesDir(), p.mid, p.inner.version);
+        if (await d.fs.exists(finalDir)) await d.fs.remove(finalDir);
+        await d.fs.mkdirp(PathUtils.parent(finalDir));
+        await d.fs.move(PathUtils.join(tmp, p.mid), finalDir);
+        moved.push(finalDir);
+        const current = reg.modules[p.mid] || null;
+        const entry = {
+          version: String(p.inner.version),
+          dir: p.mid + "/" + p.inner.version,
+          mode: p.inner.mode || "scope",
+          enabled: true,
+          broken: false,
+          installedAt: (current && current.installedAt) || nowIso,
+          updatedAt: nowIso,
+          whatsNew: p.inner.whatsNew || "",
+          previous: current && current.version !== p.inner.version
+            ? { version: current.version, dir: current.dir }
+            : (current && current.previous) || null,
+        };
+        next = this._pure.withEntry(next, p.mid, entry);
+      }
+      next = this._pure.withEntry(next, manifest.id, {
+        version: String(manifest.version),
+        dir: null,
+        bundle: true,
+        contains: plans.map(p => p.mid),
+        enabled: true,
+        broken: false,
+        installedAt: nowIso,
+        updatedAt: nowIso,
+        whatsNew: manifest.whatsNew || "",
+        previous: null,
+      });
+      await this._writeRegistry(next);
+
+      // —— 热载（失败只标 broken，不回滚）——
+      if (o.hot !== false) {
+        for (const p of plans) {
+          if (this._loaded[p.mid]) await this.unloadModule(p.mid);
+          try { await this.loadModule(p.mid); } catch (e) { /* 内部已兜 */ }
+        }
+      }
+      return { ok: true, id: manifest.id, version: manifest.version,
+               installed: plans.map(p => p.mid), action: "bundle" };
+    } catch (err) {
+      for (const dir of moved) {
+        try { await d.fs.remove(dir); } catch (e) { /* ignore */ }
+      }
+      if (await d.fs.exists(tmp)) { try { await d.fs.remove(tmp); } catch (e) { /* ignore */ } }
+      d.diag("bundle install FAILED " + manifest.id + ": " + (err && (err.stack || err.message) || err));
+      return { ok: false, error: String(err && (err.message || err)) };
+    }
+  },
+
+  /**
    * 从 zip 安装。zipPath 必须已下载到本地；manifest 为目录侧下发的清单
    * （安装前先用它做一次性形状校验，落盘后再按包内 module.json 复核）。
    */
@@ -656,6 +762,7 @@ var ModuleLoader = {
     return this._serial(async () => {
       const v = this._pure.validateManifest(manifest, d.hostVersion, this.API_VERSION);
       if (!v.ok) return { ok: false, error: "清单非法：" + v.errors.join("; ") };
+      if (manifest.bundle) return this._installBundle(zipPath, manifest, o);
 
       const reg = await this._readRegistry(true);
       const current = reg.modules[manifest.id] || null;
@@ -765,26 +872,47 @@ var ModuleLoader = {
       const reg = await this._readRegistry(true);
       const e = reg.modules[id];
       if (!e) return { ok: true, noop: true };
-      await this.unloadModule(id);
-      try {
-        // 当前版本 + 回滚版本一起删，否则 <id>/ 永远收不干净
-        const dirs = [this._moduleDirOf(e)];
-        if (e.previous && e.previous.dir) dirs.push(this._joinRel(this._modulesDir(), e.previous.dir));
-        for (const dir of dirs) {
-          if (await d.fs.exists(dir)) await d.fs.remove(dir);
+      // 合集：先卸成员（成员可能已被单独卸过，幂等），再清合集记账条目
+      if (e.bundle && Array.isArray(e.contains)) {
+        const removed = [];
+        for (const mid of e.contains) {
+          const sub = await this._uninstallOne(mid);
+          if (sub && sub.ok !== false) removed.push(mid);
         }
-        const parent = PathUtils.join(this._modulesDir(), id);
-        if (await d.fs.exists(parent)) {
-          const kids = await d.fs.list(parent);
-          const left = (kids || []).filter(p => String(p).split(/[\\/]/).pop() !== this.REGISTRY_FILE);
-          if (left.length === 0) await d.fs.remove(parent);
-        }
-      } catch (err) {
-        d.diag("module uninstall fs error " + id + ": " + err);
+        // 成员卸载已各自重写注册表，清合集条目必须基于最新快照
+        const latest = await this._readRegistry(true);
+        await this._writeRegistry(this._pure.withEntry(latest, id, null));
+        return { ok: true, id, removed };
       }
-      await this._writeRegistry(this._pure.withEntry(reg, id, null));
-      return { ok: true, id };
+      return this._uninstallOne(id, reg);
     });
+  },
+
+  /** 单模块卸载（供 uninstall 与合集复用；调用方须已持有串行锁）。 */
+  async _uninstallOne(id, reg) {
+    const d = this._ensureDeps();
+    reg = reg || await this._readRegistry(true);
+    const e = reg.modules[id];
+    if (!e) return { ok: true, noop: true };
+    await this.unloadModule(id);
+    try {
+      // 当前版本 + 回滚版本一起删，否则 <id>/ 永远收不干净
+      const dirs = e.dir ? [this._moduleDirOf(e)] : [];
+      if (e.previous && e.previous.dir) dirs.push(this._joinRel(this._modulesDir(), e.previous.dir));
+      for (const dir of dirs) {
+        if (await d.fs.exists(dir)) await d.fs.remove(dir);
+      }
+      const parent = PathUtils.join(this._modulesDir(), id);
+      if (await d.fs.exists(parent)) {
+        const kids = await d.fs.list(parent);
+        const left = (kids || []).filter(p => String(p).split(/[\\/]/).pop() !== this.REGISTRY_FILE);
+        if (left.length === 0) await d.fs.remove(parent);
+      }
+    } catch (err) {
+      d.diag("module uninstall fs error " + id + ": " + err);
+    }
+    await this._writeRegistry(this._pure.withEntry(reg, id, null));
+    return { ok: true, id };
   },
 
   /** 回滚到安装时保留的上一版本（只在 previous 目录仍存在时可用）。 */

@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-cite",
   "name": "引用与写作",
-  "version": "0.73.0",
-  "minHost": "0.73.0",
+  "version": "0.73.1",
+  "minHost": "0.73.1",
   "apiVersion": 1,
   "description": "参考文献格式化、引用上下文与溯源、WPS 引用加载项载荷。",
   "entry": "",
@@ -18,7 +18,7 @@
     "wps-cite"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "whatsNew": "从主包拆出，功能与 0.73.1 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
@@ -30,10 +30,10 @@
     "CC_RANK",
     "CitationContext",
     "CitationTrace",
-    "CiteExport",
     "RefFormat",
+    "RefSources",
     "RefImport",
-    "RefSources"
+    "CiteExport"
   ],
   "files": [
     {
@@ -47,14 +47,14 @@
       "size": 7561
     },
     {
-      "path": "scripts/features/cite-export.js",
-      "sha256": "f2217b7405c579675d1676daab0d8abfb8a25075e8d0ff6559911676cde35d46",
-      "size": 8206
-    },
-    {
       "path": "scripts/features/ref-format.js",
       "sha256": "471d4c9a57b0784a30dcbd30b6381aea7aa237cd5227df9700680ce9fd71d844",
       "size": 65758
+    },
+    {
+      "path": "scripts/features/ref-sources.js",
+      "sha256": "b34ed28660ed0e047e1271596c709333f64a6ff97de932567a9bfe8f13a70648",
+      "size": 49404
     },
     {
       "path": "scripts/features/ref-import.js",
@@ -62,9 +62,9 @@
       "size": 39745
     },
     {
-      "path": "scripts/features/ref-sources.js",
-      "sha256": "b34ed28660ed0e047e1271596c709333f64a6ff97de932567a9bfe8f13a70648",
-      "size": 49404
+      "path": "scripts/features/cite-export.js",
+      "sha256": "f2217b7405c579675d1676daab0d8abfb8a25075e8d0ff6559911676cde35d46",
+      "size": 8206
     },
     {
       "path": "tools/wps-cite.bundle.json",

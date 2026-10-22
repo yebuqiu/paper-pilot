@@ -393,6 +393,46 @@ Zotero.Papilot = {
         const mg = (typeof ModuleGlobals !== "undefined") ? ModuleGlobals : [];
         const nFacade = ModuleLoader.installFacades(mg);
         if (nFacade) await this._diag("module facades: " + nFacade);
+        // 轻量版首启：逐个组件下载在国内网络下会反复超时（像卡死）。
+        // 改为一键装「常用组件合集」（单次下载），只提示一次，之后商店按需。
+        if (nFacade > 20 && ModuleLoader.list().length === 0
+            && !Prefs.get("modulesBundleOffered", "")
+            && !Prefs.get("modulesSelftestInstall", "")) {   // 自检场景不弹引导
+          Prefs.set("modulesBundleOffered", "1");
+          const later = (fn, ms) => {
+            try {
+              const w = Zotero.getMainWindow();
+              if (w && w.setTimeout) return w.setTimeout(fn, ms);
+            } catch (e) { /* ignore */ }
+            return setTimeout(fn, ms);
+          };
+          later(() => {
+            try {
+              const win = Zotero.getMainWindow();
+              if (!win) return;
+              const ps = Services.prompt;
+              const flags = ps.BUTTON_POS_0 * ps.BUTTON_TITLE_IS_STRING
+                + ps.BUTTON_POS_1 * ps.BUTTON_TITLE_CANCEL;
+              const rv = ps.confirmEx(win, "Papilot 轻量版",
+                "当前安装的是按需加载的轻量版（主包很小，功能组件按需下载）。\n\n"
+                + "建议一键下载「常用组件合集」——一次装好 PDF / AI / 界面三组常用能力，"
+                + "只下载一次，约 850 KB。其余组件随时可在「工具 → Papilot 组件商店」按需安装。\n\n"
+                + "是否现在下载？",
+                flags, "下载合集（推荐）", null, null, null, {});
+              if (rv === 0) {
+                this._diag("bundle offer: user accepted");
+                Promise.resolve(ModuleStore.install("papilot-bundle-basic")).then(r => {
+                  this._diag("bundle offer install: "
+                    + (r && r.ok ? "ok" : "FAILED " + (r && r.error)));
+                }).catch(() => { /* ignore */ });
+              } else {
+                this._diag("bundle offer: user declined");
+              }
+            } catch (e) {
+              this._diag("bundle offer FAILED: " + (e && (e.message || e)));
+            }
+          }, 6000);
+        }
       } catch (e) {
         await this._diag("module facades FAILED: " + (e && (e.message || e)));
       }

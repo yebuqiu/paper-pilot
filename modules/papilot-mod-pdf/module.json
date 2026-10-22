@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-pdf",
   "name": "PDF 对照与 OCR",
-  "version": "0.73.0",
-  "minHost": "0.73.0",
+  "version": "0.73.1",
+  "minHost": "0.73.1",
   "apiVersion": 1,
   "description": "PDF 内嵌阅读、左右对照翻译、PDF 导出/比对/主题与 OCR 能力。",
   "entry": "",
@@ -17,29 +17,39 @@
     "ocr"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.0 一致",
+  "whatsNew": "从主包拆出，功能与 0.73.1 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"
   },
   "globals": [
-    "OcrService",
     "PdfCompare",
-    "PdfDual",
-    "PdfExport",
+    "OcrService",
+    "PdfTheme",
     "PdfInline",
-    "PdfTheme"
+    "PdfDual",
+    "PdfExport"
   ],
   "files": [
+    {
+      "path": "scripts/features/pdf-compare.js",
+      "sha256": "85f82e74c5afbec9c4b8de180e49d42ebd58287dd652e10856e181f126fdea06",
+      "size": 11116
+    },
     {
       "path": "scripts/features/ocr.js",
       "sha256": "4e9b2e4592e30d2390c509cf83603c4dd8191832e05005ceff732c6fb522da51",
       "size": 31416
     },
     {
-      "path": "scripts/features/pdf-compare.js",
-      "sha256": "85f82e74c5afbec9c4b8de180e49d42ebd58287dd652e10856e181f126fdea06",
-      "size": 11116
+      "path": "scripts/features/pdf-theme.js",
+      "sha256": "45b01ef629e2003a36e2fb4832f6eb8202bf74aad4dd30b3e7bdd19488487ab0",
+      "size": 11304
+    },
+    {
+      "path": "scripts/features/pdf-inline.js",
+      "sha256": "9809e81f44744a4089e8d85552985f90fedbd7b45b3aecdfe32d53dd8beca818",
+      "size": 78082
     },
     {
       "path": "scripts/features/pdf-dual.js",
@@ -50,16 +60,6 @@
       "path": "scripts/features/pdf-export.js",
       "sha256": "15c26cbac229aebf4fa1eeb22278e972cf42e8cce6e3d766bd177faf3e95a15e",
       "size": 25276
-    },
-    {
-      "path": "scripts/features/pdf-inline.js",
-      "sha256": "9809e81f44744a4089e8d85552985f90fedbd7b45b3aecdfe32d53dd8beca818",
-      "size": 78082
-    },
-    {
-      "path": "scripts/features/pdf-theme.js",
-      "sha256": "45b01ef629e2003a36e2fb4832f6eb8202bf74aad4dd30b3e7bdd19488487ab0",
-      "size": 11304
     },
     {
       "path": "scripts/pdf-render-worker.js",
