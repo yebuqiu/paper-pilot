@@ -217,11 +217,12 @@ async function main() {
     active: 'llm', fallback: ['edge', 'bing'], cache: false, retry: 0, cooldownMs: 0,
   }));
   btnOf(rowOf('llm'), '设为当前');
-  const llmSetBtn = btnOf(rowOf('google'), '设为当前');
-  ok(!!llmSetBtn, '② 常用区里能给 google 见到「设为当前」');
-  llmSetBtn.click(); // → setActive('google') → renderAll()
-  eq(T.cfg().active, 'google', '② 「设为当前」写回 translateCfg.active');
-  eq(dom.registry.get('pp-tr-active').value, 'google', '② 重渲染后下拉跟上新活动引擎');
+  // 0.75.0：COMMON_ENGINES 换掉了 google（国内不可达）→ 用默认链里的 youdao 走同一路径
+  const llmSetBtn = btnOf(rowOf('youdao'), '设为当前');
+  ok(!!llmSetBtn, '② 常用区里能看到 youdao 的「设为当前」');
+  llmSetBtn.click(); // → setActive('youdao') → renderAll()
+  eq(T.cfg().active, 'youdao', '② 「设为当前」写回 translateCfg.active');
+  eq(dom.registry.get('pp-tr-active').value, 'youdao', '② 重渲染后下拉跟上新活动引擎');
   eq(dom.registry.get('pp-tr-cooldown').value, '0', '② 重渲染后冷却框显示 0 秒（与配置一致）');
 
   // 展开
@@ -310,6 +311,57 @@ async function main() {
   eq(T.parseSecret('libretranslate', T.secretOf('libretranslate')).url, 'http://127.0.0.1:5000',
     '⑥ ★ 一键填入把地址写进了该引擎');
   T.setSecret('libretranslate', '');
+
+  /* ---------- ⑥b 可选字段（needsSecret=false 但要填东西）也必须渲染 ---------- */
+  // 0.75.0：此前表单渲染条件写死 needsSecret，导致 MyMemory 的「联系邮箱」与
+  //         Google 的「自定义镜像地址」在界面上根本看不到（配了也白配）。
+  {
+    const gRow2 = rowOf('google');
+    ok(!!gRow2, '⑥b 展开后有 google 行');
+    eq(gRow2.byTag('input').length, 1, '⑥b ★ Google 的「镜像地址」可选字段已渲染');
+    const mmRow = rowOf('mymemory');
+    ok(!!mmRow, '⑥b 展开后有 MyMemory 行');
+    eq(mmRow.byTag('input').length, 1, '⑥b ★ MyMemory 的「联系邮箱」可选字段已渲染');
+    const mmInput = mmRow.byTag('input')[0];
+    mmInput.value = 'me@example.com';
+    mmInput.fire('change');
+    eq(T.parseSecret('mymemory', T.secretOf('mymemory')).email, 'me@example.com',
+      '⑥b 可选字段改动即写进该引擎的复合密钥串');
+    T.setSecret('mymemory', '');
+  }
+
+  /* ---------- ⑥c 一键体检：真实逐个调用，结果逐条列出 ---------- */
+  {
+    const BING_PAGE = '<html><script>IG:"1A2B3C4D5E",data-iid="translator.5023",' +
+      'var params_AbusePreventionHelper = [1699999999999,"TOK",3600000];</script></html>';
+    setP('translateCfg', JSON.stringify({ active: 'youdao', fallback: [], cache: false, retry: 0, cooldownMs: 0, secrets: {} }));
+    // 重新渲染以反映新配置（走真实按钮路径）
+    btnOf(rowOf('youdao'), '设为当前').click();
+    plan = []; httpCalls.length = 0;
+    planOk('translate.google.com', [[['你好', 'hi']]]);
+    planOk('translate.googleapis.com', [[['你好', 'hi']]]);
+    plan.push({ match: 'www.bing.com/translator', text: BING_PAGE });
+    planOk('www.bing.com/ttranslatev3', [{ translations: [{ text: '你好' }] }]);
+    planOk('edge.microsoft.com/translate/translatetext', [{ translations: [{ text: '你好' }] }]);
+    planOk('aidemo.youdao.com', { errorCode: '0', translation: ['你好'] });
+    planOk('transmart.qq.com', { auto_translation: ['你好'] });
+    planOk('api.mymemory.translated.net', { responseStatus: 200, responseData: { translatedText: '你好' } });
+
+    dom.registry.get('pp-tr-test-all').click();
+    const done = await (async () => {
+      const t0 = Date.now();
+      while (Date.now() - t0 < 6000) {
+        if (/体检完成/.test(dom.registry.get('pp-tr-test-all-msg').textContent || '')) return true;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      return false;
+    })();
+    ok(done, '⑥c ★ 一键体检跑完并给出汇总');
+    includes(dom.registry.get('pp-tr-test-all-msg').textContent, '7/7', '⑥c 七个免配置引擎全部可用');
+    ok(httpCalls.length >= 8, '⑥c 每个引擎都真实发过请求（bing 另有取页面）', httpCalls.length);
+    includes(globalMsg().textContent, '✓', '⑥c 底部汇总逐条列出结果');
+    eq(dom.registry.get('pp-tr-test-all').disabled, false, '⑥c 结束后按钮恢复可用');
+  }
 
   /* ---------- ⑦ 0.4x 在线词包目录（open-termbank）：获取 → 逐域导入 → 有更新检测 ---------- */
   {

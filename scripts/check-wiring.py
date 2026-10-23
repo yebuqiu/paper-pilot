@@ -1169,14 +1169,19 @@ ok("test/translate.test.js" in _pf3, "22.22 preflight 含翻译引擎测试")
 #      ② MyMemory 单次上限是 500 **UTF-8 字节**（不是 500 字符），我们按字符分段 → 长句必失败；
 #      ③ 免密钥阵营缺一个"语种最全又稳定"的引擎（必应网页版易 429）。
 ok('id: "edge"' in tr_js, "22.23 新增免密钥 edge 引擎（必应/Edge）")
-ok("edge.microsoft.com/translate/auth" in tr_js, "22.24 ★ edge 走官方 token 端点取临时票据")
-ok("api-edge.cognitive.microsofttranslator.com" in tr_js, "22.25 ★ edge 走微软 v3 接口（非网页逆向）")
-ok('"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)' in tr_js,
-   "22.26 edge 携带 Edge UA（该接口对 UA 敏感）")
+# 0.75.0：微软 2026-08 下线了 edge.microsoft.com/translate/auth（固定 404），
+#      改走同域免鉴权端点 translate/translatetext。这两条是**回归守卫**：
+#      谁把旧端点加回来，装到用户机上就是"翻译全废"。
+ok("edge.microsoft.com/translate/translatetext" in tr_js,
+   "22.24 ★ edge 走微软新的免鉴权端点（旧的取票端点已下线）")
+ok("edge.microsoft.com/translate/auth" not in tr_js,
+   "22.25 ★ 不再引用已下线的 token 端点（否则该引擎必然 404）")
+ok('const EDGE_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)' in tr_js,
+   "22.26 edge 携带浏览器 UA（该端点缺 UA 会 400 Client Browser Version not supported）")
 ok("if (typeof svc.prepare === \"function\" && !ctx.pre)" in tr_js,
    "22.27 ★★ prepare 真正被调用（此前只声明未调用 → bing 引擎失效）")
-ok("ctx = Object.assign({}, ctx, { pre: await svc.prepare(ctx) });" in tr_js,
-   "22.28 prepare 整次调用只做一次（多段复用同一 token）")
+ok("const pre = await svc.prepare(ctx);" in tr_js and "if (pre) _preSet(id, pre);" in tr_js,
+   "22.28 prepare 整次调用只做一次（多段复用同一份 pre，且按 TTL 缓存）")
 ok("function _splitText" in tr_js, "22.29 长文本分段纯函数存在")
 ok("splitText: _splitText, segmentsFor: _segmentsFor" in tr_js, "22.30 分段函数已导出（可单测）")
 ok("limits: { bytes: 500 }" in tr_js, "22.31 ★ MyMemory 声明 500 字节上限（官方是字节不是字符）")
@@ -1199,7 +1204,7 @@ ok("if (!o.engine && c.cooldownMs > 0)" in tr_js,
 ok("if (c.totalMs > 0 && c.totalMs - spent < 2000)" in tr_js,
    "22.40 总预算不足时停止整条链（而不是继续试下一个）")
 ok("budget = Math.min(budget, c.routeMs);" in tr_js, "22.41 单路预算会压到该引擎的调用预算上")
-ok("_markCooldown(id, c.cooldownMs);" in tr_js, "22.42 引擎失败后自动进入冷却")
+ok("_markCooldown(id, cd);" in tr_js, "22.42 引擎失败后自动进入冷却（按 kind 分级取时长）")
 ok("cooled," in tr_js and "detail:" in tr_js, "22.43 结果里回报「被跳过的引擎」与逐条原因明细")
 ok("https://transmart.qq.com/api/imt" in tr_js and '"auto_translation"' in tr_js,
    "22.44 新增 TranSmart 引擎（免密钥，腾讯交互翻译）")
@@ -1293,6 +1298,37 @@ ok(not _ok_missing,
 ok("require('./translate-files')" in io.open(os.path.join(ROOT, "test", "translate.test.js"),
    encoding="utf-8").read(),
    "22.74 测试经 test/translate-files.js 单一真源加载模块（防多份清单漂移）")
+
+# ---- 22.75~22.86：0.75.0 翻译引擎可用性修复（接口下线 / 国内不可达 / 失败分级）----
+# 起因：用户报"多个翻译接口无法调用"。实测（scripts/diag/probe-translate-live.js）：
+#   ① 微软 2026-08 下线 edge translate/auth → edge 引擎恒 404（默认回退链首位，等于全废）；
+#   ② google / googleapis 在中国大陆**直连不可达**，却在默认链第 2 位 → 首翻白等 20s；
+#   ③ 429 也会"重试一次"，等于白烧一次配额；连接层失败与密钥错混为一谈，排障靠猜。
+ok("scripts/diag/probe-translate-live.js" in tr_js or os.path.exists(
+    os.path.join(ROOT, "scripts", "diag", "probe-translate-live.js")),
+   "22.75 ★ 提供真实联网探针（单测全用桩，证明不了对方接口还活着）")
+ok("const preCache = new Map();" in tr_js and "function _preSet(id, pre, ttlHint)" in tr_js,
+   "22.76 ★ prepare 产物按有效期缓存（bing 不再每段都取一次页面）")
+ok("preCache.delete(id); // 地址/密钥变了" in tr_js,
+   "22.77 改密钥/地址时立刻失效 prepare 缓存")
+ok("const NET_COOLDOWN_MS = 180000;" in tr_js and "const RATE_COOLDOWN_MS = 300000;" in tr_js,
+   "22.78 ★ 失败分级冷却（不可达 3 分钟 / 429 五分钟）")
+ok("err.unreachable = unreachable;" in tr_js and 'kind = "rate"' in tr_js,
+   "22.79 ★ 错误分类：network / auth / rate / server / client")
+ok('retryable = false; kind = "rate";' in tr_js,
+   "22.80 ★ 429 不重试（连发只会再撞 429，白烧配额）")
+ok("retryAfterMs" in tr_js and "getResponseHeader(" in tr_js,
+   "22.81 尊重网关 Retry-After（重试等待有依据，不是盲等 350ms）")
+ok('fallback: ["edge", "bing", "youdao", "transmart"]' in tr_js,
+   "22.82 ★ 默认回退链改为国内可连通的四引擎（google 移出）")
+ok("translateFallbackV2" in tr_js and "translateFallbackV2" in prefsdef,
+   "22.83 ★ 回退链二次迁移（仅改「从未自定义过」的旧默认链）")
+ok("_googleBase(ctx.parts" in tr_js and "translate_a/single" in tr_js,
+   "22.84 Google 支持可选镜像地址（自建反代即可继续用 Google 质量）")
+ok("if (s.secretFields && s.secretFields.length) {" in trp_js,
+   "22.85 ★ 可选字段也能渲染（MyMemory 邮箱 / Google 镜像此前被 needsSecret 条件挡掉）")
+ok("pp-tr-test-all" in trp_js and "pp-tr-test-all" in xhtml_ids and "onTestAll" in trp_js,
+   "22.86 ★ 一键体检全部引擎（真实逐个调用，排障从「猜」变「看」）")
 
 # ---------- 23. 菜单瘦身（插件 0.29.0）----------
 # 改动面：menus.js 注册表化 + classic 回退、prefs.js 三个菜单 pref、

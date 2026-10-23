@@ -12,7 +12,7 @@ Papilot 是一个 **Zotero 7–10 插件**（浏览器扩展形态，bootstrappe
 
 | 组成 | 说明 | 版本锚点 |
 |---|---|---|
-| **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.74.1`） |
+| **插件本体** | `bootstrap.js` + `chrome/content/**`，Manifest V2 扩展，覆盖阅读助手 / 检索发现 / 笔记卡片 / 批量分析 / 库健康 / 标签状态 / MCP 互操作 / 数据列 / 账号会员等 9 类功能 | `manifest.json` 的 `version`（当前 `0.75.0`） |
 | **账号后台** | `server/`，纯 Node 标准库实现：注册登录、会话、会员/订单/激活码/优惠券、官方 AI 模型网关、管理 API 与网页管理页 | `server/account-server.js` 头注释的服务端版本（当前 `1.9.2`） |
 
 - 插件 ID：`papilot@dev.local`；兼容 `strict_min_version: "6.999"` → `strict_max_version: "99.*"`。
@@ -83,6 +83,11 @@ node tools/arxiv/test/run-all.js --include-network   # 追加真实 arXiv 冒烟
 
 # 接线一致性静态扫描（launcher.ps1 × account-server.js × admin.html × 插件装配）
 python scripts/check-wiring.py
+
+# 翻译引擎「真实联网」可用性探针（不进 CI：要外网；对方接口改版/用户报障时先跑它）
+# 单测全部用桩 HTTP，只能证明"按契约构造/解析"，证明不了"对方接口今天还活着"。
+node scripts/diag/probe-translate-live.js            # 逐个引擎实测（需密钥的自动跳过）
+node scripts/diag/probe-translate-live.js --flow     # 再跑一次主流程：llm 不可用 → 回退链
 
 # arXiv 核心生成物是否与 tools/arxiv/src 同步
 python scripts/build-arxiv-core.py --check

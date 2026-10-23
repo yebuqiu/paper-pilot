@@ -48,6 +48,22 @@ var TranslateEngines = (function () {
     return base;
   }
 
+  /** Google 系（google / googleapi）的基地址：可用可选的「自定义镜像」覆盖
+   *  为什么需要：translate.google.com / translate.googleapis.com 在中国大陆**直连不可达**
+   *  （DNS 正常解析但 TCP 被阻断，表现为固定超时）。有自建反代（Cloudflare Worker /
+   *  nginx proxy_pass）的用户填上镜像地址即可继续用 Google 质量，无需改代码。 */
+  function _googleBase(parts, dflt) {
+    const m = String((parts && parts.mirror) || "").trim().replace(/\/+$/, "");
+    return m || dflt;
+  }
+
+  /** 微软 Edge 免鉴权端点要求的浏览器 UA（缺失会被判 "Client Browser Version not supported"） */
+  const EDGE_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0";
+
+  /* Microsoft 翻译（网页/Edge 免密钥链路）的语种码：简繁必须分开，其余沿用 ISO */
+  const codesMS = (code) => M_ZH_HANS[normalizeLang(code)] || normalizeLang(code);
+
   /* ==================== 引擎注册表 ==================== */
   /* ------------------------------------------------------------------
    * 新增引擎模板（复制后替换即可，无需改动上层）：
@@ -72,10 +88,18 @@ var TranslateEngines = (function () {
       id: "google", name: "Google 翻译（免费接口）", group: "free",
       limits: { chars: 2000 }, // gtx 走 GET，URL 长度有限，超长须分段
       docs: "https://translate.google.com",
+      warn: true, // 国内直连不可达 → 设置面板即使在「展开」紧凑态也要把提示显示出来
+      hint: "★ 中国大陆网络通常「直连不可达」（DNS 能解析但 TCP 被阻断，表现为固定超时）。若你有自建反代/镜像，请填下面的「镜像地址」；否则建议把本引擎移出回退链，改用「微软翻译（免密钥）」「有道」「TranSmart」。",
       codes: identity,
+      // 镜像地址为可选字段（needsSecret=false：不填也能用，填了才生效）
+      secretFields: [{
+        key: "mirror", label: "镜像地址（可选，自建反代，如 https://gt.example.com）",
+        placeholder: "https://translate.google.com（留空=官方地址）", optional: true,
+      }],
       endpoint(ctx) {
+        const base = _googleBase(ctx.parts, "https://translate.google.com");
         const q = encodeURIComponent(ctx.text);
-        const url = "https://translate.google.com/translate_a/single" +
+        const url = base + "/translate_a/single" +
           "?client=gtx&sl=" + encodeURIComponent(ctx.fromCode) +
           "&tl=" + encodeURIComponent(ctx.toCode) +
           "&hl=en&dt=t&source=bh&ssel=0&tsel=0&kc=1" +
@@ -87,9 +111,16 @@ var TranslateEngines = (function () {
     {
       id: "googleapi", name: "Google 翻译（translate.googleapis.com）", group: "free",
       limits: { chars: 2000 },
+      warn: true,
+      hint: "与上一个引擎同一后端，只是域名不同（部分地区/网络下其中一个可通）。同样支持可选镜像地址。",
       codes: identity,
+      secretFields: [{
+        key: "mirror", label: "镜像地址（可选，自建反代）",
+        placeholder: "https://translate.googleapis.com（留空=官方地址）", optional: true,
+      }],
       endpoint(ctx) {
-        const url = "https://translate.googleapis.com/translate_a/single" +
+        const base = _googleBase(ctx.parts, "https://translate.googleapis.com");
+        const url = base + "/translate_a/single" +
           "?client=gtx&sl=" + encodeURIComponent(ctx.fromCode) +
           "&tl=" + encodeURIComponent(ctx.toCode) +
           "&dt=t&tk=" + googleTk(ctx.text) + "&q=" + encodeURIComponent(ctx.text);
@@ -104,16 +135,19 @@ var TranslateEngines = (function () {
       limits: { chars: 1000 }, // 网页版单次 1000 字符（中国区 5000，取保守值）
       codes: (code) => M_ZH_HANS[normalizeLang(code)] || normalizeLang(code),
       // 必应网页接口：先取翻译页里的 IG / IID / 反滥用 token，再发正式请求
-      async prepare() {
+      async prepare(ctx) {
+        const to = Math.min(12000, Math.max(3000, Number(ctx && ctx.timeoutMs) || 12000));
         const page = await Zotero.HTTP.request("GET", "https://www.bing.com/translator", {
-          responseType: "text", timeout: 12000,
+          responseType: "text", timeout: to,
         });
         const html = String((page && (page.responseText || page.response)) || "");
         const ig = (html.match(/IG:"([0-9A-Fa-f]+)"/) || [])[1] || "";
         const iid = (html.match(/data-iid="([^"]+)"/) || [])[1] || "";
         const abuse = html.match(/params_AbusePreventionHelper\s*=\s*\[(\d+)\s*,\s*"([^"]+)"\s*,\s*(\d+)\]/);
         if (!abuse) throw new Error("必应接口取 token 失败（页面结构可能已变更）");
-        return { ig, iid, key: abuse[1], token: abuse[2] };
+        // 第三个数字是 token 有效期（毫秒，通常是 3600000）。交给门面做 prepare 缓存，
+        // 避免「每翻一段就多一次 1~2s 的页面请求」，也避免页面改版时反复撞墙。
+        return { ig, iid, key: abuse[1], token: abuse[2], ttlMs: Number(abuse[3]) || 0 };
       },
       endpoint(ctx) {
         const pre = ctx.pre || {};
@@ -145,49 +179,41 @@ var TranslateEngines = (function () {
       },
     },
     {
-      id: "edge", name: "必应 / Edge 翻译（免密钥，推荐）", group: "free",
+      id: "edge", name: "微软翻译（Edge 免密钥，推荐）", group: "free",
       docs: "https://learn.microsoft.com/azure/ai-services/translator/reference/v3-0-translate",
-      hint: "免注册、最稳的免密钥引擎：先取 Edge 的临时 token，再调微软 v3 接口（语种最全）。建议排在回退链首位。",
-      limits: { chars: 5000 }, // v3 单次可达 5 万字符，这里压小以求请求体轻、与其它引擎一致
-      codes: (code) => M_ZH_HANS[normalizeLang(code)] || normalizeLang(code),
-      // Edge 网页翻译链路：GET /translate/auth 拿短期 token（约 10 分钟有效）
-      async prepare() {
-        const resp = await Zotero.HTTP.request("GET", "https://edge.microsoft.com/translate/auth", {
-          responseType: "text", timeout: 12000,
-        });
-        const token = String((resp && (resp.responseText || resp.response)) || "").trim();
-        // token 是 JWT（三段点分）。取不到就明确报错 —— 别发一个空 Bearer 出去，
-        // 那样只会拿到 401，把"接口调整了"误报成"密钥无效"。
-        if (!token || token.length < 40 || token.indexOf(".") < 0) {
-          throw new Error("Edge 翻译取 token 失败（接口可能已调整）");
-        }
-        return { token };
-      },
+      hint: "免注册、语种最全（100+）的免密钥引擎，建议排在回退链首位。★ 2026-08 微软下线了旧的取票端点（translate/auth 现恒 404），本版改走同域的免鉴权端点 translate/translatetext；该端点要求浏览器 UA，缺 UA 会被判 Client Browser Version not supported。",
+      limits: { chars: 5000 }, // 端点单次可吃 5 万字符，这里压小以求请求体轻、与其它引擎一致
+      codes: codesMS,
+      // 免鉴权端点：POST /translate/translatetext?to=<code>[&from=<code>]
+      //   body: ["待译文本"]           （与 v3 接口同构，不带 Bearer）
+      //   响应: [{ translations: [{ text }] }]（源语言 auto 时额外带 detectedLanguage）
+      // 注意：**不要**传 from=auto —— 该端点收到 auto 会返回 400，省略 from 才是自动识别。
       endpoint(ctx) {
-        const pre = ctx.pre || {};
-        let url = "https://api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0" +
-          "&to=" + encodeURIComponent(ctx.toCode);
+        let url = "https://edge.microsoft.com/translate/translatetext?to=" +
+          encodeURIComponent(ctx.toCode);
         if (ctx.from !== "auto") url += "&from=" + encodeURIComponent(ctx.fromCode);
         return {
           method: "POST",
           url,
           headers: {
             "Content-Type": "application/json",
-            "Authorization": "Bearer " + (pre.token || ""),
-            // 必须像 Edge 客户端：该接口对 UA 敏感，缺失/异样会 401
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-              "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36 Edg/124.0.0.0",
+            "Accept": "*/*",
+            // 必须像浏览器：该接口对 UA 敏感（缺失/异样 → 400）
+            "User-Agent": EDGE_UA,
           },
-          body: JSON.stringify([{ Text: ctx.text }]),
+          body: JSON.stringify([ctx.text]),
           responseType: "json",
         };
       },
       extract(resp) {
         const d = resp && resp.response;
         if (d && d.error) {
-          throw new Error("Edge 翻译：" + (d.error.message || d.error.code || "未知错误"));
+          throw new Error("微软翻译：" + (d.error.message || d.error.code || "未知错误"));
         }
-        return _msftV3Text(d);
+        // 该端点在参数不合法时回的是 { message: "..." }（无 error 字段）
+        const out = _msftV3Text(d);
+        if (!out && d && d.message) throw new Error("微软翻译：" + d.message);
+        return out;
       },
     },
     {
@@ -386,6 +412,7 @@ var TranslateEngines = (function () {
     /* ---------- 需要密钥 ---------- */
     {
       id: "deepl", name: "DeepL（Free / Pro）", group: "key",
+      limits: { chars: 5000 }, // 官方上限是 128 KiB/请求；压到 5000 与其它引擎一致，也便于失败定位
       hint: "额度语义注意：新注册用户是一次性 100 万字符（每月刷新的 API Free 已退役）；key 以 :fx 结尾走免费端点。",
       docs: "https://www.deepl.com/pro-api",
       codes: (code) => {
@@ -419,7 +446,7 @@ var TranslateEngines = (function () {
       limits: { chars: 5000 },
       hint: "白嫖方式：Azure 门户 → 创建「翻译工具」资源 → 定价层选 F0（200 万字符/月，永久免费）→ 密钥与区域填这里。",
       docs: "https://learn.microsoft.com/azure/ai-services/translator/",
-      codes: (code) => M_ZH_HANS[normalizeLang(code)] || normalizeLang(code),
+      codes: codesMS,
       needsSecret: true,
       secretFields: [
         { key: "key", label: "订阅密钥（32 或 84 位）" },
@@ -460,14 +487,22 @@ var TranslateEngines = (function () {
         const key = (ctx.parts && ctx.parts.key) || "";
         if (!appid || !key) throw new Error("未配置百度翻译 AppID/密钥");
         const salt = String(Date.now());
+        // 签名对**原文**计算（appid+q+salt+key），与表单里 q 的编码无关 —— 官方规定
         const sign = Zotero.Utilities.Internal.md5(appid + ctx.text + salt + key, false);
-        const url = "https://api.fanyi.baidu.com/api/trans/vip/translate" +
-          "?q=" + encodeURIComponent(ctx.text) +
+        // ★ 走 POST 表单：GET 把 4000 字节的 q 塞进 URL，编码后轻易破 8KB，
+        //   会被网关/代理直接拒（表现为 414 或连接被重置）。百度官方两种都支持。
+        const body = "q=" + encodeURIComponent(ctx.text) +
           "&appid=" + encodeURIComponent(appid) +
           "&from=" + encodeURIComponent(ctx.from === "auto" ? "auto" : ctx.fromCode) +
           "&to=" + encodeURIComponent(ctx.toCode) +
           "&salt=" + salt + "&sign=" + sign;
-        return { method: "GET", url, responseType: "json" };
+        return {
+          method: "POST",
+          url: "https://api.fanyi.baidu.com/api/trans/vip/translate",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body,
+          responseType: "json",
+        };
       },
       extract(resp) {
         const d = resp && resp.response;
@@ -495,24 +530,28 @@ var TranslateEngines = (function () {
         const raw = {
           Action: "TextTranslate",
           Language: "zh-CN",
-          Nonce: "9744",
+          Nonce: String(Math.floor(Math.random() * 1e9)), // ★ 每次随机（写死会让重放/风控误判）
           ProjectId: p.projectId || "0",
           Region: p.region || "ap-shanghai",
           SecretId: p.secretId,
           Source: ctx.from === "auto" ? "auto" : ctx.fromCode,
-          SourceText: "\u0000",
+          SourceText: ctx.text,
           Target: ctx.toCode,
           Timestamp: String(Math.floor(Date.now() / 1000)),
           Version: "2018-03-21",
         };
-        const rawStr = Object.keys(raw).sort().map((k) => k + "=" + raw[k]).join("&");
-        const stringToSign = "POSTtmt.tencentcloudapi.com/?" + rawStr.replace("\u0000", ctx.text);
+        // ★ v1 签名规范：待签名串 = "POST" + host + "/?" + **已 URL 编码**的排序参数串。
+        //   旧实现签的是原文、发的是编码串 —— 只要文本含空格/中文（几乎必然），签名就对不上，
+        //   服务端一律回 AuthFailure。这里统一：编码一次，签名与请求体用同一份字符串。
+        const encStr = Object.keys(raw).sort()
+          .map((k) => k + "=" + encodeRFC5987(raw[k])).join("&");
+        const stringToSign = "POSTtmt.tencentcloudapi.com/?" + encStr;
         const sig = encodeRFC5987(base64(hmacSha1(utf8Bytes(p.secretKey), utf8Bytes(stringToSign))));
-        const body = rawStr.replace("\u0000", encodeRFC5987(ctx.text)) + "&Signature=" + sig;
         return {
           method: "POST", url: "https://tmt.tencentcloudapi.com",
-          headers: { "content-type": "application/json" },
-          body, responseType: "json",
+          // ★ 请求体是表单（旧实现写 application/json 却发表单 → 部分网关直接 4xx）
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: encStr + "&Signature=" + sig, responseType: "json",
         };
       },
       extract(resp) {

@@ -141,6 +141,8 @@ pref("extensions.zotero.papilot.translateCfg", "");
 pref("extensions.zotero.papilot.translateMigrated28", false);
 // 0.31.0 一次性迁移标记：默认回退链升级为含 edge 的新默认（仅当用户从未自定义过排序）
 pref("extensions.zotero.papilot.translateFallbackUpgraded", false);
+// 0.75.0 一次性迁移标记：回退链二次升级（把国内直连不可达的 google 移出默认链）
+pref("extensions.zotero.papilot.translateFallbackV2", false);
 pref("extensions.zotero.papilot.readerPopupStream", true);
 pref("extensions.zotero.papilot.readerPopupWriteBack", true);
 // 0.63.0 补默认值：面板里早有这个 checkbox（prefs.xhtml:952），但 prefs.js 一直缺默认值，

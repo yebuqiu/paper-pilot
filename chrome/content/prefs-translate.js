@@ -76,7 +76,7 @@
    * 其余收进可展开区域（展开后按类别分组）。展开状态存模块变量，
    * 这样任何一次 renderAll 重建列表后仍保持用户的展开/收起选择。
    */
-  const COMMON_ENGINES = ["llm", "edge", "google", "microsoft", "deepl"];
+  const COMMON_ENGINES = ["llm", "edge", "bing", "youdao", "microsoft", "deepl"];
   const COMMON_MAX = 6;
   let showAllEngines = false;
   let lastCommonIds = [];
@@ -572,8 +572,11 @@
     }
     if (sub.length) left.appendChild(el("div", { class: "pp-ch-sub" }, sub.join(" · ")));
 
-    // 密钥表单：每项一个输入，变更即保存（无需单独保存按钮）
-    if (s.needsSecret && s.secretFields && s.secretFields.length) {
+    // 密钥/地址表单：每项一个输入，变更即保存（无需单独保存按钮）。
+    // ★ 0.75.0：不再要求 needsSecret —— MyMemory 的「联系邮箱（提升免费额度）」与
+    //   Google 的「自定义镜像地址」都是**可选**字段，此前这条 if 写死了 needsSecret，
+    //   导致这两个字段在界面上根本渲染不出来（配了也白配）。
+    if (s.secretFields && s.secretFields.length) {
       const parts = S.parseSecret(s.id, s.secretRaw);
       const wrap = el("div", { style: "margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;" });
       for (const f of s.secretFields) {
@@ -595,7 +598,8 @@
           }
           S.setSecret(s.id, obj);
           renderStatus();
-          setMsg((zh ? "已保存密钥：" : "Saved secret: ") + s.name, "var(--pp-success)");
+          setMsg((s.needsSecret ? (zh ? "已保存密钥：" : "Saved secret: ")
+            : (zh ? "已保存设置：" : "Saved: ")) + s.name, "var(--pp-success)");
         });
         input.setAttribute("data-k", f.key);
         cell.appendChild(input);
@@ -624,8 +628,8 @@
     }
 
     // 引擎说明（额度 / 免密钥 / 申请方式）：由引擎自身声明，界面直接展示。
-    // compact（展开区里的行）只在"要填密钥/是实验性"时展示说明，避免展开后一屏全是字。
-    if (s.hint && (!compact || s.needsSecret || s.experimental)) {
+    // compact（展开区里的行）只在"要填密钥/是实验性/有风险提示"时展示说明，避免展开后一屏全是字。
+    if (s.hint && (!compact || s.needsSecret || s.experimental || s.warn)) {
       left.appendChild(el("div", {
         class: "pp-hint",
         style: "margin-top:5px;line-height:1.5;",
@@ -828,6 +832,48 @@
     }
   }
 
+  /**
+   * 「一键体检」：把**所有可测引擎**（免密钥 + 已配置密钥）逐个真实调用一次。
+   * 为什么需要：第三方接口会单方面下线/改协议（2026-08 微软就把 Edge 的取票端点干掉了，
+   * 固定回 404），用户看到的现象只是"翻译不好使"，分不清是网络、密钥还是接口变了。
+   * 体检把每个引擎的真实结果与原因一次列出来，排障从"猜"变成"看"。
+   * 串行执行（间隔 200ms），避免自己把免费接口打出 429。
+   */
+  async function onTestAll(btn) {
+    const S = T();
+    if (!S) return;
+    const msgEl = $("pp-tr-test-all-msg");
+    const old = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "…"; }
+    const say = (t, c) => { if (msgEl) { msgEl.textContent = t; msgEl.style.color = c; } };
+    try {
+      const ov = S.overview();
+      // llm 走 AI 通道，有独立入口；未配密钥的跳过（测了必然失败，只会制造噪音）
+      const list = ov.services.filter((s) => !s.isLLM && (!s.needsSecret || s.configured));
+      if (!list.length) {
+        say(zh ? "没有可测的引擎（都需要先填密钥）" : "nothing to test", "var(--pp-warn)");
+        return;
+      }
+      const rows = [];
+      for (let i = 0; i < list.length; i++) {
+        const s = list[i];
+        say((zh ? "体检中 " : "Testing ") + (i + 1) + "/" + list.length + "：" + s.name, "var(--pp-muted)");
+        let r;
+        try { r = await S.testEngine(s.id); } catch (e) { r = { ok: false, error: (e && e.message) || String(e) }; }
+        rows.push({ name: s.name, id: s.id, ok: !!r.ok, ms: r.latencyMs || 0, err: r.error || "" });
+        if (i < list.length - 1) await new Promise((res) => setTimeout(res, 200));
+      }
+      const okN = rows.filter((x) => x.ok).length;
+      const head = (zh ? "体检完成：" : "Done: ") + okN + "/" + rows.length + (zh ? " 个引擎可用" : " ok");
+      say(head, okN === rows.length ? "var(--pp-success)" : (okN ? "var(--pp-warn)" : "var(--pp-danger)"));
+      setMsg(head + " —— " + rows.map((x) => (x.ok ? "✓ " : "✗ ") + x.name +
+        (x.ok ? "（" + x.ms + "ms）" : "：" + x.err)).join("；"),
+      okN === rows.length ? "var(--pp-success)" : "var(--pp-warn)");
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = old; }
+    }
+  }
+
   function renderAll() {
     renderStatus();
     renderActiveSelect();
@@ -904,6 +950,8 @@
       renderKnobs();
     });
     bind("pp-tr-local-scan", "click", onLocalScan);
+    // 0.75.0：一键体检（第三方接口频繁改版/下线，排障需要"一眼看到哪个引擎还活着"）
+    bind("pp-tr-test-all", "click", () => onTestAll($("pp-tr-test-all")));
 
     // 0.33.0 术语表与全文翻译优化：术语表存 translateGlossary（改完即时生效——
     // 翻译侧每次调用都重新解析；缓存键含术语表指纹，不吃旧缓存）

@@ -708,6 +708,11 @@
         </html:div>
       </html:div>
       <html:div class="pp-hint" style="margin-top:10px;">数据去向：免密钥引擎会把待译文本发往对应服务商（Google / 微软 / 腾讯 / 有道等）；「AI 大模型」引擎发往你在「AI 模型通道」里配置的通道；自建引擎（LibreTranslate / Lingva / DLX）与本地 Ollama 不出本机。未发表的稿件建议优先走自建或本地通道。</html:div>
+      <html:div class="pp-row" style="margin-top:10px;">
+        <html:button id="pp-tr-test-all" class="pp-btn pp-btn-sm">一键体检全部引擎</html:button>
+        <html:span id="pp-tr-test-all-msg" class="pp-msg" aria-live="polite"></html:span>
+      </html:div>
+      <html:div class="pp-hint">点上面的按钮会真实调用每个「免密钥 / 已配置密钥」的引擎一次，把结果与失败原因逐条列出。第三方接口会单方面改版或下线（例如微软 2026-08 下线了旧的取票端点），体检能立刻分辨出是「网络不通」「密钥无效」还是「接口已变更」。</html:div>
       <html:div class="pp-sub" style="margin-top:12px;">
         <html:div class="pp-sub-desc">「设为当前」= 用作主翻译引擎；「纳入回退」= 主引擎失败时依次尝试；带「密钥」标记的引擎需先填好凭据。默认只列常用引擎，点右上「展开全部」查看其余（含免配置 / 自备密钥 / 自建地址）。</html:div>
         <vbox id="pp-tr-list" class="pp-ch-list" style="gap:6px;"></vbox>

@@ -68,7 +68,11 @@ var TranslateSvc = (function () {
 
   const CFG_DEFAULTS = {
     active: "llm",
-    fallback: ["edge", "google", "bing", "youdao"],
+    // 0.75.0：默认链改为「中国大陆可直接连通」的四个引擎。
+    // 旧链 edge → google → bing → youdao 有两个坑：edge 的取票端点已被微软下线（现恒 404），
+    // 而 google 在国内直连不可达 —— 首翻会先各等 15~20s 才轮到能用的引擎。
+    // 现在：edge（已换新端点）→ bing（网页版）→ youdao → transmart（腾讯，质量好）
+    fallback: ["edge", "bing", "youdao", "transmart"],
     timeoutMs: 15000,
     retry: 1,
     cache: true,
@@ -78,6 +82,12 @@ var TranslateSvc = (function () {
     totalMs: 45000,
     cooldownMs: 60000,
   };
+
+  /* 失败分级后的额外冷却（只增不减；cooldownMs=0 时仍可被用户整体关闭）
+   * 网络不可达（被墙/断网）：长时间不重试，否则每次首翻都要白等一个超时才轮到备用引擎。
+   * 429/额度不足：短时间冷却，避免"重试一次"把配额白烧一轮。 */
+  const NET_COOLDOWN_MS = 180000;   // 3 分钟
+  const RATE_COOLDOWN_MS = 300000;  // 5 分钟
 
   function cfg() {
     const raw = _pref("translateCfg", "");
@@ -123,6 +133,7 @@ var TranslateSvc = (function () {
     const str = typeof value === "object" ? joinSecret(id, value) : String(value == null ? "" : value);
     if (str) secrets[id] = str; else delete secrets[id];
     saveCfg({ secrets });
+    preCache.delete(id); // 地址/密钥变了 → 旧的 prepare 产物（含 token）立即失效
     return { ok: true };
   }
 
@@ -196,7 +207,34 @@ var TranslateSvc = (function () {
     if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value);
     cache.set(k, v);
   }
-  function clearCache() { cache.clear(); }
+  function clearCache() { cache.clear(); preCache.clear(); }
+
+  /* ---------------- prepare 产物缓存（0.75.0） ----------------
+   * bing 这类"先取页面 token、再发正式请求"的引擎，每翻一段都要多打一次页面请求
+   * （1~2s，且页面一改版就整条链路失效）。token 本身有有效期（页面里的第三个数字，
+   * 通常 1 小时），完全可以在有效期内复用 —— 一次会话只需要取一次。
+   * 引擎可在 prepare 返回值里带 ttlMs 指定有效期；否则用引擎的 prepareTtlMs 或默认 10 分钟。
+   */
+  const PRE_TTL_MS = 10 * 60 * 1000;
+  const PRE_TTL_MAX = 30 * 60 * 1000;
+  const preCache = new Map(); // engineId -> { pre, exp }
+
+  function _preGet(id) {
+    const hit = preCache.get(id);
+    if (!hit) return null;
+    if (hit.exp <= Date.now()) { preCache.delete(id); return null; }
+    return hit.pre;
+  }
+  function _preSet(id, pre, ttlHint) {
+    const svc = get(id);
+    const raw = Number(ttlHint || (pre && pre.ttlMs) || (svc && svc.prepareTtlMs) || PRE_TTL_MS);
+    const ttl = Math.min(PRE_TTL_MAX, Math.max(30000, raw));
+    preCache.set(id, { pre, exp: Date.now() + ttl });
+  }
+  /** 清掉某引擎（不传则全部）的 prepare 缓存；设置面板改密钥/地址后应调用 */
+  function clearPrepareCache(id) {
+    if (id) preCache.delete(id); else preCache.clear();
+  }
 
   /* ---------------- 本机自建服务探测（0.31.0） ----------------
    * 让「自建离线」真正可落地：LibreTranslate / DLX / Lingva 都能本机自建且默认端口固定，
@@ -259,27 +297,58 @@ var TranslateSvc = (function () {
     if (id) cooldownUntil.delete(id); else cooldownUntil.clear();
   }
 
-  /** 网络/HTTP 异常 → 可读中文；带 retryable 标记供重试判定 */
+  /** 网络/HTTP 异常 → 可读中文；带 retryable / kind / unreachable 标记供重试与冷却判定
+   *
+   * kind：network（连不上/超时）| auth（401/403）| rate（429/额度）| server（5xx）| client（其它 4xx）
+   * unreachable=true 表示**连接层就没通**（DNS/被阻断/断网）——这种失败重试几次都一样，
+   * 而且必须给更长的冷却，否则每次翻译都要先白等一个超时（Google 在国内的典型表现）。
+   */
   function _wrapError(e) {
-    const status = e && e.xmlhttp && e.xmlhttp.status;
+    const xhr = (e && e.xmlhttp) || null;
+    const status = (xhr && xhr.status) || 0;
     let detail = "";
     try {
-      const resp = e && e.xmlhttp && e.xmlhttp.response;
+      const resp = xhr && xhr.response;
       detail = (resp && resp.error && (resp.error.message || resp.error)) ||
-        (e.xmlhttp && e.xmlhttp.responseText) || "";
+        (xhr && xhr.responseText) || "";
     } catch (_) { /* ignore */ }
     if (typeof detail !== "string") detail = "";
     detail = detail.slice(0, 200);
+
+    // Retry-After（429/503 常见）：网关让我们等多久就等多久（上限 3s，别把界面卡死）
+    let retryAfterMs = 0;
+    try {
+      const ra = xhr && xhr.getResponseHeader && xhr.getResponseHeader("Retry-After");
+      if (ra) {
+        const sec = Number(ra);
+        retryAfterMs = sec > 0 ? sec * 1000 : Math.max(0, Date.parse(ra) - Date.now());
+        if (!(retryAfterMs > 0)) retryAfterMs = 0;
+      }
+    } catch (_) { /* ignore */ }
+
+    const emsg = (e && e.message) || "";
     let msg;
     let retryable = true;
-    if (/timed?\s*out|timeout/i.test((e && e.message) || "")) { msg = "请求超时"; }
-    else if (status === 401 || status === 403) { msg = "密钥无效或未授权（HTTP " + status + "）"; retryable = false; }
-    else if (status === 429) { msg = "请求过于频繁或额度不足（HTTP 429）"; }
-    else if (status) { msg = "HTTP " + status; retryable = status >= 500; }
-    else { msg = (e && e.message) || String(e); }
+    let kind = "network";
+    if (/timed?\s*out|超时|timeout/i.test(emsg)) { msg = "请求超时"; kind = "network"; }
+    else if (status === 401 || status === 403) {
+      msg = "密钥无效或未授权（HTTP " + status + "）"; retryable = false; kind = "auth";
+    } else if (status === 429) {
+      // ★ 429 不重试：立刻重发几乎必然再 429，只会白烧一次配额；交给回退链与冷却更划算
+      msg = "请求过于频繁或额度不足（HTTP 429）"; retryable = false; kind = "rate";
+    } else if (status) {
+      msg = "HTTP " + status; retryable = status >= 500; kind = status >= 500 ? "server" : "client";
+    } else {
+      msg = emsg || String(e); kind = "network";
+    }
+    const unreachable = !status && kind === "network";
+
     const err = new Error(msg + (detail ? "（" + detail + "）" : ""));
     err.retryable = retryable;
-    err.status = status || 0;
+    err.status = status;
+    err.kind = kind;
+    err.unreachable = unreachable;
+    err.retryAfterMs = retryAfterMs;
     return err;
   }
 
@@ -376,13 +445,15 @@ var TranslateSvc = (function () {
     const spec = buildEndpoint(svc.id, ctx);
     if (!spec) throw new Error("该引擎未实现请求构造");
 
-    const budget = timeoutMs || ctx.timeoutMs || 15000;
+    const budget = Math.max(1500, timeoutMs || ctx.timeoutMs || 15000);
     const deadline = Date.now() + budget;
     const retry = cfg().retry;
     let lastErr = null;
     for (let attempt = 0; attempt <= retry; attempt++) {
       try {
-        const resp = await _http(spec, Math.max(3000, deadline - Date.now()));
+        // 剩余预算不足 1.5s 就不再发（避免"超时了还在发请求"把总预算吃穿）
+        const left = deadline - Date.now();
+        const resp = await _http(spec, Math.max(1500, left));
         let out;
         try {
           out = extractResult(svc.id, resp, ctx);
@@ -400,8 +471,10 @@ var TranslateSvc = (function () {
       } catch (e) {
         const wrapped = (e && e.retryable !== undefined) ? e : _wrapError(e);
         lastErr = wrapped;
-        if (!wrapped.retryable || attempt >= retry || deadline - Date.now() < 800) break;
-        await new Promise((r) => setTimeout(r, 350));
+        // 重试等待：优先尊重网关的 Retry-After，其次固定 600ms（别用 350ms 连发，容易被判刷）
+        const wait = Math.max(600, Math.min(3000, wrapped.retryAfterMs || 0));
+        if (!wrapped.retryable || attempt >= retry || deadline - Date.now() < wait + 800) break;
+        await new Promise((r) => setTimeout(r, wait));
       }
     }
     throw lastErr || new Error("翻译失败");
@@ -439,8 +512,18 @@ var TranslateSvc = (function () {
     // prepare：联网预处理（取临时 token / 会话参数）。**整次调用只做一次**，
     // 多段切分时复用同一份 pre —— 否则每段都会去取一次 token。
     // （0.31.0 修：此前 prepare 只声明、从未被调用，导致依赖它的 bing 引擎必然失败）
+    // 0.75.0：再进一步 —— prepare 产物按有效期缓存（bing 页面自带 ttl），
+    //         同一会话内连续翻译不再每次都多打一次页面请求。
     if (typeof svc.prepare === "function" && !ctx.pre) {
-      ctx = Object.assign({}, ctx, { pre: await svc.prepare(ctx) });
+      if (Number(timeoutMs) > 0) ctx = Object.assign({}, ctx, { timeoutMs: Number(timeoutMs) });
+      const cachedPre = _preGet(id);
+      if (cachedPre) {
+        ctx = Object.assign({}, ctx, { pre: cachedPre });
+      } else {
+        const pre = await svc.prepare(ctx);
+        if (pre) _preSet(id, pre);
+        ctx = Object.assign({}, ctx, { pre: pre || null });
+      }
     }
 
     // 0.33.0 行内公式保护：高置信数学片段换成占位符，译后还原（LLM 走提示词不掩码）
@@ -574,16 +657,29 @@ var TranslateSvc = (function () {
           glossary: _glossaryCheck(clean, out) };
       } catch (e) {
         const msg = (e && e.message) || String(e);
-        tried.push({ engine: id, error: msg });
-        _markCooldown(id, c.cooldownMs); // 失败的引擎先冷一会儿
+        const kind = (e && e.kind) || "";
+        const unreachable = !!(e && e.unreachable);
+        // kind/unreachable 让界面能区分「密钥错」和「根本没连上」，别把网络问题说成配置问题
+        tried.push({ engine: id, error: msg, kind, unreachable });
+        // 分级冷却：连不上/被墙 → 长冷却（否则每次首翻都白等一个超时）；
+        //           429/额度 → 中等冷却（避免重试与连发把配额烧光）；其余 → 用户配置的冷却
+        const cd = unreachable ? Math.max(c.cooldownMs, NET_COOLDOWN_MS)
+          : kind === "rate" ? Math.max(c.cooldownMs, RATE_COOLDOWN_MS)
+            : c.cooldownMs;
+        _markCooldown(id, cd);
       }
     }
     const first = tried[0];
+    const allNetwork = tried.length > 0 && tried.every((t) => t.unreachable || t.kind === "network");
     return {
       ok: false,
       error: first ? first.error : "翻译失败",
       tried,
       cooled,
+      // 全链都"连不上"时给一句能落地的话（国内用户看到 Google 超时最常见的困惑）
+      hint: allNetwork
+        ? "所有引擎都没连上：请检查网络/代理。在中国大陆，Google 系（translate.google.com / googleapis）通常直连不可达，建议改用「微软翻译（免密钥）」「有道」「TranSmart」或自建服务。"
+        : "",
       // 一键重排的可读摘要（UI 直接展示"哪些被跳过、为什么"）
       detail: tried.map((t) => nameOf(t.engine) + "：" + t.error).join("；"),
     };
@@ -688,6 +784,21 @@ var TranslateSvc = (function () {
         Prefs.set("translateFallbackUpgraded", true);
       }
     } catch (e) { /* ignore */ }
+    // 0.75.0：回退链二次升级。旧默认里 google 排第 2，而它在国内直连不可达 ——
+    // 用户感觉是"翻译总要转十几秒才出来"。同样只改「从未自定义过」的链。
+    try {
+      if (!Prefs.get("translateFallbackV2", false)) {
+        const LEGACY = [
+          ["google", "bing", "youdao"],
+          ["edge", "google", "bing", "youdao"],
+        ];
+        const cur = JSON.stringify(cfg().fallback);
+        if (LEGACY.some((l) => JSON.stringify(l) === cur)) {
+          saveCfg({ fallback: CFG_DEFAULTS.fallback.slice() });
+        }
+        Prefs.set("translateFallbackV2", true);
+      }
+    } catch (e) { /* ignore */ }
   }
 
   /** 供设置界面渲染：全部引擎 + 当前状态 */
@@ -706,6 +817,7 @@ var TranslateSvc = (function () {
         return {
           id: s.id, name: s.name, group: s.group || "free",
           needsSecret, configured, experimental: !!s.experimental,
+          warn: !!s.warn,
           docs: s.docs || "", note: s.note || "",
           hint: s.hint || "",
           limits: s.limits || null,
@@ -743,8 +855,8 @@ var TranslateSvc = (function () {
     cfg, saveCfg, setActive, setSecret, secretOf, targetCode, sourceCode, targetName,
     // 运行
     translate, testEngine, clearCache,
-    // 失败冷却（0.31.0）
-    clearCooldown, cooldownLeft,
+    // 失败冷却（0.31.0）与 prepare 缓存（0.75.0）
+    clearCooldown, cooldownLeft, clearPrepareCache,
     // 本机自建服务探测（0.31.0）
     probeLocal, LOCAL_PROBES,
     // 迁移

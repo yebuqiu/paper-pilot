@@ -174,6 +174,12 @@ ok(/&tk=\d+\.\d+/.test(cG.url), '④ Google 请求含 tk 令牌', cG.url.slice(0
 includes(cG.url, encodeURIComponent('Hello 世界'), '④ Google q 已 encode');
 eq(cG.method, 'GET', '④ Google 用 GET');
 
+// Google 可选镜像地址（国内直连不可达 → 自建反代继续用 Google 质量）
+setCfg({ secrets: { google: 'https://gt.example.com/' } });
+const cGm = T.buildEndpoint('google', T.makeCtx('google', { text: 'hi', from: 'en', to: 'zh-CN' }));
+includes(cGm.url, 'https://gt.example.com/translate_a/single', '④ Google 支持自定义镜像地址（尾斜杠被规整）');
+setCfg({ secrets: {} });
+
 Prefs.set('translateCfg', JSON.stringify(Object.assign({}, T.cfg(), { secrets: { deepl: 'k:fx' } })));
 const cD = T.buildEndpoint('deepl', T.makeCtx('deepl', { text: 'hi', from: 'auto', to: 'zh-CN' }));
 eq(cD.url, 'https://api-free.deepl.com/v2/translate', '④ DeepL :fx 密钥走免费端点');
@@ -198,10 +204,13 @@ ok(!/from=/.test(cM2.url), '④ 微软源语言 auto 时不带 from');
 Prefs.set('translateCfg', JSON.stringify(Object.assign({}, T.cfg(),
   { secrets: { baidu: 'app#key' }, from: 'en' })));
 const cB = T.buildEndpoint('baidu', T.makeCtx('baidu', { text: 'hello', to: 'ja' }));
-includes(cB.url, 'appid=app', '④ 百度带 appid');
-includes(cB.url, 'to=jp', '④ 百度目标码 jp');
-includes(cB.url, '&sign=md5(', '④ 百度 sign 已计算');
-ok(/salt=\d+/.test(cB.url), '④ 百度带时间戳 salt');
+eq(cB.method, 'POST', '④ 百度走 POST（GET 把 4000 字节 q 塞进 URL 会超长被拒）');
+eq(cB.url, 'https://api.fanyi.baidu.com/api/trans/vip/translate', '④ 百度端点');
+includes(cB.body, 'appid=app', '④ 百度带 appid');
+includes(cB.body, 'to=jp', '④ 百度目标码 jp');
+includes(cB.body, '&sign=md5(', '④ 百度 sign 已计算');
+ok(/salt=\d+/.test(cB.body), '④ 百度带时间戳 salt');
+includes(cB.body, 'q=hello', '④ 百度源文本在表单体里');
 
 Prefs.set('translateCfg', JSON.stringify(Object.assign({}, T.cfg(),
   { secrets: { tencent: 'SID#SKEY#ap-shanghai#0' } })));
@@ -213,6 +222,17 @@ includes(cT.body, 'Target=en', '④ 腾讯云 Target');
 ok(/&Signature=[A-Za-z0-9%+.*()'-]+/.test(cT.body), '④ 腾讯云签名已附加', cT.body.slice(-120));
 includes(cT.body, 'SourceText=' + encodeURIComponent('你好').replace(/%20/g, '+'), '④ 腾讯云源文本已编码');
 ok(cT.body.indexOf('Signature=') > cT.body.indexOf('SourceText='), '④ 签名在最后（先签名后追加）');
+eq(cT.headers['Content-Type'], 'application/x-www-form-urlencoded',
+   '④ 腾讯云请求体是表单（旧实现写 application/json 却发表单）');
+ok(!/Nonce=9744/.test(cT.body), '④ Nonce 每次随机（写死会被风控/重放误判）');
+// ★ 签名必须对「URL 编码后的排序串」计算：用同一串重算应得同一个 Signature。
+//   旧实现签原文、发编码串 —— 只要文本含空格/中文（几乎必然）就 AuthFailure。
+const tEnc = cT.body.split('&Signature=')[0];
+const tSig = cT.body.split('&Signature=')[1];
+const tExpect = T.encodeRFC5987(T.base64(T.hmacSha1(T.utf8Bytes('SKEY'),
+  T.utf8Bytes('POSTtmt.tencentcloudapi.com/?' + tEnc))));
+eq(tSig, tExpect, '④ 腾讯云签名 = HMAC-SHA1(编码后的排序串)');
+ok(/SourceText=%E4%BD%A0%E5%A5%BD/.test(tEnc), '④ 待签名串里的源文本已 URL 编码');
 
 Prefs.set('translateCfg', JSON.stringify(Object.assign({}, T.cfg(),
   { secrets: { caiyun: 'tok' } })));
@@ -321,6 +341,30 @@ ok(T.googleTk('a') !== T.googleTk('b'), '⑥ Google tk 随文本变化');
   const r5 = await T.translate('abc', { to: 'zh-CN', engine: 'deepl' });
   eq(httpCalls.length, 2, '⑦ 5xx 重试一次（共 2 次请求）');
   eq(r5.ok, false, '⑦ 重试后仍失败 → ok:false');
+
+  // 429（限流/额度）：不重试（立刻重发几乎必然再 429，只会白烧一次配额）+ 进入较长冷却
+  setCfg({ active: 'google', fallback: [], cache: false, retry: 1, cooldownMs: 60000 });
+  T.clearCooldown();
+  resetHttp();
+  plan('translate.google.com', { failStatus: 429 });
+  const r429 = await T.translate('rate-limit', { to: 'zh-CN' });
+  eq(httpCalls.length, 1, '⑦ 429 不重试（共 1 次请求）');
+  eq(r429.ok, false, '⑦ 429 返回失败');
+  eq(r429.tried[0].kind, 'rate', '⑦ 429 标记为 rate（界面可区分"额度/限流"与"密钥错"）');
+  ok(T.cooldownLeft('google') > 60000, '⑦ 429 的冷却长于普通冷却（避免连发继续烧配额）');
+
+  // 连接层失败（被墙/断网/DNS）：标记 unreachable 并给更长冷却
+  // ——否则每次首翻都要先白等一个 15s 超时才轮到能用的引擎（Google 在国内的典型表现）
+  T.clearCooldown();
+  resetHttpOnly();
+  plan('translate.google.com', { fail: 'dns lookup failed' });
+  const rNet = await T.translate('no-network', { to: 'zh-CN' });
+  eq(rNet.ok, false, '⑦ 连不上 → 失败');
+  eq(rNet.tried[0].unreachable, true, '⑦ ★ 连接层失败标记 unreachable');
+  eq(rNet.tried[0].kind, 'network', '⑦ 归类为 network');
+  ok(T.cooldownLeft('google') > 60000, '⑦ ★ 不可达引擎冷却时间更长（3 分钟）');
+  ok(/没连上|Google 系/.test(rNet.hint || ''), '⑦ ★ 全链不可达时给出可落地提示', rNet.hint);
+  T.clearCooldown();
 
   // 业务/解析类错误不重试：百度返回错误码 → 只请求一次（避免白烧额度）
   setCfg({ active: 'baidu', fallback: [], secrets: { baidu: 'a#kk' }, retry: 1, cache: false });
@@ -432,7 +476,8 @@ ok(T.googleTk('a') !== T.googleTk('b'), '⑥ Google tk 随文本变化');
   eq(T.get('baidu').limits.bytes, 4000, '⑧ 百度按字节声明上限');
   eq(T.segmentsFor(T.get('mymemory'), 'x'.repeat(1200)).parts.length, 3, '⑧ 1200 字节 → MyMemory 切 3 段');
   eq(T.segmentsFor(T.get('edge'), 'x'.repeat(1200)).parts.length, 1, '⑧ 1200 字符 → Edge 不分段');
-  eq(T.segmentsFor(T.get('deepl'), 'x'.repeat(9000)).parts.length, 1, '⑧ 未声明上限的引擎不分段');
+  eq(T.get('deepl').limits.chars, 5000, '⑧ DeepL 也声明单次上限（此前缺失 → 长文被对方截断）');
+  eq(T.segmentsFor(T.get('deepl'), 'x'.repeat(4000)).parts.length, 1, '⑧ 4000 字符 → DeepL 不分段');
 
   // --- 引擎清单含 edge，且免密钥 ---
   ok(!!T.get('edge'), '⑧ 引擎注册表含 edge');
@@ -443,17 +488,28 @@ ok(T.googleTk('a') !== T.googleTk('b'), '⑥ Google tk 随文本变化');
   ok(/F0|200 万/.test(T.get('microsoft').hint), '⑧ microsoft 说明里点出 F0 免费额度');
 
   // --- edge 的请求构造 / 响应解析（纯） ---
-  const eCtx = T.makeCtx('edge', { text: 'Hello', from: 'en', to: 'zh-CN', pre: { token: 'T.OK' } });
+  // 0.75.0：微软下线了旧取票端点（translate/auth 恒 404），改走同域免鉴权端点
+  const eCtx = T.makeCtx('edge', { text: 'Hello', from: 'en', to: 'zh-CN' });
   const eSpec = T.buildEndpoint('edge', eCtx);
-  includes(eSpec.url, 'api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0', '⑧ edge 端点正确');
-  includes(eSpec.url, 'to=zh-Hans', '⑧ edge 目标语言用微软码 zh-Hans');
-  includes(eSpec.url, 'from=en', '⑧ edge 源语言带上');
-  eq(eSpec.headers.Authorization, 'Bearer T.OK', '⑧ edge 用 prepare 拿到的 token');
+  eq(eSpec.method, 'POST', '⑧ edge 用 POST');
+  includes(eSpec.url, 'https://edge.microsoft.com/translate/translatetext?to=zh-Hans',
+    '⑧ ★ edge 走新的免鉴权端点（旧的 translate/auth 已下线）');
+  includes(eSpec.url, '&from=en', '⑧ edge 源语言带上');
+  ok(!/translate\/auth/.test(eSpec.url), '⑧ 不再请求已下线的 token 端点');
   includes(eSpec.headers['User-Agent'], 'Edg/', '⑧ edge 必须伪装成 Edge UA（接口对 UA 敏感）');
-  eq(JSON.parse(eSpec.body)[0].Text, 'Hello', '⑧ edge 请求体是 [{Text}]');
+  eq(JSON.parse(eSpec.body)[0], 'Hello', '⑧ edge 请求体是 ["文本"]（与 v3 同构）');
+  // 该端点传 from=auto 会 400，自动识别必须「省略 from」
+  const eAuto = T.buildEndpoint('edge', T.makeCtx('edge', { text: 'x', from: 'auto', to: 'zh-CN' }));
+  ok(!/from=/.test(eAuto.url), '⑧ ★ 源语言 auto 时省略 from（否则端点回 400）');
+  ok(!T.get('edge').prepare, '⑧ edge 不再需要 prepare（token 端点已下线，无需联网预处理）');
   eq(T.extractResult('edge', { response: [{ translations: [{ text: '你好' }] }] }, {}), '你好', '⑧ edge 解析译文');
+  eq(T.extractResult('edge',
+    { response: [{ detectedLanguage: { language: 'en' }, translations: [{ text: '你好' }] }] }, {}),
+    '你好', '⑧ auto 识别时响应多一个 detectedLanguage 也能解析');
   throws(() => T.extractResult('edge', { response: { error: { code: '401', message: 'bad token' } } }, {}),
     /bad token/, '⑧ edge 错误体必须抛出（不能当空结果）');
+  throws(() => T.extractResult('edge', { response: { message: 'Client Browser Version not supported' } }, {}),
+    /Browser Version/, '⑧ 参数类错误（无 error 字段的 message）也必须抛出');
 
   // --- ★ prepare 真的会被调用（此前只声明未调用 → bing 引擎必然失败） ---
   const BING_PAGE = '<html><script>IG:"1A2B3C4D5E",data-iid="translator.5023",' +
@@ -472,28 +528,43 @@ ok(T.googleTk('a') !== T.googleTk('b'), '⑥ Google tk 随文本变化');
   includes(bingCall.url, 'IID=translator.5023', '⑧ IID 来自页面');
   includes(String(bingCall.opts.body), 'token=TOKEN-XYZ', '⑧ 反滥用 token 进了请求体');
 
+  // --- ★ prepare 产物按有效期缓存：连续翻译不再每次都多打一次页面请求 ---
+  resetHttpOnly(); // 保留 preCache（resetHttp 会连缓存一起清）
+  plan('www.bing.com/ttranslatev3', { res: [{ translations: [{ text: '世界' }] }] });
+  const rBingAgain = await T.translate('world', { to: 'zh-CN' });
+  eq(rBingAgain.ok, true, '⑧ 第二次翻译直接复用缓存 token', rBingAgain);
+  eq(hits('www.bing.com/translator'), 0, '⑧ ★ 命中 prepare 缓存，不再取页面（省 1~2s/次）');
+  ok(T.clearPrepareCache && typeof T.clearPrepareCache === 'function', '⑧ 暴露 clearPrepareCache（改配置后可即时失效）');
+  T.clearPrepareCache();
+  resetHttpOnly();
+  plan('www.bing.com/translator', { text: BING_PAGE });
+  plan('www.bing.com/ttranslatev3', { res: [{ translations: [{ text: '世界' }] }] });
+  await T.translate('world2', { to: 'zh-CN' });
+  eq(hits('www.bing.com/translator'), 1, '⑧ 清除缓存后重新取一次页面');
+
   resetHttp();
   plan('www.bing.com/translator', { text: '<html>no helper here</html>' });
   const rBing2 = await T.translate('hello', { to: 'zh-CN' });
   eq(rBing2.ok, false, '⑧ 取不到页面参数 → 失败而非静默');
   ok(/取 token 失败/.test(rBing2.error), '⑧ 给出可定位的错误', rBing2.error);
 
-  // --- edge 端到端（auth → 翻译） ---
-  const FAKE_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.' + 'x'.repeat(60) + '.abc123signature';
+  // --- edge 端到端（新免鉴权端点） ---
   setCfg({ active: 'edge', fallback: [], cache: false });
   resetHttp();
-  plan('edge.microsoft.com/translate/auth', { text: FAKE_JWT });
-  plan('api-edge.cognitive.microsofttranslator.com', { res: [{ translations: [{ text: '你好世界' }] }] });
+  plan('edge.microsoft.com/translate/translatetext', { res: [{ translations: [{ text: '你好世界' }] }] });
   const rEdge = await T.translate('Hello world', { to: 'zh-CN' });
   eq(rEdge.ok, true, '⑧ Edge 引擎端到端可用', rEdge);
   eq(rEdge.text, '你好世界', '⑧ Edge 返回译文');
-  eq(hits('edge.microsoft.com/translate/auth'), 1, '⑧ auth 只取一次');
+  const eCall = httpCalls.find((c) => c.url.indexOf('translatetext') >= 0);
+  ok(!!eCall && eCall.method === 'POST', '⑧ edge 打的是新端点（POST）');
+  eq(hits('edge.microsoft.com/translate/auth'), 0, '⑧ ★ 回归守卫：不再请求已下线的 token 端点');
 
+  // 端点报错 → 明确失败（不静默空串）
   resetHttp();
-  plan('edge.microsoft.com/translate/auth', { text: 'not-a-jwt' });
+  plan('edge.microsoft.com/translate/translatetext', { failStatus: 400 });
   const rEdge2 = await T.translate('Hello', { to: 'zh-CN' });
-  eq(rEdge2.ok, false, '⑧ auth 返回异常内容 → 明确失败');
-  ok(/取 token 失败/.test(rEdge2.error), '⑧ 不把"接口变了"误报成"密钥无效"', rEdge2.error);
+  eq(rEdge2.ok, false, '⑧ 端点 400 → 明确失败');
+  ok(/400/.test(rEdge2.error), '⑧ 错误里带状态码便于排障', rEdge2.error);
 
   // --- MyMemory 多段：真发多次请求并正确拼回 ---
   const mmText = Array.from({ length: 400 }, (_, i) => 'w' + i).join(' '); // > 1000 字节
@@ -637,12 +708,20 @@ ok(T.googleTk('a') !== T.googleTk('b'), '⑥ Google tk 随文本变化');
   // --- 默认回退链升级（仅当从未自定义） ---
   setCfg({ fallback: ['google', 'bing', 'youdao'] });
   Prefs.set('translateFallbackUpgraded', false);
+  Prefs.set('translateFallbackV2', false);
   T.migrate();
-  eq(T.cfg().fallback.join(','), 'edge,google,bing,youdao',
-    '⑨ 旧默认回退链升级为含 edge 的新默认（edge 排首位）');
-  eq(Prefs.get('translateFallbackUpgraded'), true, '⑨ 升级只做一次（打标）');
+  eq(T.cfg().fallback.join(','), 'edge,bing,youdao,transmart',
+    '⑨ 旧默认回退链升级为「国内可连通」的四引擎链（google 移出、transmart 加入）');
+  eq(Prefs.get('translateFallbackV2'), true, '⑨ 二次升级只做一次（打标）');
+  // 0.31.0 的中间默认链（edge 排首位但 google 在第 2）同样要迁移
+  setCfg({ fallback: ['edge', 'google', 'bing', 'youdao'] });
+  Prefs.set('translateFallbackV2', false);
+  T.migrate();
+  eq(T.cfg().fallback.join(','), 'edge,bing,youdao,transmart',
+    '⑨ ★ 0.31 的旧默认链也会被二次迁移（否则 google 仍会在第 2 位吃满 20s 预算）');
   setCfg({ fallback: ['youdao', 'google'] });
   Prefs.set('translateFallbackUpgraded', false);
+  Prefs.set('translateFallbackV2', false);
   T.migrate();
   eq(T.cfg().fallback.join(','), 'youdao,google', '⑨ 用户自定义过的回退链不被覆盖');
 
