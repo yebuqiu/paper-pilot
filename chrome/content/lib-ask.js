@@ -13,6 +13,14 @@
   const Z = args.Zotero || (window.opener && window.opener.Zotero);
   const PP = Z && Z.Papilot;
   const zh = Z && (Z.locale || "").toLowerCase().startsWith("zh");
+  // 默认返回条数：prefs.js 的 libSearchTopN（0.75.2 修复：此前只声明默认值、从未被读）。
+  // 注意 Zotero.Prefs.get(key, global) 的第二参是 global 布尔，不是默认值 → 用 || 兜底。
+  const dfltTopN = (() => {
+    try {
+      const v = Number(Z && Z.Prefs && Z.Prefs.get("extensions.zotero.papilot.libSearchTopN"));
+      return v > 0 ? Math.min(50, Math.round(v)) : 8;
+    } catch (e) { return 8; }
+  })();
 
   const $ = (id) => document.getElementById(id);
   const statusEl = $("pp-lq-status");
@@ -103,9 +111,9 @@
         useCollection: $("pp-lq-collection").checked,
         pdfOnly: $("pp-lq-pdfonly").checked,
         deep: $("pp-lq-deep").checked,
-        topN: Number($("pp-lq-topn").value) || 8,
+        topN: Number($("pp-lq-topn").value) || dfltTopN,
       });
-      hits = r.results.slice(0, Number($("pp-lq-topn").value) || 8);
+      hits = r.results.slice(0, Number($("pp-lq-topn").value) || dfltTopN);
       renderCandidates();
       setStatus((zh ? "范围 " : "scope ") + r.scope + (zh ? " ｜ 扫描 " : " | scanned ") + r.scanned +
         (zh ? " 篇 ｜ 命中 " : " | hits ") + r.results.length +
@@ -164,6 +172,9 @@
       setAStatus((zh ? "保存失败：" : "Save failed: ") + ((e && e.message) || e), true);
     }
   }
+
+  // 控件初始值用 pref（xhtml 里写死 value=8，打开时覆盖为实际默认值）
+  $("pp-lq-topn").value = String(dfltTopN);
 
   $("pp-lq-run").addEventListener("click", () => { run(); });
   $("pp-lq-answer").addEventListener("click", () => { answer(); });

@@ -196,8 +196,13 @@
     init._done = true;
 
     if (!msgNode) {
-      msgNode = el("div", { class: "pp-hint pp-mem-msg", style: "min-height:1em;" });
-      if (btn.parentNode) btn.parentNode.insertBefore(msgNode, btn.nextSibling);
+      // 0.75.2：优先用 xhtml 里既有的 pp-mem-result（此前它是没人写的死元素，
+      // 反馈实际写到了这里动态创建的节点上 —— 两个相邻反馈区，容易漂移）。
+      msgNode = $("pp-mem-result");
+      if (!msgNode) {
+        msgNode = el("div", { class: "pp-hint pp-mem-msg", style: "min-height:1em;" });
+        if (btn.parentNode) btn.parentNode.insertBefore(msgNode, btn.nextSibling);
+      }
     }
     btn.addEventListener("click", clearAll);
 

@@ -2,7 +2,7 @@
 
 **An AI co-pilot for Zotero.** Selection translation, side-by-side PDF translation, library-wide Q&A, one-click reference import, automation rules, reading progress — one plugin for the whole "read the literature" loop.
 
-![version](https://img.shields.io/badge/version-0.75.1-blue)
+![version](https://img.shields.io/badge/version-0.75.2-blue)
 ![zotero](https://img.shields.io/badge/Zotero-7%20%7C%208%20%7C%209%20%7C%2010-orange)
 ![license](https://img.shields.io/badge/license-Apache--2.0-green)
 ![platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)

@@ -23,6 +23,15 @@
 var NoteGraph = {
   MAX_NODES: 400, // 渲染上限（超出截断并在 UI 提示，避免几千节点把窗口拖死）
 
+  /** 实际上限：prefs.js 的 noteGraphMaxNodes 可调（默认 400，上限 5000）。
+   *  0.75.2 修复：该 pref 此前只声明了默认值，构图从未读取 —— 属于「设置了但不生效」的死配置。 */
+  _maxNodes() {
+    try {
+      const v = Number(Prefs.get("noteGraphMaxNodes", this.MAX_NODES));
+      return v > 0 ? Math.min(5000, Math.round(v)) : this.MAX_NODES;
+    } catch (e) { return this.MAX_NODES; }
+  },
+
   /* ================== 链接抽取（纯函数） ================== */
 
   RE: {
@@ -78,7 +87,7 @@ var NoteGraph = {
    */
   buildGraph(records, opts) {
     const o = opts || {};
-    const max = o.maxNodes || this.MAX_NODES;
+    const max = o.maxNodes || this._maxNodes();
     const byKey = new Map();
     for (const r of records || []) {
       if (!r || !r.key) continue;
@@ -252,7 +261,7 @@ var NoteGraph = {
   /** 采集范围内条目与其笔记（分类优先，否则全库） */
   async collect(opts) {
     const o = opts || {};
-    const max = o.maxNodes || this.MAX_NODES;
+    const max = o.maxNodes || this._maxNodes();
     const records = [];
     let scopeName = I18n.isZh ? "全库" : "Whole library";
     const zp = Zotero.getActiveZoteroPane();

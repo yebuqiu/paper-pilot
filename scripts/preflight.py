@@ -291,6 +291,12 @@ def main(argv):
     code, out = run([PY, "scripts/check-wiring.py"], timeout=300)
     record("接线扫描", code == 0, pick_summary(out), None if code == 0 else out)
 
+    # 3b) 设置面板三向接线审计（0.75.2）：幽灵引用 / 孤儿控件 / 死配置
+    #     —— check-wiring 只查「引用存在的 id」，查不出「存在的 id 没人引用」
+    #     （可选字段被条件挡死、按钮反馈写到屏幕外这类问题都是它漏的）。
+    code, out = run([PY, "scripts/diag/audit-prefs.py"], timeout=60)
+    record("面板接线审计", code == 0, pick_summary(out), None if code == 0 else out)
+
     # 0.48.1：技能包在线目录与内置目录同构（漂移 = 改了 _BUILTIN 忘跑生成器）
     code, out = run([NODE, "scripts/build-skill-catalog.js", "--check"], timeout=60)
     record("技能包目录同构", code == 0, pick_summary(out), None if code == 0 else out)
