@@ -22,11 +22,19 @@
  *    `_deps` 注入点获取；顶层不得直接触碰 IO/网络/窗口，否则测试无法离线跑。
  */
 
-/* global Zotero, Services, IOUtils, PathUtils, Cu, Ci, Cc, ChromeUtils */
+/* global Zotero, Services, IOUtils, PathUtils, Cu, Ci, Cc, ChromeUtils, Prefs */
 
 var ModuleLoader = {
   API_VERSION: 1,
   REGISTRY_FILE: "installed.json",
+
+  // 能力声明（manifest.requires）的完整词表；宿主当前实际提供哪些由
+  // hostCapabilities(apiVersion) 推导——v1 提供 storage/events/ui/prefs，
+  // "ai" 计划中暂不接受（装了要求 ai 的组件要拒绝）。
+  KNOWN_CAPABILITIES: ["storage", "events", "ui", "prefs", "ai"],
+  PLANNED_CAPABILITIES: ["ai"],
+  // 权限声明（manifest.permissions）白名单：声明即记录，后续按项收紧执行。
+  KNOWN_PERMISSIONS: ["storage", "network", "ai", "prefs", "filesystem", "ui"],
 
   // 注入点：测试可整体替换；生产在 _ensureDeps() 里惰性绑定真实现
   _deps: {
@@ -40,6 +48,7 @@ var ModuleLoader = {
     hostVersion: null,
     now: null,
     diag: null,
+    prefs: null,
   },
 
   _registry: null,        // {schema, modules:{id:entry}}
@@ -69,6 +78,14 @@ var ModuleLoader = {
       return typeof id === "string" && /^[a-z0-9][a-z0-9-]{1,63}$/.test(id);
     },
 
+    /** 宿主按 API_VERSION 提供的能力集；ai 尚在计划中，任何版本都不在内。 */
+    hostCapabilities(apiVersion) {
+      const v = Number(apiVersion || 1);
+      const caps = [];
+      if (v >= 1) caps.push("storage", "events", "ui", "prefs");
+      return caps;
+    },
+
     /**
      * 清单形状校验。返回 {ok, errors:[]}。
      * 安全要点：文件路径禁止绝对路径 / 反斜杠 / ".." 段 —— 否则解压即写穿。
@@ -85,6 +102,47 @@ var ModuleLoader = {
         errors.push("需要主包 ≥ " + m.minHost + "（当前 " + hostVersion + "）");
       }
       if (m.mode && m.mode !== "scope" && m.mode !== "sandbox") errors.push("mode 非法：" + m.mode);
+      // 能力声明（requires）：可选，缺省 = []；只允许已知能力名，
+      // 且必须是宿主当前 apiVersion 实际提供的（"ai" 计划中，暂不接受）。
+      if (m.requires != null) {
+        if (!Array.isArray(m.requires)) {
+          errors.push("requires 必须是数组");
+        } else {
+          const known = ModuleLoader.KNOWN_CAPABILITIES;
+          const planned = ModuleLoader.PLANNED_CAPABILITIES;
+          const provided = this.hostCapabilities(apiVersion);
+          const seenReq = {};
+          for (const cap of m.requires) {
+            if (typeof cap !== "string" || known.indexOf(cap) < 0) {
+              errors.push("requires 含未知能力：" + cap);
+            } else if (planned.indexOf(cap) >= 0) {
+              errors.push("能力 " + cap + " 尚在计划中，宿主暂不提供");
+            } else if (provided.indexOf(cap) < 0) {
+              errors.push("宿主 apiVersion " + apiVersion + " 不提供能力：" + cap);
+            } else if (seenReq[cap]) {
+              errors.push("requires 重复声明：" + cap);
+            }
+            seenReq[cap] = 1;
+          }
+        }
+      }
+      // 权限声明（permissions）：可选，缺省 = []；未知权限即清单非法。
+      if (m.permissions != null) {
+        if (!Array.isArray(m.permissions)) {
+          errors.push("permissions 必须是数组");
+        } else {
+          const knownPerm = ModuleLoader.KNOWN_PERMISSIONS;
+          const seenPerm = {};
+          for (const p of m.permissions) {
+            if (typeof p !== "string" || knownPerm.indexOf(p) < 0) {
+              errors.push("permissions 含未知权限：" + p);
+            } else if (seenPerm[p]) {
+              errors.push("permissions 重复声明：" + p);
+            }
+            seenPerm[p] = 1;
+          }
+        }
+      }
       if (m.bundle) {
         if (!Array.isArray(m.modules) || m.modules.length === 0) errors.push("bundle 缺 modules 列表");
         else for (const mid of m.modules) {
@@ -232,6 +290,21 @@ var ModuleLoader = {
       });
     }
     if (!d.fileURI) d.fileURI = p => PathUtils.toFileURI(p);
+    if (!d.prefs) {
+      // 组件 prefs 后端：优先 Zotero.Papilot.Prefs，其次全局 Prefs（core/utils.js）。
+      // 统一成 {PREFIX, get(key, fallback), set(key, value)} 形状；找不到则 null（api.prefs 降级）。
+      d.prefs = (function () {
+        try {
+          if (typeof Zotero !== "undefined" && Zotero.Papilot && Zotero.Papilot.Prefs) {
+            return Zotero.Papilot.Prefs;
+          }
+        } catch (e) { /* 继续兜底 */ }
+        try {
+          if (typeof Prefs !== "undefined" && Prefs && typeof Prefs.get === "function") return Prefs;
+        } catch (e) { /* 继续兜底 */ }
+        return null;
+      })();
+    }
     if (!d.diag) d.diag = msg => {
       try {
         if (typeof Zotero !== "undefined" && Zotero.Papilot && Zotero.Papilot._diag) {
@@ -585,6 +658,56 @@ var ModuleLoader = {
     if (skippedNonJs) d.diag("module " + id + " skipped " + skippedNonJs + " non-js file(s)");
   },
 
+  /**
+   * sandbox 组件的宿主 api 面。storage/events/ui 维持现状（组件经沙箱内
+   * Zotero/Services 自取），这里只新增两块：
+   *   · prefs —— 作用域化读写：key 强制前缀 "mod.<组件id>."，组件之间互不可见；
+   *     内部经宿主 Prefs（extensions.zotero.papilot. 命名空间）落盘。
+   *   · log   —— 写启动诊断（等价于宿主 _diag，带组件 id 前缀）。
+   */
+  _makeSandboxApi(id) {
+    const d = this._ensureDeps();
+    const prefix = "mod." + id + ".";
+    const keyOk = k => typeof k === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(k);
+    const backend = () => this._ensureDeps().prefs;
+    return {
+      prefs: {
+        get(key, fallback) {
+          if (!keyOk(key)) throw new Error("prefs key 非法：" + key);
+          const b = backend();
+          if (!b) return fallback;
+          try { return b.get(prefix + key, fallback); } catch (e) { return fallback; }
+        },
+        set(key, value) {
+          if (!keyOk(key)) throw new Error("prefs key 非法：" + key);
+          const b = backend();
+          if (!b) throw new Error("prefs 后端不可用");
+          b.set(prefix + key, value);
+        },
+        /** 本组件命名空间下所有键值（leaf key → value）；无后端时返回 {}。 */
+        getAll() {
+          const out = {};
+          const b = backend();
+          if (!b) return out;
+          try {
+            if (typeof b.getAll === "function") return b.getAll(prefix) || {};
+            const root = (b.PREFIX || "extensions.zotero.papilot.") + prefix;
+            let kids = [];
+            if (typeof Services !== "undefined" && Services.prefs) {
+              kids = Services.prefs.getChildList(root) || [];
+            }
+            for (const full of kids) {
+              const leaf = String(full).slice(root.length);
+              if (leaf) out[leaf] = b.get(prefix + leaf, undefined);
+            }
+          } catch (e) { /* 读取失败返回已收集部分 */ }
+          return out;
+        },
+      },
+      log: msg => d.diag("[" + id + "] " + msg),
+    };
+  },
+
   async _loadSandboxed(id, manifest, dir) {
     const d = this._ensureDeps();
     const sandbox = d.makeSandbox(id);
@@ -621,10 +744,12 @@ var ModuleLoader = {
     if (!def) throw new Error("模块未调用 Papilot.Modules.register()");
     this._loaded[id] = { mode: "sandbox", sandbox, api: def };
     if (typeof def.install === "function") {
+      const api = this._makeSandboxApi(id);
       await def.install({
         Zotero: sandbox.Zotero,
         rootURI: this._deps.fileURI(dir) + "/",
-        log: msg => d.diag("[" + id + "] " + msg),
+        prefs: api.prefs,
+        log: api.log,
       });
     }
   },

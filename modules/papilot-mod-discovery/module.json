@@ -1,8 +1,8 @@
 {
   "id": "papilot-mod-discovery",
   "name": "检索订阅与发现",
-  "version": "0.73.2",
-  "minHost": "0.73.2",
+  "version": "0.74.0",
+  "minHost": "0.74.0",
   "apiVersion": 1,
   "description": "期刊检索订阅、文献发现与 arXiv/期刊数据支持。",
   "entry": "",
@@ -15,7 +15,9 @@
     "arxiv"
   ],
   "depends": [],
-  "whatsNew": "从主包拆出，功能与 0.73.2 一致",
+  "requires": [],
+  "permissions": [],
+  "whatsNew": "从主包拆出，功能与 0.74.0 一致",
   "repo": {
     "github": "https://github.com/yebuqiu/zotero-papilot",
     "gitee": "https://gitee.com/cassiuschen9261/zotero-papilot"

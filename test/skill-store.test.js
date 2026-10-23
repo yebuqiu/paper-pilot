@@ -208,7 +208,9 @@ sandbox.window = {
 sandbox.globalThis = sandbox;
 vm.createContext(sandbox);
 
-// ① 核心域先装（main.js 顺序）
+// ① 共享目录基建 + 核心域先装（main.js 顺序：catalog-client.js 先于 skill-packs.js）
+vm.runInContext(fs.readFileSync(path.join(ROOT, 'chrome/content/scripts/core/catalog-client.js'), 'utf8'),
+  sandbox, { filename: 'core/catalog-client.js' });
 vm.runInContext(fs.readFileSync(path.join(ROOT, 'chrome/content/scripts/features/skill-packs.js'), 'utf8'),
   sandbox, { filename: 'features/skill-packs.js' });
 const SP = sandbox.SkillPacks;

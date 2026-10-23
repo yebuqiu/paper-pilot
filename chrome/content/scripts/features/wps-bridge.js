@@ -179,9 +179,19 @@ var WpsBridge = {
     let json = null;
     try {
       const res = await fetch(this._rootURI + rel);
+      if (!res || res.ok === false) throw new Error("fetch 失败（HTTP " + (res ? res.status : 0) + "）");
       json = JSON.parse(String(await res.text()));
     } catch (e) {
-      this._payload = { available: false, version: "", proxyVersion: "", files: {}, proxy: "", error: String((e && e.message) || e) };
+      /* 瘦身包（--modular）里载荷已拆到 papilot-mod-cite 组件、不在主包：
+       * 读不到 ≠ 故障。给调用方一个能直接展示的结构化失败，而不是把异常甩出去。
+       * 既有字段（available/files/...）保持原样，老调用方不受影响。 */
+      this._payload = {
+        ok: false,
+        reason: "组件未安装",
+        hint: "在 设置→组件管理 或 组件商店 安装「引文与导出」组件后可用",
+        available: false, version: "", proxyVersion: "", files: {}, proxy: "",
+        error: String((e && e.message) || e),
+      };
       return this._payload;
     }
     const files = (json && json.files && typeof json.files === "object") ? json.files : {};
@@ -318,8 +328,10 @@ var WpsBridge = {
     if (!p.available) {
       return {
         ok: false,
-        error: "这个版本的插件没有随包分发加载项载荷（chrome/content/tools/wps-cite.bundle.json 缺失或读不出来）"
-          + (p.error ? "：" + p.error : ""),
+        error: p.hint
+          ? p.reason + "：" + p.hint + (p.error ? "（" + p.error + "）" : "")
+          : "这个版本的插件没有随包分发加载项载荷（chrome/content/tools/wps-cite.bundle.json 缺失或读不出来）"
+            + (p.error ? "：" + p.error : ""),
       };
     }
     const ver = p.version;

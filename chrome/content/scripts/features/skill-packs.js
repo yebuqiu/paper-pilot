@@ -19,7 +19,7 @@
  *
  * 消费方：技能商店 UI（features/ 侧）与设置面板。所有 pref 读写走全局 Prefs 封装。
  */
-/* global Zotero, Prefs, CommandTags, NoteTemplates, TranslateSvc */
+/* global Zotero, Prefs, CommandTags, NoteTemplates, TranslateSvc, CatalogClient */
 
 var SkillPacks = {
   MANIFEST_VERSION: 1,
@@ -2204,8 +2204,38 @@ var SkillPacks = {
   },
 
   /**
+   * 目录客户端（惰性创建；CatalogClient 未装配时返回 null）。
+   * 与组件商店同一套共享基建（core/catalog-client.js），配置差异保持既有语义：
+   * skillStoreSource 即唯一源（走「镜像置顶」通道，urls 为空）、无 TTL 缓存、
+   * 不记失败源（用户可改 pref 自救，每次调用都真实尝试）。
+   */
+  _catalogClient() {
+    if (this._catClient) return this._catClient;
+    if (typeof CatalogClient === "undefined" || !CatalogClient || typeof CatalogClient.create !== "function") {
+      return null;
+    }
+    this._catClient = CatalogClient.create({
+      urls: [],
+      mirrorPref: this.PREF_SOURCE,
+      cachePref: null,
+      cacheTtlMs: 0,
+      validate: function (data) {
+        return (data && typeof data === "object" && !Array.isArray(data) && Array.isArray(data.packs))
+          ? { ok: true, errors: [] }
+          : { ok: false, errors: ["远端目录缺 packs 数组"] };
+      },
+      rememberFailures: false,
+      prefGet: function (k, def) { try { return Prefs.get(k, def); } catch (e) { return def; } },
+      diag: function (m) { try { Zotero.debug("[papilot] " + m); } catch (e) { /* ignore */ } },
+      now: function () { return Date.now(); },
+    });
+    return this._catClient;
+  },
+
+  /**
    * 拉取技能包目录。读 pref skillStoreSource（URL）；空、请求失败/超时、JSON 坏
    * 或结构不对 → 回退内置目录。远端条目逐个 validate，非法的跳过（不整批失败）。
+   * 网络层走 CatalogClient（JSON 8s 超时、Promise 形式 Zotero.HTTP.request）。
    * @returns {Promise<{packs: object[], source: "builtin"|"remote", updatedAt: string}>}
    */
   async fetchCatalog() {
@@ -2213,13 +2243,11 @@ var SkillPacks = {
     let url = "";
     try { url = String(Prefs.get(this.PREF_SOURCE, "") || "").trim(); } catch (e) { url = ""; }
     if (!url) return fallback();
+    const client = this._catalogClient();
+    if (!client) return fallback();
     try {
-      if (typeof Zotero === "undefined" || !Zotero || !Zotero.HTTP || typeof Zotero.HTTP.request !== "function") {
-        return fallback();
-      }
-      const req = await Zotero.HTTP.request("GET", url, { timeout: 15000 });
-      const body = req && req.responseText != null ? req.responseText : req;
-      const obj = JSON.parse(String(body));
+      const r = await client.fetch(false);
+      const obj = r.ok ? r.data : null;
       if (!obj || typeof obj !== "object" || !Array.isArray(obj.packs)) return fallback();
       const packs = [];
       for (const p of obj.packs) {

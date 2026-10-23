@@ -20,7 +20,9 @@ const path = require('path');
 const vm = require('vm');
 
 const ROOT = path.join(__dirname, '..');
-const FILES = ['chrome/content/scripts/features/skill-packs.js'];
+// 共享目录基建（0.73.2 P1-4）：fetchCatalog 的网络层已委托给 CatalogClient
+const FILES = ['chrome/content/scripts/core/catalog-client.js',
+  'chrome/content/scripts/features/skill-packs.js'];
 
 let pass = 0;
 const fails = [];
@@ -626,10 +628,11 @@ async function main() {
   eq(f4.packs[0].id, 'remote-pack', 'fetchCatalog: 合法远端包保留');
   eq(f4.updatedAt, '2026-10-01T00:00:00Z', 'fetchCatalog: updatedAt 透传');
 
-  // 请求参数：GET + 15s 超时（f1 源为空不发请求，共 4 次：坏 JSON/抛错/缺 packs/正常）
+  // 请求参数：GET + 8s 超时（CatalogClient 统一 JSON 超时策略；
+  // f1 源为空不发请求，共 4 次：坏 JSON/抛错/缺 packs/正常）
   eq(ZoteroHTTPCalls.length, 4, 'fetchCatalog: 共发起 4 次请求');
   eq(ZoteroHTTPCalls[3].method, 'GET', 'fetchCatalog: GET 方法');
-  eq(ZoteroHTTPCalls[3].opts.timeout, 15000, 'fetchCatalog: 15s 超时');
+  eq(ZoteroHTTPCalls[3].opts.timeout, 8000, 'fetchCatalog: 8s 超时（CatalogClient JSON 统一策略）');
 
   /* ================ ⑨ 记账 pref 坏值容错 ================ */
 

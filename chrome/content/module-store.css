@@ -593,6 +593,36 @@ window {
   word-break: break-word;
 }
 
+.pp-ms-perm {
+  padding: 9px 11px;
+  border: 1px solid var(--ms-border);
+  border-radius: 8px;
+  background: var(--ms-soft);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.pp-ms-perm-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pp-ms-perm-chip {
+  padding: 1px 9px;
+  border: 1px solid var(--ms-border);
+  border-radius: 999px;
+  font-size: 11.5px;
+  opacity: .85;
+}
+
+.pp-ms-perm-req {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: .8;
+  word-break: break-word;
+}
+
 .pp-ms-warnbox {
   padding: 8px 11px;
   border: 1px solid var(--ms-danger);

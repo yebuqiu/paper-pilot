@@ -23,6 +23,8 @@ const vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'chrome', 'content', 'scripts', 'core', 'module-store.js');
 const STORE_SRC = fs.readFileSync(SRC, 'utf8');
+// 共享目录基建（0.73.2 P1-4 抽取）：module-store 的目录拉取/缓存/失败源记忆已委托给它
+const CAT_SRC = fs.readFileSync(path.join(ROOT, 'chrome', 'content', 'scripts', 'core', 'catalog-client.js'), 'utf8');
 
 let pass = 0;
 const fails = [];
@@ -87,6 +89,7 @@ function makeStore(opts) {
     },
   };
   vm.createContext(sandbox);
+  vm.runInContext(CAT_SRC, sandbox, { filename: 'core/catalog-client.js' });
   vm.runInContext(STORE_SRC, sandbox, { filename: 'core/module-store.js' });
 
   const deps = {

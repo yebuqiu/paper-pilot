@@ -305,6 +305,35 @@ function testPure() {
   bad({ mode: 'weird' }, 'mode 非法', 'validateManifest：未知 mode 被拒');
   bad({ files: [{ path: 'x.js', size: -1 }] }, 'size 非法', 'validateManifest：负 size 被拒');
 
+  /* requires / permissions（0.73.2 schema 扩展） */
+  const okReq = clone();
+  okReq.requires = ['storage', 'prefs'];
+  okReq.permissions = ['network', 'storage'];
+  const vReq = ML._pure.validateManifest(okReq, '0.73.0', 1);
+  ok(vReq.ok, 'validateManifest：合法 requires/permissions 通过', vReq.errors);
+
+  bad({ requires: ['teleport'] }, 'requires 含未知能力',
+    'validateManifest：requires 未知能力被拒');
+  bad({ requires: ['ai'] }, '尚在计划中',
+    'validateManifest：requires 计划中的 ai 被拒（宿主暂不 provide）');
+  bad({ requires: ['storage', 'ai'] }, '尚在计划中',
+    'validateManifest：requires 超集（含 ai）整体被拒');
+  bad({ requires: 'storage' }, 'requires 必须是数组',
+    'validateManifest：requires 非数组被拒');
+  bad({ requires: ['storage', 'storage'] }, 'requires 重复声明',
+    'validateManifest：requires 重复被拒');
+  bad({ permissions: ['root'] }, 'permissions 含未知权限',
+    'validateManifest：permissions 未知权限被拒');
+  bad({ permissions: 'network' }, 'permissions 必须是数组',
+    'validateManifest：permissions 非数组被拒');
+  bad({ permissions: ['network', 'network'] }, 'permissions 重复声明',
+    'validateManifest：permissions 重复被拒');
+  eq(ML._pure.hostCapabilities(1).join(','), 'storage,events,ui,prefs',
+    'hostCapabilities：v1 提供 storage/events/ui/prefs');
+  ok(ML._pure.hostCapabilities(1).indexOf('ai') < 0,
+    'hostCapabilities：ai 计划中，v1 不提供');
+  // requires/permissions 均可选，缺省 = 空数组（base 清单无此字段，上面正例已覆盖）
+
   const nonObj = ML._pure.validateManifest(null, '0.73.0', 1);
   ok(!nonObj.ok && nonObj.errors.join('; ').indexOf('manifest 不是对象') >= 0,
     'validateManifest：非对象入参被拒', nonObj.errors);
@@ -637,6 +666,137 @@ async function testSandbox() {
   eq(env.loader.isInstalled('papilot-mod-sbx'), false, 'sandbox：卸载后 isInstalled=false');
 }
 
+/* ================= ⑥-B sandbox api.prefs 作用域隔离 + api.log ================= */
+
+/** 内存 prefs 后端：形状同宿主 Prefs（PREFIX/get/set），另带 getAll 供隔离断言。 */
+function createMemPrefs() {
+  const store = new Map();
+  return {
+    PREFIX: 'extensions.zotero.papilot.',
+    get: function (key, fallback) { return store.has(key) ? store.get(key) : fallback; },
+    set: function (key, value) { store.set(key, String(value)); },
+    getAll: function (prefix) {
+      const out = {};
+      for (const entry of store.entries()) {
+        if (entry[0].indexOf(prefix) === 0) out[entry[0].slice(prefix.length)] = entry[1];
+      }
+      return out;
+    },
+    keys: function () { return Array.from(store.keys()).sort(); },
+  };
+}
+
+async function testSandboxPrefs() {
+  const ctxs = {};
+  const prefs = createMemPrefs();
+  const mk = function (id) {
+    const files = { 'index.js': 'var X = 1;\n' };
+    return manifestOf(files, { id: id, version: '1.0.0', mode: 'sandbox', entry: 'index.js' });
+  };
+  const idA = 'papilot-mod-pa';
+  const idB = 'papilot-mod-pb';
+  const mA = mk(idA), mB = mk(idB);
+
+  const env = makeEnv({ deps: {
+    prefs: prefs,
+    makeSandbox: function () { return {}; },
+    scriptLoader: { load: function (url, scope) {
+      if (!scope || url.indexOf('/index.js') < 0) return;
+      const id = url.indexOf('/' + idA + '/') >= 0 ? idA : idB;
+      scope.Papilot.Modules.register(id, {
+        install: async function (ctx) {
+          ctxs[id] = ctx;
+          ctx.prefs.set('color', id === idA ? 'red' : 'blue');
+          ctx.log('installed');
+        },
+      });
+    } },
+  } });
+  const hashes = new Map();
+  const pkgA = { 'module.json': JSON.stringify(mA), 'index.js': 'var X = 1;\n' };
+  env.deps.unzip = unzipFrom(pkgA, env.memfs, hashes);
+  env.deps.hashFile = async function (abs) { return hashes.get(abs); };
+
+  await initEnv(env);
+  ok((await env.loader.installFromZip('/tmp/pa.zip', mA, {})).ok, 'prefs：组件 A 安装成功');
+  // 第二个组件：换 unzip 桩让包内清单是 B 自己的
+  const pkgB = { 'module.json': JSON.stringify(mB), 'index.js': 'var X = 1;\n' };
+  setDeps(env, { unzip: unzipFrom(pkgB, env.memfs, hashes) });
+  const rB = await env.loader.installFromZip('/tmp/pb.zip', mB, {});
+  ok(rB.ok, 'prefs：组件 B 安装成功', rB);
+
+  const ks = prefs.keys();
+  // 宿主 Prefs.get 内部会再补 extensions.zotero.papilot.，这里断言传给后端的键已带强制前缀
+  ok(ks.indexOf('mod.' + idA + '.color') >= 0,
+    'prefs：A 的键带 mod.<id>. 强制前缀', ks);
+  ok(ks.indexOf('mod.' + idB + '.color') >= 0,
+    'prefs：B 的键带 mod.<id>. 强制前缀', ks);
+  eq(ctxs[idA].prefs.get('color'), 'red', 'prefs：A 读到自己的值');
+  eq(ctxs[idB].prefs.get('color'), 'blue', 'prefs：B 读到自己的值（不受 A 干扰）');
+  eq(ctxs[idA].prefs.get('missing', 'fb'), 'fb', 'prefs：缺键返回 fallback');
+  eq(Object.keys(ctxs[idA].prefs.getAll()).join(','), 'color',
+    'prefs：getAll 只回本组件命名空间');
+  eq(ctxs[idA].prefs.getAll().color, 'red', 'prefs：getAll 值正确');
+
+  let threw = false;
+  try { ctxs[idA].prefs.set('bad key!', 1); } catch (e) { threw = true; }
+  ok(threw, 'prefs：非法 key（含空格/感叹号）set 抛错');
+  threw = false;
+  try { ctxs[idA].prefs.set('', 1); } catch (e) { threw = true; }
+  ok(threw, 'prefs：空 key set 抛错');
+  threw = false;
+  try { ctxs[idA].prefs.get('../escape'); } catch (e) { threw = true; }
+  ok(threw, 'prefs：穿越形态 key get 抛错');
+
+  ok(env.diagMsgs.some(function (m) { return m.indexOf('[' + idA + '] installed') >= 0; }),
+    'log：api.log 写入启动诊断并带组件 id 前缀', env.diagMsgs.slice(-4));
+
+  /* 无 prefs 后端的降级面：get 回 fallback，set 明确报错（绝不静默吞写） */
+  const bare = newLoader();
+  Object.assign(bare._deps, {
+    baseDir: '/mem/x', fs: createMemFs(), now: function () { return 1; },
+    diag: function () {}, prefs: null,
+  });
+  const api = bare._makeSandboxApi('papilot-mod-x');
+  eq(api.prefs.get('k', 'dft'), 'dft', 'prefs 降级：无后端 get 回 fallback');
+  threw = false;
+  try { api.prefs.set('k', 1); } catch (e) { threw = /后端不可用/.test(String(e)); }
+  ok(threw, 'prefs 降级：无后端 set 抛「后端不可用」');
+  eq(Object.keys(api.prefs.getAll()).length, 0, 'prefs 降级：无后端 getAll 回空对象');
+}
+
+/* ================= ⑥-C build 期强制 sandbox（源码级钉死） =================
+ * 新组件 scope 拒绝发生在构建期（build-module.py），loader 侧无从拦截；
+ * 这里校验脚本内置白名单与词表，且与 loader 常量保持同步。 */
+function testBuildModuleEnforcement() {
+  const src = fs.readFileSync(path.join(ROOT, 'scripts', 'build-module.py'), 'utf8');
+  const m = src.match(/LEGACY_SCOPE_IDS\s*=\s*frozenset\(\[([\s\S]*?)\]\)/);
+  ok(!!m, 'build：build-module.py 内置 LEGACY_SCOPE_IDS 常量');
+  const ids = m ? (m[1].match(/"([^"]+)"/g) || []).map(function (s) { return s.slice(1, -1); }) : [];
+  const expect = ['papilot-mod-pdf', 'papilot-mod-ai', 'papilot-mod-cnki',
+    'papilot-mod-discovery', 'papilot-mod-notes', 'papilot-mod-meta',
+    'papilot-mod-cite', 'papilot-mod-sync', 'papilot-mod-ui',
+    'papilot-bundle-basic'];
+  eq(ids.length, expect.length, 'build：LEGACY_SCOPE_IDS 恰好 9 模块 + 1 合集', ids);
+  ok(expect.every(function (x) { return ids.indexOf(x) >= 0; }),
+    'build：LEGACY_SCOPE_IDS 覆盖全部现存 scope 组件与合集', ids);
+  ok(src.indexOf('LEGACY_SCOPE_IDS and mode != "sandbox"') >= 0 ||
+     src.replace(/\s+/g, ' ').indexOf('LEGACY_SCOPE_IDS and mode != "sandbox"') >= 0,
+    'build：非白名单模块缺 mode=sandbox 时构建报错');
+  // 词表同步：py 的 frozenset 与 loader 常量一致（顺序无关）
+  function pySet(name) {
+    const r = src.match(new RegExp(name + '\\s*=\\s*frozenset\\(\\[([\\s\\S]*?)\\]\\)'));
+    if (!r) return null;
+    return (r[1].match(/"([^"]+)"/g) || []).map(function (s) { return s.slice(1, -1); }).sort();
+  }
+  eq(JSON.stringify(pySet('KNOWN_CAPABILITIES')),
+    JSON.stringify(ML.KNOWN_CAPABILITIES.slice().sort()),
+    'build：能力词表与 loader KNOWN_CAPABILITIES 同步');
+  eq(JSON.stringify(pySet('KNOWN_PERMISSIONS')),
+    JSON.stringify(ML.KNOWN_PERMISSIONS.slice().sort()),
+    'build：权限词表与 loader KNOWN_PERMISSIONS 同步');
+}
+
 /* ================= ⑦ 坏清单不加载、标 broken ================= */
 
 async function testBroken() {
@@ -894,6 +1054,8 @@ async function testBundleBadMember() {
   await testDowngrade();
   await testScopeOrder();
   await testSandbox();
+  await testSandboxPrefs();
+  testBuildModuleEnforcement();
   await testBroken();
   await testSandboxHandleKept();
   await testUninstallCleansPrevious();

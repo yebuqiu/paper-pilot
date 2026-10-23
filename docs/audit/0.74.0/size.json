@@ -1,0 +1,59 @@
+{
+  "version": "0.74.0",
+  "xpiBytes": 1971911,
+  "unpackedBytes": 6049237,
+  "entryCount": 219,
+  "generatedAt": "2026-10-23T03:40:59.767405+00:00",
+  "modules": [
+    {
+      "id": "papilot-mod-ai",
+      "zipBytes": 195799,
+      "fileCount": 29
+    },
+    {
+      "id": "papilot-mod-cite",
+      "zipBytes": 140569,
+      "fileCount": 8
+    },
+    {
+      "id": "papilot-mod-cnki",
+      "zipBytes": 61037,
+      "fileCount": 6
+    },
+    {
+      "id": "papilot-mod-discovery",
+      "zipBytes": 110163,
+      "fileCount": 14
+    },
+    {
+      "id": "papilot-mod-meta",
+      "zipBytes": 41426,
+      "fileCount": 10
+    },
+    {
+      "id": "papilot-mod-notes",
+      "zipBytes": 40911,
+      "fileCount": 9
+    },
+    {
+      "id": "papilot-mod-pdf",
+      "zipBytes": 453033,
+      "fileCount": 11
+    },
+    {
+      "id": "papilot-mod-sync",
+      "zipBytes": 66365,
+      "fileCount": 6
+    },
+    {
+      "id": "papilot-mod-ui",
+      "zipBytes": 203541,
+      "fileCount": 16
+    },
+    {
+      "id": "papilot-bundle-basic",
+      "zipBytes": 854617,
+      "fileCount": 57
+    }
+  ]
+}

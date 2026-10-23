@@ -4,6 +4,8 @@
 /* Papilot 组件目录与安装编排（module-store）
  * ================================================================
  * module-loader 只管本地状态机；本文件负责「目录 → 下载 → 交给 loader」这一段。
+ * 目录拉取/缓存/失败源记忆已抽取到共享基建 core/catalog-client.js
+ * （全局 CatalogClient，0.73.2 P1-4）；本文件只做编排与商店私有兜底。
  *
  * 目录三级降级（对齐 skill-store 的成熟做法）：
  *   1. GitHub raw（本机 api/raw 通畅，git 协议被墙——见分册 02）
@@ -19,7 +21,7 @@
  *     解决「Zotero 静默更新、用户不知道变了什么」的老问题。
  */
 
-/* global Zotero, Services, IOUtils, PathUtils */
+/* global Zotero, Services, IOUtils, PathUtils, CatalogClient */
 
 var ModuleStore = {
   // 目录托管在主仓（与 xpi 同一个 Release）：不额外建 10 个公开仓库，
@@ -77,29 +79,46 @@ var ModuleStore = {
     }
     if (!d.httpGet) d.httpGet = url => this._defaultHttpGet(url);
     if (!d.httpGetBytes) d.httpGetBytes = url => this._defaultHttpGetBytes(url);
+    this._catClient = null;   // 重新 init（换依赖）时丢弃旧目录客户端
     return this;
   },
 
-  /** JSON 拉取：Zotero 7+ 的 Zotero.HTTP.request 返回 Promise<response>（回调式不可靠）。 */
+  /** JSON 拉取（默认实现委托共享基建：8s 超时、Promise 形式）。 */
   async _defaultHttpGet(url) {
-    const req = await Zotero.HTTP.request("GET", url, {
-      timeout: 8000,
-      responseType: "json",
-      headers: { "Accept": "application/json", "Cache-Control": "no-cache" },
-    });
-    if (req.response && typeof req.response === "object") return req.response;
-    return JSON.parse(req.responseText || "{}");
+    return CatalogClient.httpGet(url);
   },
 
-  /** 二进制拉取（模块 zip）。 */
+  /** 二进制拉取（模块 zip；默认实现委托共享基建：60s 超时）。 */
   async _defaultHttpGetBytes(url) {
-    const req = await Zotero.HTTP.request("GET", url, {
-      timeout: 60000,
-      responseType: "arraybuffer",
+    return CatalogClient.httpGetBytes(url);
+  },
+
+  /**
+   * 共享目录客户端（惰性创建；CatalogClient 未装配时返回 null，调用方走兜底）。
+   * _deadUrls 与客户端共享同一对象：目录源挂过的 URL，清单/zip 下载同样跳过。
+   */
+  _client() {
+    if (this._catClient) return this._catClient;
+    if (typeof CatalogClient === "undefined" || !CatalogClient || typeof CatalogClient.create !== "function") {
+      return null;
+    }
+    const d = this._deps;
+    this._catClient = CatalogClient.create({
+      urls: this.CATALOG_URLS,
+      mirrorPref: this.MIRROR_PREF,
+      cachePref: this.CACHE_PREF,
+      cacheTtlMs: this.CACHE_TTL_MS,
+      validate: data => this.validateCatalog(data),
+      sourceLabel: url => (String(url).indexOf("gitee") >= 0 ? "gitee" : "github"),
+      rememberFailures: true,
+      prefGet: (k, def) => d.prefGet(k, def),
+      prefSet: (k, v) => d.prefSet(k, v),
+      diag: m => d.diag(m),
+      now: () => d.now(),
+      httpGet: url => d.httpGet(url),
     });
-    const buf = req.response;
-    if (!buf) throw new Error("空响应");
-    return new Uint8Array(buf);
+    this._deadUrls = this._catClient.deadUrls;
+    return this._catClient;
   },
 
   /* ================= 目录 ================= */
@@ -119,16 +138,6 @@ var ModuleStore = {
     }
   },
 
-  async _readCache() {
-    try {
-      const raw = this._deps.prefGet(this.CACHE_PREF, "");
-      if (!raw) return null;
-      const obj = typeof raw === "string" ? JSON.parse(raw) : raw;
-      if (!obj || !obj.data || !obj.ts) return null;
-      return obj;
-    } catch (e) { return null; }
-  },
-
   /** 统一返回形状：既给内部（ok/data）也给窗口（modules/updated）用，避免接缝空列表。 */
   _ok(source, data, error) {
     return { ok: true, data, modules: (data && data.modules) || [], updated: (data && data.updated) || null, source, error };
@@ -140,6 +149,7 @@ var ModuleStore = {
 
   /**
    * 拉目录。force=true 穿透缓存；全部源失败时回落到上次缓存/内置快照。
+   * 网络/缓存/失败源记忆在 CatalogClient 里，这里只管内存层与商店私有兜底。
    * @returns {Promise<{ok:boolean, data?:object, source?:string, error?:string}>}
    */
   async fetchCatalog(force) {
@@ -147,48 +157,27 @@ var ModuleStore = {
     if (!force && this._catalog && (d.now() - this._catalogAt) < this.CACHE_TTL_MS) {
       return this._ok("memory", this._catalog);
     }
-    if (!force) {
-      const cached = await this._readCache();
-      if (cached && (d.now() - cached.ts) < this.CACHE_TTL_MS) {
-        this._catalog = cached.data;
-        this._catalogAt = cached.ts;
-        return this._ok("cache", cached.data);
+
+    const client = this._client();
+    if (client) {
+      const r = await client.fetch(!!force);
+      if (r.ok) {
+        this._catalog = r.data;
+        this._catalogAt = r.ts != null ? r.ts : d.now();
+        if (r.url) {
+          // 网络新鲜拉取：记录来源并清掉历史错误
+          this._catalogSource = r.source;
+          this._lastError = null;
+          d.diag("module catalog fetched: " + ((r.data && r.data.modules) || []).length + " modules from " + r.url);
+        } else if (r.source === "stale-cache") {
+          this._lastError = r.error || this._lastError;
+        }
+        return this._ok(r.source, r.data, r.error);
       }
+      this._lastError = r.error;
     }
 
-    for (const url of this._catalogUrls()) {
-      if (this._deadUrls && this._deadUrls[url]) {
-        d.diag("catalog source skipped（本会话已知不通）: " + url);
-        continue;
-      }
-      try {
-        const data = await d.httpGet(url);
-        const check = this.validateCatalog(data);
-        if (!check.ok) throw new Error("目录结构非法：" + check.errors.join("; "));
-        this._catalog = data;
-        this._catalogAt = d.now();
-        this._catalogSource = url.indexOf("gitee") >= 0 ? "gitee" : "github";
-        d.prefSet(this.CACHE_PREF, JSON.stringify({ ts: this._catalogAt, data }));
-        this._lastError = null;
-        d.diag("module catalog fetched: " + data.modules.length + " modules from " + url);
-        return this._ok(this._catalogSource, data);
-      } catch (e) {
-        this._lastError = String(e && (e.message || e));
-        // 失败源本会话内不再重试——国内网络下 GitHub 不可达时，
-        // 每个操作都先等它超时一遍会显得「反复卡死」
-        (this._deadUrls = this._deadUrls || {})[url] = 1;
-        d.diag("catalog source failed: " + this._lastError);
-      }
-    }
-
-    // 兜底 1：过期缓存也好过没有
-    const cached = await this._readCache();
-    if (cached) {
-      this._catalog = cached.data;
-      this._catalogAt = cached.ts;
-      return this._ok("stale-cache", cached.data, this._lastError);
-    }
-    // 兜底 2：包内快照
+    // 兜底：包内快照（随 xpi 分发，离线/首启都能显示商店内容）
     const builtin = await this._builtinCatalog();
     if (builtin && builtin.modules) {
       this._catalog = builtin;
@@ -198,11 +187,10 @@ var ModuleStore = {
     return this._fail(this._lastError || "无法连接组件目录");
   },
 
-  /** 目录源：pref 镜像（自建/自检）优先，其后才是官方两源。 */
+  /** 目录源：pref 镜像（自建/自检）优先，其后才是官方两源（解析逻辑在 CatalogClient）。 */
   _catalogUrls() {
-    let extra = "";
-    try { extra = String(this._deps.prefGet(this.MIRROR_PREF, "") || "").trim(); } catch (e) { extra = ""; }
-    return extra ? [extra].concat(this.CATALOG_URLS) : this.CATALOG_URLS.slice();
+    const client = this._client();
+    return client ? client.urls() : this.CATALOG_URLS.slice();
   },
 
   /** 目录结构校验（纯函数式，供测试直接调）。 */
@@ -265,6 +253,10 @@ var ModuleStore = {
         fileCount: Number(m.fileCount) || 0,
         updateNotes: m.updateNotes || m.whatsNew || "",
         tags: Array.isArray(m.tags) ? m.tags.slice() : [],
+        requires: Array.isArray(m.requires) ? m.requires.slice() : [],
+        permissions: Array.isArray(m.permissions) ? m.permissions.slice() : [],
+        bundle: !!m.bundle,
+        contains: Array.isArray(m.contains) ? m.contains.slice() : [],
         pro: !!m.pro,
         recommended: !!m.recommended,
         hot: !!m.hot,

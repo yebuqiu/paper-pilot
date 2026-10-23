@@ -263,3 +263,49 @@ modules/<id>.json     # 每模块详细清单（含文件 sha256）
 | 瘦身包 `papilot-0.73.0-slim.xpi` | **约 640 KB** | **-66%** |
 | 9 个模块包合计 | 1282 KB | 按需下载 |
 | 全量装齐 | ≈ 1922 KB | 与完整包持平（无重复） |
+
+---
+
+## 七、清单 schema 演进：能力声明、权限声明与新组件强制 sandbox（0.73.2）
+
+### 7.1 清单新增字段
+
+`module.json` 新增两个可选字段（缺省 = 空数组），loader 的 `validateManifest`
+与 `scripts/build-module.py` 双侧同步校验：
+
+| 字段 | 词表 | 语义 |
+|---|---|---|
+| `requires` | `["storage","events","ui","prefs","ai"]` | 组件运行所需的宿主能力。宿主能力由 API_VERSION 推导：v1 提供 storage/events/ui/prefs；**ai 标记为「计划中」暂不接受**——声明 `requires:["ai"]` 的组件在安装/构建时一律拒绝。未知能力名、非数组、重复声明均属清单非法。 |
+| `permissions` | `["storage","network","ai","prefs","filesystem","ui"]` | 组件声明的敏感权限。白名单之外即非法；当前仅记录声明，后续版本按项收紧执行。 |
+
+### 7.2 sandbox api 面扩展
+
+sandbox 组件 `install(ctx)` 的 ctx 新增：
+
+- `ctx.prefs`：作用域化偏好读写（`get(key, fallback)` / `set(key, value)` / `getAll()`）。
+  key 强制前缀 `mod.<组件id>.`（经宿主 Prefs 落到 `extensions.zotero.papilot.mod.<id>.*`），
+  组件之间互不可见；key 只允许 `[A-Za-z0-9._-]` 形态，非法 key 直接抛错。
+  宿主 prefs 后端不可用时：`get` 回 fallback、`getAll` 回空对象、`set` 抛「后端不可用」。
+- `ctx.log`：写启动诊断（等价宿主 `_diag`，自动带 `[<id>]` 前缀）。
+
+storage/events/ui 维持现状（组件经沙箱内注入的 Zotero/Services 自取），不收回。
+
+### 7.3 新组件强制 sandbox
+
+`build-module.py` 内置 `LEGACY_SCOPE_IDS` 常量（现存 9 个 `papilot-mod-*` +
+`papilot-bundle-basic` 合集）。`module-map.json` 中**不在**该清单里的新模块必须显式
+`"mode": "sandbox"`，否则构建报错退出；合集（bundle）不受限——它只是记账条目，不加载代码。
+module-map.json 是 JSON 不能写注释，该规则的权威说明在 build-module.py 顶部常量旁
+与构建报错文案里。
+
+`mode` / `requires` / `permissions`（及 sandbox 必需的 `entry`）由 build-module.py
+透传进 `modules/<id>/module.json` 与 `chrome/content/modules/builtin-index.json`。
+
+### 7.4 测试
+
+`test/module-loader.test.js` 由 195 增至 228 条断言，新增覆盖：
+requires 未知能力/计划能力（ai）/超集/非数组/重复被拒，permissions 未知权限/非数组/重复被拒，
+`hostCapabilities(1)` 推导结果，sandbox `api.prefs` 双组件前缀隔离与非法 key 拒绝、
+无后端降级面，`api.log` 诊断前缀，以及 build-module.py 的 LEGACY_SCOPE_IDS
+与词表同步（构建期强制的源码级钉死）。
+

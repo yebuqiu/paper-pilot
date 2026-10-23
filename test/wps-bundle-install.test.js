@@ -110,10 +110,12 @@ function makeWorld(opts) {
           }) },
           '@mozilla.org/file/local;1': { createInstance: () => ({ initWithPath() {} }) },
           '@mozilla.org/process/environment;1': { getService: () => ({ get: () => '' }) } },
-    fetch: async () => ({
-      ok: true,
-      text: async () => JSON.stringify(opts.bundle === null ? null : (opts.bundle || BUNDLE)),
-    }),
+    fetch: opts.fetchFail
+      ? async () => { throw new Error('NS_ERROR_FILE_NOT_FOUND'); }
+      : async () => ({
+        ok: true,
+        text: async () => JSON.stringify(opts.bundle === null ? null : (opts.bundle || BUNDLE)),
+      }),
     Zotero: { Promise: { delay: async () => {} },
               HTTP: { request: opts.http || (async () => { throw new Error('offline'); }) } },
   };
@@ -170,6 +172,20 @@ function makeWorld(opts) {
     ok(r.ok === false, 'bundle 缺失时返回 ok:false');
     ok(Object.keys(w.files).filter((p) => p.indexOf('papilot-cite_') >= 0).length === 0, 'bundle 缺失时一个文件都不写');
     ok(w.files[ADDONS + '\\publish.xml'] === '<jsplugins>\n</jsplugins>\n', 'bundle 缺失时不动注册项');
+  }
+
+  {
+    /* ★ 0.73.2（P1-3）：瘦身包把载荷拆到 papilot-mod-cite 组件，主包里 fetch 会失败。
+     * 此时必须给结构化失败（reason/hint），面板拿去直接显示，而不是抛错。 */
+    const w = makeWorld({ fetchFail: true });
+    const pl = await w.B.payload();
+    ok(pl.ok === false && pl.reason === '组件未安装', 'fetch 失败返回结构化失败', pl);
+    ok(String(pl.hint || '').indexOf('组件') >= 0, '失败带安装指引 hint', pl.hint);
+    ok(pl.available === false, '既有 available 字段保持 false（老调用方不受影响）');
+    const r = await w.B.installAddon();
+    ok(r.ok === false, '载荷缺失时安装返回 ok:false');
+    ok(String(r.error || '').indexOf('组件未安装') >= 0, '安装失败文案带可读原因', r.error);
+    ok(Object.keys(w.files).filter((p) => p.indexOf('papilot-cite_') >= 0).length === 0, '载荷缺失时一个文件都不写');
   }
 
   {

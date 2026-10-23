@@ -22,6 +22,70 @@ Zotero.Papilot = {
     try { _ppDiag(msg); } catch (e) { /* bootstrap 未提供则忽略 */ }
   },
 
+  /* ---- 0.73.2 主包升级 → 已装组件自动批量更新 ----
+   * 模块化后组件版本跟主包走（papilot-modules-index.json 每次发版都更新），
+   * 用户升完主包不必再去组件商店逐个手动更新。
+   * 两个判定抽成纯函数（test/module-autoupdate.test.js 直接钉）；
+   * 执行体全程 try/catch + fire-and-forget，绝不阻塞/打断启动。 */
+
+  /** 纯函数：本轮该不该跑自动更新。enabled=开关；版本不同且有已装组件才有意义。 */
+  _moduleAutoUpdateShouldRun(opts) {
+    const o = opts || {};
+    return !!o.enabled
+      && String(o.lastVersion || "") !== String(o.version || "")
+      && (Number(o.installedCount) || 0) > 0;
+  },
+
+  /** 纯函数：从 checkUpdates 的结果里取待更新组件 id（去重、去空、保序）。 */
+  _moduleAutoUpdatePlan(updates) {
+    const out = [];
+    for (const u of (Array.isArray(updates) ? updates : [])) {
+      if (u && u.id && out.indexOf(u.id) < 0) out.push(u.id);
+    }
+    return out;
+  },
+
+  /**
+   * 主包升级后自动批量更新已装组件（P1-5）。
+   * @param version 当前主包版本
+   * @param checkResult 同一轮 ModuleStore.checkUpdates(false) 的结果（不重复拉目录）
+   */
+  async _autoUpdateModules(version, checkResult) {
+    try {
+      const last = String(Prefs.get("modulesLastHostVersion", "") || "");
+      let installedCount = 0;
+      try { installedCount = (ModuleLoader.list() || []).length; } catch (e) { installedCount = 0; }
+      if (!this._moduleAutoUpdateShouldRun({
+        enabled: Prefs.get("modulesAutoUpdate", true),
+        lastVersion: last, version, installedCount,
+      })) return;
+      // 这一轮目录没拉到（离线等）：不做版本记账，下次启动再试
+      if (!checkResult || !checkResult.ok) return;
+      const ids = this._moduleAutoUpdatePlan(checkResult.updates);
+      let updated = 0, failed = 0;
+      // 串行逐个装：单项失败记 diag 继续下一个，不拖垮整轮
+      for (const id of ids) {
+        try {
+          const r = await ModuleStore.install(id);
+          if (r && r.ok) {
+            updated++;
+          } else {
+            failed++;
+            this._diag("module auto-update FAILED " + id + ": " + ((r && r.error) || "未知错误"));
+          }
+        } catch (e) {
+          failed++;
+          this._diag("module auto-update FAILED " + id + ": " + (e && (e.message || e)));
+        }
+      }
+      this._diag("module auto-update: updated=" + updated + " failed=" + failed);
+      // 本轮主版本已处理过（无论单项成败），下个主版本再跑
+      Prefs.set("modulesLastHostVersion", String(version));
+    } catch (e) {
+      try { this._diag("module auto-update FAILED: " + (e && (e.message || e))); } catch (e2) { /* ignore */ }
+    }
+  },
+
   /**
    * 0.63.0 pdf.js 无头渲染引擎（≈320KB UMD）——懒加载入口（审查 P1-3）。
    * 此前启动时无条件 loadSubScript，不用 OCR 的用户也白付解析/编译成本；
@@ -144,6 +208,9 @@ Zotero.Papilot = {
       "core/utils.js",
       // 0.56.0 云同步协议层（坚果云 WebDAV）：纯协议、无业务，cloud-sync.js 消费它
       "core/webdav.js",
+      // 0.74.0 共享目录基建（两店目录拉取/TTL 缓存/失败源记忆唯一真源）：
+      // 必须先于 features/skill-packs.js 与 core/module-store.js
+      "core/catalog-client.js",
       "ai/providers.js",
       "ai/account.js",
       "ai/channels.js",
@@ -404,6 +471,8 @@ Zotero.Papilot = {
           this._diag("module updates available: "
             + r.updates.map(u => u.id + "@" + u.version).join(","));
         }
+        // 0.73.2 主包升级 → 已装组件自动批量更新（复用这一轮结果，不再拉目录）
+        this._autoUpdateModules(version, r);
       }).catch(() => { /* 离线即忽略 */ });
 
       // 自检钩子（默认关，仅 pref 显式设置时执行一次）：

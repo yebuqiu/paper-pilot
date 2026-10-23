@@ -3634,6 +3634,21 @@ ok("fetch(" in _wb and "jar" in _wb,
    "60.11b ★ 载荷必须用 fetch 读（jar 里没有可枚举目录，改回目录复制会静默装不上）")
 ok("_safeRel" in _wb and '_safeRel(rel)' in _wb,
    "60.11c ★ 落盘前做相对路径穿越校验")
+# P1-3：载荷从主包拆到 papilot-mod-cite。本工具是静态检查（不跑构建、不看 xpi 产物），
+# 所以验证「bundle 在 cite 模块清单里」——非模块化构建本就会把它打进主包；
+# 模块化构建凭这条清单把它排除出主包、改由组件商店分发。清单漏登记 = 瘦身包静默装不上加载项。
+_MMAP = os.path.join(ROOT, "scripts", "module-map.json")
+_cite_files = []
+try:
+    for _m in json.load(io.open(_MMAP, encoding="utf-8")).get("modules", []):
+        if isinstance(_m, dict) and _m.get("id") == "papilot-mod-cite":
+            _cite_files = _m.get("files") or []
+except Exception:
+    _cite_files = []
+ok("tools/wps-cite.bundle.json" in _cite_files,
+   "60.11d ★ WPS 载荷在 papilot-mod-cite 清单里（--modular 据此拆出主包；漏登记 = 瘦身包永远装不上加载项）")
+ok('"组件未安装"' in _wb and "hint:" in _wb,
+   "60.11e ★ 载荷缺失返回结构化失败（reason/hint），不许把异常甩给设置面板")
 ok("cleanupLegacy" in _wb and 'LEGACY_NAME: "wps-zotero"' in _wb,
    "60.12 ★ 桥接提供旧版残留清理（两份同时装着会在功能区打架）")
 ok("authaddin.json" in _wb, "60.13 安装后清信任记录（否则 WPS 不会重新确认）")

@@ -151,6 +151,82 @@ with open(OUT, "rb") as _f:
     print("sha256 =", hashlib.sha256(_f.read()).hexdigest())
 
 # ---------------------------------------------------------------------------
+# 体积趋势记录（0.73.2）
+#
+# 只在**正式主包构建**（非 --modular、非 --out 试打包）成功后写
+# docs/audit/<版本>/size.json；与 render.json/render.md 同目录惯例。
+# 上次同结构记录存在时，顺带打印一行 xpi 与总计（xpi + 组件 zip 合计）体积差。
+# ---------------------------------------------------------------------------
+def _ver_key(v):
+    return tuple(int(x) if x.isdigit() else 0 for x in str(v).split("."))
+
+
+if not MODULAR and not _arg_value("--out"):
+    import datetime
+    with zipfile.ZipFile(OUT) as _z:
+        _entries = [i for i in _z.infolist() if not i.is_dir()]
+        _unpacked = sum(i.file_size for i in _entries)
+
+    # 组件 zip：id 取自 modules/*/module.json 与 bundles/*/module.json，
+    # 只记录与本版同号的 dist/modules/<id>-<VER>.zip（忽略历史残留版本）
+    _mods = []
+    for _mdir in ("modules", "bundles"):
+        _base = os.path.join(ROOT, _mdir)
+        if not os.path.isdir(_base):
+            continue
+        for _d in sorted(os.listdir(_base)):
+            if not os.path.exists(os.path.join(_base, _d, "module.json")):
+                continue
+            _zp = os.path.join(ROOT, "dist", "modules", "%s-%s.zip" % (_d, VER))
+            if not os.path.exists(_zp):
+                continue
+            with zipfile.ZipFile(_zp) as _z:
+                _fc = sum(1 for n in _z.namelist() if not n.endswith("/"))
+            _mods.append({"id": _d, "zipBytes": os.path.getsize(_zp),
+                          "fileCount": _fc})
+
+    _report = {
+        "version": VER,
+        "xpiBytes": os.path.getsize(OUT),
+        "unpackedBytes": _unpacked,
+        "entryCount": len(_entries),
+        "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "modules": _mods,
+    }
+
+    _prev = None
+    _audit_root = os.path.join(ROOT, "docs", "audit")
+    if os.path.isdir(_audit_root):
+        for _d in sorted(os.listdir(_audit_root), key=_ver_key, reverse=True):
+            if _d == VER:
+                continue
+            _p = os.path.join(_audit_root, _d, "size.json")
+            if not os.path.exists(_p):
+                continue
+            try:
+                _prev = json.load(io.open(_p, encoding="utf-8"))
+            except Exception:
+                _prev = None
+            if _prev:
+                break
+
+    _audit_dir = os.path.join(_audit_root, VER)
+    os.makedirs(_audit_dir, exist_ok=True)
+    _size_path = os.path.join(_audit_dir, "size.json")
+    io.open(_size_path, "w", encoding="utf-8", newline="\n").write(
+        json.dumps(_report, ensure_ascii=False, indent=2) + "\n")
+    print("✓ 体积记录：%s（xpi %d 字节 / 解压 %d 字节 / %d 个条目 / %d 个组件 zip）"
+          % (os.path.relpath(_size_path, ROOT), _report["xpiBytes"],
+             _unpacked, _report["entryCount"], len(_mods)))
+    if _prev:
+        _dx = _report["xpiBytes"] - int(_prev.get("xpiBytes") or 0)
+        _t1 = _report["xpiBytes"] + sum(m["zipBytes"] for m in _mods)
+        _t0 = (int(_prev.get("xpiBytes") or 0)
+               + sum(int(m.get("zipBytes") or 0) for m in (_prev.get("modules") or [])))
+        print("  与 %s 相比：xpi %+d 字节，总计 %+d 字节"
+              % (_prev.get("version") or "?", _dx, _t1 - _t0))
+
+# ---------------------------------------------------------------------------
 # 更新清单自动 upsert（0.65.1）
 #
 # 背景：papilot-update.json 一直靠手工补条目，漏一次 = 老用户点「检查更新」永远拿不到新版

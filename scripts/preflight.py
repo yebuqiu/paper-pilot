@@ -181,6 +181,8 @@ NODE_SUITES = [
     ("技能包商店窗口", "test/skill-store.test.js"),
     ("模块运行时(安装/回滚)", "test/module-loader.test.js"),
     ("组件商店编排", "test/module-store.test.js"),
+    ("目录基建(共享)", "test/catalog-client.test.js"),
+    ("组件自动更新(升级联动)", "test/module-autoupdate.test.js"),
     ("快捷键注册表", "test/hotkeys.test.js"),
     ("设置直达导航", "test/prefs-anchors.test.js"),
     ("设置面板交互", "test/prefs-panel-ux.test.js"),

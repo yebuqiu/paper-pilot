@@ -405,6 +405,10 @@ pref("extensions.zotero.papilot.prefsFoldOpen", "account");
 // 点到「直达」却没滚动时，这里会记下祖先链的 scrollHeight/clientHeight/top，
 // 排查时直接读 profile/prefs.js 即可，不用让用户开调试模式。
 pref("extensions.zotero.papilot.diagJump", "");
+// 0.73.2 组件自动更新（默认开）：主包升级后，启动时把已装组件里「有新版」的
+// 串行静默更新到目录版本；fire-and-forget 不挡启动，失败只记 diag。
+// modulesLastHostVersion 记账不注册默认值（空串 = 首次，Prefs.get 兜底即可）。
+pref("extensions.zotero.papilot.modulesAutoUpdate", true);
 // 0.38.0 顶部快捷按钮：条目工具栏一键菜单（高频直达项 + 功能中心 + 设置）。
 // 直达项内容与右键菜单共用 menuQuickItems（单一真源），在「设置 → 菜单定制」里改
 pref("extensions.zotero.papilot.quickBarButtonEnabled", true);

@@ -44,6 +44,32 @@ CONTENT_DIR = ROOT / "chrome" / "content"
 ZIP_DATE_TIME = (2020, 1, 1, 0, 0, 0)
 ZIP_COMPRESS_LEVEL = 9
 
+# 既有 scope 组件白名单：这 9 个模块 + 1 个合集从主包拆出，沿用 scope 加载。
+# module-map.json 中**不在**此清单里的新模块必须显式写 "mode": "sandbox"，
+# 否则构建报错退出（合集 bundle 不受限——它只是记账，不加载代码）。
+# 注意：module-map.json 是 JSON 不能写注释，本说明以这里与构建报错文案为准。
+LEGACY_SCOPE_IDS = frozenset([
+    "papilot-mod-pdf",
+    "papilot-mod-ai",
+    "papilot-mod-cnki",
+    "papilot-mod-discovery",
+    "papilot-mod-notes",
+    "papilot-mod-meta",
+    "papilot-mod-cite",
+    "papilot-mod-sync",
+    "papilot-mod-ui",
+    "papilot-bundle-basic",
+])
+
+# 与 loader validateManifest 同步的清单 schema 扩展（0.73.2）：
+#   requires    —— 能力声明，只允许已知能力名；ai 计划中暂不接受
+#   permissions —— 权限声明，白名单之外即非法
+KNOWN_CAPABILITIES = frozenset(["storage", "events", "ui", "prefs", "ai"])
+PLANNED_CAPABILITIES = frozenset(["ai"])
+KNOWN_PERMISSIONS = frozenset(["storage", "network", "ai", "prefs", "filesystem", "ui"])
+# 宿主 API v1 实际提供的能力（ai 计划中，不在内）
+HOST_CAPABILITIES_V1 = frozenset(["storage", "events", "ui", "prefs"])
+
 
 def die(msg):
     """统一的中文错误出口：打印到 stderr 并以 1 退出。"""
@@ -58,6 +84,43 @@ def human(nbytes):
     if nbytes < 1024 * 1024:
         return "%.1f KB" % (nbytes / 1024.0)
     return "%.2f MB" % (nbytes / (1024.0 * 1024.0))
+
+
+def validate_decl(mod):
+    """校验模块声明的 mode / requires / permissions（与 loader validateManifest 同步）。
+
+    · mode：可选，只接受 scope/sandbox；非 LEGACY_SCOPE_IDS 的新模块必须显式 sandbox；
+    · requires：可选数组，只允许 KNOWN_CAPABILITIES，且 ai（计划中）暂不接受；
+    · permissions：可选数组，只允许 KNOWN_PERMISSIONS。
+    """
+    mid = mod.get("id") or ""
+    mode = mod.get("mode")
+    if mode is not None and mode not in ("scope", "sandbox"):
+        die("模块 %s 的 mode 非法：%r（只接受 scope/sandbox）" % (mid, mode))
+    if mid not in LEGACY_SCOPE_IDS and mode != "sandbox":
+        die("模块 %s 不在 LEGACY_SCOPE_IDS 白名单内，新组件必须显式 \"mode\": \"sandbox\""
+            "（module-map.json 是 JSON 无法注释，规则见 build-module.py 顶部 LEGACY_SCOPE_IDS 说明）"
+            % mid)
+    req = mod.get("requires")
+    if req is not None:
+        if not isinstance(req, list):
+            die("模块 %s 的 requires 必须是数组" % mid)
+        for cap in req:
+            if not isinstance(cap, str) or cap not in KNOWN_CAPABILITIES:
+                die("模块 %s 的 requires 含未知能力：%r" % (mid, cap))
+            if cap in PLANNED_CAPABILITIES:
+                die("模块 %s 要求的能力 %r 尚在计划中，宿主暂不提供" % (mid, cap))
+            if cap not in HOST_CAPABILITIES_V1:
+                die("模块 %s 要求的能力 %r 超出宿主 API v1 提供范围" % (mid, cap))
+    perm = mod.get("permissions")
+    if perm is not None:
+        if not isinstance(perm, list):
+            die("模块 %s 的 permissions 必须是数组" % mid)
+        for p in perm:
+            if not isinstance(p, str) or p not in KNOWN_PERMISSIONS:
+                die("模块 %s 的 permissions 含未知权限：%r" % (mid, p))
+    if mode == "sandbox" and not mod.get("entry"):
+        die("模块 %s 为 sandbox 模式，必须声明 entry" % mid)
 
 
 def load_map():
@@ -80,6 +143,7 @@ def load_map():
         if mid in seen_ids:
             die("模块 id 重复：%s" % mid)
         seen_ids.add(mid)
+        validate_decl(mod)
         files = mod.get("files")
         if not isinstance(files, list) or not files:
             die("模块 %s 的文件清单为空" % mid)
@@ -196,11 +260,13 @@ def build_manifest(mod):
         "minHost": mod["hostMin"],
         "apiVersion": 1,
         "description": mod["description"],
-        "entry": "",
-        "mode": "scope",
+        "entry": mod.get("entry", ""),
+        "mode": mod.get("mode", "scope"),
         "order": mod["order"],
         "provides": list(mod["provides"]),
         "depends": list(mod["depends"]),
+        "requires": list(mod.get("requires") or []),
+        "permissions": list(mod.get("permissions") or []),
         "whatsNew": mod["whatsNew"],
         "repo": {"github": mod["repo"]["github"], "gitee": mod["repo"]["gitee"]},
         "globals": collect_globals(mod),
@@ -314,6 +380,9 @@ def build_index(doc, manifest_blobs, zip_sizes, bundle_meta=None):
                 "gitee": "%s/raw/main/modules/%s/module.json" % (ge, mid),
             },
             "tags": list(mod["tags"]),
+            "mode": mod.get("mode", "scope"),
+            "requires": list(mod.get("requires") or []),
+            "permissions": list(mod.get("permissions") or []),
             "recommended": bool(mod["recommended"]),
             "pro": bool(mod["pro"]),
             "hot": bool(mod["hot"]),

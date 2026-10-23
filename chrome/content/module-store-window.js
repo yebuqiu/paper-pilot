@@ -36,6 +36,16 @@
     { id: "recommended", label: "推荐" },
   ];
 
+  // 权限 id → 中文名（目录新增权限时未知 id 原样展示，不炸）
+  const PERM_LABELS = {
+    storage: "本地存储",
+    network: "网络访问",
+    ai: "AI 调用",
+    prefs: "设置读写",
+    filesystem: "文件系统",
+    ui: "界面注入",
+  };
+
   const OP = {
     install: { busy: "正在安装", done: "已安装", fail: "安装失败" },
     update: { busy: "正在更新", done: "已更新", fail: "更新失败" },
@@ -217,6 +227,8 @@
         pro: !!r.pro,
         recommended: !!r.recommended,
         tags: Array.isArray(r.tags) ? r.tags.map(str).filter(Boolean) : [],
+        requires: Array.isArray(r.requires) ? r.requires.map(str).filter(Boolean) : [],
+        permissions: Array.isArray(r.permissions) ? r.permissions.map(str).filter(Boolean) : [],
         broken: !!r.broken,
         notes: str(r.updateNotes || r.changelog || r.releaseNotes || r.notes),
       };
@@ -538,6 +550,25 @@
       kv.appendChild(kvRow("体积", fmtSize(r.sizeBytes) || "未提供"));
       if (r.fileCount > 0) kv.appendChild(kvRow("文件数", String(r.fileCount)));
       viewDetail.appendChild(kv);
+
+      // 能力与权限：清单可能没有 requires / permissions 字段，两者皆空时整段不出现
+      if (r.permissions.length || r.requires.length) {
+        viewDetail.appendChild(el("div", "pp-ms-sec", "能力与权限"));
+        const perm = el("div", "pp-ms-perm");
+        if (r.permissions.length) {
+          const plist = el("div", "pp-ms-perm-list");
+          for (const p of r.permissions) {
+            plist.appendChild(el("span", "pp-ms-perm-chip",
+              PERM_LABELS[p] || p));
+          }
+          perm.appendChild(plist);
+        }
+        if (r.requires.length) {
+          perm.appendChild(el("div", "pp-ms-perm-req",
+            "需要宿主能力：" + r.requires.join("、")));
+        }
+        viewDetail.appendChild(perm);
+      }
 
       viewDetail.appendChild(el("div", "pp-ms-sec", "简介"));
       viewDetail.appendChild(el("div", "pp-ms-desc",
