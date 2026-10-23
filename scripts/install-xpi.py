@@ -61,11 +61,14 @@ def find_profile():
 
 
 def zotero_running():
+    # ★ 不要用 text=True：中文 Windows 的 tasklist 输出是 GBK，Python 按 UTF-8 解码
+    #   会抛 UnicodeDecodeError（不是 OSError/SubprocessError，捕获不到）→ 装机脚本每次
+    #   刷一段 traceback。直接比 bytes 最稳，且与系统语言无关。
     try:
         out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq zotero.exe"],
-                             capture_output=True, text=True, timeout=15)
-        return "zotero.exe" in (out.stdout or "").lower()
-    except (OSError, subprocess.SubprocessError):
+                             capture_output=True, timeout=15)
+        return b"zotero.exe" in (out.stdout or b"").lower()
+    except (OSError, subprocess.SubprocessError, ValueError):
         return False
 
 
