@@ -4101,6 +4101,28 @@ ok(not _ml_problems,
    "65.5 ★ module-loader.js 的 IOUtils.writeUTF8 调用不带 mode（分册 03 铁律）→ %s"
    % ("; ".join(_ml_problems) or "全部通过"))
 
+# 65.6 目录信任链（0.74.1）：索引每条带 zipSha256、索引整体带 Ed25519 签名、
+# 包内有验签公钥、签名脚本在库。信任链断一环 = 商店可被投毒。
+_sign_pub = os.path.join(ROOT, "chrome", "content", "modules", "signing-pubkey.json")
+_sign_script = os.path.join(ROOT, "scripts", "sign-modules-index.js")
+ok(os.path.exists(_sign_pub), "65.6a 验签公钥在包内（modules/signing-pubkey.json）")
+ok(os.path.exists(_sign_script), "65.6b 签名脚本在库（scripts/sign-modules-index.js）")
+try:
+    _sidx = json.load(io.open(_BIDX_PATH, encoding="utf-8"))
+    _sig_ok = isinstance(_sidx.get("signature"), str) and _sidx.get("signatureAlgo") == "ed25519"
+    _hash_missing = [m.get("id") for m in (_sidx.get("modules") or []) if not m.get("zipSha256")]
+    ok(_sig_ok, "65.6c builtin-index.json 带 Ed25519 签名（跑 build-module.py --all 生成）")
+    ok(not _hash_missing, "65.6d builtin-index 每条带 zipSha256 → %s" % (_hash_missing or "全带"))
+except Exception as _e:
+    ok(False, "65.6c/d builtin-index 解析失败：%s" % _e)
+_ms_src_path = os.path.join(ROOT, "chrome", "content", "scripts", "core", "module-store.js")
+_ms_src2 = io.open(_ms_src_path, encoding="utf-8").read()
+ok("_verifyCatalogSignature" in _ms_src2 and "zipSha256" in _ms_src2,
+   "65.6e module-store 实现目录验签与 zip 哈希钉死")
+ok("await c.validate" in io.open(os.path.join(
+    ROOT, "chrome", "content", "scripts", "core", "catalog-client.js"), encoding="utf-8").read(),
+   "65.6f catalog-client 的 validate 支持异步（验签需要）")
+
 print("=" * 60)
 for p in passes:
     print("  OK  " + p)

@@ -108,7 +108,12 @@ var ModuleStore = {
       mirrorPref: this.MIRROR_PREF,
       cachePref: this.CACHE_PREF,
       cacheTtlMs: this.CACHE_TTL_MS,
-      validate: data => this.validateCatalog(data),
+      validate: async data => {
+        const v = this.validateCatalog(data);
+        if (!v.ok) return v;
+        // 0.74.1：Ed25519 验签（新鲜网络源强制；签名不符即拒绝该源）
+        return this._verifyCatalogSignature(data);
+      },
       sourceLabel: url => (String(url).indexOf("gitee") >= 0 ? "gitee" : "github"),
       rememberFailures: true,
       prefGet: (k, def) => d.prefGet(k, def),
@@ -185,6 +190,72 @@ var ModuleStore = {
       return this._ok("builtin", builtin, this._lastError);
     }
     return this._fail(this._lastError || "无法连接组件目录");
+  },
+
+  /* ================= 目录签名（Ed25519） ================= */
+
+  /** 包内公钥（构建期写入 signing-pubkey.json；私钥永不进 git）。 */
+  _pubkeyJson() {
+    if (this._pubkeyPromise) return this._pubkeyPromise;
+    this._pubkeyPromise = (async () => {
+      try {
+        const root = (typeof Zotero !== "undefined" && Zotero.Papilot && Zotero.Papilot.rootURI) || "";
+        if (!root || typeof fetch !== "function") return null;
+        const resp = await fetch(root + "chrome/content/modules/signing-pubkey.json", { cache: "no-store" });
+        if (!resp.ok) return null;
+        return await resp.json();
+      } catch (e) { return null; }
+    })();
+    return this._pubkeyPromise;
+  },
+
+  /** 验签载荷：与 scripts/sign-modules-index.js 严格同构（跨语言一致性靠这个函数）。 */
+  _catalogPayload(data) {
+    const mods = (data.modules || []).slice()
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    let s = "papilot-modules-v1\n" + String(data.hostMin || "") + "\n";
+    for (const m of mods) {
+      s += String(m.id) + "|" + String(m.version) + "|" + String(m.zipSha256 || "") + "\n";
+    }
+    s += String(mods.length) + "\n";
+    return s;
+  },
+
+  /**
+   * 验签策略：
+   *  · 包内有公钥 + 索引缺签名 → 拒绝（防降级攻击）
+   *  · 有签名 → 用 WebCrypto Ed25519 验；不符即拒绝
+   *  · 验签 API 不可用（老宿主）→ 降级接受 + 记诊断（zipSha256 钉死仍在）
+   *  · 包内无公钥（0.74.0 及以前）→ 接受（过渡期）
+   */
+  async _verifyCatalogSignature(data) {
+    const pub = await this._pubkeyJson();
+    if (!pub || !pub.key) return { ok: true };
+    if (!data.signature || data.signatureAlgo !== "ed25519") {
+      return { ok: false, errors: ["目录缺 Ed25519 签名（可能被降级攻击）"] };
+    }
+    try {
+      const subtle = (typeof crypto !== "undefined" && crypto.subtle) ? crypto.subtle : null;
+      if (!subtle || typeof subtle.importKey !== "function") throw new Error("WebCrypto 不可用");
+      const key = await subtle.importKey("spki", this._b64ToBytes(pub.key),
+        { name: "Ed25519" }, false, ["verify"]);
+      const sig = this._b64ToBytes(data.signature);
+      const payload = new TextEncoder().encode(this._catalogPayload(data));
+      const ok = await subtle.verify({ name: "Ed25519" }, key, sig, payload);
+      if (!ok) return { ok: false, errors: ["目录签名验证失败"] };
+      this._deps.diag("catalog signature verified (ed25519, " + (data.modules || []).length + " modules)");
+      return { ok: true };
+    } catch (e) {
+      this._deps.diag("catalog signature check degraded: " + (e && (e.message || e)));
+      return { ok: true, degraded: true };
+    }
+  },
+
+  _b64ToBytes(b64) {
+    const bin = (typeof atob === "function") ? atob(b64) : "";
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
   },
 
   /** 目录源：pref 镜像（自建/自检）优先，其后才是官方两源（解析逻辑在 CatalogClient）。 */
@@ -377,6 +448,22 @@ var ModuleStore = {
       } catch (e) { lastErr = e; d.diag("zip download failed " + url + ": " + (e && e.message || e)); }
     }
     if (!bytesOk) return { ok: false, error: "组件包下载失败：" + String(lastErr && (lastErr.message || lastErr)) };
+
+    // 2.5) zip 级 sha256 钉死（0.74.1）：目录索引里构建期写入，下载完先比整个包再解，
+    // 防「Release 附件被换但索引没换」——逐文件校验挡不住包内清单同被伪造的情况。
+    if (entry.zipSha256) {
+      try {
+        const actual = await this._loader._ensureDeps().hashFile(zipPath);
+        if (actual !== String(entry.zipSha256)) {
+          try { await IOUtils.remove(zipPath, { ignoreAbsent: true }); } catch (e) { /* ignore */ }
+          d.diag("zip sha256 mismatch " + id + ": got " + actual + " want " + entry.zipSha256);
+          return { ok: false, error: "组件包完整性校验失败（sha256 不符），已拒绝安装" };
+        }
+      } catch (e) {
+        try { await IOUtils.remove(zipPath, { ignoreAbsent: true }); } catch (e2) { /* ignore */ }
+        return { ok: false, error: "完整性校验无法执行：" + (e && (e.message || e)) };
+      }
+    }
 
     // 3) 交给 loader（校验 + 原子切换 + 热加载）
     let res;

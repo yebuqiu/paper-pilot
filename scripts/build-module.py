@@ -354,7 +354,7 @@ def module_stats(mod):
     return len(mod["files"]), total
 
 
-def build_index(doc, manifest_blobs, zip_sizes, bundle_meta=None):
+def build_index(doc, manifest_blobs, zip_sizes, bundle_meta=None, zip_hashes=None):
     """生成内置目录快照；sizeBytes 取实际 zip 字节数。"""
     version = doc["version"]
     host_min = doc["hostMin"]
@@ -370,6 +370,7 @@ def build_index(doc, manifest_blobs, zip_sizes, bundle_meta=None):
             "version": version,
             "description": mod["description"],
             "sizeBytes": zip_sizes[mid],
+            "zipSha256": (zip_hashes or {}).get(mid, ""),
             "fileCount": len(mod["files"]),
             "download": {
                 "github": "%s/releases/download/v%s/%s" % (gh, version, zip_name),
@@ -399,6 +400,7 @@ def build_index(doc, manifest_blobs, zip_sizes, bundle_meta=None):
             "version": version,
             "description": bundle["description"],
             "sizeBytes": zip_sizes[bid],
+            "zipSha256": (zip_hashes or {}).get(bid, ""),
             "fileCount": sum(len(b["mods_by_id"][m]["files"]) for m in bundle["modules"]),
             "bundle": True,
             "contains": list(bundle["modules"]),
@@ -462,6 +464,7 @@ def cmd_all(doc, no_zip):
         print("按主包 main.js 权威顺序重排模块文件（%d 个锚点）" % len(order))
     manifest_blobs = {}
     zip_sizes = {}
+    zip_hashes = {}
 
     # 第一遍：写 module.json，一切校验在此之前完成
     for mod in doc["modules"]:
@@ -480,6 +483,7 @@ def cmd_all(doc, no_zip):
         mid = mod["id"]
         blob = zip_bytes(mod, manifest_blobs[mid])
         zip_sizes[mid] = len(blob)
+        zip_hashes[mid] = hashlib.sha256(blob).hexdigest()
         out = DIST_DIR / ("%s-%s.zip" % (mid, version))
         if no_zip:
             print("跳过打包 %-32s 预计 %s" % (out.name, human(len(blob))))
@@ -507,6 +511,7 @@ def cmd_all(doc, no_zip):
             f.write(blob)
         zbytes = bundle_zip_bytes(bundle, mods_by_id, manifest_blobs, blob)
         zip_sizes[bundle["id"]] = len(zbytes)
+        zip_hashes[bundle["id"]] = hashlib.sha256(zbytes).hexdigest()
         bundle_meta.append({"bundle": bundle, "mods_by_id": mods_by_id})
         if not no_zip:
             out = DIST_DIR / ("%s-%s.zip" % (bundle["id"], version))
@@ -516,11 +521,21 @@ def cmd_all(doc, no_zip):
                   % (out.name, len(bundle["modules"]), human(len(zbytes))))
 
     write_globals(doc)
-    index = build_index(doc, manifest_blobs, zip_sizes, bundle_meta)
+    index = build_index(doc, manifest_blobs, zip_sizes, bundle_meta, zip_hashes)
     write_json(INDEX_FILE, index)
     print("-" * 78)
     print("索引 %s（%d 个模块，hostMin %s）"
           % (str(INDEX_FILE.relative_to(ROOT)), len(index["modules"]), index["hostMin"]))
+    # Ed25519 签名：私钥不进 git（_brain/keys/）；缺私钥时索引保持未签名并明示
+    import subprocess as _sp
+    _node = os.environ.get("PP_NODE") or "node"
+    try:
+        r = _sp.run([_node, str(ROOT / "scripts" / "sign-modules-index.js"), str(INDEX_FILE)],
+                    capture_output=True, text=True, timeout=60)
+        out = (r.stdout or "").strip() + (r.stderr or "").strip()
+        print("签名:", out or ("exit=%s" % r.returncode))
+    except (OSError, _sp.SubprocessError) as e:
+        print("签名: 跳过（%s）" % e)
     if no_zip:
         print("注意：--no-zip 未写 dist/modules/*.zip，索引体积按内存压缩结果计算")
 

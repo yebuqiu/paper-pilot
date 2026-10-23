@@ -76,6 +76,8 @@ def verify(mod):
     zp = zip_path_of(mod)
     if not zp.is_file():
         return ["缺少 zip：%s" % zp]
+    if mod.get("zipSha256") and hashlib.sha256(zp.read_bytes()).hexdigest() != mod["zipSha256"]:
+        return ["%s 清单 zipSha256 与 zip 不符" % mod["id"]]
     with zipfile.ZipFile(zp) as z:
         names = set(z.namelist())
         if "module.json" not in names:
@@ -108,6 +110,7 @@ def build_index(mods):
             "version": m["version"],
             "description": m.get("description", ""),
             "sizeBytes": zp.stat().st_size if zp.is_file() else 0,
+            "zipSha256": hashlib.sha256(zp.read_bytes()).hexdigest() if zp.is_file() else "",
             "fileCount": len(m.get("files") or []),
             "tags": list(m.get("tags") or []),
             "recommended": bool(m.get("recommended")),
@@ -136,6 +139,7 @@ def build_index(mods):
                 "version": b["version"],
                 "description": b.get("description", ""),
                 "sizeBytes": zp.stat().st_size if zp.is_file() else 0,
+                "zipSha256": hashlib.sha256(zp.read_bytes()).hexdigest() if zp.is_file() else "",
                 "fileCount": 0,
                 "tags": ["合集", "推荐"],
                 "recommended": True,
@@ -219,6 +223,13 @@ def main():
 
     INDEX_FILE.write_text(json.dumps(index, ensure_ascii=False, indent=2) + "\n",
                           encoding="utf-8")
+    import subprocess as _sp
+    try:
+        r = _sp.run(["node", str(ROOT / "scripts" / "sign-modules-index.js"), str(INDEX_FILE)],
+                    capture_output=True, text=True, timeout=60)
+        print("签名:", ((r.stdout or "") + (r.stderr or "")).strip())
+    except (OSError, _sp.SubprocessError) as e:
+        print("签名: 跳过（%s）" % e)
     if STAGE_DIR.exists():
         shutil.rmtree(STAGE_DIR)
     STAGE_DIR.mkdir(parents=True)

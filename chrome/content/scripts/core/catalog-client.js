@@ -127,7 +127,8 @@ var CatalogClient = {
           try {
             const data = await c.httpGet(url);
             if (c.validate) {
-              const v = c.validate(data);
+              // 0.74.1：允许异步校验（组件目录要做 Ed25519 验签）
+              const v = await c.validate(data);
               if (!v || !v.ok) throw new Error("目录结构非法：" + ((v && v.errors) || []).join("; "));
             }
             if (c.cachePref) {

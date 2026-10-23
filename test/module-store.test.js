@@ -443,12 +443,154 @@ async function testUpdatesAndTools() {
 /* ================= main ================= */
 
 async function main() {
+/* ================= ⑥ 完整性钉死与目录验签（0.74.1） ================= */
+
+async function testZipSha256Pin() {
+  const crypto = require('crypto');
+  const goodBytes = Buffer.from('fake-zip-bytes');
+
+  const mk = function (entryExtra, bytes, hashReturn) {
+    const cat = catalogOf([modEntry('papilot-mod-a', '1.2.0', entryExtra)]);
+    const manifest = {
+      id: 'papilot-mod-a', version: '1.2.0', apiVersion: 1, mode: 'scope',
+      files: [{ path: 'a.js', sha256: 'aa', size: 1 }],
+    };
+    let installCalls = 0;
+    const loader = {
+      API_VERSION: 1,
+      _pure: { compareVersion: cmp, validateManifest: function () { return { ok: true, errors: [] }; } },
+      _ensureDeps: function () {
+        return { baseDir: '/mem/papilot', hashFile: async function () { return hashReturn; } };
+      },
+      list: function () { return []; },
+      installFromZip: async function () { installCalls++; return { ok: true, id: 'papilot-mod-a', version: '1.2.0' }; },
+    };
+    const httpGet = async function (url) {
+      return url.indexOf('index.json') >= 0 ? cat : manifest;
+    };
+    const httpGetBytes = async function () { return new Uint8Array(bytes); };
+    return { st: makeStore({ loader: loader, httpGet: httpGet, httpGetBytes: httpGetBytes }),
+             count: function () { return installCalls; } };
+  };
+
+  // 匹配 → 放行
+  const good = mk({ zipSha256: 'deadbeef' }, goodBytes, 'deadbeef');
+  await good.st.store.fetchCatalog(false);
+  const r1 = await good.st.store.install('papilot-mod-a');
+  ok(r1.ok, 'zipSha256：匹配放行', r1);
+  eq(good.count(), 1, 'zipSha256：匹配时 installFromZip 被调用');
+
+  // 不符 → 拒绝且不交给 loader
+  const bad = mk({ zipSha256: 'deadbeef' }, goodBytes, 'cafef00d');
+  await bad.st.store.fetchCatalog(false);
+  const r2 = await bad.st.store.install('papilot-mod-a');
+  ok(!r2.ok, 'zipSha256：不符被拒');
+  has(r2.error, '完整性校验失败', 'zipSha256：错误文案');
+  eq(bad.count(), 0, 'zipSha256：不符时 installFromZip 未被调用');
+}
+
+/* 验签：真实 Ed25519（Node webcrypto） */
+async function testCatalogSignature() {
+  const crypto = require('crypto');
+  const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
+  const spkiB64 = Buffer.from(publicKey.export({ type: 'spki', format: 'der' })).toString('base64');
+
+  // 与 scripts/sign-modules-index.js 的 payloadOf 同构
+  function payloadOf(index) {
+    const mods = (index.modules || []).slice()
+      .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+    let s = 'papilot-modules-v1\n' + String(index.hostMin || '') + '\n';
+    for (const m of mods) {
+      s += String(m.id) + '|' + String(m.version) + '|' + String(m.zipSha256 || '') + '\n';
+    }
+    s += String(mods.length) + '\n';
+    return Buffer.from(s, 'utf8');
+  }
+  function sign(index) {
+    const sig = crypto.sign(null, payloadOf(index), privateKey);
+    return Object.assign({}, index, { signature: sig.toString('base64'), signatureAlgo: 'ed25519' });
+  }
+
+  const rawCat = catalogOf([modEntry('papilot-mod-a', '1.2.0', { zipSha256: 'aa' })]);
+  rawCat.hostMin = '0.74.1';
+
+  // 沙箱里注入带公钥的 fetch + 真实 webcrypto
+  function mkWithKey(httpData) {
+    const st = makeStore({
+      httpGet: async function (url) {
+        if (url.indexOf('index.json') >= 0) return httpData;
+        throw new Error('offline');
+      },
+    });
+    st.sandbox.fetch = async function (url) {
+      if (String(url).indexOf('signing-pubkey.json') >= 0) {
+        return { ok: true, json: async function () { return { key: spkiB64 }; } };
+      }
+      return { ok: false, json: async function () { return {}; } };
+    };
+    st.sandbox.Zotero = { Papilot: { rootURI: 'chrome://papilot/' } };
+    st.sandbox.crypto = crypto.webcrypto;
+    st.sandbox.TextEncoder = TextEncoder;
+    st.sandbox.atob = atob;
+    return st;
+  }
+
+  // 正确签名 → 通过
+  const stA = mkWithKey(sign(rawCat));
+  const rA = await stA.store.fetchCatalog(true);
+  ok(rA.ok, '验签：正确签名放行', rA);
+
+  // 篡改（换了 zipSha256 但签名是旧载荷的）→ 拒绝并降级
+  const tampered = sign(rawCat);
+  tampered.modules[0].zipSha256 = 'tampered';
+  const stB = mkWithKey(tampered);
+  const rB = await stB.store.fetchCatalog(true);
+  ok(!rB.ok, '验签：篡改载荷被拒');
+
+  // 有公钥但索引没签名 → 拒绝（防降级攻击）
+  const stC = mkWithKey(rawCat);
+  const rC = await stC.store.fetchCatalog(true);
+  ok(!rC.ok, '验签：缺签名被拒');
+
+  // crypto 不可用 → 降级接受 + 记诊断（不阻断老宿主）
+  const stD = makeStore({
+    httpGet: async function (url) {
+      if (url.indexOf('index.json') >= 0) return sign(rawCat);
+      throw new Error('offline');
+    },
+  });
+  stD.sandbox.fetch = async function (url) {
+    if (String(url).indexOf('signing-pubkey.json') >= 0) {
+      return { ok: true, json: async function () { return { key: spkiB64 }; } };
+    }
+    return { ok: false, json: async function () { return {}; } };
+  };
+  stD.sandbox.Zotero = { Papilot: { rootURI: 'chrome://papilot/' } };
+  // 不注入 crypto/TextEncoder → 触发降级
+  const rD = await stD.store.fetchCatalog(true);
+  ok(rD.ok, '验签：crypto 缺失降级接受');
+  has(stD.diagMsgs.join('\n'), 'signature check degraded', '验签：降级有诊断');
+
+  // 无公钥（0.74.0 过渡）→ 直接接受
+  const stE = makeStore({
+    httpGet: async function (url) {
+      if (url.indexOf('index.json') >= 0) return rawCat;
+      throw new Error('offline');
+    },
+  });
+  stE.sandbox.fetch = async function () { return { ok: false, json: async function () { return {}; } }; };
+  const rE = await stE.store.fetchCatalog(true);
+  ok(rE.ok, '验签：无公钥过渡期接受');
+}
+
   testValidateCatalog();
   await testFallback();
   await testListRows();
   testPlanAllows();
   await testInstallFlow();
   await testUpdatesAndTools();
+  await testZipSha256Pin();
+  await testCatalogSignature();
 
   if (fails.length) {
     console.log('');

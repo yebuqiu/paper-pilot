@@ -22,6 +22,7 @@ papilot-boot.log 判成败。
 
 import argparse
 import functools
+import hashlib
 import http.server
 import json
 import re
@@ -93,6 +94,7 @@ def start_catalog_server(dest):
             "version": m["version"],
             "description": m.get("description", ""),
             "sizeBytes": zp_src.stat().st_size,
+            "zipSha256": hashlib.sha256(zp_src.read_bytes()).hexdigest(),
             "fileCount": len(m.get("files") or []),
             "tags": m.get("tags") or [],
             "recommended": False,
@@ -119,6 +121,7 @@ def start_catalog_server(dest):
             "id": bid, "name": b["name"], "version": b["version"],
             "description": b.get("description", ""),
             "sizeBytes": zp_src.stat().st_size,
+            "zipSha256": hashlib.sha256(zp_src.read_bytes()).hexdigest(),
             "fileCount": 0, "tags": ["合集"], "recommended": True,
             "pro": False, "hot": False, "bundle": True,
             "contains": b.get("modules") or [],
@@ -129,8 +132,11 @@ def start_catalog_server(dest):
 
     index = {"schema": 1, "updated": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
              "modules": entries}
-    (dest / "index.json").write_text(
-        json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    idx_path = dest / "index.json"
+    idx_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 0.74.1 起插件对目录强制验签（包内有公钥时）：本地目录也要签
+    subprocess.run(["node", str(ROOT / "scripts" / "sign-modules-index.js"), str(idx_path)],
+                   capture_output=True, timeout=60)
 
     handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(dest))
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", port), handler)

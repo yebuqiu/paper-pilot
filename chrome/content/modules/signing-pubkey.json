@@ -1,0 +1,6 @@
+{
+  "kty": "OKP",
+  "crv": "Ed25519",
+  "key": "MCowBQYDK2VwAyEAPHuB471fd4PYxC/LVfRZ9ACKFFzPDETUvdrxHzu+jo8=",
+  "note": "Papilot 组件目录签名公钥；私钥在 _brain/keys/，永不入库"
+}
