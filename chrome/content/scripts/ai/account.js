@@ -53,7 +53,12 @@
  *   POST {server}/api/auth/logout   Authorization: Bearer <token> → 200 {ok:true}
  *   GET  {server}/api/auth/me       Bearer → 200 {ok:true, user:{...}, expiresAt?}（返回即滑动续期）
  *   POST {server}/api/auth/register {email,password,nickname} → 200 {ok,user,notice}
- *   GET  {server}/api/plans         → 200 {ok, plans:[...], priceOptions:[...], pay:{...}}
+ *   GET  {server}/api/plans         → 200 {ok, plans:[...], priceOptions:[...], pay:{...},
+ *     signupGrant:{amountMicro,validDays,scopeNote}|缺省, proMonthlyGrant:{amountMicro}|缺省}
+ *   POST {server}/api/auth/change-password Bearer {oldPassword,newPassword}
+ *     → 200 {ok:true}（全部会话含当前已吊销，客户端必须本地清 session 回登录视图）；旧服务端 404
+ *   GET  {server}/api/orders?limit=N Bearer → 200 {ok, orders:[...], count}；旧服务端 404
+ *   GET  {server}/api/balance/ledger?limit=N Bearer → 200 {ok, entries:[...]}；旧服务端 404
  *   POST {server}/api/orders        Bearer {plan,months} → 200 {ok, order}
  *   GET  {server}/api/orders/:id    Bearer → 200 {ok, order}
  *   POST {server}/api/orders/:id/claim Bearer → 200 {ok, order}（标记「我已付款」）
@@ -826,7 +831,86 @@ var Account = {
         : { available: false, channels: [] },
       // 1.8.4：订单金额是否加「唯一尾数」（默认 false = 所见即所付）
       tailEnabled: j.tailEnabled === true,
+      // 2026-10-23（R2）：注册赠送与 Pro 每月发放的额度文案真源。
+      // **旧服务端没有这两个块 → 透传 null**，面板据此回退硬编码文案（绝不空白）。
+      signupGrant: (j.signupGrant && typeof j.signupGrant === "object") ? {
+        amountMicro: Number(j.signupGrant.amountMicro) || 0,
+        validDays: Number(j.signupGrant.validDays) || 0,   // 0 = 永久有效
+        scopeNote: String(j.signupGrant.scopeNote || ""),
+      } : null,
+      proMonthlyGrant: (j.proMonthlyGrant && typeof j.proMonthlyGrant === "object") ? {
+        amountMicro: Number(j.proMonthlyGrant.amountMicro) || 0,
+      } : null,
     };
+  },
+
+  /**
+   * 自助修改密码（2026-10-23，R1；服务端 1.10.0）。
+   * 成功后**服务端已吊销该账号全部会话（含当前）**：本地必须墓碑清除 + 通知 UI 回登录视图。
+   * 失败抛可读中文错误；旧服务端没有该路由（404）时错误带 `err.unsupported = true`，
+   * 面板据此隐藏整个改密入口。
+   */
+  async changePassword(oldPassword, newPassword) {
+    oldPassword = String(oldPassword || "");
+    newPassword = String(newPassword || "");
+    if (!oldPassword || !newPassword) throw new Error("请填写当前密码与新密码");
+    if (newPassword.length < 8) throw new Error("新密码至少 8 位");
+    let resp;
+    try {
+      resp = await this._request("POST", "/api/auth/change-password",
+        { oldPassword, newPassword }, this.token(), 15000);
+    } catch (e) {
+      // 惰性能力探测：旧服务端 404 → 标记 unsupported（403 是锁定/WAF，不算不支持）
+      if (e && /404/.test(String(e.message || ""))) {
+        try { e.unsupported = true; } catch (_) { /* ignore */ }
+      }
+      throw e;
+    }
+    const j = resp.json || {};
+    if (!j.ok) throw new Error(j.error || "修改密码失败");
+    // 全部会话已被服务端吊销（含当前 token）——本地同步墓碑清除并回登录视图
+    this._session = null;
+    await this._wipe("password-changed");
+    this._notify();
+    return true;
+  },
+
+  /**
+   * 我的订单列表（2026-10-23，R4；服务端 1.10.0）：仅本人订单，createdAt 倒序。
+   * 应答已白名单化（不含 pay 块 / 交易号）。
+   * **旧服务端 404 → 返回 null**（面板整块隐藏），其余错误照常抛出。
+   */
+  async ordersList(limit) {
+    const n = Math.max(1, Math.min(50, Number(limit) || 10));
+    let resp;
+    try {
+      resp = await this._request("GET", "/api/orders?limit=" + n, null, this.token(), 10000);
+    } catch (e) {
+      if (e && /404/.test(String(e.message || ""))) return null;   // 旧服务端无此路由
+      throw e;
+    }
+    const j = resp.json || {};
+    if (!j.ok || !Array.isArray(j.orders)) return null;            // 形状不对同样按不支持降级
+    return { orders: j.orders, count: Number(j.count) || j.orders.length };
+  },
+
+  /**
+   * 最近扣费明细（2026-10-23，R5；服务端 1.10.0）：仅本人流水，新的在前。
+   * 每条 {at, delta, kind, label, deltaText}——label/deltaText 由服务端生成，前端零换算。
+   * **旧服务端 404 → 返回 null**（面板整块隐藏），其余错误照常抛出。
+   */
+  async balanceLedger(limit) {
+    const n = Math.max(1, Math.min(50, Number(limit) || 20));
+    let resp;
+    try {
+      resp = await this._request("GET", "/api/balance/ledger?limit=" + n, null, this.token(), 10000);
+    } catch (e) {
+      if (e && /404/.test(String(e.message || ""))) return null;   // 旧服务端无此路由
+      throw e;
+    }
+    const j = resp.json || {};
+    if (!j.ok || !Array.isArray(j.entries)) return null;
+    return { entries: j.entries };
   },
 
   /**

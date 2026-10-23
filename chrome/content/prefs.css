@@ -881,6 +881,42 @@
 }
 .pp-root .pp-mb-compare .pp-cmp-yes { color: var(--pp-success); font-weight: 700; }
 .pp-root .pp-mb-compare .pp-cmp-no { color: var(--pp-faint); }
+
+/* 2026-10-23 账号与会员增强（R1 改密表单 / R3 开通记录 / R4 我的订单 / R5 扣费明细） */
+.pp-root .pp-cpw-form {
+  margin: var(--pp-sp-1) 0 var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  border: 1px solid var(--pp-border);
+  border-radius: var(--pp-radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pp-sp-2);
+  max-width: 420px;
+}
+.pp-root .pp-mb-history,
+.pp-root .pp-orders-block,
+.pp-root .pp-ledger-block {
+  margin: var(--pp-sp-1) 0 var(--pp-sp-2);
+  padding: var(--pp-sp-1) var(--pp-sp-2h);
+  border: 1px dashed var(--pp-border);
+  border-radius: var(--pp-radius-sm);
+}
+.pp-root .pp-hist-row,
+.pp-root .pp-order-row,
+.pp-root .pp-ledger-row {
+  padding: var(--pp-sp-1) 0;
+  border-bottom: 1px dashed var(--pp-border);
+  font-size: var(--pp-fs-sm);
+  line-height: 1.5;
+}
+.pp-root .pp-hist-row:last-child,
+.pp-root .pp-order-row:last-child,
+.pp-root .pp-ledger-row:last-child { border-bottom: 0; }
+.pp-root .pp-row-sub {
+  margin-top: 1px;
+  font-size: var(--pp-fs-xs);
+  color: var(--pp-muted);
+}
 .pp-root .pp-mb-compare-note {
   padding: var(--pp-sp-2) var(--pp-sp-2h);
   font-size: var(--pp-fs-xs);

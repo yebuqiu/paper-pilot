@@ -425,7 +425,7 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
 
     // health
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.9.2', 'B42 服务端版本 1.8.0');
+    eq(h.version, '1.9.3', 'B42 服务端版本 1.8.0');
     eq(h.balanceEnforce, true, 'B43 health 暴露 enforce 状态');
     eq(h.signupGrantMicro, yuan(6), 'B44 health 暴露注册赠送额度');
 
@@ -441,6 +441,27 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
     eq(r.status, 200, 'B45 ★ auto 仍按基础档放行（只有注册赠送也能用）');
     const meA = (await req('GET', '/api/auth/me', null, tokA)).json.user;
     eq(meA.balance.grantedMicro, yuan(6) - 2000, 'B46 auto 从注册赠送扣费（未按高级档跳过赠送）');
+
+    /* ================= C. R2（1.9.3）：/api/plans 下发注册赠送 / Pro 月度额度两块 ================= */
+    let pl = (await req('GET', '/api/plans')).json;
+    ok(!!pl.signupGrant, 'C1 /api/plans 含 signupGrant 块（始终下发）');
+    eq(pl.signupGrant.amountMicro, yuan(6), 'C2 注册赠送金额 ¥6（微元）');
+    eq(pl.signupGrant.validDays, 30, 'C3 赠送有效期 30 天');
+    eq(pl.signupGrant.scopeNote, '仅限基础模型', 'C4 ★ scopeNote 固定「仅限基础模型」（对比表口径唯一真源）');
+    ok(!!pl.proMonthlyGrant, 'C5 /api/plans 含 proMonthlyGrant 块（始终下发）');
+    eq(pl.proMonthlyGrant.amountMicro, yuan(20), 'C6 Pro 每月发放 ¥20');
+
+    // 免发版改配置：管理接口改 signupGrantMicro → 重拉 /api/plans 即生效
+    r = await req('PUT', '/api/admin/pricing', { balance: { signupGrantMicro: yuan(10) } });
+    eq(r.status, 200, 'C7 管理接口改注册赠送额度成功');
+    pl = (await req('GET', '/api/plans')).json;
+    eq(pl.signupGrant.amountMicro, yuan(10), 'C8 ★ 配置改动即时下发（¥10，免发版）');
+
+    // signupValidDays=0（永久有效）如实下发 0，不下发 null
+    r = await req('PUT', '/api/admin/pricing', { balance: { signupValidDays: 0 } });
+    eq(r.status, 200, 'C9 管理接口改赠送有效期成功');
+    pl = (await req('GET', '/api/plans')).json;
+    eq(pl.signupGrant.validDays, 0, 'C10 ★ 永久有效如实下发 0（客户端据此渲染「永久有效」，不显示「0 天」）');
   } catch (e) {
     fails.push('异常中断：' + ((e && e.stack) || e));
   } finally {

@@ -814,7 +814,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.9.2'" in srv, "18.31 服务端版本号已随批次更新（1.9.2）")
+ok("version: '1.9.3'" in srv, "18.31 服务端版本号已随批次更新（1.9.3）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -929,7 +929,7 @@ ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余�
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.9.2'" in srv, "19.24 服务端版本随批次推进（1.9.2）")
+ok("version: '1.9.3'" in srv, "19.24 服务端版本随批次推进（1.9.3）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -1089,7 +1089,7 @@ ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/p
 for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
     ok(k in html, "21.31 admin.html 含 %s" % k)
 
-ok("version: '1.9.2'" in srv, "21.32 服务端版本 1.9.2")
+ok("version: '1.9.3'" in srv, "21.32 服务端版本 1.9.3")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 22. 多引擎翻译（插件 0.28.0） ----------
@@ -4158,6 +4158,55 @@ ok("_verifyCatalogSignature" in _ms_src2 and "zipSha256" in _ms_src2,
 ok("await c.validate" in io.open(os.path.join(
     ROOT, "chrome", "content", "scripts", "core", "catalog-client.js"), encoding="utf-8").read(),
    "65.6f catalog-client 的 validate 支持异步（验签需要）")
+
+# ---------- 66. 账号与会员增强（服务端 1.9.3 / 插件 0.76.0，2026-10-23） ----------
+# R1 自助改密 / R2 赠送文案下发 / R3 会员开通记录 / R4 我的订单 / R5 扣费明细 /
+# R6 对比表口径 / R8 余额不足联动。静默失败面：服务端加了路由但审计名漏一处、
+# 面板加了 id 但 JS 没引用、对比表回退文案与 plans 下发的 scopeNote 口径漂移。
+_ACCT_API = io.open(os.path.join(ROOT, "chrome", "content", "scripts", "ai", "account.js"),
+                    encoding="utf-8").read()
+_AUDIT_JS = io.open(os.path.join(ROOT, "server", "lib", "audit.js"), encoding="utf-8").read()
+
+# R1 服务端：路由 + 审计中文名两处同步（audit.js 与 launcher 的 Get-AuditText）
+ok("url === '/api/auth/change-password'" in srv, "66.1 服务端含 change-password 路由")
+ok("'user.change-password'" in _AUDIT_JS and "修改密码" in _AUDIT_JS,
+   "66.2 audit.js 含 user.change-password 中文名「修改密码」")
+ok("'user.change-password'" in ps and "修改密码" in ps,
+   "66.3 launcher 的 Get-AuditText 同步 user.change-password「修改密码」")
+
+# R1/R4/R5 面板契约层（account.js 封装）
+ok("changePassword" in _ACCT_API and "/api/auth/change-password" in _ACCT_API,
+   "66.4 account.js 暴露 changePassword 并打 change-password 路由")
+ok("unsupported" in _ACCT_API, "66.5 account.js 改密 404 → err.unsupported 降级标记")
+ok("ordersList" in _ACCT_API and "/api/orders?limit=" in _ACCT_API,
+   "66.6 account.js 暴露 ordersList 并打 /api/orders 列表路由")
+ok("balanceLedger" in _ACCT_API and "/api/balance/ledger?limit=" in _ACCT_API,
+   "66.7 account.js 暴露 balanceLedger 并打 /api/balance/ledger 路由")
+ok("signupGrant" in _ACCT_API and "proMonthlyGrant" in _ACCT_API,
+   "66.8 account.js plans() 透传 signupGrant/proMonthlyGrant")
+
+# R4/R5/R2 服务端：路由与下发块
+ok("method === 'GET' && url === '/api/orders'" in srv, "66.9 服务端含 GET /api/orders 列表分支")
+ok("'/api/balance/ledger'" in srv and "method === 'GET' && url === '/api/balance/ledger'" in srv,
+   "66.10 服务端含 /api/balance/ledger 路由（含守卫名单）")
+ok("signupGrant" in srv and "proMonthlyGrant" in srv, "66.11 /api/plans 下发 signupGrant/proMonthlyGrant")
+
+# 面板元素 id：xhtml 存在 + prefs-account.js 引用（缺一即「点了没反应」）
+for _eid66 in ["pp-cpw-toggle", "pp-mb-history-toggle", "pp-orders-toggle", "pp-ledger-toggle",
+               "pp-bal-open-channels", "pp-login-grant-hint", "pp-cmp-grant-free", "pp-cmp-grant-pro",
+               "pp-cpw-form", "pp-cpw-old", "pp-cpw-new", "pp-cpw-new2", "pp-cpw-submit",
+               "pp-cpw-cancel", "pp-cpw-msg", "pp-mb-history", "pp-orders-block", "pp-orders-list",
+               "pp-orders-msg", "pp-ledger-block", "pp-ledger-list"]:
+    ok(('id="%s"' % _eid66) in prefs_xhtml, "66.12 prefs.xhtml 含增强元素 #%s" % _eid66)
+    ok(('"%s"' % _eid66) in prefs_js, "66.13 prefs-account.js 引用 #%s" % _eid66)
+
+# R6 对比表口径：硬编码回退与 plans 下发 scopeNote 同源（「仅限基础模型」唯一真源）
+_cmp_free = re.search(r'id="pp-cmp-grant-free"[^>]*>(.*?)</html:td>', prefs_xhtml, re.S)
+ok(bool(_cmp_free) and "仅限基础模型" in _cmp_free.group(1) and "注册赠送" in _cmp_free.group(1),
+   "66.14 ★ 对比表「注册赠送」格含 scopeNote 口径「仅限基础模型」")
+ok("每月发放" in prefs_xhtml and "不结转" in prefs_xhtml,
+   "66.15 对比表专业版格回退文案含「每月发放…不结转」口径")
+ok("scopeNote" in prefs_js, "66.16 prefs-account.js 消费 plans 下发的 scopeNote")
 
 print("=" * 60)
 for p in passes:

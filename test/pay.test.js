@@ -301,7 +301,7 @@ function orderOnDisk(id) {
     // 默认状态：未启用
     let r = await req(PORT, 'GET', '/api/health');
     eq(r.json.onlinePay, false, 'C1 health：默认未开通在线支付');
-    eq(r.json.version, '1.9.2', 'C2 服务端版本 1.8.4');
+    eq(r.json.version, '1.9.3', 'C2 服务端版本 1.8.4');
     r = await req(PORT, 'GET', '/api/plans');
     eq(r.json.onlinePay.available, false, 'C3 /api/plans：未开通时 available=false');
 

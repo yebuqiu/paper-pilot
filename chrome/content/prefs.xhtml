@@ -63,7 +63,7 @@
     <html:div class="pp-card-body">
       <!-- 未登录：登录表单（0.15.0 起不再提供服务器地址入口，固定连接官方服务） -->
       <html:div id="pp-login-view">
-        <html:div class="pp-hint" style="margin-top:10px;">登录账号即可使用官方模型（注册赠送 ¥6 额度，专业版每月发放 ¥20 额度）；没有账号点「注册账号」——直接在下面填表注册，不用跳浏览器。</html:div>
+        <html:div id="pp-login-grant-hint" class="pp-hint" style="margin-top:10px;">登录账号即可使用官方模型（注册赠送 ¥6 额度，专业版每月发放 ¥20 额度）；没有账号点「注册账号」——直接在下面填表注册，不用跳浏览器。</html:div>
         <html:div class="pp-grid2">
           <html:label class="pp-field">
             <html:span class="pp-label">邮箱</html:span>
@@ -126,6 +126,30 @@
         </html:div>
         <html:div id="pp-account-meta" class="pp-account-meta"></html:div>
 
+        <!-- 修改密码（2026-10-23，R1）：成功即吊销全部会话（含本机）→ 回登录视图用新密码重登。
+             旧服务端（无 /api/auth/change-password）→ 入口整块隐藏，不占屏不报错。 -->
+        <html:button type="button" id="pp-cpw-toggle" class="pp-link-btn" aria-expanded="false" style="display:none;">修改密码 ▾</html:button>
+        <html:div id="pp-cpw-form" class="pp-cpw-form" style="display:none;">
+          <html:label class="pp-field">
+            <html:span class="pp-label">当前密码</html:span>
+            <html:input type="password" id="pp-cpw-old" class="pp-input" placeholder="正在使用的密码"/>
+          </html:label>
+          <html:label class="pp-field">
+            <html:span class="pp-label">新密码（至少 8 位）</html:span>
+            <html:input type="password" id="pp-cpw-new" class="pp-input" placeholder="至少 8 位"/>
+          </html:label>
+          <html:label class="pp-field">
+            <html:span class="pp-label">确认新密码</html:span>
+            <html:input type="password" id="pp-cpw-new2" class="pp-input" placeholder="再输一次新密码"/>
+          </html:label>
+          <html:div class="pp-row pp-row-tight">
+            <html:button id="pp-cpw-submit" class="pp-btn pp-btn-primary pp-btn-sm">确认修改</html:button>
+            <html:button id="pp-cpw-cancel" class="pp-btn pp-btn-sm">取消</html:button>
+            <html:span id="pp-cpw-msg" class="pp-msg" aria-live="polite"></html:span>
+          </html:div>
+          <html:div class="pp-hint">修改成功后全部设备（含本机）都会退出登录，需要用新密码重新登录。</html:div>
+        </html:div>
+
         <!-- ===== 0.23.0 会员（等级 / 到期 / 购买 / 激活码） ===== -->
         <html:div id="pp-mb-block" class="pp-mb">
           <html:div class="pp-mb-head">
@@ -136,6 +160,10 @@
           <!-- 到期/已过期提醒横幅（0.24.4：剩余 ≤7 天出现，点击直接打开续费面板） -->
           <html:button type="button" id="pp-mb-renew" class="pp-mb-renew" style="display:none;"></html:button>
           <html:div id="pp-mb-features" class="pp-mb-features"></html:div>
+          <!-- 开通/续期记录（2026-10-23，R3）：来源 = membership.history（≤10 条，会话缓存直读）；
+               无记录 / 旧服务端无该字段 → 整块隐藏 -->
+          <html:button type="button" id="pp-mb-history-toggle" class="pp-link-btn" aria-expanded="false" style="display:none;">开通/续期记录 ▾</html:button>
+          <html:div id="pp-mb-history" class="pp-mb-history" style="display:none;"></html:div>
           <!-- 消耗趋势（0.46.0：今日/近 7 天金额 + 近 7 天迷你柱状图；不再显示调用次数上限） -->
           <html:div id="pp-mb-usage" class="pp-mb-usage" style="display:none;"></html:div>
           <!-- ===== 0.26.0 AI 额度余额（注册赠送 / 订阅额度 / 充值） ===== -->
@@ -146,6 +174,8 @@
             </html:div>
             <html:div id="pp-bal-detail" class="pp-bal-detail"></html:div>
             <html:div id="pp-bal-note" class="pp-hint"></html:div>
+            <!-- 余额不足联动（2026-10-23，R8）：仅额度不足/透支时出现，点击展开「模型通道」卡 -->
+            <html:button type="button" id="pp-bal-open-channels" class="pp-link-btn" style="display:none;">接入自己的模型通道继续用</html:button>
             <html:div class="pp-row pp-row-tight">
               <html:button id="pp-bal-recharge-toggle" class="pp-btn pp-btn-primary pp-btn-sm">充值额度</html:button>
               <html:button id="pp-bal-refresh" class="pp-btn pp-btn-sm">刷新</html:button>
@@ -178,6 +208,12 @@
                 <html:div id="pp-bal-pay-result" class="pp-msg" aria-live="polite"></html:div>
               </html:div>
             </html:div>
+          </html:div>
+          <!-- 最近扣费明细（2026-10-23，R5）：GET /api/balance/ledger 只读视图（label/deltaText
+               由服务端生成，前端零换算）；旧服务端无接口 → 整块隐藏 -->
+          <html:button type="button" id="pp-ledger-toggle" class="pp-link-btn" aria-expanded="false" style="display:none;">最近扣费明细 ▾</html:button>
+          <html:div id="pp-ledger-block" class="pp-ledger-block" style="display:none;">
+            <html:div id="pp-ledger-list"></html:div>
           </html:div>
           <html:div class="pp-row pp-row-tight">
             <html:button id="pp-mb-upgrade" class="pp-btn pp-btn-primary pp-btn-sm">升级专业版</html:button>
@@ -227,6 +263,13 @@
               <html:div id="pp-mb-pay-result" class="pp-msg" aria-live="polite"></html:div>
             </html:div>
           </html:div>
+          <!-- 我的订单（2026-10-23，R4）：GET /api/orders 只读列表（仅本人、倒序、无收款信息）；
+               旧服务端无接口 → 整块隐藏 -->
+          <html:button type="button" id="pp-orders-toggle" class="pp-link-btn" aria-expanded="false" style="display:none;">我的订单 ▾</html:button>
+          <html:div id="pp-orders-block" class="pp-orders-block" style="display:none;">
+            <html:div id="pp-orders-list"></html:div>
+            <html:div id="pp-orders-msg" class="pp-msg" aria-live="polite"></html:div>
+          </html:div>
           <!-- 0.60.2 免费版 vs 专业版对照表：把「会员与非会员到底差在哪」一次说清。
              内容按**真实门控**写，不照抄营销文案：除了 AI 额度 / 模型范围 /
              第三方文献源（试验）与支持方式，其余核心功能免费版同样可用。
@@ -245,8 +288,8 @@
             <html:tbody>
               <html:tr>
                 <html:td class="pp-cmp-k">AI 额度</html:td>
-                <html:td>注册赠送 ¥6<br/><html:span class="pp-cmp-sub">30 天内有效</html:span></html:td>
-                <html:td class="pp-cmp-pro">每月 ¥20<br/><html:span class="pp-cmp-sub">当月有效，不结转</html:span></html:td>
+                <html:td id="pp-cmp-grant-free">注册赠送 ¥6<br/><html:span class="pp-cmp-sub">30 天内有效 · 仅限基础模型</html:span></html:td>
+                <html:td id="pp-cmp-grant-pro" class="pp-cmp-pro">每月 ¥20<br/><html:span class="pp-cmp-sub">每月发放，当月有效，不结转</html:span></html:td>
               </html:tr>
               <html:tr>
                 <html:td class="pp-cmp-k">官方模型</html:td>

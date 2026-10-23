@@ -9,6 +9,8 @@
  *   POST /api/auth/login     {email,password} → {ok,token,expiresAt,user} | 401
  *   POST /api/auth/logout    Bearer → {ok:true}
  *   GET  /api/auth/me        Bearer → {ok,user,expiresAt}（滑动续期）
+ *   POST /api/auth/change-password （1.9.3）Bearer {oldPassword,newPassword} → 自助改密
+ *                                  （验旧密码与登录共享锁定计数；成功即吊销该账号全部会话含当前）
  *   GET  /v1/models          Bearer → OpenAI 格式
  *   POST /v1/chat/completions Bearer → 转发活动通道上游（SSE 流式透传，auto→通道模型）
  *   GET  /register           公开自助注册页（public/register.html）
@@ -60,6 +62,10 @@
  *   POST /api/orders/:id/cancel     Bearer → 取消未支付订单
  *   POST /api/orders/:id/pay        （1.7.0）发起在线支付 {channel:wxpay|alipay} → {payUrl}
  *   POST /api/orders/:id/query      （1.7.0）主动查单：网关回调丢包时的兜底，确认即自动入账
+ *   GET  /api/orders                （1.9.3）Bearer ?limit=N → 本人订单列表（白名单序列化：
+ *                                     不含 pay 块 / outTradeNo / tradeNo / payChannel / 券内部 id）
+ *   GET  /api/balance/ledger        （1.9.3）Bearer ?limit=N → 本人余额流水（新的在前，
+ *                                     带 label 与带符号 deltaText；只读不审计、不落盘）
  *   GET  /api/pay/notify            （1.7.0）**公开**：网关异步回调（验签→商户号→状态→金额→幂等履约）
  *   GET  /api/pay/return            （1.7.0）**公开**：支付完成同步返回页（轮询 + 引导回插件）
  *   GET  /api/pay/return/status     （1.7.0）**公开**：返回页轮询用（只回是否已支付，不泄露细节）
@@ -2559,7 +2565,7 @@ function healthSnapshot(deg, detail) {
     const bl = backlogNow();
     const ast = audit.stats(DATA_DIR);
     _healthCache = {
-      ok: true, service: 'papilot-account-server', version: '1.9.2',
+      ok: true, service: 'papilot-account-server', version: '1.9.3',
       // 以下活性字段每次响应都会覆盖为实时值（见下方 Object.assign）
       uptime: Math.round(process.uptime()), now: new Date().toISOString(),
       pid: process.pid,                 // 控制台据此显示 PID，不必再查 WMI / Get-NetTCPConnection
@@ -2870,11 +2876,27 @@ const server = http.createServer(async (req, res) => {
           error: '邮箱未验证：请查收验证邮件并点击激活链接；未收到可在注册页点「重新发送」' });
       }
       lockout.reset(user);            // 登录成功清零失败计数与锁定
+      // 1.9.3（R7）新设备登录提醒：必须在 issueToken **之前**判定（签发后本设备就「已知」了）。
+      // 无 deviceId（旧客户端）→ 不判定、不发信（无法去重，宁可不发）。
+      const loginDevice = sessions.deviceFromHeaders(req.headers);
+      const isNewDevice = !!(loginDevice && loginDevice.deviceId)
+        && !sessions.deviceKnown(usersStore.data, user.id, loginDevice.deviceId);
       const token = issueToken(user.id, { req });
       user.lastLoginAt = new Date().toISOString();
       pruneTokens();
       usersStore.save();
       log('login ok:', user.email);
+      if (isNewDevice && mail.configured()) {
+        // fire-and-forget：绝不 await 进响应路径；发信失败只记日志，不影响登录、不产生 5xx
+        mail.sendLoginAlertMail(user.email, {
+          at: user.lastLoginAt,
+          deviceName: loginDevice.deviceLabel || loginDevice.platform || '未上报名称的设备',
+          ipMasked: sessions.maskIp(ip),       // 完整 IP 不进邮件
+        }).then((m) => {
+          if (m && !m.ok) log('login alert mail failed:', user.email, m.error);
+          else log('login alert mail sent (new device):', user.email);
+        }).catch((e) => log('login alert mail error:', user.email, e && e.message));
+      }
       return json(res, 200, {
         ok: true, token,
         expiresAt: new Date(Date.now() + TOKEN_TTL_MS).toISOString(),
@@ -2909,14 +2931,63 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    /* 1.9.3（R1）自助修改密码：验旧密码 → 换新 → 吊销全部会话（含当前）→ 审计。
+     * 处理顺序为硬顺序（与 /api/auth/reset 同构）：
+     *   限速 → lockout.status → 验旧密码 → 强度校验 → snapshot → 换 salt/hash
+     *   → lockout.reset → 删该用户全部 token → save → auditLog。
+     * 旧密码错误计入 lockout.registerFailure（与登录共享失败计数与阶梯锁定）。 */
+    if (method === 'POST' && url === '/api/auth/change-password') {
+      const user = userByToken(req);
+      if (!user) return json(res, 401, { ok: false, error: '登录已过期' });
+      if (rateThrottled('changepw:' + user.id, LOGIN_MAX, LOGIN_WINDOW_MS)) {
+        return json(res, 429, { ok: false, error: '操作过于频繁，请稍后再试' });
+      }
+      // 与登录同语义：锁定期内即使旧密码正确也拒绝
+      const lst = lockout.status(user);
+      if (lst.locked) {
+        log('change-password blocked (locked):', user.email, 'remain=' + lst.remainMinutes + 'min');
+        return json(res, 403, { ok: false, code: 'account_locked',
+          lockUntil: lst.lockUntil, remainMinutes: lst.remainMinutes,
+          error: lockout.lockedMessage(lst) });
+      }
+      let input;
+      try { input = await readBody(req); } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+      if (!verifyPassword(user, String((input && input.oldPassword) || ''))) {
+        const st = lockout.registerFailure(user, { ip: clientIp(req) });
+        usersStore.save();
+        log('change-password failed (bad old password):', user.email, 'failCount=' + st.failCount);
+        return json(res, 401, { ok: false, error: '旧密码不正确' });
+      }
+      if (String((input && input.newPassword) || '').length < 8) {
+        return json(res, 400, { ok: false, error: '新密码至少 8 位' });
+      }
+      snapshot('users-change', { note: '修改密码：' + user.email });
+      user.salt = crypto.randomBytes(16).toString('hex');
+      user.hash = hashPassword(input.newPassword, user.salt);
+      lockout.reset(user);
+      // 改密 = 吊销该用户全部既有令牌（含当前会话；与 /api/auth/reset 同款写法）
+      for (const [tok, rec] of Object.entries(usersStore.data.tokens || {})) {
+        if (rec && rec.userId === user.id) delete usersStore.data.tokens[tok];
+      }
+      usersStore.save();
+      // 审计体不含密码明文/哈希（redact 兜底；这里 after 干脆不放任何敏感字段）
+      auditLog(req, 'user.change-password', { target: user.email, note: '自助修改密码，全部会话已吊销' });
+      log('password self-changed:', user.email);
+      return json(res, 200, { ok: true });
+    }
+
     /* --- 插件契约：会员（0.23.0） --- */
 
     // 套餐目录：公开接口（未登录也能看价格，便于登录前决策）
     if (method === 'GET' && url === '/api/plans') {
       return json(res, 200, Object.assign({ ok: true },
         membership.plansForClient(membershipStore.data),
-        // 1.6.0 充值档位（插件据此展示「充值」入口）
-        { rechargeOptions: balance.rechargeOptionsForClient(balanceCfg()),
+        // 1.9.3（R2）注册赠送 / Pro 月度额度两块：**始终下发，缺省给 0 不给 null**
+        //   （旧客户端无此字段时回退硬编码文案；新客户端按 0 隐藏、按 validDays=0 渲染「永久有效」）
+        { signupGrant: balance.signupGrantForClient(balanceCfg()),
+          proMonthlyGrant: { amountMicro: membership.proMonthlyGrantOf(membershipStore.data) },
+          // 1.6.0 充值档位（插件据此展示「充值」入口）
+          rechargeOptions: balance.rechargeOptionsForClient(balanceCfg()),
           recharge: { enforce: balanceCfg().enforce, minBalanceMicro: balanceCfg().minBalanceMicro },
           // 1.7.0 在线支付可用性（插件据此决定「在线支付」按钮是否出现；未开通时走收款码）
           onlinePay: onlinePayReady()
@@ -2926,6 +2997,7 @@ const server = http.createServer(async (req, res) => {
 
     if (url === '/api/membership' || url === '/api/orders' || url === '/api/redeem'
         || url === '/api/coupons/validate' || url.startsWith('/api/orders/')
+        || url === '/api/balance/ledger'
         || url === '/api/user/secrets' || url.startsWith('/api/user/secrets/')
         || url === '/api/sessions' || url.startsWith('/api/sessions/')) {
       const user = userByToken(req);
@@ -3154,6 +3226,31 @@ const server = http.createServer(async (req, res) => {
         log('order created:', user.email, r.order.plan, r.order.months + 'm',
           '¥' + r.order.amount, r.order.couponCode ? ('coupon=' + r.order.couponCode) : '');
         return json(res, 200, { ok: true, order: membership.orderOut(membershipStore.data, r.order) });
+      }
+
+      // 1.9.3（R5）余额流水：仅本人、新的在前、带 label/deltaText 文案。
+      //   读操作：限速 + 不审计（同 GET /api/sessions 惯例）；读路径不调 save()。
+      if (method === 'GET' && url === '/api/balance/ledger') {
+        if (rateThrottled('ledger:' + user.id, PAY_QUERY_MAX, LOGIN_WINDOW_MS)) {
+          return json(res, 429, { ok: false, error: '查询过于频繁，请稍后再试' });
+        }
+        const limit = Math.max(1, Math.min(50,
+          Math.round(Number(new URLSearchParams(query).get('limit')) || 20)));
+        return json(res, 200, { ok: true, entries: balance.ledgerForClient(user, { limit }) });
+      }
+
+      // 1.9.3（R4）我的订单列表：仅本人、createdAt 倒序、白名单序列化
+      //   （orderListOut 绝不含 pay 块 / outTradeNo / tradeNo / payChannel / 券内部 id）。
+      //   读操作：限速 + 不审计。须位于下方 /api/orders/:id 分支之前。
+      if (method === 'GET' && url === '/api/orders') {
+        if (rateThrottled('orders-list:' + user.id, PAY_QUERY_MAX, LOGIN_WINDOW_MS)) {
+          return json(res, 429, { ok: false, error: '查询过于频繁，请稍后再试' });
+        }
+        const limit = Math.max(1, Math.min(50,
+          Math.round(Number(new URLSearchParams(query).get('limit')) || 10)));
+        const orders = membership.ordersOfUser(membershipStore.data, user.id, { limit })
+          .map((o) => membership.orderListOut(membershipStore.data, o));
+        return json(res, 200, { ok: true, orders, count: orders.length });
       }
 
       const om = url.match(/^\/api\/orders\/([a-zA-Z0-9-]+)(\/claim|\/cancel)?$/);

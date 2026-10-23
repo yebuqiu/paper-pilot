@@ -3,6 +3,17 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.76.0",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.76.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "账号与会员增强：自助修改密码（踢全部设备+审计）、新设备登录邮件提醒、我的订单/开通记录/扣费明细三个折叠区、赠送额度文案改服务端下发（口径不再漂移）、余额不足一键打开模型通道、对比表补仅限基础模型；服务端 1.9.3"
+        },
+        {
           "version": "0.75.2",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.75.2.xpi",
           "applications": {

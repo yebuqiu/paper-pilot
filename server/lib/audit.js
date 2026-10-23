@@ -33,6 +33,7 @@ const ACTIONS = {
   'user.create': '新建用户',
   'user.update': '修改用户',
   'user.password': '重置密码',
+  'user.change-password': '修改密码',
   'user.delete': '删除用户',
   'user.unlock': '解除登录锁定',
   'user.membership': '开通/续期会员',

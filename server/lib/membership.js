@@ -1071,6 +1071,48 @@ function orderStatusText(s) {
     cancelled: '已取消', expired: '已过期' }[s] || s;
 }
 
+/* ---------------- 1.9.3：客户端读视图（R2 Pro 月度额度 / R4 我的订单） ---------------- */
+
+/** R2：Pro 每月发放额度（/api/plans 下发用；缺省给 0 不给 null） */
+function proMonthlyGrantOf(doc) {
+  return Math.max(0, Math.round(Number(planOf(doc, 'Pro').monthlyGrantMicro) || 0));
+}
+
+/** R4：某用户的订单（**仅本人**，createdAt 倒序；limit 钳制 [1,50] 默认 10） */
+function ordersOfUser(doc, userId, { limit } = {}) {
+  const lim = Math.max(1, Math.min(50, Math.round(Number(limit) || 10)));
+  return ((doc && doc.orders) || [])
+    .filter((o) => o && o.userId === userId)
+    .slice()
+    .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0))
+    .slice(0, lim);
+}
+
+/**
+ * R4：订单列表的**白名单**序列化 —— 禁止复用 orderOut（它带 pay 块）。
+ * 绝不含：pay 块（收款码/收款账户）、outTradeNo、tradeNo、payChannel、优惠券内部 id。
+ * status 原始枚举下发（pending/claimed/fulfilled/cancelled/expired），中文映射在客户端。
+ * 充值单（kind='credit'）：plan 为 null、cycleName 为 ''（没有计费周期概念）。
+ */
+function orderListOut(doc, o) {
+  const isCredit = o.kind === 'credit';
+  const cents = amountCentsOf(o);
+  return {
+    id: o.id,
+    kind: isCredit ? 'credit' : 'plan',
+    plan: isCredit ? null : (o.plan || null),
+    planName: isCredit ? 'AI 额度充值' : planOf(doc, o.plan).name,
+    months: Number(o.months) || 0,
+    perpetual: !isCredit && (!!o.perpetual || Number(o.months) === 0),
+    cycleName: isCredit ? '' : cycleName(o.cycle || cycleOfMonths(o.months)),
+    status: String(o.status || ''),
+    amountCents: cents,
+    amountText: '¥' + (cents / 100).toFixed(2),
+    createdAt: o.createdAt,
+    note: o.note || '',
+  };
+}
+
 /* ---------------- 激活码 ---------------- */
 
 function codeOut(c) {
@@ -1159,6 +1201,7 @@ module.exports = {
   upsertPriceItem, removePriceItem, hasActivePrice, effectivePrice, rangesOverlap,
   membershipOf, grantMembership, hasGrantRef,
   orderOut, reapOrders, createOrder, createCreditOrder, findOrder, findOrderByTradeNo, claimOrder, cancelOrder, fulfillOrder,
+  proMonthlyGrantOf, ordersOfUser, orderListOut,
   PERPETUAL, isPerpetual, monthsLabel, TAIL_MIN, TAIL_MAX,
   tailActive, baseCentsOf, amountCentsOf, originalCentsOf, assignTail,
   orderStatusText,

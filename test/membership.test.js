@@ -23,6 +23,7 @@ let PORT = 0;            // 端口由系统分配（listen(0) 后回读）：避
 process.env.PP_DATA_DIR = DATA_DIR;
 process.env.PP_PORT = String(PORT);
 delete process.env.PP_RESEND_KEY; // 邮件关闭 → 注册直接激活，测试不依赖外网
+process.env.PP_PAY_MAX = '500';   // R4 列表测试要连造 12 笔订单，放开下单限速（默认值另有下单限速套件覆盖）
 
 const serverPath = path.join(__dirname, '..', 'server', 'account-server.js');
 const { server } = require(serverPath);
@@ -355,6 +356,74 @@ function daysBetween(iso) { return Math.round((Date.parse(iso) - Date.now()) / D
     eq(promoRow.enabled, false, '13.48 停用状态已落盘');
     eq(promoRow.priority, 2, '13.49 优先级已落盘');
     void orderBeforePromo;
+
+    /* ============ 14. R4 我的订单列表（GET /api/orders，1.9.3） ============ */
+    // u2 连造 12 笔订单（验证默认 10 条与钳制）；u1 此前已有数笔（含 1 笔已核销的季单）
+    const u2OrderIds = [];
+    let allCreated = true;
+    for (let i = 0; i < 12; i++) {
+      const ro = await req('POST', '/api/orders', { plan: 'Pro', months: 1 }, t2);
+      if (ro.status !== 200) allCreated = false;
+      else u2OrderIds.push(ro.json.order.id);
+    }
+    ok(allCreated && u2OrderIds.length === 12, '14.1 u2 连造 12 笔订单', u2OrderIds.length);
+
+    // 默认 10 条、?limit=500 钳到 50、倒序
+    r = await req('GET', '/api/orders', undefined, t2);
+    eq(r.status, 200, '14.2 订单列表接口可用');
+    eq(r.json.count, 10, '14.3 ★ 默认返回近 10 条');
+    eq(r.json.orders.length, 10, '14.4 orders 与 count 一致');
+    r = await req('GET', '/api/orders?limit=500', undefined, t2);
+    eq(r.json.orders.length, 12, '14.5 ★ limit=500 钳制到 50（本账号 12 条全返回）');
+    let desc = true;
+    for (let i = 1; i < r.json.orders.length; i++) {
+      if (Date.parse(r.json.orders[i - 1].createdAt) < Date.parse(r.json.orders[i].createdAt)) desc = false;
+    }
+    ok(desc, '14.6 ★ createdAt 倒序（新的在前）');
+    eq(r.json.orders.map((o) => o.id).sort().join(','), u2OrderIds.slice().sort().join(','),
+      '14.7 列表恰好覆盖 u2 的全部 12 笔订单');
+
+    // 白名单序列化：绝不含 pay 块 / 交易号 / 券内部 id；契约字段齐全
+    const FORBIDDEN = ['pay', 'qrImage', 'qrText', 'outTradeNo', 'tradeNo', 'payChannel', 'couponId'];
+    const REQUIRED = ['id', 'kind', 'plan', 'planName', 'months', 'perpetual', 'cycleName',
+      'status', 'amountCents', 'amountText', 'createdAt', 'note'];
+    ok(r.json.orders.every((o) => FORBIDDEN.every((k) => !(k in o))),
+      '14.8 ★ 每条均不含 pay/outTradeNo/tradeNo/payChannel/couponId 等敏感字段');
+    ok(r.json.orders.every((o) => REQUIRED.every((k) => k in o)),
+      '14.9 每条均含契约要求的 12 个字段');
+    ok(r.json.orders.every((o) => o.kind === 'plan' && o.status === 'pending'),
+      '14.10 status 原始枚举下发（这批都是 pending）');
+
+    // 仅本人：A 的列表不含 B 的订单 id；A 的已核销季单字段正确
+    r = await req('GET', '/api/orders?limit=50', undefined, token);
+    ok(!r.json.orders.some((o) => u2OrderIds.indexOf(o.id) >= 0), '14.11 ★ A 的列表不含 B 的订单');
+    const fulfilled3m = r.json.orders.find((o) => o.id === order.id);
+    ok(!!fulfilled3m, '14.12 A 能看到自己的已核销订单');
+    eq(fulfilled3m.status, 'fulfilled', '14.13 已核销订单状态原样下发');
+    eq(fulfilled3m.planName, '专业版', '14.14 planName 为中文套餐名');
+    eq(fulfilled3m.cycleName, '按季', '14.15 cycleName 为计费周期中文名');
+    eq(fulfilled3m.amountText, '¥79.00', '14.16 amountText 服务端格式化（前端零换算）');
+    eq(fulfilled3m.perpetual, false, '14.17 非永久订单 perpetual=false');
+
+    // 充值单：plan=null、cycleName=''、kind='credit'
+    const rc = await req('POST', '/api/orders', { kind: 'credit', optionId: 'rc10' }, token);
+    eq(rc.status, 200, '14.18 充值单下单成功');
+    r = await req('GET', '/api/orders?limit=50', undefined, token);
+    const creditRow = r.json.orders.find((o) => o.id === rc.json.order.id);
+    eq(creditRow.kind, 'credit', '14.19 充值单 kind=credit');
+    eq(creditRow.plan, null, '14.20 充值单 plan=null');
+    eq(creditRow.planName, 'AI 额度充值', '14.21 充值单 planName=AI 额度充值');
+    eq(creditRow.cycleName, '', '14.22 充值单无计费周期（cycleName 为空串）');
+    eq(creditRow.perpetual, false, '14.23 充值单 perpetual=false（不被误判成永久会员）');
+
+    // 鉴权与限速
+    r = await req('GET', '/api/orders');
+    eq(r.status, 401, '14.24 未带 token → 401');
+    await req('POST', '/api/auth/register', { email: 'u3@test.local', password: 'pw12345678' });
+    const t3 = (await req('POST', '/api/auth/login', { email: 'u3@test.local', password: 'pw12345678' })).json.token;
+    let lastList = null;
+    for (let i = 0; i < 13; i++) lastList = await req('GET', '/api/orders', undefined, t3);
+    eq(lastList.status, 429, '14.25 ★ 每账号每分钟 12 次上限 → 第 13 次 429', lastList.status);
   } catch (e) {
     failures.push('异常中断：' + (e && e.stack || e));
   } finally {

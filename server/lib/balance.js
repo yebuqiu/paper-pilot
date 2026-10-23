@@ -651,6 +651,66 @@ function rechargeOptionsForClient(cfg) {
   }));
 }
 
+/* ---------------- 1.9.3：客户端读视图（R2 注册赠送块 / R5 余额流水） ---------------- */
+
+/**
+ * R2：/api/plans 下发的「注册赠送」块。**始终下发，缺省给 0 不给 null**——
+ * 客户端按 amountMicro===0 隐藏「注册赠送」字样；validDays===0 = 永久有效。
+ */
+function signupGrantForClient(cfg) {
+  const c = cfg || newCfg();
+  return {
+    amountMicro: micro(c.signupGrantMicro, 0),
+    validDays: Math.max(0, Math.round(Number(c.signupValidDays) || 0)),
+    scopeNote: '仅限基础模型',     // 与 R6 对比表口径一致的唯一真源
+  };
+}
+
+/**
+ * R5：流水条目的中文标签（服务端生成，客户端零映射）。
+ * 未知 kind 原样下发 String(kind)（验收兜底），不猜、不丢。
+ */
+function ledgerLabel(entry) {
+  const e = entry || {};
+  const kind = String(e.kind || '');
+  const reason = String(e.reason || '').trim();
+  switch (kind) {
+    case 'consume': return reason || 'AI 调用';
+    case 'signup': return '注册赠送';
+    case 'recharge': return '额度充值';
+    case 'adjust': return reason || '管理员调整';
+    case 'grant-expire': return '注册赠送额度到期回收';
+    case 'plan-grant': return '订阅额度发放';
+    case 'plan-expire': return '订阅额度到期回收';
+    default: return kind;
+  }
+}
+
+/** 带符号金额文案：正数前缀 '+'、负数前缀 '−'（U+2212，沿用 discountText 惯例），前端零换算 */
+function deltaText(delta) {
+  const v = Math.round(Number(delta) || 0);
+  if (v > 0) return '+' + pricing.microText(v);
+  if (v < 0) return '−' + pricing.microText(-v);
+  return pricing.microText(0);
+}
+
+/**
+ * R5：客户端可见的余额流水（**新的在前**，limit 钳制 [1,50] 默认 20）。
+ * 内部走 sweep(ensure(user)) 拿到到期清零后的真实视图——sweep 可能惰性改内存，
+ * 但**读路径不调 save()**（与 /api/auth/me 的 1.9.1 节流口径一致，变更由下一写路径落盘）。
+ */
+function ledgerForClient(user, { limit } = {}) {
+  const lim = Math.max(1, Math.min(50, Math.round(Number(limit) || 20)));
+  const b = sweep(ensure(user));
+  return b.ledger.slice(-lim).reverse().map((e) => ({
+    at: e.at,
+    delta: Math.round(Number(e.delta) || 0),
+    kind: String(e.kind || ''),
+    label: ledgerLabel(e),
+    deltaText: deltaText(e.delta),
+  }));
+}
+
 module.exports = {
   LEDGER_KEEP, DEFAULT_CFG, DEFAULT_RECHARGE_OPTIONS, MICRO_PER_YUAN: pricing.MICRO_PER_YUAN,
   HOLDS_MAX, HOLD_TTL_MS,
@@ -662,4 +722,5 @@ module.exports = {
   hasRef,
   viewOf, userView, adminView,
   rechargeOptionOf, rechargeOptionsForClient,
+  signupGrantForClient, ledgerLabel, deltaText, ledgerForClient,
 };

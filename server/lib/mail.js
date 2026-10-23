@@ -89,6 +89,12 @@ function send({ subject, text, html, to }) {
 
 /* ---------- 邮件模板 ---------- */
 
+/** HTML 转义（设备名/IP 等外部可控内容进邮件正文前必须过一遍） */
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function linkButton(url, label) {
   return '<div style="margin:26px 0">' +
     '<a href="' + url + '" style="display:inline-block;background:#2563eb;color:#ffffff;' +
@@ -130,4 +136,35 @@ function sendResetMail(to, url) {
   });
 }
 
-module.exports = { configured, fromAddress, publicBaseUrl, send, sendVerifyMail, sendResetMail };
+/**
+ * 新设备登录提醒（1.9.3，R7）。
+ * 调用方必须是 fire-and-forget（.catch 只记日志），**绝不 await 进登录响应路径**——
+ * 发信失败不影响登录、不产生 5xx。
+ * @param {string} to 收件邮箱
+ * @param {{at?:string, deviceName?:string, ipMasked?:string}} info
+ *   deviceName 已由调用方清洗（deviceLabel || platform || '未上报名称的设备'）；
+ *   ipMasked 必须是 sessions.maskIp 的打码结果 —— **完整 IP 不进邮件**。
+ */
+function sendLoginAlertMail(to, { at, deviceName, ipMasked } = {}) {
+  const when = String(at || new Date().toISOString());
+  const dev = String(deviceName || '').trim() || '未上报名称的设备';
+  const ip = String(ipMasked || '').trim() || '未知';
+  const guide = '如果不是你本人，请立即在 设置 → 账号与会员 中修改密码（会踢掉全部登录设备）。';
+  return send({
+    to,
+    subject: '【Papilot】新设备登录提醒',
+    text: '你的 Papilot 账号刚刚在一台新设备上登录：\n\n'
+      + '时间：' + when + '\n'
+      + '设备：' + dev + '\n'
+      + '来源 IP：' + ip + '（已打码）\n\n'
+      + '如果是你本人操作，无需处理。\n' + guide,
+    html: pageWrap('你的 Papilot 账号刚刚在一台<b>新设备</b>上登录：',
+      '<div style="background:#f3f4f6;border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.9">'
+      + '时间：' + escHtml(when) + '<br>'
+      + '设备：' + escHtml(dev) + '<br>'
+      + '来源 IP：' + escHtml(ip) + '（已打码）</div>'
+      + '<p>如果是你本人操作，无需处理。<br><b style="color:#b91c1c">' + escHtml(guide) + '</b></p>'),
+  });
+}
+
+module.exports = { configured, fromAddress, publicBaseUrl, send, sendVerifyMail, sendResetMail, sendLoginAlertMail };

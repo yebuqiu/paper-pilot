@@ -347,6 +347,24 @@ function view(state, info) {
   };
 }
 
+/**
+ * 1.9.3（R7 新设备登录提醒）：该 deviceId 是否已出现在此账号的**未过期**令牌里。
+ * 这是「是否新设备」的唯一判据 —— 令牌表是唯一持久化会话事实源，不另建已知设备表。
+ * 无 deviceId（旧客户端）→ 返回 false，由调用方决定**不发信**（无法去重，宁可不发）；
+ * 令牌 30 天过期后同设备重登会再发一次（视为新的登录事件，可接受）。
+ */
+function deviceKnown(doc, userId, deviceId, { now } = {}) {
+  const want = String(deviceId || '').toLowerCase();
+  if (!want) return false;
+  const t = Number.isFinite(now) ? now : Date.now();
+  for (const rec of Object.values((doc && doc.tokens) || {})) {
+    if (!rec || rec.userId !== userId) continue;
+    if (!(Number(rec.expiresAt) > t)) continue;      // 过期令牌不算（与 sessionsOf 口径一致）
+    if (String(rec.deviceId || '').toLowerCase() === want) return true;
+  }
+  return false;
+}
+
 /* ---------------- 令牌撤销（踢设备） ---------------- */
 
 /** 一条会话记录的 sid：优先取记录里已保存的，缺失才由令牌散列推导。
@@ -401,7 +419,7 @@ function digestOf(list) {
 module.exports = {
   SID_LEN, DEFAULT_ACTIVE_DAYS, DEFAULT_MAX_DEVICES, DEFAULT_REPEAT_H, DAY_MS,
   activeDays, maxDevices, repeatMs,
-  sidOf, maskIp, cleanLabel, pickHeader, deviceFromHeaders,
+  sidOf, maskIp, cleanLabel, pickHeader, deviceFromHeaders, deviceKnown,
   recordStart, recordSeen, setLabel, backfill,
   sessionsOf, sessionsOfDetailed, countActive, countActiveAll, countActiveAllDetailed,
   needsBackfill, isActive, sessionOut, revocable, sidOfRec,

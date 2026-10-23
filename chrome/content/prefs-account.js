@@ -33,6 +33,13 @@
     catch (e) { return new Date(ms).toLocaleString(); }
   };
 
+  /** 服务端时间字段（ISO 字符串或毫秒）→ 本地可读时间；解析不了就原样显示 */
+  const fmtAt = (v) => {
+    const ms = typeof v === "number" ? v : Date.parse(v);
+    if (!Number.isFinite(ms)) return String(v == null ? "" : v);
+    return fmtDate(ms);
+  };
+
   /* ---------- 敏感信息掩码（0.14.7；0.43.2 升级完全隐藏）：接口地址**永远**掩码 ----------
    * 防窥屏常开：账号服务器地址与 AI 通道 baseUrl 一律完整隐藏主机名（不再提供
    * 「显示完整地址」出口——排查连接问题看「连接测试」结果即可，不需要看明文）。 */
@@ -118,7 +125,9 @@
     $("pp-account-view").style.display = loggedIn ? "" : "none";
     if (!loggedIn) {
       $("pp-login-password").value = "";
+      syncCpw();           // 未登录：改密入口收起
       renderAiTierNote();
+      renderGrantCopy();   // 登录提示句在登录视图上，未登录也要保持刷新
       return;
     }
     const u = A.user() || {};
@@ -138,6 +147,8 @@
     if (A.expiresAt()) bits.push("会话有效期至 " + fmtDate(A.expiresAt()));
     bits.push("服务器 " + displayUrl(A.serverUrl()).replace(/^https?:\/\//, ""));
     $("pp-account-meta").textContent = bits.join(" ｜ ");
+    syncCpw();             // 已登录且服务端支持时才出现「修改密码」入口
+    renderGrantCopy();     // R2：注册赠送/每月发放文案随 plans 下发
     fillOfficialModelSelect();
   }
 
@@ -280,6 +291,7 @@
       mbPlans = null;
       mbSel = null;
       mbOrder = null;
+      resetEnhancements();   // R1/R4/R5/R8 的缓存与降级标记随账号作废
       OrderDlg.close();          // 0.49.0：旧账号的付款单不得留在屏幕上
       const payBox = $("pp-mb-pay");
       if (payBox) payBox.style.display = "none";
@@ -303,6 +315,7 @@
     stopMbPolling();
     mbOrder = null;
     mbSel = null;
+    resetEnhancements();     // R1/R4/R5/R8 的缓存与降级标记随登出作废
     OrderDlg.close();            // 0.49.0：登出后付款单不得残留
     const payBox = $("pp-mb-pay");
     if (payBox) payBox.style.display = "none";
@@ -830,6 +843,14 @@
     try {
       mbPlans = await A.plans();
       mbOnline = (mbPlans && mbPlans.onlinePay) || { available: false, channels: [] };
+      // R2：套餐目录是赠送文案的另一真源（登录后拉到的更新鲜），顺手刷新三处文案
+      if (mbPlans && (mbPlans.signupGrant != null || mbPlans.proMonthlyGrant != null)) {
+        grantCopy = {
+          signupGrant: mbPlans.signupGrant || null,
+          proMonthlyGrant: mbPlans.proMonthlyGrant || null,
+        };
+        renderGrantCopy();
+      }
       if (!mbSel) mbSel = pickDefaultOption(mbOptions());
     } catch (e) {
       if (force) throw e;
@@ -938,6 +959,7 @@
     }
 
     renderMbUsage();
+    renderMbHistory();   // R3：开通/续期记录（无 history → 整块隐藏）
     renderPersistWarn();
   }
 
@@ -992,6 +1014,374 @@
     } else {
       w.style.display = "none";
     }
+  }
+
+  /* ==================== 账号与会员增强（2026-10-23，R1/R2/R3/R4/R5/R8） ====================
+   * 共同纪律：
+   *  - 折叠交互复用 pp-mb-compare-toggle 同款模式（链接外观真按钮 + aria-expanded +
+   *    display:none 容器），不引入新 UI 框架；
+   *  - 异步渲染函数**自己包 try**（renderAll 同步调用它们，未捕获拒绝会打挂测试进程）；
+   *  - 旧服务端降级一律「整块隐藏」（toggle 与容器一起 display:none），不报错占屏；
+   *  - 文案零 emoji。
+   */
+
+  /* ---------- 折叠区工厂（compare-toggle 同款：状态变量单向写 DOM，不反读 inline style） ---------- */
+
+  let histFold = null;    // R3 开通/续期记录
+  let ordersFold = null;  // R4 我的订单
+  let ledgerFold = null;  // R5 最近扣费明细
+
+  /**
+   * 链接按钮折叠区。onOpen：每次展开时触发（用于重新拉取数据）。
+   * 返回 { isShown(), sync() }；整块隐藏由渲染函数直接操作 toggle/box 的 display。
+   */
+  function makeFold(toggleId, boxId, label, onOpen) {
+    const tg = $(toggleId);
+    const box = $(boxId);
+    let shown = false;
+    const sync = () => {
+      if (box) box.style.display = shown ? "" : "none";
+      if (tg) {
+        tg.textContent = label + (shown ? " ▴" : " ▾");
+        tg.setAttribute("aria-expanded", shown ? "true" : "false");
+      }
+    };
+    sync();   // 先对齐一次（文案/aria 与收起态一致）
+    const toggle = () => {
+      shown = !shown;
+      sync();
+      if (shown && typeof onOpen === "function") {
+        try { onOpen(); } catch (e) { /* 数据刷新失败不影响折叠动作 */ }
+      }
+    };
+    if (tg) {
+      tg.addEventListener("click", toggle);
+      tg.addEventListener("keydown", (e) => {
+        if (!e) return;
+        const k = e.key;
+        if (k !== "Enter" && k !== " " && k !== "Spacebar") return;
+        if (e.preventDefault) e.preventDefault();   // 空格不滚页面
+        toggle();
+      });
+    }
+    return { isShown: () => shown, sync };
+  }
+
+  /** 换账号 / 登出时作废旧账号的增强区缓存与降级标记 */
+  function resetEnhancements() {
+    cpwUnsupported = false;
+    cpwShown = false;
+    ordersLoaded = false;
+    ordersCache = null;
+    ledgerLoaded = false;
+    ledgerCache = null;
+  }
+
+  /* ---------- R1 修改密码 ---------- */
+
+  let cpwShown = false;       // 表单展开态（变量持有，不反读 inline style）
+  let cpwUnsupported = false; // 旧服务端（404）惰性探测结果：入口整块隐藏
+
+  /** 改密入口可见性：已登录 + 未探测到不支持 才出现；表单随展开态 */
+  function syncCpw() {
+    const A = account();
+    const tg = $("pp-cpw-toggle");
+    const form = $("pp-cpw-form");
+    const loggedIn = !!(A && A.isLoggedIn && A.isLoggedIn());
+    if (tg) {
+      tg.style.display = (loggedIn && !cpwUnsupported) ? "" : "none";
+      tg.setAttribute("aria-expanded", cpwShown ? "true" : "false");
+      tg.textContent = "修改密码" + (cpwShown ? " ▴" : " ▾");
+    }
+    if (form) form.style.display = (loggedIn && !cpwUnsupported && cpwShown) ? "" : "none";
+  }
+
+  function onCpwToggle() {
+    cpwShown = !cpwShown;
+    if (cpwShown) {
+      mbSetMsg("pp-cpw-msg", "", "var(--pp-muted)");
+    }
+    syncCpw();
+    if (cpwShown) { try { const o = $("pp-cpw-old"); if (o) o.focus(); } catch (e) { /* ignore */ } }
+  }
+
+  function onCpwCancel() {
+    cpwShown = false;
+    for (const id of ["pp-cpw-old", "pp-cpw-new", "pp-cpw-new2"]) {
+      try { const n = $(id); if (n) n.value = ""; } catch (e) { /* ignore */ }
+    }
+    mbSetMsg("pp-cpw-msg", "", "var(--pp-muted)");
+    syncCpw();
+  }
+
+  async function onCpwSubmit() {
+    // ★ 整个函数体包 try：异步函数里的同步抛错同样会变未捕获拒绝
+    try {
+      const A = account();
+      const btn = $("pp-cpw-submit");
+      if (!A || !btn || !A.isLoggedIn()) return;
+      const oldPw = String(($("pp-cpw-old") || {}).value || "");
+      const newPw = String(($("pp-cpw-new") || {}).value || "");
+      const newPw2 = String(($("pp-cpw-new2") || {}).value || "");
+      const say = (t, color) => mbSetMsg("pp-cpw-msg", t, color);
+      if (!oldPw || !newPw) return say("请填写当前密码与新密码", "var(--pp-danger)");
+      if (newPw.length < 8) return say("新密码至少 8 位", "var(--pp-danger)");
+      if (newPw !== newPw2) return say("两次输入的新密码不一致", "var(--pp-danger)");
+      btn.disabled = true;
+      say("正在修改…", "var(--pp-muted)");
+      try {
+        await A.changePassword(oldPw, newPw);
+      } catch (e) {
+        btn.disabled = false;
+        if (e && e.unsupported) {
+          // 旧服务端没有该路由：入口整块隐藏，提示挪到账号行（隐藏的 msg 用户看不到）
+          cpwUnsupported = true;
+          cpwShown = false;
+          syncCpw();
+          mbSetMsg("pp-account-result", "服务端版本过旧，暂不支持在线改密码", "var(--pp-muted)");
+          return;
+        }
+        say("✗ " + ((e && e.message) || "修改失败"), "var(--pp-danger)");
+        return;
+      }
+      // 成功：服务端已吊销全部会话（含本机），account.js 已本地清 session 并 _notify
+      // （renderAll 随之回登录视图）。反馈写在刷新之后，否则会被刷新覆盖。
+      cpwShown = false;
+      for (const id of ["pp-cpw-old", "pp-cpw-new", "pp-cpw-new2"]) {
+        try { const n = $(id); if (n) n.value = ""; } catch (e) { /* ignore */ }
+      }
+      renderAll();
+      const lr = $("pp-login-result");
+      if (lr) {
+        lr.textContent = "密码已修改，全部设备已退出，请用新密码登录";
+        lr.style.color = "var(--pp-success)";
+      }
+    } catch (e) {
+      try { mbSetMsg("pp-cpw-msg", "✗ " + ((e && e.message) || "修改失败"), "var(--pp-danger)"); } catch (e2) { /* ignore */ }
+      try { const btn = $("pp-cpw-submit"); if (btn) btn.disabled = false; } catch (e2) { /* ignore */ }
+    }
+  }
+
+  /* ---------- R2 注册赠送 / 每月发放文案（plans 下发，三处渲染；拉不到 → 硬编码回退） ---------- */
+
+  // undefined = 尚未拉取；null = 旧服务端无下发（保持 xhtml 硬编码）；对象 = 已下发
+  let grantCopy;    // {signupGrant:{amountMicro,validDays,scopeNote}|null, proMonthlyGrant:{amountMicro}|null}
+  let grantTried = false;
+
+  /** plans 应答里的赠送文案块（account.js 已归一化；旧服务端两块皆 null） */
+  function grantParts(gc) {
+    const parts = [];
+    const sg = gc && gc.signupGrant;
+    const pg = gc && gc.proMonthlyGrant;
+    if (sg && Number(sg.amountMicro) > 0) {
+      parts.push("注册赠送 " + microTxt(sg.amountMicro) + " 额度（"
+        + (Number(sg.validDays) > 0 ? Number(sg.validDays) + " 天内有效" : "永久有效") + "）");
+    }
+    if (pg && Number(pg.amountMicro) > 0) {
+      parts.push("专业版每月发放 " + microTxt(pg.amountMicro) + " 额度");
+    }
+    return parts;
+  }
+
+  /** 对比表「AI 额度」行的一格。grant 缺失（旧服务端）→ 不动，保留 xhtml 硬编码回退 */
+  function paintGrantCell(cell, grant, kind) {
+    if (!cell || !grant || typeof grant !== "object") return;
+    cell.innerHTML = "";
+    if (Number(grant.amountMicro) > 0) {
+      if (kind === "free") {
+        cell.appendChild(el("div", null, "注册赠送 " + microTxt(grant.amountMicro)));
+        const sub = [Number(grant.validDays) > 0 ? Number(grant.validDays) + " 天内有效" : "永久有效"];
+        if (grant.scopeNote) sub.push(String(grant.scopeNote));
+        cell.appendChild(el("span", { class: "pp-cmp-sub" }, sub.join(" · ")));
+      } else {
+        cell.appendChild(el("div", null, "每月 " + microTxt(grant.amountMicro)));
+        cell.appendChild(el("span", { class: "pp-cmp-sub" }, "当月有效，不结转"));
+      }
+    } else {
+      // amountMicro = 0：隐藏「注册赠送/每月发放」说法，如实标注不赠送
+      cell.appendChild(el("div", null, "—"));
+      cell.appendChild(el("span", { class: "pp-cmp-sub" },
+        kind === "free" ? "注册不赠送额度" : "无每月赠送额度"));
+    }
+  }
+
+  function renderGrantCopy() {
+    const gc = grantCopy;
+    if (gc === undefined || gc === null) return;   // 未拉取 / 旧服务端：保留硬编码，绝不空白
+    const hint = $("pp-login-grant-hint");
+    if (hint) {
+      const parts = grantParts(gc);
+      const tail = "；没有账号点「注册账号」——直接在下面填表注册，不用跳浏览器。";
+      hint.textContent = parts.length
+        ? "登录账号即可使用官方模型（" + parts.join("，") + "）" + tail
+        : "登录账号即可使用官方模型" + tail;
+    }
+    paintGrantCell($("pp-cmp-grant-free"), gc.signupGrant, "free");
+    paintGrantCell($("pp-cmp-grant-pro"), gc.proMonthlyGrant, "pro");
+  }
+
+  /** 独立拉取赠送文案（登录提示在未登录视图也要渲染，不能走 ensurePlans 的登录门槛） */
+  async function loadGrantCopy() {
+    try {
+      const A = account();
+      if (!A || typeof A.plans !== "function") return;
+      const p = await A.plans();
+      if (!p || (p.signupGrant == null && p.proMonthlyGrant == null)) return;  // 旧服务端：保持回退
+      grantCopy = { signupGrant: p.signupGrant || null, proMonthlyGrant: p.proMonthlyGrant || null };
+      renderGrantCopy();
+    } catch (e) { /* 拉不到就保持 xhtml 硬编码文案 */ }
+  }
+
+  /* ---------- R3 开通/续期记录（membership.history 直读，≤10 条） ---------- */
+
+  const MB_SOURCE = { order: "购买", code: "激活码", admin: "管理员开通",
+    manual: "管理员赠送", legacy: "历史迁移" };
+
+  function renderMbHistory() {
+    const tg = $("pp-mb-history-toggle");
+    const box = $("pp-mb-history");
+    if (!tg || !box) return;
+    const A = account();
+    const m = (A && A.isLoggedIn() && typeof A.membership === "function") ? A.membership() : null;
+    const hist = (m && Array.isArray(m.history)) ? m.history.filter(Boolean).slice(0, 10) : [];
+    if (!hist.length) {   // 无记录 / 旧服务端无该字段 → 整块隐藏
+      tg.style.display = "none";
+      box.style.display = "none";
+      return;
+    }
+    tg.style.display = "";
+    box.style.display = (histFold && histFold.isShown()) ? "" : "none";
+    box.innerHTML = "";
+    for (const h of hist) {
+      const src = MB_SOURCE[h.source] || String(h.source || "未知");
+      const planName = h.plan === "Pro" ? "专业版" : (h.plan === "Free" ? "免费版" : String(h.plan || "会员"));
+      const dur = h.perpetual ? "永久" : ((Number(h.months) || 0) > 0 ? Number(h.months) + " 个月" : "");
+      const row = el("div", { class: "pp-hist-row" });
+      row.appendChild(el("div", null, src + " · " + planName + (dur ? " · " + dur : "")));
+      row.appendChild(el("div", { class: "pp-row-sub" },
+        (h.at ? fmtAt(h.at) : "时间未知") + (h.note ? " · " + String(h.note) : "")));
+      box.appendChild(row);
+    }
+  }
+
+  /* ---------- R4 我的订单（GET /api/orders 只读列表） ---------- */
+
+  // 契约枚举映射（与内联订单区的 MB_STATUS 口径不同：这里面向「订单台账」，fulfilled = 已入账）
+  const ORDER_STATUS_TXT = { pending: "待支付", claimed: "待核销", fulfilled: "已入账",
+    cancelled: "已取消", expired: "已过期" };
+
+  let ordersLoaded = false;   // 本次面板生命周期内是否拉过
+  let ordersCache = null;     // null = 旧服务端/失败（整块隐藏）
+
+  async function renderOrders() {
+    // ★ 自己包 try：renderAll 同步调用，未捕获拒绝会打挂测试
+    try {
+      const A = account();
+      const tg = $("pp-orders-toggle");
+      const block = $("pp-orders-block");
+      const list = $("pp-orders-list");
+      if (!A || !tg || !block || !list) return;
+      if (!A.isLoggedIn()) { tg.style.display = "none"; block.style.display = "none"; return; }
+      if (!ordersLoaded) {
+        ordersLoaded = true;
+        ordersCache = (typeof A.ordersList === "function") ? await A.ordersList(10) : null;
+      }
+      if (!ordersCache || !Array.isArray(ordersCache.orders)) {   // 旧服务端 404 → 整块隐藏
+        tg.style.display = "none";
+        block.style.display = "none";
+        return;
+      }
+      tg.style.display = "";
+      block.style.display = (ordersFold && ordersFold.isShown()) ? "" : "none";
+      list.innerHTML = "";
+      mbSetMsg("pp-orders-msg", ordersCache.orders.length ? "" : "暂无订单记录", "var(--pp-muted)");
+      for (const o of ordersCache.orders) {
+        if (!o || typeof o !== "object") continue;
+        const bits = [String(o.planName || (o.kind === "credit" ? "AI 额度充值" : "会员订单"))];
+        if (o.kind !== "credit") {
+          bits.push(o.perpetual ? "永久"
+            : ((Number(o.months) || 1) + " 个月" + (o.cycleName ? "（" + o.cycleName + "）" : "")));
+        }
+        bits.push(o.amountText || ("¥" + ((Number(o.amountCents) || 0) / 100).toFixed(2)));
+        const row = el("div", { class: "pp-order-row" });
+        row.appendChild(el("div", null, bits.join(" · ")));
+        row.appendChild(el("div", { class: "pp-row-sub" },
+          (ORDER_STATUS_TXT[o.status] || String(o.status || "未知"))
+          + " · " + (o.createdAt ? fmtAt(o.createdAt) : "时间未知")
+          + (o.note ? " · " + String(o.note) : "")));
+        list.appendChild(row);
+      }
+    } catch (e) {
+      // 网络层瞬时失败：允许下一次 renderAll 重试（404 走上面的 null 分支，不会到这里）
+      ordersLoaded = false;
+      try { const tg = $("pp-orders-toggle"); if (tg) tg.style.display = "none"; } catch (e2) { /* ignore */ }
+      try { const b = $("pp-orders-block"); if (b) b.style.display = "none"; } catch (e2) { /* ignore */ }
+    }
+  }
+
+  /* ---------- R5 最近扣费明细（GET /api/balance/ledger 只读视图） ---------- */
+
+  let ledgerLoaded = false;
+  let ledgerCache = null;     // null = 旧服务端/失败（整块隐藏）
+
+  async function renderLedger() {
+    // ★ 自己包 try：同上
+    try {
+      const A = account();
+      const tg = $("pp-ledger-toggle");
+      const block = $("pp-ledger-block");
+      const list = $("pp-ledger-list");
+      if (!A || !tg || !block || !list) return;
+      if (!A.isLoggedIn()) { tg.style.display = "none"; block.style.display = "none"; return; }
+      if (!ledgerLoaded) {
+        ledgerLoaded = true;
+        ledgerCache = (typeof A.balanceLedger === "function") ? await A.balanceLedger(20) : null;
+      }
+      if (!ledgerCache || !Array.isArray(ledgerCache.entries)) {   // 旧服务端 404 → 整块隐藏
+        tg.style.display = "none";
+        block.style.display = "none";
+        return;
+      }
+      tg.style.display = "";
+      block.style.display = (ledgerFold && ledgerFold.isShown()) ? "" : "none";
+      list.innerHTML = "";
+      if (!ledgerCache.entries.length) {
+        list.appendChild(el("div", { class: "pp-hint" }, "暂无扣费记录"));
+      }
+      for (const en of ledgerCache.entries) {
+        if (!en || typeof en !== "object") continue;
+        const row = el("div", { class: "pp-ledger-row" });
+        // label / deltaText 由服务端生成（前端零换算），直接渲染
+        row.appendChild(el("div", null,
+          String(en.label || en.kind || "扣费") + "　" + String(en.deltaText || "")));
+        row.appendChild(el("div", { class: "pp-row-sub" }, en.at ? fmtAt(en.at) : "时间未知"));
+        list.appendChild(row);
+      }
+    } catch (e) {
+      // 网络层瞬时失败：允许下一次 renderAll 重试（404 走上面的 null 分支，不会到这里）
+      ledgerLoaded = false;
+      try { const tg = $("pp-ledger-toggle"); if (tg) tg.style.display = "none"; } catch (e2) { /* ignore */ }
+      try { const b = $("pp-ledger-block"); if (b) b.style.display = "none"; } catch (e2) { /* ignore */ }
+    }
+  }
+
+  /* ---------- R8 余额不足联动：一键展开「模型通道」卡 ---------- */
+
+  function onBalOpenChannels() {
+    try {
+      const fold = (typeof window !== "undefined" && window.PapilotPrefsFold) || null;
+      let card = null;
+      try {
+        if (typeof document !== "undefined" && document && typeof document.querySelector === "function") {
+          card = document.querySelector('[data-fold="channels"]');
+        }
+      } catch (e) { /* 迷你 DOM 无 querySelector：按「卡存在」处理 */ }
+      // ★ 必须走 open()：直写 classList 不写 prefsFoldOpen，下次开面板又收起（已知坑）
+      if (fold && typeof fold.open === "function") fold.open("channels");
+      if (card && typeof card.scrollIntoView === "function") {
+        try { card.scrollIntoView({ block: "start", behavior: "smooth" }); } catch (e) { card.scrollIntoView(); }
+      }
+    } catch (e) { /* 联动失败不影响余额区本身 */ }
   }
 
   /* ---------- 下单 ---------- */
@@ -1499,6 +1889,20 @@
     } else {
       note.textContent = "AI 调用按实际用量从余额扣费（无调用次数上限）：注册赠送仅限基础模型，订阅额度与充值额度可用于全部模型。";
       note.style.color = "var(--pp-muted)";
+    }
+
+    // R8：额度不足 / 透支时在说明条旁给出「接入自己的模型通道」直达按钮；
+    // channels 卡不存在（面板结构变化）时按钮隐藏，不留死入口
+    const oc = $("pp-bal-open-channels");
+    if (oc) {
+      let chCardExists = true;
+      try {
+        if (typeof document !== "undefined" && document && typeof document.querySelector === "function") {
+          chCardExists = !!document.querySelector('[data-fold="channels"]');
+        }
+      } catch (e) { chCardExists = true; }
+      const insufficient = !!b.overdraft || (!!b.enforce && b.totalMicro <= (b.minBalanceMicro || 0));
+      oc.style.display = (insufficient && chCardExists) ? "" : "none";
     }
 
     const tg = $("pp-bal-recharge-toggle");
@@ -2272,6 +2676,9 @@
     try { renderDevices(); } catch (e) { /* ignore */ }
     try { renderMembership(); } catch (e) { /* ignore */ }
     try { renderBalance(); } catch (e) { /* ignore */ }
+    // R4/R5：订单与扣费明细同样异步拉取、失败自行整块隐藏（函数内部已包 try）
+    try { renderOrders(); } catch (e) { /* ignore */ }
+    try { renderLedger(); } catch (e) { /* ignore */ }
     try { renderChannels(); } catch (e) { /* ignore */ }
   }
 
@@ -2371,6 +2778,25 @@
     bind("pp-mf-detect", "click", onDetect);
     bind("pp-mf-save", "click", onSave);
     bind("pp-mf-cancel", "click", () => { $("pp-ch-form").style.display = "none"; });
+    // 2026-10-23 增强：R3/R4/R5 折叠区（展开时重新拉取数据，保持新鲜）
+    histFold = makeFold("pp-mb-history-toggle", "pp-mb-history", "开通/续期记录", null);
+    ordersFold = makeFold("pp-orders-toggle", "pp-orders-block", "我的订单", () => {
+      ordersLoaded = false;
+      renderOrders();
+    });
+    ledgerFold = makeFold("pp-ledger-toggle", "pp-ledger-block", "最近扣费明细", () => {
+      ledgerLoaded = false;
+      renderLedger();
+    });
+    // R1 修改密码
+    bind("pp-cpw-toggle", "click", onCpwToggle);
+    bind("pp-cpw-submit", "click", onCpwSubmit);
+    bind("pp-cpw-cancel", "click", onCpwCancel);
+    bind("pp-cpw-new2", "keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); onCpwSubmit(); } });
+    // R8 余额不足 → 展开「模型通道」卡
+    bind("pp-bal-open-channels", "click", onBalOpenChannels);
+    // R2 注册赠送/每月发放文案：未登录视图也要渲染，独立拉取（不走 ensurePlans 的登录门槛）
+    if (!grantTried) { grantTried = true; loadGrantCopy(); }
     initShowUrlToggle();
 
     renderAll();

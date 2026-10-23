@@ -953,6 +953,256 @@ const flush = () => new Promise((r) => setImmediate(r));
     has(emailEl.textContent, '***', 'L5 再点收起');
   }
 
+  /* ============ M. 账号与会员增强（2026-10-23：R1-R5/R8 新增元素静态断言） ============ */
+  {
+    const xhtml = fs.readFileSync(XHTML, 'utf8');
+    const panelJs = fs.readFileSync(PANEL, 'utf8');
+    const NEW_IDS = [
+      // R1 修改密码
+      'pp-cpw-toggle', 'pp-cpw-form', 'pp-cpw-old', 'pp-cpw-new', 'pp-cpw-new2',
+      'pp-cpw-submit', 'pp-cpw-cancel', 'pp-cpw-msg',
+      // R2 文案下发
+      'pp-login-grant-hint', 'pp-cmp-grant-free', 'pp-cmp-grant-pro',
+      // R3 开通/续期记录
+      'pp-mb-history-toggle', 'pp-mb-history',
+      // R4 我的订单
+      'pp-orders-toggle', 'pp-orders-block', 'pp-orders-list', 'pp-orders-msg',
+      // R5 最近扣费明细
+      'pp-ledger-toggle', 'pp-ledger-block', 'pp-ledger-list',
+      // R8 余额不足联动
+      'pp-bal-open-channels',
+    ];
+    for (const id of NEW_IDS) {
+      ok(xhtml.indexOf('id="' + id + '"') >= 0, 'M-xhtml:' + id + ' 存在于 prefs.xhtml');
+      ok(panelJs.indexOf(id) >= 0, 'M-js:prefs-account.js 引用了 ' + id);
+    }
+    // 折叠/表单类新元素一律 display:none 起步（初始不占屏；内容由 JS 按需打开）
+    const HIDDEN_AT_BOOT = ['pp-cpw-toggle', 'pp-cpw-form', 'pp-mb-history-toggle', 'pp-mb-history',
+      'pp-orders-toggle', 'pp-orders-block', 'pp-ledger-toggle', 'pp-ledger-block', 'pp-bal-open-channels'];
+    for (const id of HIDDEN_AT_BOOT) {
+      const m = xhtml.match(new RegExp('id="' + id + '"[^>]*style="([^"]*)"'));
+      ok(!!m && m[1].indexOf('display:none') >= 0, 'M-hide:' + id + ' 初始 display:none', m && m[1]);
+    }
+    // 链接外观一律真按钮（0.72.3 无障碍纪律：禁 span 假按钮）
+    for (const id of ['pp-cpw-toggle', 'pp-mb-history-toggle', 'pp-orders-toggle', 'pp-ledger-toggle', 'pp-bal-open-channels']) {
+      const m = xhtml.match(new RegExp('<html:(\\w+)[^>]*id="' + id + '"'));
+      ok(!!m && m[1] === 'button', 'M-a11y:' + id + ' 是真 <button>（链接外观用 .pp-link-btn）', m && m[1]);
+    }
+    // account.js 契约层
+    const accountJs = fs.readFileSync(path.join(ROOT, 'chrome', 'content', 'scripts', 'ai', 'account.js'), 'utf8');
+    has(accountJs, 'changePassword', 'M-api:account.js 暴露 changePassword');
+    has(accountJs, '/api/auth/change-password', 'M-api:改密路由字符串');
+    has(accountJs, 'unsupported', 'M-api:旧服务端 404 → err.unsupported 降级标记');
+    has(accountJs, 'ordersList', 'M-api:account.js 暴露 ordersList');
+    has(accountJs, '/api/orders?limit=', 'M-api:订单列表路由字符串');
+    has(accountJs, 'balanceLedger', 'M-api:account.js 暴露 balanceLedger');
+    has(accountJs, '/api/balance/ledger?limit=', 'M-api:扣费明细路由字符串');
+    has(accountJs, 'signupGrant', 'M-api:plans() 透传 signupGrant');
+    has(accountJs, 'proMonthlyGrant', 'M-api:plans() 透传 proMonthlyGrant');
+  }
+
+  /* ============ N. 账号与会员增强（行为断言：折叠区渲染与降级） ============ */
+  {
+    // ---- N1：membership.history 有记录 → 折叠入口出现，展开后行数与来源映射正确 ----
+    ({ registry } = boot({
+      membership: () => ({ plan: 'Pro', name: '专业版', rawPlan: 'Pro', expired: false,
+        expiresAt: Date.now() + 3 * DAY, source: 'order',
+        history: [
+          { plan: 'Pro', months: 1, perpetual: false, at: '2026-09-01T00:00:00Z', source: 'order' },
+          { plan: 'Pro', months: 12, perpetual: false, at: '2026-10-01T00:00:00Z', source: 'code' },
+          { plan: 'Pro', months: 0, perpetual: true, at: '2026-10-20T00:00:00Z', source: 'admin' },
+          { plan: 'Pro', months: 3, perpetual: false, at: '2026-10-21T00:00:00Z', source: 'weird-src' },
+        ] }),
+    }));
+    await flush(); await flush(); await flush();
+    const histTg = registry.get('pp-mb-history-toggle');
+    ok(histTg.style.display !== 'none', 'N1 ★ 有 history → 开通/续期记录入口出现');
+    eq(registry.get('pp-mb-history').style.display, 'none', 'N2 默认收起（display:none）');
+    histTg.click();
+    await flush();
+    const histBox = registry.get('pp-mb-history');
+    eq(histBox.style.display, '', 'N3 点一下展开');
+    const histRows = histBox.byClass('pp-hist-row');
+    eq(histRows.length, 4, 'N4 展开后行数 === history 条数', histRows.length);
+    has(histRows[0].textContent, '购买', 'N5 来源映射 order→购买');
+    has(histRows[1].textContent, '激活码', 'N6 来源映射 code→激活码');
+    has(histRows[2].textContent, '管理员开通', 'N7 来源映射 admin→管理员开通');
+    has(histRows[2].textContent, '永久', 'N8 perpetual 渲染「永久」');
+    has(histRows[1].textContent, '12 个月', 'N9 时长渲染 months 个月');
+    has(histRows[3].textContent, 'weird-src', 'N10 ★ 未知来源原样显示（不吞不猜）');
+
+    // ---- N11：空 history / 无 history 字段 → 整块隐藏 ----
+    ({ registry } = boot({
+      membership: () => ({ plan: 'Free', name: '免费版', rawPlan: 'Free', expired: false,
+        expiresAt: 0, source: '', history: [] }),
+    }));
+    await flush(); await flush(); await flush();
+    eq(registry.get('pp-mb-history-toggle').style.display, 'none', 'N11 ★ 空 history → 入口整块隐藏');
+    eq(registry.get('pp-mb-history').style.display, 'none', 'N12 容器同样隐藏');
+
+    // ---- N13~N18：我的订单 ----
+    ({ registry } = boot({
+      ordersList: async () => ({ count: 2, orders: [
+        { id: 'o1', kind: 'plan', plan: 'Pro', planName: '专业版', months: 12, perpetual: false,
+          cycleName: '按年', status: 'fulfilled', amountCents: 26900, amountText: '¥269.00',
+          createdAt: '2026-10-01T00:00:00Z', note: '' },
+        { id: 'o2', kind: 'credit', plan: null, planName: 'AI 额度充值', months: 0, perpetual: false,
+          cycleName: '', status: 'pending', amountCents: 1000, amountText: '¥10.00',
+          createdAt: '2026-10-22T00:00:00Z', note: '' },
+      ] }),
+    }));
+    await flush(); await flush(); await flush();
+    ok(registry.get('pp-orders-toggle').style.display !== 'none', 'N13 ★ 订单接口可用 → 入口出现');
+    registry.get('pp-orders-toggle').click();
+    await flush(); await flush(); await flush();
+    const orderRows = registry.get('pp-orders-list').byClass('pp-order-row');
+    eq(orderRows.length, 2, 'N14 渲染全部订单', orderRows.length);
+    has(orderRows[0].textContent, '专业版', 'N15 会员单显示套餐名');
+    has(orderRows[0].textContent, '已入账', 'N16 ★ 状态映射 fulfilled→已入账（台账口径）');
+    has(orderRows[0].textContent, '12 个月', 'N17 显示时长');
+    has(orderRows[1].textContent, '待支付', 'N18 状态映射 pending→待支付');
+    has(orderRows[1].textContent, '¥10.00', 'N19 金额直接用服务端 amountText（前端零换算）');
+
+    // ---- N20：旧服务端（ordersList → null）→ 整块隐藏 ----
+    ({ registry } = boot({ ordersList: async () => null }));
+    await flush(); await flush(); await flush();
+    eq(registry.get('pp-orders-toggle').style.display, 'none', 'N20 ★ 旧服务端（null）→ 我的订单整块隐藏');
+    eq(registry.get('pp-orders-block').style.display, 'none', 'N21 容器同样隐藏');
+
+    // ---- N22~N26：最近扣费明细 ----
+    ({ registry } = boot({
+      balanceLedger: async () => ({ entries: [
+        { at: '2026-10-23T08:00:00Z', delta: -2100, kind: 'consume', label: 'AI 调用 gpt-5', deltaText: '−¥0.0021' },
+        { at: '2026-10-22T08:00:00Z', delta: 6000000, kind: 'signup', label: '注册赠送', deltaText: '+¥6.00' },
+      ] }),
+    }));
+    await flush(); await flush(); await flush();
+    ok(registry.get('pp-ledger-toggle').style.display !== 'none', 'N22 ★ 流水接口可用 → 入口出现');
+    registry.get('pp-ledger-toggle').click();
+    await flush(); await flush(); await flush();
+    const ledgerRows = registry.get('pp-ledger-list').byClass('pp-ledger-row');
+    eq(ledgerRows.length, 2, 'N23 渲染全部流水', ledgerRows.length);
+    has(ledgerRows[0].textContent, 'AI 调用 gpt-5', 'N24 直接渲染服务端 label');
+    has(ledgerRows[0].textContent, '−¥0.0021', 'N25 直接渲染服务端 deltaText（前端零换算）');
+    has(ledgerRows[1].textContent, '+¥6.00', 'N26 正数带 + 前缀（服务端已格式化）');
+
+    // ---- N27：旧服务端（balanceLedger → null）→ 整块隐藏 ----
+    ({ registry } = boot({ balanceLedger: async () => null }));
+    await flush(); await flush(); await flush();
+    eq(registry.get('pp-ledger-toggle').style.display, 'none', 'N27 ★ 旧服务端（null）→ 扣费明细整块隐藏');
+    eq(registry.get('pp-ledger-block').style.display, 'none', 'N28 容器同样隐藏');
+
+    // ---- N29~N31：R8 余额不足联动 ----
+    const foldCalls = [];
+    const b8 = boot({
+      balance: () => ({ totalMicro: 0, grantedMicro: 0, planMicro: 0, paidMicro: 0,
+        text: '¥0', grantedText: '¥0', planText: '¥0', paidText: '¥0',
+        grantedDaysLeft: null, planDaysLeft: null, grantedExpiresAt: null, planExpiresAt: null,
+        planPeriodKey: null, enforce: true, minBalanceMicro: 1000000, overdraft: false }),
+    });
+    ({ registry } = b8);
+    await flush(); await flush(); await flush();
+    const ocBtn = registry.get('pp-bal-open-channels');
+    ok(ocBtn.style.display !== 'none', 'N29 ★ 额度不足 → 「接入自己的模型通道」按钮出现');
+    b8.sandbox.window.PapilotPrefsFold = { open: (k) => { foldCalls.push(k); return true; } };
+    ocBtn.click();
+    await flush();
+    eq(foldCalls.length, 1, 'N30 点击 → PapilotPrefsFold.open 被调用');
+    eq(foldCalls[0], 'channels', 'N31 ★ 展开的是 channels 卡（走 open()，不直写 classList）');
+
+    // 余额充足 → 按钮不出现
+    ({ registry } = boot({}));
+    await flush(); await flush(); await flush();
+    eq(registry.get('pp-bal-open-channels').style.display, 'none', 'N32 余额充足 → 按钮隐藏');
+
+    // 透支（即使观察模式）→ 按钮出现
+    ({ registry } = boot({
+      balance: () => ({ totalMicro: -2000, grantedMicro: 0, planMicro: 0, paidMicro: -2000,
+        text: '-¥0.0020', grantedText: '¥0', planText: '¥0', paidText: '-¥0.0020',
+        grantedDaysLeft: null, planDaysLeft: null, grantedExpiresAt: null, planExpiresAt: null,
+        planPeriodKey: null, enforce: false, minBalanceMicro: 0, overdraft: true }),
+    }));
+    await flush(); await flush(); await flush();
+    ok(registry.get('pp-bal-open-channels').style.display !== 'none', 'N33 透支 → 按钮同样出现');
+
+    // ---- N34~N38：R1 修改密码 ----
+    let cpwLoggedIn = true;
+    let cpwArgs = null;
+    ({ registry } = boot({
+      isLoggedIn: () => cpwLoggedIn,
+      changePassword: async (o, n) => { cpwArgs = { old: o, new: n }; cpwLoggedIn = false; return true; },
+    }));
+    await flush(); await flush(); await flush();
+    const cpwTg = registry.get('pp-cpw-toggle');
+    ok(cpwTg.style.display !== 'none', 'N34 已登录 → 修改密码入口出现');
+    cpwTg.click();
+    await flush();
+    eq(registry.get('pp-cpw-form').style.display, '', 'N35 点入口展开表单');
+    registry.get('pp-cpw-old').value = 'old-pass-123';
+    registry.get('pp-cpw-new').value = 'new-pass-456';
+    registry.get('pp-cpw-new2').value = 'new-pass-456';
+    registry.get('pp-cpw-submit').click();
+    await flush(); await flush(); await flush();
+    eq(cpwArgs && cpwArgs.old, 'old-pass-123', 'N36 旧密码原样提交');
+    eq(cpwArgs && cpwArgs.new, 'new-pass-456', 'N37 新密码原样提交');
+    has(registry.get('pp-login-result').textContent, '密码已修改', 'N38 ★ 成功 → 登录视图提示「密码已修改，全部设备已退出」');
+    eq(registry.get('pp-account-view').style.display, 'none', 'N39 成功后回登录视图（账号卡隐藏）');
+
+    // ---- N40：旧服务端（err.unsupported）→ 入口整块隐藏 + 提示 ----
+    ({ registry } = boot({
+      changePassword: async () => { const e = new Error('HTTP 404'); e.unsupported = true; throw e; },
+    }));
+    await flush(); await flush(); await flush();
+    registry.get('pp-cpw-toggle').click();
+    await flush();
+    registry.get('pp-cpw-old').value = 'old-pass-123';
+    registry.get('pp-cpw-new').value = 'new-pass-456';
+    registry.get('pp-cpw-new2').value = 'new-pass-456';
+    registry.get('pp-cpw-submit').click();
+    await flush(); await flush(); await flush();
+    eq(registry.get('pp-cpw-toggle').style.display, 'none', 'N40 ★ unsupported → 改密入口整块隐藏');
+    eq(registry.get('pp-cpw-form').style.display, 'none', 'N41 表单同样收起');
+    has(registry.get('pp-account-result').textContent, '服务端版本过旧', 'N42 给出「服务端版本过旧」提示');
+
+    // ---- N43~N46：R2 plans 下发渲染三处文案 ----
+    ({ registry } = boot({
+      plans: async () => Object.assign({}, PLANS_PAYLOAD, {
+        signupGrant: { amountMicro: 8000000, validDays: 0, scopeNote: '仅限基础模型' },
+        proMonthlyGrant: { amountMicro: 30000000 },
+      }),
+    }));
+    await flush(); await flush(); await flush();
+    has(registry.get('pp-login-grant-hint').textContent, '注册赠送 ¥8.00', 'N43 登录提示金额来自服务端（微元换算）');
+    has(registry.get('pp-login-grant-hint').textContent, '永久有效', 'N44 ★ validDays=0 → 渲染「永久有效」（不是「0 天」）');
+    has(registry.get('pp-login-grant-hint').textContent, '专业版每月发放 ¥30.00', 'N45 每月发放金额来自服务端');
+    has(registry.get('pp-cmp-grant-free').textContent, '仅限基础模型', 'N46 ★ 对比表免费版格含 scopeNote');
+    has(registry.get('pp-cmp-grant-free').textContent, '永久有效', 'N47 对比表有效期同步渲染');
+    has(registry.get('pp-cmp-grant-pro').textContent, '每月 ¥30.00', 'N48 对比表专业版格来自服务端');
+
+    // amountMicro=0 → 隐藏注册赠送说法
+    ({ registry } = boot({
+      plans: async () => Object.assign({}, PLANS_PAYLOAD, {
+        signupGrant: { amountMicro: 0, validDays: 30, scopeNote: '仅限基础模型' },
+        proMonthlyGrant: { amountMicro: 20000000 },
+      }),
+    }));
+    await flush(); await flush(); await flush();
+    ok(registry.get('pp-login-grant-hint').textContent.indexOf('注册赠送') < 0,
+      'N49 ★ amountMicro=0 → 登录提示不再出现「注册赠送」', registry.get('pp-login-grant-hint').textContent);
+
+    // ---- N50：旧服务端（plans 无两个块）→ 三处全部回退硬编码，不空白不报错 ----
+    ({ registry } = boot({}));   // 默认 PLANS_PAYLOAD 无 signupGrant/proMonthlyGrant
+    await flush(); await flush(); await flush();
+    // 迷你 DOM 不装载 xhtml 静态文本（只建空元素）：元素保持为空 = JS 没有覆盖，
+    // 真实面板里显示的就是 xhtml 里的硬编码文案（下方 N52 对源码做静态核对）
+    eq(registry.get('pp-login-grant-hint').textContent, '', 'N50 旧服务端 → JS 不动登录提示（保留硬编码）');
+    eq(registry.get('pp-cmp-grant-free').textContent, '', 'N51 旧服务端 → JS 不动对比表免费版格');
+    eq(registry.get('pp-cmp-grant-pro').textContent, '', 'N51b 旧服务端 → JS 不动对比表专业版格');
+    const xhtmlSrc = fs.readFileSync(XHTML, 'utf8');
+    has(xhtmlSrc, '注册赠送 ¥6', 'N52 ★ xhtml 硬编码回退文案仍在（免费版格 + 登录提示同源）');
+    has(xhtmlSrc, '每月 ¥20', 'N52b xhtml 硬编码回退文案仍在（专业版格）');
+  }
+
   function dlgRootFor(reg) { return reg.get('pp-dlg-root'); }
 
   console.log('\n会员面板渲染测试：' + pass + ' 项通过，' + fails.length + ' 项失败');

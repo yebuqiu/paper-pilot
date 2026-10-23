@@ -606,7 +606,7 @@ function Get-ReconcileStatusText([string]$st) {
 # 审计动作中文名（与服务端 lib/audit.js 的 ACTIONS 对齐；未知动作原样返回）
 function Get-AuditText([string]$a) {
   $map = @{
-    'user.create' = '新建用户'; 'user.update' = '修改用户'; 'user.password' = '重置密码'
+    'user.create' = '新建用户'; 'user.update' = '修改用户'; 'user.password' = '重置密码'; 'user.change-password' = '修改密码'
     'user.delete' = '删除用户'; 'user.unlock' = '解除登录锁定'; 'user.membership' = '开通/续期会员'
     'price.create' = '新增价格条目'; 'price.update' = '修改价格条目'; 'price.delete' = '删除价格条目'
     'membership.config' = '修改会员/收款配置'

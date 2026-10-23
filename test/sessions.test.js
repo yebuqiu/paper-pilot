@@ -253,7 +253,7 @@ const DEV_B = { 'X-PP-Device': 'bbbb1111-2222-3333-4444-555566667777', 'X-PP-Pla
   ok(!!tA && !!tB && !!tC, 'F1 三台设备各自登录成功');
 
   const h0 = await req('GET', '/api/health');
-  eq(h0.json.version, '1.9.2', 'F2 服务端版本 1.8.1');
+  eq(h0.json.version, '1.9.3', 'F2 服务端版本 1.8.1');
   eq(h0.json.sessionsActive, 3, 'F3 health 报告 3 个活跃会话');
   eq(h0.json.devicesOverLimit, 1, 'F4 health 报告 1 个账号设备超限');
 
@@ -439,6 +439,82 @@ const DEV_B = { 'X-PP-Device': 'bbbb1111-2222-3333-4444-555566667777', 'X-PP-Pla
     'G23 改密后全部设备失效（既有语义保持）');
   const afterPw = (await req('GET', '/api/admin/users')).json.users.filter((x) => x.email === 'multi@t.local')[0];
   eq(afterPw.sessionsActive, 0, 'G24 改密后活跃设备数归零');
+
+  /* ================= H. 新设备登录邮件（R7，1.9.3） ================= */
+  // 先注册（此刻 PP_RESEND_KEY 仍未配置 → 直接激活，不卡邮箱验证）
+  await req('POST', '/api/auth/register', { email: 'r7@t.local', password: 'pw12345678' });
+
+  // 桩 SMTP：PP_RESEND_BASE 指向本地 listen(0) 的 HTTP 桩，记录每一封来信
+  const inbox = [];
+  let stubStatus = 200;
+  const mailStub = http.createServer((rq, rs) => {
+    const cs = [];
+    rq.on('data', (c) => cs.push(c));
+    rq.on('end', () => {
+      let body = null;
+      try { body = JSON.parse(Buffer.concat(cs).toString('utf8')); } catch (e) { /* ignore */ }
+      inbox.push(body);
+      rs.writeHead(stubStatus, { 'Content-Type': 'application/json' });
+      rs.end(stubStatus === 200 ? '{"id":"stub"}' : '{"message":"boom"}');
+    });
+  });
+  await new Promise((r) => mailStub.listen(0, '127.0.0.1', r));
+  process.env.PP_RESEND_BASE = 'http://127.0.0.1:' + mailStub.address().port;
+  process.env.PP_RESEND_KEY = 're_test_stub';
+
+  const waitMails = async (n) => {
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline && inbox.length < n) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return inbox.length >= n;
+  };
+
+  // 注：HTTP 头值只能是 Latin-1（Node 对非 ASCII 头值抛 ERR_INVALID_CHAR），
+  //   真实插件对中文设备名会做百分号编码；这里用 ASCII 设备名覆盖「deviceLabel 优先」断言即可。
+  const DEV_NEW1 = { 'X-PP-Device': 'cccc1111-2222-3333-4444-555566667777',
+    'X-PP-Device-Label': 'Lab-Desktop', 'X-PP-Platform': 'Windows 11' };
+
+  // H1-H7：新设备登录 → 1 封提醒，正文含时间/设备名/打码 IP/改密指引，不含完整 IP
+  const lgNew1 = await req('POST', '/api/auth/login', { email: 'r7@t.local', password: 'pw12345678' }, null, DEV_NEW1);
+  eq(lgNew1.status, 200, 'H1 新设备登录成功（不等邮件）');
+  eq(await waitMails(1), true, 'H2 ★ 新设备登录发出 1 封提醒邮件');
+  const mail1 = inbox[0] || {};
+  eq(mail1.subject, '【Papilot】新设备登录提醒', 'H3 邮件主题正确');
+  has(mail1.text || '', 'Lab-Desktop', 'H4 正文含设备名（deviceLabel 优先）');
+  has(mail1.text || '', '127.0.0.*', 'H5 正文含打码 IP');
+  ok((mail1.text || '').indexOf('127.0.0.1') < 0, 'H6 ★ 正文不含完整 IP');
+  has(mail1.text || '', '修改密码', 'H7 正文含「不是本人→修改密码」指引');
+
+  // H8-H9：同 deviceId 重登 → 不重复发（deviceKnown 去重）
+  const lgNew2 = await req('POST', '/api/auth/login', { email: 'r7@t.local', password: 'pw12345678' }, null, DEV_NEW1);
+  eq(lgNew2.status, 200, 'H8 同设备重登成功');
+  await new Promise((r) => setTimeout(r, 300));
+  eq(inbox.length, 1, 'H9 ★ 同 deviceId 重登不重复发信');
+
+  // H10-H11：不带 deviceId 的登录 → 不发（无法去重，宁可不发）
+  const lgNoDev = await req('POST', '/api/auth/login', { email: 'r7@t.local', password: 'pw12345678' });
+  eq(lgNoDev.status, 200, 'H10 无设备头登录成功');
+  await new Promise((r) => setTimeout(r, 300));
+  eq(inbox.length, 1, 'H11 ★ 无 deviceId 不发信');
+
+  // H12-H13：桩返回 500 → 发信失败但登录照常 200（不阻塞、不 5xx）
+  stubStatus = 500;
+  const lgFail = await req('POST', '/api/auth/login', { email: 'r7@t.local', password: 'pw12345678' }, null,
+    { 'X-PP-Device': 'dddd1111-2222-3333-4444-555566667777' });
+  eq(lgFail.status, 200, 'H12 ★ 发信失败登录仍 200');
+  eq(await waitMails(2), true, 'H13 发信确实尝试过（请求到达桩）');
+  stubStatus = 200;
+
+  // H14-H15：删掉 PP_RESEND_KEY → 登录照常，零发信尝试
+  delete process.env.PP_RESEND_KEY;
+  const lgNoKey = await req('POST', '/api/auth/login', { email: 'r7@t.local', password: 'pw12345678' }, null,
+    { 'X-PP-Device': 'eeee1111-2222-3333-4444-555566667777' });
+  eq(lgNoKey.status, 200, 'H14 未配置邮件服务时登录照常 200');
+  await new Promise((r) => setTimeout(r, 300));
+  eq(inbox.length, 2, 'H15 ★ 无 PP_RESEND_KEY → 零发信尝试（自然降级）');
+  delete process.env.PP_RESEND_BASE;
+  mailStub.close();
 
   try { mod.stopBackgroundJobs(); } catch (e) { /* ignore */ }
   server.close();
