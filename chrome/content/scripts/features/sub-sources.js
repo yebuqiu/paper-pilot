@@ -43,6 +43,25 @@ var SubSources = {
 
   _lastAt: {},
 
+  /** 单源「不可达」冷却：连接层失败（超时/被墙/DNS）后 5 分钟内不再试。
+   *  为什么需要：PubMed 在国内经常整段超时（实测 46s 无响应），而它和另外 4 个源
+   *  是**串行**的 —— 每点一次「立即检索」都要先白等一个 25s 才轮到后面的源，
+   *  用户体感是"检索卡死"。冷却只对连接层失败生效，429/5xx/空结果照旧每次都试。 */
+  DEAD_TTL_MS: 5 * 60 * 1000,
+  _deadUntil: {},
+
+  _isDead(id) {
+    const until = this._deadUntil[id] || 0;
+    if (until > Date.now()) return true;
+    if (until) delete this._deadUntil[id];
+    return false;
+  },
+
+  _markDead(id) {
+    if (!id) return;
+    this._deadUntil[id] = Date.now() + this.DEAD_TTL_MS;
+  },
+
   /* ================== 元信息 ================== */
 
   ids() { return this.LIST.map((s) => s.id); },
@@ -727,7 +746,8 @@ var SubSources = {
       + "&sort=pub+date&retmax=" + n + "&term=" + encodeURIComponent(term)
       + (this._mailto() ? "&email=" + encodeURIComponent(this._mailto()) : "");
     await this._gate("pubmed");
-    const s = await this._json(esearch);
+    // 12s（默认 25s 太长）：PubMed 在国内常整段不可达，一个源就吃掉半分钟
+    const s = await this._json(esearch, 12000);
     if (s.status !== 200 || !s.data) throw new Error("PubMed esearch HTTP " + (s.status || "无响应"));
     const ids = (((s.data.esearchresult || {}).idlist) || []).slice(0, n);
     if (!ids.length) return [];
@@ -735,7 +755,7 @@ var SubSources = {
       + "&id=" + ids.join(",")
       + (this._mailto() ? "&email=" + encodeURIComponent(this._mailto()) : "");
     await this._gate("pubmed");
-    const d = await this._json(esummary);
+    const d = await this._json(esummary, 12000);
     if (d.status !== 200 || !d.data) throw new Error("PubMed esummary HTTP " + (d.status || "无响应"));
     const result = (d.data.result || {});
     const order = result.uids || ids;
@@ -822,6 +842,14 @@ var SubSources = {
     let firstReason = "";
 
     for (const id of sources) {
+      if (this._isDead(id)) {
+        bySource[id] = {
+          ok: false, count: 0, cooled: true,
+          reason: "此前连接失败，已暂停重试（5 分钟后自动恢复；也可在设置里关掉这个源）",
+        };
+        if (!firstReason) firstReason = this.label(id) + "：连接失败（冷却中）";
+        continue;
+      }
       try {
         let rows;
         if (id === "arxiv") rows = await this._arxiv(sub, limit, o.now);
@@ -838,6 +866,10 @@ var SubSources = {
         // 异常串里偶尔会带完整 URL（含 api_key / mailto），必须就地脱敏：
         // OpenAlex 的 Key 是「免费顺手填」的，用户不一定把它当凭据看，但泄漏后果一样。
         const msg = this._scrub(String((e && (e.message || e)) || "失败"));
+        // 只有「连接层就没通」才冷却：429/5xx/业务错误说明对方还活着，不冷却
+        if (/超时|timeout|无响应|NS_ERROR|unreachable|network|连接|拒绝/i.test(msg)) {
+          this._markDead(id);
+        }
         bySource[id] = { ok: false, count: 0, reason: msg };
         if (!firstReason) firstReason = this.label(id) + "：" + msg;
       }

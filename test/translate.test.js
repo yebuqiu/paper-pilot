@@ -1181,25 +1181,27 @@ ok(T.googleTk('a') !== T.googleTk('b'), '⑥ Google tk 随文本变化');
     cat = await GP.fetchCatalog();
     ok(cat.ok && cat.via.indexOf('http://127.0.0.1:8765') === 0, '⑫c ★ 自定义镜像（被墙网络的逃生门）优先生效');
     Prefs.set('translateGlossaryPackBase', '');
-    eq(GP.onlineBases().length, 2, '⑫c 清空自定义基址 → 回到内置两基址');
+    eq(GP.onlineBases().length, 3, '⑫c 清空自定义基址 → 回到内置三基址（fastly/cdn/raw）');
+    ok(GP.onlineBases()[0].indexOf('fastly.jsdelivr.net') >= 0,
+      '⑫c ★ 内置首位是实测可达的 fastly（cdn.jsdelivr 国内常不可达）');
 
     // ⑥ fetchDomain：按 slug 拉 CSV（优先复用目录基址）
     resetHttp();
-    plan('cdn.jsdelivr.net', { text: JSON.stringify(IDX) });
+    plan('jsdelivr.net', { text: JSON.stringify(IDX) });
     plan('raw.githubusercontent.com', { text: CSV });
     let dom1 = await GP.fetchDomain('medicine', 'https://cdn.jsdelivr.net/gh/yebuqiu/open-termbank@main/data/');
     ok(dom1.ok && dom1.text.indexOf('myocardial infarction') >= 0, '⑫c fetchDomain 拉到 CSV 文本');
     ok(httpCalls.some((c) => c.url.indexOf('medicine.csv') >= 0), '⑫c 域文件 URL 按 slug 拼装');
     // 目录基址挂了 → 回退其它基址
     resetHttpOnly();
-    plan('cdn.jsdelivr.net', { fail: 'down' });
+    plan('jsdelivr.net', { fail: 'down' });
     plan('raw.githubusercontent.com', { text: CSV });
     dom1 = await GP.fetchDomain('medicine', 'https://cdn.jsdelivr.net/gh/yebuqiu/open-termbank@main/data/');
     ok(dom1.ok && dom1.via.indexOf('raw.githubusercontent') >= 0, '⑫c 域下载同样有基址回退');
 
     // ⑦ index.json 请求带缓存击穿参数（jsDelivr @main 有长缓存，否则「有更新」检测滞后）
     resetHttp();
-    plan('cdn.jsdelivr.net', { text: JSON.stringify(IDX) });
+    plan('jsdelivr.net', { text: JSON.stringify(IDX) });
     await GP.fetchCatalog();
     ok(httpCalls.some((c) => /index\.json\?_=\d+/.test(c.url)), '⑫c index.json 带时间戳参数破 CDN 缓存');
     ok(!httpCalls.some((c) => /medicine\.csv\?/.test(c.url)), '⑫c 域 CSV 不带参数（内容寻址，吃缓存是好事）');

@@ -24,18 +24,26 @@
 /* global Zotero, Prefs, TextDecoder, URL */
 
 var SciHub = {
-  // 镜像链参考 scihub-mcp（2026-08 活跃维护）与 Zotero 中文社区镜像页；
-  // 前三个为原有顺序，ren/ee 两边列表都收录，hkvisa.net/mksa.top 为 scihub-mcp 首两位
-  DEFAULT_MIRRORS: ["sci-hub.ru", "sci-hub.se", "sci-hub.st", "sci-hub.ren", "sci-hub.ee", "sci-hub.hkvisa.net", "sci-hub.mksa.top"],
+  // 镜像链顺序按 2026-10-23 国内直连实测重排：ru / se / st 三个老镜像**全部不可达**
+  // （TCP 超时，单镜像要白等满一个超时），ren(1.1s) / ee(8.9s) 可正常返回；
+  // hkvisa / mksa 返回 403（Cloudflare 人机验证，仍留作兜底但排后）。
+  // 排前面的先试：可用性优先，其次才谈"官方列表顺序"。
+  DEFAULT_MIRRORS: ["sci-hub.ren", "sci-hub.ee", "sci-hub.ru", "sci-hub.se", "sci-hub.st", "sci-hub.hkvisa.net", "sci-hub.mksa.top"],
   // 0.27–0.42 的默认镜像串：恰好等于它的用户没自定义过，升级到新链（幂等，自定义用户不动）
   LEGACY_DEFAULT_MIRRORS: "sci-hub.ru,sci-hub.se,sci-hub.st",
+  // 0.43–0.74 的默认链（ru/se/st 在前的 7 镜像版）：同样视为"从未自定义"，一次性迁到新顺序
+  LEGACY_DEFAULT_MIRRORS_V2: "sci-hub.ru,sci-hub.se,sci-hub.st,sci-hub.ren,sci-hub.ee,sci-hub.hkvisa.net,sci-hub.mksa.top",
   DEFAULT_SCINET: "https://sci-net.xyz",
   // 移动端 UA：镜像对移动端返回更简单、可稳定解析的页面模板（参考 zotero-scihub 的成熟做法）
   UA: "Mozilla/5.0 (iPhone; CPU iPhone OS 11_3_1 like Mac OS X) AppleWebKit/603.1.30 (KHTML, like Gecko) Version/10.0 Mobile/14E304 Safari/602.1",
   // 出版商直连用桌面 UA：出版商落地页的 citation_pdf_url 只对桌面端可靠（zotero-scihub-resolver 同做法）
   DESKTOP_UA: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
   MIN_INTERVAL_MS: 1200,
-  TIMEOUT_MS: 30000,
+  // 单镜像 30s 太长：一个死镜像 + 两个次死镜像就是 90s，用户只看到"补全文卡住"。
+  // 实测正常镜像 1~9s 返回，12s 足够；超时即换下一个（不可达的还会进死亡记忆）。
+  TIMEOUT_MS: 12000,
+  // 整条镜像链的总预算：超过就停（防止 7 个镜像 × 12s 串成 84s）
+  TOTAL_BUDGET_MS: 40000,
   DEAD_TTL_MS: 5 * 60 * 1000,
   _lastReqAt: 0,
   _deadUntil: {}, // host → 不可达失效截止时间戳（会话级）
@@ -67,7 +75,8 @@ var SciHub = {
       .map((s) => s.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, ""))
       .filter(Boolean)
       .join(",");
-    if (norm !== this.LEGACY_DEFAULT_MIRRORS) return 0;
+    // 两代旧默认都算"从未自定义"：3 镜像版（0.27–0.42）与 7 镜像旧序版（0.43–0.74）
+    if (norm !== this.LEGACY_DEFAULT_MIRRORS && norm !== this.LEGACY_DEFAULT_MIRRORS_V2) return 0;
     try {
       Prefs.set("scihubMirrors", this.DEFAULT_MIRRORS.join(", "));
       this._debug("镜像列表升级为 " + this.DEFAULT_MIRRORS.length + " 镜像链（旧默认值迁移）");
@@ -327,7 +336,14 @@ var SciHub = {
     }
     let lastCaptcha = null;
     let last = { status: "error", host: "", message: "no mirrors" };
+    // 总预算：死镜像连着两个就能耗掉 24s，必须有个上限才不至于让"补全文"看起来卡死
+    const deadline = Date.now() + (this.TOTAL_BUDGET_MS || 40000);
     for (const m of mirrors) {
+      if (Date.now() > deadline) {
+        this._debug("镜像链总预算用尽，停止尝试");
+        last = { status: "unreachable", host: this._hostOf(m), message: "mirror budget exhausted" };
+        break;
+      }
       const host = this._hostOf(m);
       const r = await this._fetchPageForPdf(m + "/" + doi, { host });
       if (r.status === "ok" || r.status === "not-found") return r;

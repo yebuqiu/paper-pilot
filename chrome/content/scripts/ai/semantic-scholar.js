@@ -31,15 +31,45 @@ var S2Client = {
     return h;
   },
 
-  /** 应用层超时包装：ms 后无论底层 XHR 是否完成都 reject，防止连接池耗尽卡死 */
-  _req(method, url, opts, appTimeoutMs) {
+  /** 应用层超时包装：ms 后无论底层 XHR 是否完成都 reject，防止连接池耗尽卡死
+   *
+   * 0.75.1：再加一层「429/5xx 退避重试一次」。免费公开接口的共享额度经常被占满，
+   * 实测无 Key 时直接 429（2026-10-23）；旧实现把 429 当普通失败抛给 UI，
+   * 用户只看到「相关文献 / 引用上下文 空白」，不知道是限流还是自己没配对。
+   * 现在：读 Retry-After（上限 5s）等一次再试；仍 429 就抛一条**能落地**的文案。
+   * 超时不重试（再等一轮 25s 只会更糟）。
+   */
+  async _req(method, url, opts, appTimeoutMs) {
     const ms = appTimeoutMs || 25000;
-    return Promise.race([
+    const once = () => Promise.race([
       Zotero.HTTP.request(method, url, opts),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error("S2 请求应用层超时（" + Math.round(ms / 1000) + "s），可能限流，请稍后重试")), ms)
       ),
     ]);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await once();
+      } catch (e) {
+        const st = (e && e.xmlhttp && e.xmlhttp.status) || 0;
+        const timedOut = /应用层超时/.test((e && e.message) || "");
+        const retryable = !timedOut && (st === 429 || st >= 500);
+        if (!retryable || attempt > 0) {
+          if (st === 429) {
+            throw new Error("S2 限流（HTTP 429）：免费公开接口的共享额度已满。"
+              + "可在「设置 → Papilot → AI 能力」填写免费申请的 Semantic Scholar API Key，或稍后重试。");
+          }
+          throw e;
+        }
+        let wait = 1200;
+        try {
+          const ra = e && e.xmlhttp && e.xmlhttp.getResponseHeader
+            && e.xmlhttp.getResponseHeader("Retry-After");
+          if (ra && Number(ra) > 0) wait = Math.min(5000, Number(ra) * 1000);
+        } catch (_) { /* ignore */ }
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
   },
 
   /** 单查：paperId 如 "DOI:10.1038/nature12373" */

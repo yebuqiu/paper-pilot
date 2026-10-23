@@ -256,7 +256,9 @@ function testParsers() {
   // 镜像列表解析
   PrefStore.set('scihubMirrors', '');
   eq(SciHub.mirrors().length, SciHub.DEFAULT_MIRRORS.length, '默认镜像数量（pref 为空时）');
-  eq(SciHub.mirrors()[0], 'https://sci-hub.ru', '默认镜像首个为 sci-hub.ru');
+  // 2026-10-23 实测重排：ru/se/st 三个老镜像国内不可达，ren 1.1s / ee 8.9s 可用
+  eq(SciHub.mirrors()[0], 'https://sci-hub.ren', '默认镜像首个为实测可用的 sci-hub.ren');
+  eq(SciHub.mirrors()[1], 'https://sci-hub.ee', '第二个为 sci-hub.ee（同批实测可用）');
   PrefStore.set('scihubMirrors', 'sci-hub.box, https://sci-hub.ru/');
   eq(SciHub.mirrors().join('|'), 'https://sci-hub.box|https://sci-hub.ru', '镜像列表：补协议 + 去尾斜杠');
   PrefStore.set('scinetUrl', '');
@@ -274,8 +276,8 @@ function testMirrorUpgrade() {
   PrefStore.set('scihubMirrors', 'sci-hub.ru, sci-hub.se, sci-hub.st');
   eq(SciHub.upgradeMirrorsPref(), 1, '⑦ 旧默认值触发升级');
   eq(SciHub.mirrors().length, 7, '⑦ 升级后镜像数为 7');
-  eq(SciHub.mirrors()[3], 'https://sci-hub.ren', '⑦ 新链含 sci-hub.ren');
-  eq(SciHub.mirrors()[5], 'https://sci-hub.hkvisa.net', '⑦ 新链含 sci-hub.hkvisa.net');
+  eq(SciHub.mirrors()[0], 'https://sci-hub.ren', '⑦ 新链把可用镜像排首位');
+  eq(SciHub.mirrors()[5], 'https://sci-hub.hkvisa.net', '⑦ 新链含 sci-hub.hkvisa.net（403 兜底）');
   // U2：幂等（新值不再匹配旧默认）
   eq(SciHub.upgradeMirrorsPref(), 0, '⑦ 升级幂等（再调不动）');
   // U3：用户自定义过 → 不动（哪怕只差一个镜像）
@@ -285,6 +287,11 @@ function testMirrorUpgrade() {
   // U4：带协议写法的旧默认也认得
   PrefStore.set('scihubMirrors', 'https://sci-hub.ru, https://sci-hub.se, https://sci-hub.st/');
   eq(SciHub.upgradeMirrorsPref(), 1, '⑦ 带协议/尾斜杠的旧默认同样迁移');
+  // U4b：0.43–0.74 的 7 镜像旧序默认值 → 同样迁移到新顺序（0.75.1）
+  PrefStore.set('scihubMirrors',
+    'sci-hub.ru, sci-hub.se, sci-hub.st, sci-hub.ren, sci-hub.ee, sci-hub.hkvisa.net, sci-hub.mksa.top');
+  eq(SciHub.upgradeMirrorsPref(), 1, '⑦ 上一代 7 镜像默认链也迁移（否则老用户仍先撞死镜像）');
+  eq(SciHub.mirrors()[0], 'https://sci-hub.ren', '⑦ 迁移后首位是可用的 ren');
   // U5：空值不迁移（空值本就走内置默认）
   PrefStore.set('scihubMirrors', '');
   eq(SciHub.upgradeMirrorsPref(), 0, '⑦ 空值不迁移');

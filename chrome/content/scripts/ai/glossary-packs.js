@@ -153,7 +153,12 @@ var GlossaryPacks = (function () {
    * （域 CSV 内容寻址、无需防缓存）。
    */
 
+  // 2026-10-23 实测：cdn.jsdelivr.net 在国内直连**不可达**（000/间歇 404），
+  // raw.githubusercontent.com 同样不可达 —— 只留这两条 = 国内用户点「获取在线目录」必失败。
+  // fastly.jsdelivr.net 是 jsDelivr 的另一个边缘域名，内容完全一致且实测 200（2.2.0 / 28 域）。
+  // 顺序：fastly → cdn（哪条通走哪条，失败自动换下一条）。
   const ONLINE_BASES = [
+    "https://fastly.jsdelivr.net/gh/yebuqiu/open-termbank@main/data/",
     "https://cdn.jsdelivr.net/gh/yebuqiu/open-termbank@main/data/",
     "https://raw.githubusercontent.com/yebuqiu/open-termbank/main/data/",
   ];
@@ -187,7 +192,8 @@ var GlossaryPacks = (function () {
     for (let i = 0; i < bases.length; i++) {
       const base = bases[i];
       // index.json 必须新鲜（否则「有更新」检测滞后）；带时间戳参数破 CDN 缓存
-      const bust = (i === 0 && base.indexOf("jsdelivr") >= 0) ? "?_=" + Date.now() : "";
+      // （任一 jsdelivr 边缘都要加：现在第一个 base 就是 fastly）
+      const bust = (base.indexOf("jsdelivr") >= 0) ? "?_=" + Date.now() : "";
       try {
         const req = await _httpGet(base + "index.json" + bust, 12000);
         if (req.status !== 200 && req.status !== undefined) throw new Error("HTTP " + req.status);
