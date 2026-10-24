@@ -814,7 +814,7 @@ ok("url === '/api/admin/usage-summary' && method === 'GET'" in srv, "18.29 GET /
 ok("function queryOf" in srv, "18.30 查询参数解析（days=）")
 
 # --- health ---
-ok("version: '1.9.3'" in srv, "18.31 服务端版本号已随批次更新（1.9.3）")
+ok("version: '1.9.4'" in srv, "18.31 服务端版本号已随批次更新（1.9.4）")
 ok("pricedModels: pricing.modelList(pricingStore.data).length" in srv, "18.32 health 暴露已配价模型数")
 ok("meteringGaps:" in srv, "18.33 health 暴露计量盲区累计")
 
@@ -929,7 +929,7 @@ ok("balance: balance.adminView(u)," in srv, "19.20 管理端用户视图带余�
 ok("/balance$/" in srv, "19.21 管理端充值/调账路由存在（/balance）")
 ok("input.balance && typeof input.balance === 'object'" in srv, "19.22 PUT /api/admin/pricing 接受 balance 配置块")
 ok("balanceEnforce: balanceCfg().enforce" in srv, "19.23 health 暴露 enforce 状态")
-ok("version: '1.9.3'" in srv, "19.24 服务端版本随批次推进（1.9.3）")
+ok("version: '1.9.4'" in srv, "19.24 服务端版本随批次推进（1.9.4）")
 
 # --- 审计（两处都要有） ---
 ok("'balance.adjust'" in audit_src, "19.25 audit.js 动作表含 balance.adjust")
@@ -970,7 +970,7 @@ ok("rechargeOptions: Array.isArray(j.rechargeOptions) ? j.rechargeOptions : []" 
 ok("overdraft: num(b.paidMicro) < 0" in acct_js, "20.5 透支状态透出给面板（不静默）")
 
 for fn in ["renderBalance", "renderBalOptions", "ensureRechargeOptions", "onBalCreate",
-           "renderBalPay", "onBalClaim", "onBalPoll", "onBalCancel", "onBalRefresh"]:
+           "renderBalPay", "onBalClaim", "onBalPoll", "onBalCancel"]:
     ok(re.search(r"function %s\b" % fn, prefs_js) is not None, "20.6 prefs-account.js 定义 %s()" % fn)
 ok("try { renderBalance(); } catch (e)" in prefs_js, "20.7 renderAll 纳入 renderBalance（并自带 try）")
 ok("stopBalPolling(); // 充值订单轮询同理" in prefs_js, "20.8 面板关闭停掉充值订单轮询（定时器不泄漏）")
@@ -979,7 +979,7 @@ ok("bind(\"pp-bal-create\", \"click\", onBalCreate)" in prefs_js, "20.9 充值�
 for eid in ["pp-bal-block", "pp-bal-total", "pp-bal-detail", "pp-bal-note",
             "pp-bal-recharge-toggle", "pp-bal-recharge", "pp-bal-options",
             "pp-bal-create", "pp-bal-pay", "pp-bal-pay-info", "pp-bal-claim",
-            "pp-bal-poll", "pp-bal-cancel", "pp-bal-refresh"]:
+            "pp-bal-poll", "pp-bal-cancel"]:
     ok(eid in xhtml_ids, "20.10 prefs.xhtml 含 #%s" % eid)
 ok(".pp-root .pp-bal {" in prefs_css, "20.11 prefs.css 有 .pp-bal 样式")
 
@@ -1089,7 +1089,7 @@ ok("onlinePay: onlinePayReady()" in srv and "'/api/plans'" in srv, "21.30 /api/p
 for k in ["pay-enabled", "pay-provider", "pay-gateway", "pay-pid", "pay-key", "pay-test", "pay-msg"]:
     ok(k in html, "21.31 admin.html 含 %s" % k)
 
-ok("version: '1.9.3'" in srv, "21.32 服务端版本 1.9.3")
+ok("version: '1.9.4'" in srv, "21.32 服务端版本 1.9.4")
 ok("test/pay.test.js" in _pf3, "21.33 preflight 含在线支付测试")
 
 # ---------- 22. 多引擎翻译（插件 0.28.0） ----------
@@ -4207,6 +4207,42 @@ ok(bool(_cmp_free) and "仅限基础模型" in _cmp_free.group(1) and "注册赠
 ok("每月发放" in prefs_xhtml and "不结转" in prefs_xhtml,
    "66.15 对比表专业版格回退文案含「每月发放…不结转」口径")
 ok("scopeNote" in prefs_js, "66.16 prefs-account.js 消费 plans 下发的 scopeNote")
+
+# §67（1.9.4 / 0.77.0，E1-E4）：邮箱改绑 + 自助注销 + 刷新合并 + 有效期文案。
+ok("url === '/api/auth/change-email'" in srv, "67.1 服务端含 change-email 路由")
+ok("url === '/api/auth/delete-account'" in srv, "67.2 服务端含 delete-account 路由")
+ok("'user.change-email'" in _AUDIT_JS and "改绑邮箱" in _AUDIT_JS,
+   "67.3 audit.js 含 user.change-email 中文名「改绑邮箱」")
+ok("'user.delete-account'" in _AUDIT_JS and "注销账号" in _AUDIT_JS,
+   "67.4 audit.js 含 user.delete-account 中文名「注销账号」")
+ok("'user.change-email'" in ps and "改绑邮箱" in ps
+   and "'user.delete-account'" in ps and "注销账号" in ps,
+   "67.5 launcher 的 Get-AuditText 同步改绑邮箱/注销账号")
+ok("changeEmail" in _ACCT_API and "/api/auth/change-email" in _ACCT_API,
+   "67.6 account.js 暴露 changeEmail 并打 change-email 路由")
+ok("deleteAccount" in _ACCT_API and "/api/auth/delete-account" in _ACCT_API,
+   "67.7 account.js 暴露 deleteAccount 并打 delete-account 路由")
+ok("deleted_" in srv and "@deleted.local" in srv,
+   "67.8 注销走匿名化（deleted_<id>@deleted.local），不是物理删行")
+ok("sendEmailChangedMail" in srv and "sendAccountDeletedMail" in srv,
+   "67.9 改绑通知/注销确认邮件已接入（fire-and-forget）")
+
+for _eid67 in ["pp-cem-toggle", "pp-cem-form", "pp-cem-password", "pp-cem-new",
+               "pp-cem-submit", "pp-cem-cancel", "pp-cem-msg",
+               "pp-danger-toggle", "pp-danger-block", "pp-danger-delete", "pp-danger-msg"]:
+    ok(('id="%s"' % _eid67) in prefs_xhtml, "67.10 prefs.xhtml 含 #%s" % _eid67)
+    ok(('"%s"' % _eid67) in prefs_js, "67.11 prefs-account.js 引用 #%s" % _eid67)
+
+# E3：冗余刷新按钮已移除（负断言），全部刷新入口保留
+for _gone67 in ["pp-mb-refresh", "pp-bal-refresh"]:
+    ok(('id="%s"' % _gone67) not in prefs_xhtml, "67.12 冗余刷新按钮 #%s 已从 xhtml 移除" % _gone67)
+    ok(('"%s"' % _gone67) not in prefs_js, "67.13 冗余刷新按钮 #%s 在 JS 无残留绑定" % _gone67)
+ok("onMbRefresh" not in prefs_js and "onBalRefresh" not in prefs_js,
+   "67.14 onMbRefresh/onBalRefresh 函数已删除（全部刷新收口 onRefreshAccount）")
+ok("已全部刷新" in prefs_js, "67.15 底部按钮升级为「全部刷新」")
+# E4：会话有效期 >3 天不显示，≤3 天才提示
+ok("3 * 86400000" in prefs_js and "期间自动续期" in prefs_js,
+   "67.16 会话有效期改为 ≤3 天才提示（含自动续期说明）")
 
 print("=" * 60)
 for p in passes:

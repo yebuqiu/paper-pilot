@@ -57,6 +57,10 @@
  *     signupGrant:{amountMicro,validDays,scopeNote}|缺省, proMonthlyGrant:{amountMicro}|缺省}
  *   POST {server}/api/auth/change-password Bearer {oldPassword,newPassword}
  *     → 200 {ok:true}（全部会话含当前已吊销，客户端必须本地清 session 回登录视图）；旧服务端 404
+ *   POST {server}/api/auth/change-email Bearer {password,newEmail}
+ *     → 200 {ok:true, email}（**不踢会话**，本地同步更新 user 缓存）；旧服务端 404
+ *   POST {server}/api/auth/delete-account Bearer {password}
+ *     → 200 {ok:true}（账号已匿名化且全部会话吊销，客户端本地清 session 回登录视图）；旧服务端 404
  *   GET  {server}/api/orders?limit=N Bearer → 200 {ok, orders:[...], count}；旧服务端 404
  *   GET  {server}/api/balance/ledger?limit=N Bearer → 200 {ok, entries:[...]}；旧服务端 404
  *   POST {server}/api/orders        Bearer {plan,months} → 200 {ok, order}
@@ -871,6 +875,72 @@ var Account = {
     // 全部会话已被服务端吊销（含当前 token）——本地同步墓碑清除并回登录视图
     this._session = null;
     await this._wipe("password-changed");
+    this._notify();
+    return true;
+  },
+
+  /**
+   * 自助改绑邮箱（2026-10-24，E1；服务端 1.9.4）。
+   * 与改密的关键区别：**不踢会话**（改邮箱不换凭证）——成功后本地 user 缓存同步更新
+   * 并落盘，界面不离开账号视图。
+   * 失败抛可读中文错误；旧服务端没有该路由（404）时错误带 `err.unsupported = true`，
+   * 面板据此隐藏整个改绑入口。
+   */
+  async changeEmail(password, newEmail) {
+    password = String(password || "");
+    newEmail = String(newEmail || "").trim();
+    if (!password) throw new Error("请输入当前密码");
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) throw new Error("新邮箱格式不正确");
+    let resp;
+    try {
+      resp = await this._request("POST", "/api/auth/change-email",
+        { password, newEmail }, this.token(), 15000);
+    } catch (e) {
+      // 惰性能力探测：旧服务端 404 → 标记 unsupported（403 是锁定/WAF，不算不支持）
+      if (e && /404/.test(String(e.message || ""))) {
+        try { e.unsupported = true; } catch (_) { /* ignore */ }
+      }
+      throw e;
+    }
+    const j = resp.json || {};
+    if (!j.ok) throw new Error(j.error || "修改邮箱失败");
+    // 本地 user 缓存同步：email 换新；昵称为空时服务端用 email 回填 name，
+    // 旧 name 含 @ 说明就是那个回填，必须一并换掉（否则界面上还挂着旧邮箱）
+    if (this._session && this._session.user) {
+      this._session.user.email = j.email || newEmail;
+      if (String(this._session.user.name || "").indexOf("@") >= 0) {
+        this._session.user.name = this._session.user.email;
+      }
+      await this._save("email-changed");
+      this._notify();
+    }
+    return { email: this._session && this._session.user ? this._session.user.email : (j.email || newEmail) };
+  },
+
+  /**
+   * 自助注销账号（2026-10-24，E2；服务端 1.9.4）。
+   * 成功后服务端已完成匿名化并吊销全部会话（含当前）：本地必须墓碑清除 + 通知 UI 回登录视图。
+   * 失败抛可读中文错误；旧服务端没有该路由（404）时错误带 `err.unsupported = true`，
+   * 面板据此隐藏整个危险区。
+   */
+  async deleteAccount(password) {
+    password = String(password || "");
+    if (!password) throw new Error("请输入当前密码");
+    let resp;
+    try {
+      resp = await this._request("POST", "/api/auth/delete-account",
+        { password }, this.token(), 15000);
+    } catch (e) {
+      if (e && /404/.test(String(e.message || ""))) {
+        try { e.unsupported = true; } catch (_) { /* ignore */ }
+      }
+      throw e;
+    }
+    const j = resp.json || {};
+    if (!j.ok) throw new Error(j.error || "注销失败");
+    // 账号已不存在（服务端匿名化 + 令牌全吊销）——本地同步墓碑清除并回登录视图
+    this._session = null;
+    await this._wipe("account-deleted");
     this._notify();
     return true;
   },

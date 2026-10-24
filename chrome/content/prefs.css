@@ -883,7 +883,9 @@
 .pp-root .pp-mb-compare .pp-cmp-no { color: var(--pp-faint); }
 
 /* 2026-10-23 账号与会员增强（R1 改密表单 / R3 开通记录 / R4 我的订单 / R5 扣费明细） */
-.pp-root .pp-cpw-form {
+/* 2026-10-24（E1/E2）：pp-cem-form 复用改密表单布局；pp-danger-block 为注销危险区 */
+.pp-root .pp-cpw-form,
+.pp-root .pp-cem-form {
   margin: var(--pp-sp-1) 0 var(--pp-sp-2);
   padding: var(--pp-sp-2) var(--pp-sp-2h);
   border: 1px solid var(--pp-border);
@@ -892,6 +894,25 @@
   flex-direction: column;
   gap: var(--pp-sp-2);
   max-width: 420px;
+}
+.pp-root .pp-danger-block {
+  margin: var(--pp-sp-1) 0 var(--pp-sp-2);
+  padding: var(--pp-sp-2) var(--pp-sp-2h);
+  border: 1px solid var(--pp-danger);
+  border-radius: var(--pp-radius-sm);
+  background: var(--pp-danger-bg);
+  max-width: 420px;
+}
+.pp-root .pp-btn-danger {
+  color: var(--pp-on-accent);
+  background: var(--pp-danger);
+  border-color: var(--pp-danger);
+}
+.pp-root .pp-btn-danger:hover:not(:disabled) {
+  color: var(--pp-on-accent);
+  background: var(--pp-danger);
+  border-color: var(--pp-danger);
+  filter: brightness(1.08);
 }
 .pp-root .pp-mb-history,
 .pp-root .pp-orders-block,

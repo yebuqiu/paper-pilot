@@ -11,6 +11,11 @@
  *   GET  /api/auth/me        Bearer → {ok,user,expiresAt}（滑动续期）
  *   POST /api/auth/change-password （1.9.3）Bearer {oldPassword,newPassword} → 自助改密
  *                                  （验旧密码与登录共享锁定计数；成功即吊销该账号全部会话含当前）
+ *   POST /api/auth/change-email  （1.9.4）Bearer {password,newEmail} → 自助改绑邮箱
+ *                                  （验密码与登录共享锁定计数；改绑**不踢会话**；通知发旧邮箱）
+ *   POST /api/auth/delete-account（1.9.4）Bearer {password} → 自助注销（匿名化：
+ *                                  email→deleted_<id>@deleted.local、哈希清空、吊销全部令牌、
+ *                                  余额清零、托管密钥清空；**保留**订单与会员历史作财务留档）
  *   GET  /v1/models          Bearer → OpenAI 格式
  *   POST /v1/chat/completions Bearer → 转发活动通道上游（SSE 流式透传，auto→通道模型）
  *   GET  /register           公开自助注册页（public/register.html）
@@ -663,6 +668,17 @@ function maskKey(key) {
   if (!k) return '';
   if (k.length <= 8) return '****';
   return k.slice(0, 4) + '****' + k.slice(-4);
+}
+
+/** 邮箱脱敏（1.9.4）：首 2 字 + *** + 域名，与插件面板 maskEmail 同口径。
+ *  用于审计/日志/邮件正文——完整邮箱不进这些落点（截图/转发场景防泄露）。 */
+function maskEmail(email) {
+  const s = String(email || '').trim();
+  if (!s) return '';
+  const at = s.lastIndexOf('@');
+  if (at <= 0) return s.length <= 1 ? '***' : s.charAt(0) + '***';
+  const head = s.slice(0, Math.min(2, at));
+  return head + '***' + s.slice(at);
 }
 
 function json(res, status, obj) {
@@ -2565,7 +2581,7 @@ function healthSnapshot(deg, detail) {
     const bl = backlogNow();
     const ast = audit.stats(DATA_DIR);
     _healthCache = {
-      ok: true, service: 'papilot-account-server', version: '1.9.3',
+      ok: true, service: 'papilot-account-server', version: '1.9.4',
       // 以下活性字段每次响应都会覆盖为实时值（见下方 Object.assign）
       uptime: Math.round(process.uptime()), now: new Date().toISOString(),
       pid: process.pid,                 // 控制台据此显示 PID，不必再查 WMI / Get-NetTCPConnection
@@ -2973,6 +2989,129 @@ const server = http.createServer(async (req, res) => {
       // 审计体不含密码明文/哈希（redact 兜底；这里 after 干脆不放任何敏感字段）
       auditLog(req, 'user.change-password', { target: user.email, note: '自助修改密码，全部会话已吊销' });
       log('password self-changed:', user.email);
+      return json(res, 200, { ok: true });
+    }
+
+    /* 1.9.4（E1）自助改绑邮箱：验密码 → 新邮箱格式 + 唯一性 → 改 email（**不踢会话**，
+     * 改邮箱不换凭证）→ 审计 + 通知**旧邮箱**（新邮箱可能输错/不属于本人，旧邮箱才是
+     * 「原主人」唯一能收到提醒的地方）。
+     * 硬顺序（与 change-password 同构）：
+     *   限速 → lockout.status → 验密码（失败计 lockout.registerFailure，与登录共享）
+     *   → 格式/唯一性 → snapshot → 改 email → save → auditLog。 */
+    if (method === 'POST' && url === '/api/auth/change-email') {
+      const user = userByToken(req);
+      if (!user) return json(res, 401, { ok: false, error: '登录已过期' });
+      if (rateThrottled('changeemail:' + user.id, LOGIN_MAX, LOGIN_WINDOW_MS)) {
+        return json(res, 429, { ok: false, error: '操作过于频繁，请稍后再试' });
+      }
+      // 与登录同语义：锁定期内即使密码正确也拒绝
+      const lst = lockout.status(user);
+      if (lst.locked) {
+        log('change-email blocked (locked):', user.email, 'remain=' + lst.remainMinutes + 'min');
+        return json(res, 403, { ok: false, code: 'account_locked',
+          lockUntil: lst.lockUntil, remainMinutes: lst.remainMinutes,
+          error: lockout.lockedMessage(lst) });
+      }
+      let input;
+      try { input = await readBody(req); } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+      if (!verifyPassword(user, String((input && input.password) || ''))) {
+        const st = lockout.registerFailure(user, { ip: clientIp(req) });
+        usersStore.save();
+        log('change-email failed (bad password):', user.email, 'failCount=' + st.failCount);
+        return json(res, 401, { ok: false, error: '密码不正确' });
+      }
+      const newEmail = String((input && input.newEmail) || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+        return json(res, 400, { ok: false, error: '新邮箱格式不正确' });
+      }
+      if (newEmail.toLowerCase() === String(user.email).toLowerCase()) {
+        return json(res, 400, { ok: false, error: '新邮箱与当前邮箱相同' });
+      }
+      // 唯一性：全用户扫（含已注销匿名行——deleted_*@deleted.local 与普通邮箱永不相撞）
+      const conflict = findUserByEmail(newEmail);
+      if (conflict && conflict.id !== user.id) {
+        return json(res, 400, { ok: false, error: '该邮箱已被使用' });
+      }
+      const oldEmail = String(user.email || '');
+      snapshot('users-change', { note: '改绑邮箱：' + maskEmail(oldEmail) });
+      user.email = newEmail;
+      lockout.reset(user);
+      // 邮箱是查找索引键：先摘旧键再重挂（不维护会让旧邮箱脏命中、新邮箱扫不到）
+      _idx.userByEmail.delete(oldEmail.toLowerCase());
+      indexUser(user);
+      usersStore.save();
+      // 审计体不含密码明文/哈希；旧邮箱只留脱敏形态
+      auditLog(req, 'user.change-email', { target: newEmail, note: '原 ' + maskEmail(oldEmail) });
+      log('email changed:', maskEmail(oldEmail), '->', maskEmail(newEmail));
+      if (mail.configured()) {
+        // fire-and-forget：绝不 await 进响应路径；发信失败只记日志，不影响改绑、不产生 5xx
+        mail.sendEmailChangedMail(oldEmail, {
+          at: new Date().toISOString(), newEmailMasked: maskEmail(newEmail),
+        }).then((m) => {
+          if (m && !m.ok) log('email-changed mail failed:', maskEmail(oldEmail), m.error);
+          else log('email-changed mail sent:', maskEmail(oldEmail));
+        }).catch((e) => log('email-changed mail error:', maskEmail(oldEmail), e && e.message));
+      }
+      return json(res, 200, { ok: true, email: newEmail });
+    }
+
+    /* 1.9.4（E2）自助注销：验密码 → 快照 → **匿名化**（不删行）。
+     * 匿名化 = email 改 deleted_<id>@deleted.local（该域名保留，永不与真实邮箱相撞，
+     *   再注册同邮箱不会被误伤）、昵称清空、salt/hash 置空串（verifyPassword 长度不等
+     *   即 false，login 自然 401，无需额外封禁）、吊销全部令牌（含当前会话）、
+     *   余额三档清零（流水 ledger 保留）、托管密钥清空。
+     * **保留** orders 与 user.membership.history：订单与会员历史是财务留档，不删单不删史。 */
+    if (method === 'POST' && url === '/api/auth/delete-account') {
+      const user = userByToken(req);
+      if (!user) return json(res, 401, { ok: false, error: '登录已过期' });
+      if (rateThrottled('deleteacct:' + user.id, LOGIN_MAX, LOGIN_WINDOW_MS)) {
+        return json(res, 429, { ok: false, error: '操作过于频繁，请稍后再试' });
+      }
+      const lst = lockout.status(user);
+      if (lst.locked) {
+        log('delete-account blocked (locked):', user.email, 'remain=' + lst.remainMinutes + 'min');
+        return json(res, 403, { ok: false, code: 'account_locked',
+          lockUntil: lst.lockUntil, remainMinutes: lst.remainMinutes,
+          error: lockout.lockedMessage(lst) });
+      }
+      let input;
+      try { input = await readBody(req); } catch (e) { return json(res, 400, { ok: false, error: e.message }); }
+      if (!verifyPassword(user, String((input && input.password) || ''))) {
+        const st = lockout.registerFailure(user, { ip: clientIp(req) });
+        usersStore.save();
+        log('delete-account failed (bad password):', user.email, 'failCount=' + st.failCount);
+        return json(res, 401, { ok: false, error: '密码不正确' });
+      }
+      const oldEmail = String(user.email || '');
+      snapshot('users-change', { note: '注销：' + maskEmail(oldEmail) });
+      _idx.userByEmail.delete(oldEmail.toLowerCase());
+      user.email = 'deleted_' + user.id + '@deleted.local';
+      user.nickname = '';
+      user.salt = '';
+      user.hash = '';
+      user.deletedAt = new Date().toISOString();
+      // 余额清零（ledger 流水保留——财务留档；只是额度不再可用）
+      if (user.balance && typeof user.balance === 'object') {
+        user.balance.grantedMicro = 0;
+        user.balance.planMicro = 0;
+        user.balance.paidMicro = 0;
+      }
+      user.secrets = {};
+      // 吊销该用户全部既有令牌（含当前会话；与改密同款写法）
+      for (const [tok, rec] of Object.entries(usersStore.data.tokens || {})) {
+        if (rec && rec.userId === user.id) delete usersStore.data.tokens[tok];
+      }
+      indexUser(user);
+      usersStore.save();
+      auditLog(req, 'user.delete-account', { target: maskEmail(oldEmail), note: '自助注销，账号已匿名化' });
+      log('account self-deleted (anonymized):', maskEmail(oldEmail));
+      if (mail.configured()) {
+        // fire-and-forget：注销确认发**原邮箱**；失败只记日志
+        mail.sendAccountDeletedMail(oldEmail, { at: user.deletedAt }).then((m) => {
+          if (m && !m.ok) log('account-deleted mail failed:', maskEmail(oldEmail), m.error);
+          else log('account-deleted mail sent:', maskEmail(oldEmail));
+        }).catch((e) => log('account-deleted mail error:', maskEmail(oldEmail), e && e.message));
+      }
       return json(res, 200, { ok: true });
     }
 

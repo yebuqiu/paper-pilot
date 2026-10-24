@@ -1205,6 +1205,51 @@ const flush = () => new Promise((r) => setImmediate(r));
 
   function dlgRootFor(reg) { return reg.get('pp-dlg-root'); }
 
+  /* ============ P. 账号资料自助管理（2026-10-24：E1-E4 静态断言） ============ */
+  {
+    const xhtml = fs.readFileSync(XHTML, 'utf8');
+    const panelJs = fs.readFileSync(PANEL, 'utf8');
+    const IDS = [
+      // E1 修改邮箱
+      'pp-cem-toggle', 'pp-cem-form', 'pp-cem-password', 'pp-cem-new',
+      'pp-cem-submit', 'pp-cem-cancel', 'pp-cem-msg',
+      // E2 危险区（自助注销）
+      'pp-danger-toggle', 'pp-danger-block', 'pp-danger-delete', 'pp-danger-msg',
+    ];
+    for (const id of IDS) {
+      ok(xhtml.indexOf('id="' + id + '"') >= 0, 'P-xhtml:' + id + ' 存在于 prefs.xhtml');
+      ok(panelJs.indexOf(id) >= 0, 'P-js:prefs-account.js 引用了 ' + id);
+    }
+    // 只有容器/入口需要 display:none 起步；表单内部输入框/按钮随父容器隐藏，无内联样式属正常
+    for (const id of ['pp-cem-toggle', 'pp-cem-form', 'pp-danger-toggle', 'pp-danger-block']) {
+      const m = xhtml.match(new RegExp('id="' + id + '"[^>]*style="([^"]*)"'));
+      ok(!!m && m[1].indexOf('display:none') >= 0, 'P-hide:' + id + ' 初始 display:none', m && m[1]);
+    }
+    for (const id of ['pp-cem-toggle', 'pp-danger-toggle']) {
+      const m = xhtml.match(new RegExp('<html:(\\w+)[^>]*id="' + id + '"'));
+      ok(!!m && m[1] === 'button', 'P-a11y:' + id + ' 是真 <button>', m && m[1]);
+    }
+    const accountJs = fs.readFileSync(path.join(ROOT, 'chrome', 'content', 'scripts', 'ai', 'account.js'), 'utf8');
+    has(accountJs, 'changeEmail', 'P-api:account.js 暴露 changeEmail');
+    has(accountJs, '/api/auth/change-email', 'P-api:改绑路由字符串');
+    has(accountJs, 'deleteAccount', 'P-api:account.js 暴露 deleteAccount');
+    has(accountJs, '/api/auth/delete-account', 'P-api:注销路由字符串');
+    // E3：冗余刷新按钮移除（负断言）+ 全部刷新生效
+    ok(xhtml.indexOf('id="pp-mb-refresh"') < 0, 'P-E3:pp-mb-refresh 已从 xhtml 移除');
+    ok(xhtml.indexOf('id="pp-bal-refresh"') < 0, 'P-E3:pp-bal-refresh 已从 xhtml 移除');
+    ok(panelJs.indexOf('onMbRefresh') < 0 && panelJs.indexOf('onBalRefresh') < 0,
+      'P-E3:onMbRefresh/onBalRefresh 已无残留');
+    has(panelJs, '已全部刷新', 'P-E3:底部按钮升级为全部刷新');
+    has(xhtml, '全部刷新', 'P-E3:xhtml 按钮文案为全部刷新');
+    // E4：会话有效期 >3 天不显示，≤3 天提示并说明自动续期
+    has(panelJs, '3 * 86400000', 'P-E4:有效期按 3 天阈值判断');
+    has(panelJs, '期间自动续期', 'P-E4:提示含自动续期说明');
+    // 危险区样式
+    const css = fs.readFileSync(path.join(ROOT, 'chrome', 'content', 'prefs.css'), 'utf8');
+    has(css, '.pp-danger-block', 'P-css:危险区样式存在');
+    has(css, '.pp-btn-danger', 'P-css:危险按钮样式存在');
+  }
+
   console.log('\n会员面板渲染测试：' + pass + ' 项通过，' + fails.length + ' 项失败');
   if (fails.length) {
     for (const f of fails) console.log('  ✗ ' + f);

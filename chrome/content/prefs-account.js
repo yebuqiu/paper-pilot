@@ -126,6 +126,8 @@
     if (!loggedIn) {
       $("pp-login-password").value = "";
       syncCpw();           // 未登录：改密入口收起
+      syncCem();           // 未登录：改绑邮箱入口收起（E1）
+      syncDanger();        // 未登录：危险区收起（E2）
       renderAiTierNote();
       renderGrantCopy();   // 登录提示句在登录视图上，未登录也要保持刷新
       return;
@@ -144,10 +146,16 @@
       String(nick || email).trim().charAt(0).toUpperCase() || "P";
     const bits = [];
     if (u.plan) bits.push("套餐：" + u.plan);
-    if (A.expiresAt()) bits.push("会话有效期至 " + fmtDate(A.expiresAt()));
+    // E4：会话有效期 >3 天不显示（普通用户无感）；≤3 天才提示，并说明自动续期
+    const sessExp = A.expiresAt();
+    if (sessExp && (sessExp - Date.now()) <= 3 * 86400000) {
+      bits.push("登录将于 " + fmtDate(sessExp) + " 到期，期间自动续期");
+    }
     bits.push("服务器 " + displayUrl(A.serverUrl()).replace(/^https?:\/\//, ""));
     $("pp-account-meta").textContent = bits.join(" ｜ ");
     syncCpw();             // 已登录且服务端支持时才出现「修改密码」入口
+    syncCem();             // E1：改绑邮箱入口（不踢会话）
+    syncDanger();          // E2：危险区（自助注销）
     renderGrantCopy();     // R2：注册赠送/每月发放文案随 plans 下发
     fillOfficialModelSelect();
   }
@@ -337,17 +345,23 @@
     const result = $("pp-account-result");
     if (!A) return;
     if (!A.isLoggedIn()) { renderAll(); return; }
-    result.textContent = "刷新中…";
+    result.textContent = "全部刷新中…";
     result.style.color = "var(--pp-muted)";
-    try {
-      await A.refreshUser();
-      result.textContent = "✓ 已刷新";
-      result.style.color = "var(--pp-success)";
-    } catch (e) {
-      result.textContent = "✗ " + (e && e.message || "刷新失败");
+    // E3：一次拉 账号+会员+余额+设备；单域失败不拖垮其他域，最后汇总报告
+    const failed = [];
+    try { await A.refreshUser(); } catch (e) { failed.push("账号"); }
+    try { await A.refreshMembership(); } catch (e) { failed.push("会员"); }
+    try { await ensureRechargeOptions(true); } catch (e) { failed.push("充值档位"); }
+    renderAll();
+    try { await renderDevices(); } catch (e) { failed.push("设备"); }
+    // 反馈写在刷新之后（renderAll/renderDevices 会重写各区块文案）
+    if (failed.length) {
+      result.textContent = "部分刷新失败：" + failed.join("、") + "（可重试）";
       result.style.color = "var(--pp-danger)";
+    } else {
+      result.textContent = "✓ 已全部刷新";
+      result.style.color = "var(--pp-success)";
     }
-    renderAccount();
   }
 
   /* ---------- 注册（0.20.0 内置界面：直接调服务端 /api/auth/register，不跳浏览器） ---------- */
@@ -1071,6 +1085,10 @@
   function resetEnhancements() {
     cpwUnsupported = false;
     cpwShown = false;
+    cemUnsupported = false;
+    cemShown = false;
+    dangerUnsupported = false;
+    dangerShown = false;
     ordersLoaded = false;
     ordersCache = null;
     ledgerLoaded = false;
@@ -1159,6 +1177,143 @@
     } catch (e) {
       try { mbSetMsg("pp-cpw-msg", "✗ " + ((e && e.message) || "修改失败"), "var(--pp-danger)"); } catch (e2) { /* ignore */ }
       try { const btn = $("pp-cpw-submit"); if (btn) btn.disabled = false; } catch (e2) { /* ignore */ }
+    }
+  }
+
+  /* ---------- E1 修改邮箱（不踢会话；旧服务端 404 → 整块隐藏） ---------- */
+
+  let cemShown = false;
+  let cemUnsupported = false;
+
+  function syncCem() {
+    const A = account();
+    const tg = $("pp-cem-toggle");
+    const form = $("pp-cem-form");
+    const loggedIn = !!(A && A.isLoggedIn && A.isLoggedIn());
+    if (tg) {
+      tg.style.display = (loggedIn && !cemUnsupported) ? "" : "none";
+      tg.setAttribute("aria-expanded", cemShown ? "true" : "false");
+      tg.textContent = "修改邮箱" + (cemShown ? " ▴" : " ▾");
+    }
+    if (form) form.style.display = (loggedIn && !cemUnsupported && cemShown) ? "" : "none";
+  }
+
+  function onCemToggle() {
+    cemShown = !cemShown;
+    if (cemShown) mbSetMsg("pp-cem-msg", "", "var(--pp-muted)");
+    syncCem();
+    if (cemShown) { try { const o = $("pp-cem-password"); if (o) o.focus(); } catch (e) { /* ignore */ } }
+  }
+
+  function onCemCancel() {
+    cemShown = false;
+    for (const id of ["pp-cem-password", "pp-cem-new"]) {
+      try { const n = $(id); if (n) n.value = ""; } catch (e) { /* ignore */ }
+    }
+    mbSetMsg("pp-cem-msg", "", "var(--pp-muted)");
+    syncCem();
+  }
+
+  async function onCemSubmit() {
+    // 整个函数体包 try：异步函数里的同步抛错同样会变未捕获拒绝
+    try {
+      const A = account();
+      const btn = $("pp-cem-submit");
+      if (!A || !btn || !A.isLoggedIn()) return;
+      const pw = String(($("pp-cem-password") || {}).value || "");
+      const newEmail = String(($("pp-cem-new") || {}).value || "").trim();
+      const say = (t, color) => mbSetMsg("pp-cem-msg", t, color);
+      if (!pw || !newEmail) return say("请填写当前密码与新邮箱", "var(--pp-danger)");
+      btn.disabled = true;
+      say("正在改绑…", "var(--pp-muted)");
+      try {
+        await A.changeEmail(pw, newEmail);
+      } catch (e) {
+        btn.disabled = false;
+        if (e && e.unsupported) {
+          cemUnsupported = true;
+          cemShown = false;
+          syncCem();
+          mbSetMsg("pp-account-result", "服务端版本过旧，暂不支持在线改绑邮箱", "var(--pp-muted)");
+          return;
+        }
+        say("✗ " + ((e && e.message) || "改绑失败"), "var(--pp-danger)");
+        return;
+      }
+      // 成功：不踢会话，account.js 已同步 user 缓存并 _notify。反馈写在刷新之后。
+      cemShown = false;
+      for (const id of ["pp-cem-password", "pp-cem-new"]) {
+        try { const n = $(id); if (n) n.value = ""; } catch (e) { /* ignore */ }
+      }
+      renderAll();
+      mbSetMsg("pp-account-result", "✓ 邮箱已改绑，下次请用新邮箱登录（通知已发原邮箱）", "var(--pp-success)");
+    } catch (e) {
+      try { mbSetMsg("pp-cem-msg", "✗ " + ((e && e.message) || "改绑失败"), "var(--pp-danger)"); } catch (e2) { /* ignore */ }
+      try { const btn = $("pp-cem-submit"); if (btn) btn.disabled = false; } catch (e2) { /* ignore */ }
+    }
+  }
+
+  /* ---------- E2 危险区 · 自助注销账号 ---------- */
+
+  let dangerShown = false;
+  let dangerUnsupported = false;
+
+  function syncDanger() {
+    const A = account();
+    const tg = $("pp-danger-toggle");
+    const block = $("pp-danger-block");
+    const loggedIn = !!(A && A.isLoggedIn && A.isLoggedIn());
+    if (tg) {
+      tg.style.display = (loggedIn && !dangerUnsupported) ? "" : "none";
+      tg.setAttribute("aria-expanded", dangerShown ? "true" : "false");
+      tg.textContent = "危险区" + (dangerShown ? " ▴" : " ▾");
+    }
+    if (block) block.style.display = (loggedIn && !dangerUnsupported && dangerShown) ? "" : "none";
+  }
+
+  function onDangerToggle() {
+    dangerShown = !dangerShown;
+    syncDanger();
+  }
+
+  async function onDangerDelete() {
+    try {
+      const A = account();
+      if (!A || !A.isLoggedIn()) return;
+      const ok = Services_promptConfirm(Zotero.getMainWindow(), "Papilot",
+        "确定注销账号？\n注销后：账号立即匿名化并退出全部设备，剩余余额清零且不可恢复；\n订单与财务记录依法保留。此操作不可撤销。");
+      if (!ok) return;
+      const pw = Services_promptInput(Zotero.getMainWindow(), "Papilot",
+        "请输入当前密码以确认注销：", "");
+      if (pw === null) return;   // 用户取消
+      if (!pw) {
+        mbSetMsg("pp-danger-msg", "请输入当前密码", "var(--pp-danger)");
+        return;
+      }
+      mbSetMsg("pp-danger-msg", "正在注销…", "var(--pp-muted)");
+      try {
+        await A.deleteAccount(pw);
+      } catch (e) {
+        if (e && e.unsupported) {
+          dangerUnsupported = true;
+          dangerShown = false;
+          syncDanger();
+          mbSetMsg("pp-account-result", "服务端版本过旧，暂不支持自助注销", "var(--pp-muted)");
+          return;
+        }
+        mbSetMsg("pp-danger-msg", "✗ " + ((e && e.message) || "注销失败"), "var(--pp-danger)");
+        return;
+      }
+      // 成功：服务端已匿名化并吊销全部会话，account.js 已墓碑清除并 _notify
+      dangerShown = false;
+      renderAll();
+      const lr = $("pp-login-result");
+      if (lr) {
+        lr.textContent = "账号已注销，感谢使用";
+        lr.style.color = "var(--pp-success)";
+      }
+    } catch (e) {
+      try { mbSetMsg("pp-danger-msg", "✗ " + ((e && e.message) || "注销失败"), "var(--pp-danger)"); } catch (e2) { /* ignore */ }
     }
   }
 
@@ -1814,19 +1969,6 @@
     else mbSetMsg("pp-mb-pay-result", "✗ " + r.error, "var(--pp-danger)");
   }
 
-  async function onMbRefresh() {
-    const A = account();
-    if (!A || !A.isLoggedIn()) return;
-    mbSetMsg("pp-mb-result", "刷新中…", "var(--pp-muted)");
-    try {
-      await A.refreshMembership();
-      renderAll();
-      mbSetMsg("pp-mb-result", "✓ 会员状态已刷新", "var(--pp-success)");
-    } catch (e) {
-      mbSetMsg("pp-mb-result", "✗ " + ((e && e.message) || "刷新失败"), "var(--pp-danger)");
-    }
-  }
-
   /* ==================== AI 额度余额（0.26.0） ====================
    * 三档：注册赠送（有期，限基础模型）/ 订阅额度（当月有效不结转）/ 充值（永不过期）。
    * 服务端 1.6.0 起在 /api/auth/me 下发 user.balance；旧服务端没有该字段 →
@@ -2159,20 +2301,6 @@
     const r = await balCancelCore();
     if (r.ok) mbSetMsg("pp-bal-order-msg", "订单已取消，可重新生成", "var(--pp-muted)");
     else mbSetMsg("pp-bal-pay-result", "✗ " + r.error, "var(--pp-danger)");
-  }
-
-  async function onBalRefresh() {
-    const A = account();
-    if (!A || !A.isLoggedIn()) return;
-    mbSetMsg("pp-bal-msg", "刷新中…", "var(--pp-muted)");
-    try {
-      await A.refreshUser();
-      await ensureRechargeOptions(true);
-      renderAll();
-      mbSetMsg("pp-bal-msg", "✓ 余额已刷新", "var(--pp-success)");
-    } catch (e) {
-      mbSetMsg("pp-bal-msg", "✗ " + ((e && e.message) || "刷新失败"), "var(--pp-danger)");
-    }
   }
 
   /* ---------- 激活码 ---------- */
@@ -2755,7 +2883,6 @@
     bind("pp-mb-cancel", "click", onMbCancel);
     // 0.49.0 付款单弹窗：内联区「查看付款单」重开（自动弹出只在生成订单时发生一次）
     bind("pp-mb-order-view", "click", () => { if (mbOrder) openOrderDlg(mbOrder, "plan"); });
-    bind("pp-mb-refresh", "click", onMbRefresh);
     bind("pp-mb-code-toggle", "click", onMbCodeToggle);
     bind("pp-mb-code-btn", "click", onMbRedeem);
     bind("pp-mb-code-input", "keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); onMbRedeem(); } });
@@ -2767,7 +2894,6 @@
     bind("pp-bal-poll", "click", () => onBalPoll(false));
     bind("pp-bal-cancel", "click", onBalCancel);
     bind("pp-bal-order-view", "click", () => { if (balOrder) openOrderDlg(balOrder, "credit"); });
-    bind("pp-bal-refresh", "click", onBalRefresh);
     bind("pp-bal-close", "click", () => { const b = $("pp-bal-recharge"); if (b) b.style.display = "none"; });
     // 通道
     bind("pp-ch-add", "click", () => openForm(null));
@@ -2793,6 +2919,13 @@
     bind("pp-cpw-submit", "click", onCpwSubmit);
     bind("pp-cpw-cancel", "click", onCpwCancel);
     bind("pp-cpw-new2", "keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); onCpwSubmit(); } });
+    // E1 修改邮箱 / E2 危险区（自助注销）
+    bind("pp-cem-toggle", "click", onCemToggle);
+    bind("pp-cem-submit", "click", onCemSubmit);
+    bind("pp-cem-cancel", "click", onCemCancel);
+    bind("pp-cem-new", "keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); onCemSubmit(); } });
+    bind("pp-danger-toggle", "click", onDangerToggle);
+    bind("pp-danger-delete", "click", onDangerDelete);
     // R8 余额不足 → 展开「模型通道」卡
     bind("pp-bal-open-channels", "click", onBalOpenChannels);
     // R2 注册赠送/每月发放文案：未登录视图也要渲染，独立拉取（不走 ensurePlans 的登录门槛）

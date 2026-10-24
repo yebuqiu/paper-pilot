@@ -167,4 +167,54 @@ function sendLoginAlertMail(to, { at, deviceName, ipMasked } = {}) {
   });
 }
 
-module.exports = { configured, fromAddress, publicBaseUrl, send, sendVerifyMail, sendResetMail, sendLoginAlertMail };
+/**
+ * 邮箱改绑通知（1.9.4，E1）：发到**旧邮箱**（新邮箱可能输错/不属于本人）。
+ * 调用方必须是 fire-and-forget（.catch 只记日志），绝不 await 进响应路径。
+ * @param {string} to 旧邮箱
+ * @param {{at?:string, newEmailMasked?:string}} info newEmailMasked 必须已脱敏——完整新邮箱不进邮件。
+ */
+function sendEmailChangedMail(to, { at, newEmailMasked } = {}) {
+  const when = String(at || new Date().toISOString());
+  const ne = String(newEmailMasked || '').trim() || '（未提供）';
+  const guide = '如果不是你本人操作，请立即修改密码（会踢掉全部登录设备），并联系客服找回账号。';
+  return send({
+    to,
+    subject: '【Papilot】账号邮箱已改绑',
+    text: '你的 Papilot 账号登录邮箱刚刚被改绑：\n\n'
+      + '时间：' + when + '\n'
+      + '新邮箱：' + ne + '（已脱敏）\n\n'
+      + '改绑后请使用新邮箱登录，原邮箱不再关联本账号。\n' + guide,
+    html: pageWrap('你的 Papilot 账号登录邮箱刚刚被<b>改绑</b>：',
+      '<div style="background:#f3f4f6;border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.9">'
+      + '时间：' + escHtml(when) + '<br>'
+      + '新邮箱：' + escHtml(ne) + '（已脱敏）</div>'
+      + '<p>改绑后请使用新邮箱登录，原邮箱不再关联本账号。<br>'
+      + '<b style="color:#b91c1c">' + escHtml(guide) + '</b></p>'),
+  });
+}
+
+/**
+ * 账号注销确认（1.9.4，E2）：发到原邮箱，告知匿名化结果与财务留档口径。
+ * 调用方必须是 fire-and-forget（.catch 只记日志），绝不 await 进响应路径。
+ */
+function sendAccountDeletedMail(to, { at } = {}) {
+  const when = String(at || new Date().toISOString());
+  return send({
+    to,
+    subject: '【Papilot】账号已注销',
+    text: '你的 Papilot 账号已于 ' + when + ' 完成注销：\n\n'
+      + '· 登录邮箱、昵称、密码与托管密钥已清除，全部设备已退出登录；\n'
+      + '· 剩余余额已清零，不可恢复；\n'
+      + '· 订单与会员记录按财务合规要求保留留档，不含可识别身份的信息。\n\n'
+      + '如非本人操作，说明账号密码已泄露，请立即联系客服。',
+    html: pageWrap('你的 Papilot 账号已于 <b>' + escHtml(when) + '</b> 完成注销：',
+      '<div style="background:#f3f4f6;border-radius:8px;padding:12px 16px;font-size:13px;line-height:1.9">'
+      + '登录邮箱、昵称、密码与托管密钥已清除，全部设备已退出登录；<br>'
+      + '剩余余额已清零，不可恢复；<br>'
+      + '订单与会员记录按财务合规要求保留留档，不含可识别身份的信息。</div>'
+      + '<p><b style="color:#b91c1c">如非本人操作，说明账号密码已泄露，请立即联系客服。</b></p>'),
+  });
+}
+
+module.exports = { configured, fromAddress, publicBaseUrl, send, sendVerifyMail, sendResetMail,
+  sendLoginAlertMail, sendEmailChangedMail, sendAccountDeletedMail };

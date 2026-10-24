@@ -425,7 +425,7 @@ const yuan = (n) => Math.round(n * 1e6);   // 元 → 微元
 
     // health
     const h = (await req('GET', '/api/health')).json;
-    eq(h.version, '1.9.3', 'B42 服务端版本 1.8.0');
+    eq(h.version, '1.9.4', 'B42 服务端版本 1.8.0');
     eq(h.balanceEnforce, true, 'B43 health 暴露 enforce 状态');
     eq(h.signupGrantMicro, yuan(6), 'B44 health 暴露注册赠送额度');
 

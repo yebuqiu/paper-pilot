@@ -3,6 +3,17 @@
     "papilot@dev.local": {
       "updates": [
         {
+          "version": "0.77.0",
+          "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.77.0.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "6.999",
+              "strict_max_version": "99.*"
+            }
+          },
+          "whatsNew": "账号自助管理：修改邮箱（验密码+旧邮箱通知，不踢会话）、自助注销账号（匿名化留档/余额清零/二次确认）、账号卡刷新合并为全部刷新、会话有效期仅临近到期才提示；服务端 1.9.4"
+        },
+        {
           "version": "0.76.0",
           "update_link": "https://gitee.com/cassiuschen9261/zotero-papilot/raw/main/dist/papilot-0.76.0.xpi",
           "applications": {

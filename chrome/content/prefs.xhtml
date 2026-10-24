@@ -150,6 +150,26 @@
           <html:div class="pp-hint">修改成功后全部设备（含本机）都会退出登录，需要用新密码重新登录。</html:div>
         </html:div>
 
+        <!-- 修改邮箱（2026-10-24，E1）：改绑**不踢会话**，成功后本地缓存同步更新。
+             旧服务端（无 /api/auth/change-email）→ 入口整块隐藏，不占屏不报错。 -->
+        <html:button type="button" id="pp-cem-toggle" class="pp-link-btn" aria-expanded="false" style="display:none;">修改邮箱 ▾</html:button>
+        <html:div id="pp-cem-form" class="pp-cem-form" style="display:none;">
+          <html:label class="pp-field">
+            <html:span class="pp-label">当前密码</html:span>
+            <html:input type="password" id="pp-cem-password" class="pp-input" placeholder="验证本人身份"/>
+          </html:label>
+          <html:label class="pp-field">
+            <html:span class="pp-label">新邮箱</html:span>
+            <html:input type="text" id="pp-cem-new" class="pp-input" placeholder="用于登录的新邮箱"/>
+          </html:label>
+          <html:div class="pp-row pp-row-tight">
+            <html:button id="pp-cem-submit" class="pp-btn pp-btn-primary pp-btn-sm">确认改绑</html:button>
+            <html:button id="pp-cem-cancel" class="pp-btn pp-btn-sm">取消</html:button>
+            <html:span id="pp-cem-msg" class="pp-msg" aria-live="polite"></html:span>
+          </html:div>
+          <html:div class="pp-hint">改绑成功后请用新邮箱登录；改绑通知会发送到原邮箱。改邮箱不会退出登录。</html:div>
+        </html:div>
+
         <!-- ===== 0.23.0 会员（等级 / 到期 / 购买 / 激活码） ===== -->
         <html:div id="pp-mb-block" class="pp-mb">
           <html:div class="pp-mb-head">
@@ -178,7 +198,6 @@
             <html:button type="button" id="pp-bal-open-channels" class="pp-link-btn" style="display:none;">接入自己的模型通道继续用</html:button>
             <html:div class="pp-row pp-row-tight">
               <html:button id="pp-bal-recharge-toggle" class="pp-btn pp-btn-primary pp-btn-sm">充值额度</html:button>
-              <html:button id="pp-bal-refresh" class="pp-btn pp-btn-sm">刷新</html:button>
               <html:span id="pp-bal-msg" class="pp-msg" aria-live="polite"></html:span>
             </html:div>
             <!-- 充值面板：档位 → 生成订单 → 扫码 → 我已完成支付 → 轮询入账 -->
@@ -217,7 +236,6 @@
           </html:div>
           <html:div class="pp-row pp-row-tight">
             <html:button id="pp-mb-upgrade" class="pp-btn pp-btn-primary pp-btn-sm">升级专业版</html:button>
-            <html:button id="pp-mb-refresh" class="pp-btn pp-btn-sm">刷新</html:button>
             <html:button type="button" id="pp-mb-code-toggle" class="pp-link-btn">有激活码？</html:button>
             <html:span id="pp-mb-result" class="pp-msg" aria-live="polite"></html:span>
           </html:div>
@@ -351,7 +369,7 @@
         <html:div class="pp-row">
           <html:label class="pp-label" for="pp-account-official-model">官方模型</html:label>
           <html:select id="pp-account-official-model" class="pp-select" style="min-width:180px;"></html:select>
-          <html:button id="pp-account-refresh" class="pp-btn pp-btn-sm">刷新状态</html:button>
+          <html:button id="pp-account-refresh" class="pp-btn pp-btn-sm">全部刷新</html:button>
           <html:button id="pp-logout-btn" class="pp-btn pp-btn-sm">退出登录</html:button>
           <html:span id="pp-account-result" class="pp-msg" aria-live="polite"></html:span>
         </html:div>
@@ -364,6 +382,16 @@
             <html:div class="pp-hint">知网、坚果云、期刊分区与自定义 AI 模型的账号/密钥集中管理：默认脱敏、按需解锁、可加密托管到你自己的账号（换机一键取回）</html:div>
           </html:div>
           <html:button id="pp-vault-open" class="pp-btn pp-btn-primary pp-btn-sm">打开凭据中心</html:button>
+        </html:div>
+        <!-- 危险区（2026-10-24，E2）：自助注销账号。二次确认 + 密码验证；
+             旧服务端（无 /api/auth/delete-account）→ 整块隐藏。 -->
+        <html:button type="button" id="pp-danger-toggle" class="pp-link-btn" aria-expanded="false" style="display:none;">危险区 ▾</html:button>
+        <html:div id="pp-danger-block" class="pp-danger-block" style="display:none;">
+          <html:div class="pp-hint">注销后账号立即匿名化并退出全部设备；订单与财务记录依法保留，剩余余额清零且不可恢复。</html:div>
+          <html:div class="pp-row pp-row-tight">
+            <html:button id="pp-danger-delete" class="pp-btn pp-btn-danger pp-btn-sm">注销账号</html:button>
+            <html:span id="pp-danger-msg" class="pp-msg" aria-live="polite"></html:span>
+          </html:div>
         </html:div>
       </html:div>
     </html:div>
